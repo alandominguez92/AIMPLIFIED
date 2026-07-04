@@ -12,7 +12,7 @@ binding = "ASSETS"
 # Track record storage (Cloudflare D1). Create the database, paste its id below,
 # and redeploy — see DEPLOY.md. Until this is set up, env.DB is undefined and the
 # track-record endpoint returns empty (the site shows its placeholder record).
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "aimplified"
-# database_id = "PASTE_YOUR_D1_DATABASE_ID_HERE"
+ [[d1_databases]]
+ binding = "DB"
+ database_name = "aimplified"
+ database_id = "a894d9e5-698a-4d89-bfa7-8d9fbee523ed"
