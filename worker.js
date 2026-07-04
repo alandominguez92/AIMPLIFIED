@@ -12,10 +12,12 @@ export default {
   async fetch(request, env) {
     const p = new URL(request.url).pathname;
 
-    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters') {
+    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters' || p === '/api/pitchers' || p === '/api/board') {
       if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
 
       if (p === '/api/hitters') return hitters();
+      if (p === '/api/pitchers') return pitchers();
+      if (p === '/api/board') return board(env);
 
       const key = env.ODDS_API_KEY;
       if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -71,6 +73,270 @@ async function hitters() {
     .slice(0, 10);
 
   return cors(json(rows, 300)); // cache 5 min — season stats move slowly
+}
+
+// -------------------------------------------------------------------------
+// /api/pitchers — real season pitching leaders (by K/9) from MLB StatsAPI.
+// Shaped to match the Hottest Pitchers cards. [] on trouble -> page uses mock.
+// -------------------------------------------------------------------------
+async function pitchers() {
+  const season = new Date().getUTCFullYear();
+  const api = `${STATS}/stats?stats=season&group=pitching&gameType=R`
+    + `&season=${season}&sportId=1&playerPool=Qualified&limit=300`;
+
+  let r;
+  try {
+    r = await fetch(api, { headers: { accept: 'application/json' } });
+  } catch (e) {
+    return cors(json([], 30));
+  }
+  if (!r.ok) return cors(json([], 30));
+
+  let data;
+  try { data = await r.json(); } catch (e) { return cors(json([], 30)); }
+
+  const splits = (data.stats && data.stats[0] && data.stats[0].splits) || [];
+  const rows = splits
+    .map((s) => {
+      const st = s.stat || {};
+      const k9 = toNum(st.strikeoutsPer9Inn);
+      const era = (st.era === undefined || st.era === null) ? '—' : String(st.era);
+      const k = typeof st.strikeOuts === 'number' ? st.strikeOuts : toNum(st.strikeOuts || st.strikeouts);
+      return {
+        name: shortName((s.player || {}).fullName),
+        team: teamAbbr(s.team),
+        k9,
+        ip: toNum(st.inningsPitched),
+        statVal: k9 ? k9.toFixed(1) : '—',
+        statLabel: 'K/9 · season',
+        chip1: era + ' ERA',
+        chip2: k + ' K',
+        cmp: [
+          { k: 'K/9', v: k9 ? k9.toFixed(1) : '—' },
+          { k: 'ERA', v: era },
+          { k: 'K', v: String(k) },
+        ],
+      };
+    })
+    .filter((x) => x.name && x.k9 > 0 && x.ip >= 40)
+    .sort((a, b) => b.k9 - a.k9)
+    .slice(0, 10);
+
+  return cors(json(rows, 300));
+}
+
+// -------------------------------------------------------------------------
+// /api/board — tonight's real slate with a transparent projected-K model.
+//   projK = pitcherK/9 × (expectedIP / 9) × (opponentK% / leagueK%)
+//   80% interval from a Poisson spread around projK.
+// Real matchups + probable pitchers from the schedule; stats join the
+// projection. Degrades gracefully (defaults) if a stats feed hiccups; []
+// if the schedule itself fails, so the page uses its Odds-API slate.
+// -------------------------------------------------------------------------
+async function board(env) {
+  const season = new Date().getUTCFullYear();
+  const date = new Date().toISOString().slice(0, 10);
+
+  let sched;
+  try {
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${date}&hydrate=probablePitcher,linescore,team`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return cors(json([], 60));
+    sched = await r.json();
+  } catch (e) { return cors(json([], 60)); }
+
+  const games = (sched.dates && sched.dates[0] && sched.dates[0].games) || [];
+  if (!games.length) return cors(json([], 60));
+
+  // Real strikeout prop lines (paid Odds API player props), keyed by pitcher
+  // name. Per-event requests — cached 5 min below to protect the quota.
+  const propByName = {};
+  const key = env && env.ODDS_API_KEY;
+  if (key) {
+    try {
+      const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      if (evR.ok) {
+        const events = await evR.json();
+        await Promise.all((Array.isArray(events) ? events : []).map(async (ev) => {
+          try {
+            const pr = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=pitcher_strikeouts&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+            if (!pr.ok) return;
+            const pd = await pr.json();
+            for (const bm of (pd.bookmakers || [])) {
+              const mk = (bm.markets || []).find((m) => m.key === 'pitcher_strikeouts');
+              if (!mk) continue;
+              for (const oc of (mk.outcomes || [])) {
+                const nm = normName(oc.description);
+                if (!nm) continue;
+                const cur = propByName[nm] || {};
+                if (oc.point != null) cur.point = oc.point;
+                if (oc.name === 'Over') cur.over = oc.price;
+                else if (oc.name === 'Under') cur.under = oc.price;
+                propByName[nm] = cur;
+              }
+            }
+          } catch (e) { /* skip this event */ }
+        }));
+      }
+    } catch (e) { /* no props -> projection-only board */ }
+  }
+
+  // Probable-pitcher season stats (one call for all of them).
+  const pids = [];
+  games.forEach((g) => ['away', 'home'].forEach((s) => {
+    const pp = g.teams && g.teams[s] && g.teams[s].probablePitcher;
+    if (pp && pp.id) pids.push(pp.id);
+  }));
+  const pmap = {};
+  if (pids.length) {
+    try {
+      const r = await fetch(`${STATS}/people?personIds=${pids.join(',')}&hydrate=stats(group=[pitching],type=[season],season=${season})`, { headers: { accept: 'application/json' } });
+      if (r.ok) {
+        const d = await r.json();
+        (d.people || []).forEach((pl) => {
+          const sp = (((pl.stats || [])[0] || {}).splits || [])[0];
+          const st = sp ? sp.stat : {};
+          pmap[pl.id] = { k9: toNum(st.strikeoutsPer9Inn), ip: toNum(st.inningsPitched), gs: toNum(st.gamesStarted) };
+        });
+      }
+    } catch (e) { /* projections fall back to defaults */ }
+  }
+
+  // Team strikeout rate + league baseline (one call).
+  const teamK = {}; let lgSO = 0, lgPA = 0;
+  try {
+    const r = await fetch(`${STATS}/teams/stats?season=${season}&sportId=1&group=hitting&stats=season`, { headers: { accept: 'application/json' } });
+    if (r.ok) {
+      const d = await r.json();
+      const splits = ((d.stats || [])[0] || {}).splits || [];
+      splits.forEach((sp) => {
+        const st = sp.stat || {};
+        const id = sp.team && sp.team.id;
+        const so = toNum(st.strikeOuts), pa = toNum(st.plateAppearances);
+        if (id && pa > 0) { teamK[id] = so / pa; lgSO += so; lgPA += pa; }
+      });
+    }
+  } catch (e) { /* opponent adjustment falls back to neutral */ }
+  const lgK = lgPA > 0 ? lgSO / lgPA : 0.222;
+
+  const rows = games.map((g) => {
+    const away = g.teams.away, home = g.teams.home;
+    const projFor = (side) => {
+      const pp = g.teams[side].probablePitcher;
+      if (!pp || !pp.id) return null;
+      const st = pmap[pp.id] || {};
+      const oppTeam = g.teams[side === 'away' ? 'home' : 'away'].team;
+      const oppK = teamK[oppTeam.id] || lgK;
+      const k9 = st.k9 > 0 ? st.k9 : 8.5;
+      const expIP = clamp(st.gs > 0 ? st.ip / st.gs : 5.5, 4, 6.8);
+      const projK = (k9 * expIP / 9) * (lgK > 0 ? oppK / lgK : 1);
+      const sd = Math.sqrt(Math.max(projK, 1));
+
+      // Market: compare the projection to the real strikeout line.
+      let market = null;
+      const prop = propByName[normName(pp.fullName)];
+      if (prop && prop.point != null && (prop.over != null || prop.under != null)) {
+        const L = prop.point;
+        const pOver = 1 - poissonCdf(Math.ceil(L) - 1, projK); // P(K over the line)
+        const impO = prop.over != null ? amProb(prop.over) : null;
+        const impU = prop.under != null ? amProb(prop.under) : null;
+        let fairOver;
+        if (impO != null && impU != null) { const v = impO + impU; fairOver = v > 0 ? impO / v : impO; }
+        else if (impO != null) fairOver = impO;
+        else fairOver = 1 - impU;
+        const edgeOver = pOver - fairOver;
+        const over = edgeOver >= 0;
+        const price = over ? prop.over : prop.under;
+        const edgePts = round1(Math.abs(edgeOver) * 100);
+        market = {
+          line: L,
+          side: over ? 'Over' : 'Under',
+          price: price != null ? price : null,
+          edge: edgePts,
+          modelOver: round1(pOver * 100),
+          tier: edgePts >= 5 ? 1 : edgePts >= 3 ? 2 : edgePts >= 1.5 ? 3 : 'pass',
+        };
+      }
+
+      return {
+        name: shortName(pp.fullName),
+        team: teamAbbr(g.teams[side].team),
+        proj: round1(projK),
+        lo: round1(Math.max(0, projK - 1.28 * sd)),
+        hi: round1(projK + 1.28 * sd),
+        oppKpct: Math.round(oppK * 1000) / 10,
+        modeled: k9 !== 8.5,
+        market,
+      };
+    };
+
+    const pitchers = [projFor('away'), projFor('home')].filter(Boolean);
+    const status = (g.status && g.status.abstractGameState) || 'Preview';
+    const ls = g.linescore || {};
+    const aR = numOr(away.score, ls.teams && ls.teams.away && ls.teams.away.runs);
+    const hR = numOr(home.score, ls.teams && ls.teams.home && ls.teams.home.runs);
+    const hasScore = (status === 'Live' || status === 'Final') && aR != null && hR != null;
+
+    // Row-level play: the pitcher with the biggest market edge (if any priced).
+    const priced = pitchers.filter((p) => p.market && p.market.price != null);
+    const lead = priced.length
+      ? priced.reduce((m, p) => (!m || p.market.edge > m.market.edge ? p : m), null)
+      : null;
+    const projLean = pitchers.reduce((m, p) => (!m || p.proj > m.proj ? p : m), null);
+
+    return {
+      id: 'g' + g.gamePk,
+      matchup: `${teamAbbr(away.team)} @ ${teamAbbr(home.team)}`,
+      pitcherNames: pitchers.map((p) => p.name),
+      timeMs: Date.parse(g.gameDate) || 0,
+      timeLabel: timeLabelET(g.gameDate),
+      status,
+      score: hasScore ? `${aR}-${hR}` : null,
+      pick: lead
+        ? `${lead.name} ${lead.market.side === 'Over' ? 'O' : 'U'} ${lead.market.line} Ks`
+        : (projLean ? `${projLean.name} proj ${projLean.proj} Ks` : '—'),
+      odds: lead ? lead.market.price : null,
+      edge: lead ? lead.market.edge : null,
+      tier: lead ? lead.market.tier : 'model',
+      interval: lead ? `${lead.lo} – ${lead.hi}` : (projLean ? `${projLean.lo} – ${projLean.hi}` : '—'),
+      pitchers,
+    };
+  }).sort((a, b) => a.timeMs - b.timeMs);
+
+  return cors(json(rows, 300)); // 5 min — props are the expensive part
+}
+
+// P(X <= n) for X ~ Poisson(lambda).
+function poissonCdf(n, lambda) {
+  if (n < 0) return 0;
+  let term = Math.exp(-lambda);
+  let sum = term;
+  for (let k = 1; k <= n; k++) { term *= lambda / k; sum += term; }
+  return Math.min(1, sum);
+}
+// American odds -> implied probability.
+function amProb(odds) {
+  if (typeof odds !== 'number') return null;
+  return odds > 0 ? 100 / (odds + 100) : -odds / (-odds + 100);
+}
+// "Tarik Skubal" / "Skubal, Tarik" -> "tarik skubal" for matching.
+function normName(s) {
+  if (!s) return '';
+  let n = String(s).toLowerCase().replace(/[.'-]/g, '').trim();
+  if (n.includes(',')) { const [a, b] = n.split(','); n = (b.trim() + ' ' + a.trim()).trim(); }
+  return n.replace(/\s+/g, ' ');
+}
+
+function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+function round1(n) { return Math.round(n * 10) / 10; }
+function numOr(a, b) {
+  if (typeof a === 'number') return a;
+  if (typeof b === 'number') return b;
+  return null;
+}
+function timeLabelET(iso) {
+  try {
+    return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }).format(new Date(iso)) + ' ET';
+  } catch (e) { return ''; }
 }
 
 function shortName(full) {

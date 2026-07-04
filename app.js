@@ -96,11 +96,19 @@
     // Live feeds (null until the proxy returns data; each falls back to mock).
     liveTicker: null,
     liveHitters: null,
+    livePitchers: null,
+    liveBoard: null,
     quotaRemaining: null,
   };
 
-  // Real hitters when the feed has loaded, otherwise the built-in sample.
+  // Real data when the feed has loaded, otherwise the built-in sample.
   const getHitters = () => (state.liveHitters && state.liveHitters.length ? state.liveHitters : HOT_HITTERS);
+  const getPitchers = () => (state.livePitchers && state.livePitchers.length ? state.livePitchers : HOT_PITCHERS);
+  const boardIsLive = () => !!(state.liveBoard && state.liveBoard.length);
+  const getGames = () => (boardIsLive() ? state.liveBoard : RAW_GAMES);
+  // "Modeled" = the board carries real market tiers (prop lines available),
+  // so the tier filters and edge sort are meaningful again.
+  const boardModeled = () => boardIsLive() && state.liveBoard.some((g) => typeof g.tier === 'number');
 
   // How to reach the Odds API proxy. Empty => mock-only mode.
   //   "same-origin" (or "/") => Cloudflare Pages Functions at /api/* on this
@@ -128,6 +136,11 @@
   };
   const abbr = (name) => TEAM_ABBR[name] || (name || '').split(' ').pop().slice(0, 3).toUpperCase();
   const americanOdds = (n) => (typeof n === 'number' ? (n > 0 ? '+' + n : String(n)) : '—');
+  const timeLabel = (iso) => {
+    try {
+      return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }).format(new Date(iso)) + ' ET';
+    } catch (e) { return ''; }
+  };
 
   try {
     const savedTracked = JSON.parse(localStorage.getItem('aimplified_tracked') || '{}');
@@ -260,6 +273,80 @@
     }
   }
 
+  // Tonight's board — real matchups + the projected-K model priced against
+  // real strikeout lines (/api/board). Falls back to the Odds-API slate.
+  // Polled slower than the ticker because props cost API credits.
+  async function refreshBoard() {
+    if (!LIVE_MODE) return;
+    try {
+      const [apiBoard, scores, odds] = await Promise.all([
+        fetchJson('/api/board').catch(() => []),
+        fetchJson('/api/scores').catch(() => []),
+        fetchJson('/api/odds').catch(() => []),
+      ]);
+
+      let board = [];
+      if (Array.isArray(apiBoard) && apiBoard.length) {
+        board = apiBoard.map((b) => {
+          const names = b.pitcherNames && b.pitcherNames.length ? b.pitcherNames.join(' v. ') : 'Pitchers TBD';
+          const scorePart = b.score ? `${b.status === 'Final' ? 'Final' : 'Live'} ${b.score}` : '';
+          const subline = [names, b.timeLabel, scorePart].filter(Boolean).join(' · ');
+          return {
+            id: b.id,
+            matchup: b.matchup,
+            subline,
+            time: b.timeMs || 0,
+            pick: b.pick,
+            odds: b.odds,
+            edge: b.edge,
+            interval: b.interval,
+            tier: b.tier,
+            weather: '', weatherTone: 'textDim',
+            stats: [],
+            projRows: b.pitchers || [],
+          };
+        }).sort((a, b) => a.time - b.time);
+      } else {
+        const oddsByHome = {};
+        (Array.isArray(odds) ? odds : []).forEach((e) => { oddsByHome[e.home_team] = e; });
+        board = (Array.isArray(scores) ? scores : [])
+          .filter((e) => e.completed === false)
+          .map((e) => {
+            const oe = oddsByHome[e.home_team];
+            const ml = oe ? homeMoneyline(oe) : null;
+            const hasScore = Array.isArray(e.scores) && e.scores.length;
+            const t = timeLabel(e.commence_time);
+            const subline = hasScore
+              ? `Live ${scoreFor(e, e.away_team)}-${scoreFor(e, e.home_team)}${t ? ' · ' + t : ''}`
+              : (t ? `First pitch ${t}` : 'Scheduled');
+            return {
+              id: e.id,
+              matchup: `${abbr(e.away_team)} @ ${abbr(e.home_team)}`,
+              subline,
+              time: Date.parse(e.commence_time) || 0,
+              pick: '—', odds: ml, edge: null, interval: '—', tier: 'model',
+              weather: '', weatherTone: 'textDim', stats: [],
+            };
+          })
+          .sort((a, b) => a.time - b.time);
+      }
+
+      if (board.length) {
+        const firstLoad = !state.liveBoard;
+        state.liveBoard = board;
+        if (firstLoad && !boardModeled()) state.filter = 'all';
+        const ids = new Set(board.map((g) => g.id));
+        state.compareIds = state.compareIds.filter((id) => ids.has(id));
+        if (state.expandedId && !ids.has(state.expandedId)) state.expandedId = null;
+        renderControls();
+        renderBoard();
+        renderComparePanel();
+      }
+    } catch (e) {
+      console.warn('Board refresh failed:', e.message);
+    }
+  }
+
   // Real season hitting leaders from MLB StatsAPI (via /api/hitters).
   async function refreshHitters() {
     if (!LIVE_MODE) return;
@@ -274,6 +361,22 @@
       }
     } catch (e) {
       console.warn('Hitters refresh failed:', e.message);
+    }
+  }
+
+  // Real season pitching leaders from MLB StatsAPI (via /api/pitchers).
+  async function refreshPitchers() {
+    if (!LIVE_MODE) return;
+    try {
+      const rows = await fetchJson('/api/pitchers');
+      if (Array.isArray(rows) && rows.length) {
+        state.livePitchers = rows;
+        state.pitcherCompareIds = state.pitcherCompareIds.filter((i) => i < rows.length);
+        renderPitchers();
+        renderPitcherComparePanel();
+      }
+    } catch (e) {
+      console.warn('Pitchers refresh failed:', e.message);
     }
   }
 
@@ -294,24 +397,38 @@
   }
 
   function getFilteredSortedGames() {
-    let games = RAW_GAMES.filter((g) => state.filter === 'all' ? true : String(g.tier) === state.filter);
+    // Only force time-sort on a live slate with no market tiers.
+    const forceTime = boardIsLive() && !boardModeled();
+    let games = getGames().filter((g) => state.filter === 'all' ? true : String(g.tier) === state.filter);
     const q = state.searchQuery.trim().toLowerCase();
     if (q) {
-      games = games.filter((g) => g.matchup.toLowerCase().includes(q) || g.subline.toLowerCase().includes(q));
+      games = games.filter((g) => g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
     }
-    games = [...games].sort((a, b) => state.sortBy === 'edge' ? b.edge - a.edge : a.time - b.time);
+    const byTime = (a, b) => a.time - b.time;
+    const byEdge = (a, b) => (b.edge ?? -Infinity) - (a.edge ?? -Infinity);
+    games = [...games].sort(forceTime || state.sortBy !== 'edge' ? byTime : byEdge);
     return games;
   }
 
   function renderControls() {
-    el.gameCount.textContent = `${RAW_GAMES.length} games · odds refresh :30`;
+    const live = boardIsLive();
+    const modeled = boardModeled();
+    el.gameCount.textContent = !live
+      ? `${RAW_GAMES.length} games · odds refresh :30`
+      : (modeled ? `${getGames().length} games · model vs. live lines` : `${getGames().length} games · tonight's slate · live`);
     const trackedCount = Object.values(state.tracked).filter(Boolean).length;
     el.trackedPill.textContent = `${trackedCount} tracked`;
     el.sortLabel.textContent = state.sortBy === 'edge' ? 'Edge' : 'Time';
 
+    // Hide tier/edge controls only on a live slate with no market tiers.
+    const hideModelControls = live && !modeled;
     document.querySelectorAll('.filter-btn').forEach((btn) => {
+      const isTierBtn = btn.dataset.filter !== 'all';
+      btn.style.display = hideModelControls && isTierBtn ? 'none' : '';
       btn.classList.toggle('active', btn.dataset.filter === state.filter);
     });
+    const sortBtn = document.querySelector('[data-action="toggle-sort"]');
+    if (sortBtn) sortBtn.style.display = hideModelControls ? 'none' : '';
 
     el.compareModeBtn.textContent = state.compareMode ? 'Exit Compare' : 'Compare';
     el.compareModeBtn.classList.toggle('active', state.compareMode);
@@ -338,13 +455,15 @@
     el.noResults.hidden = games.length !== 0;
 
     el.boardRows.innerHTML = games.map((g) => {
-      const isPass = g.tier === 'pass';
       const isTracked = !!state.tracked[g.id];
       const isSelected = state.compareIds.includes(g.id);
       const isExpanded = state.expandedId === g.id;
-      const edgeColor = g.edge > 0 ? 'var(--positive)' : 'var(--danger)';
-      const oddsLabel = isPass ? '—' : (g.odds > 0 ? '+' + g.odds : String(g.odds));
-      const edgeLabel = (g.edge > 0 ? '+' : '') + g.edge.toFixed(1) + '%';
+      const hasEdge = g.edge != null;
+      const edgeColor = !hasEdge ? 'var(--textDim)' : (g.edge > 0 ? 'var(--positive)' : 'var(--danger)');
+      const edgeLabel = !hasEdge ? '—' : (g.edge > 0 ? '+' : '') + g.edge.toFixed(1) + '%';
+      const oddsLabel = g.odds == null ? '—' : (g.odds > 0 ? '+' + g.odds : String(g.odds));
+      const tierLabel = TIER_LABEL[g.tier] || '—';
+      const tierIsPlain = !TIER_LABEL[g.tier] || g.tier === 'pass';
 
       const leadingHtml = state.compareMode
         ? `<span class="leading checkbox${isSelected ? ' selected' : ''}" data-action="leading-click" data-id="${g.id}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(g.matchup)} to compare" title="Select to compare">${isSelected ? '✓' : ''}</span>`
@@ -370,21 +489,42 @@
           <span class="odds-cell mono">${esc(oddsLabel)}</span>
           <span class="edge-cell" style="color:${edgeColor}">${esc(edgeLabel)}</span>
           <span class="interval-cell">${esc(g.interval)}</span>
-          <span class="tier-cell${isPass ? ' pass' : ''}" style="${isPass ? '' : 'color:var(--accent)'}">${esc(TIER_LABEL[g.tier])}</span>
+          <span class="tier-cell${tierIsPlain ? ' pass' : ''}" style="${tierIsPlain ? '' : 'color:var(--accent)'}">${esc(tierLabel)}</span>
           <span class="chevron">${isExpanded ? '▲' : '▼'}</span>
         </div>
       `;
 
       let detailHtml = '';
       if (isExpanded) {
-        const statsHtml = g.stats.map((s) => `
-          <div class="stat-row">
-            <span class="stat-label">${esc(s.label)}</span>
-            <div class="track"><div class="fill" style="width:${s.value}%;background:${TONE_COLOR[s.tone]}"></div></div>
-            <span class="badge" style="background:${TONE_COLOR[s.tone]}">${s.value}</span>
-          </div>
-        `).join('');
-        detailHtml = `<div class="expanded-detail"><div class="expanded-title">Percentile breakdown</div>${statsHtml}</div>`;
+        if (g.stats && g.stats.length) {
+          const statsHtml = g.stats.map((s) => `
+            <div class="stat-row">
+              <span class="stat-label">${esc(s.label)}</span>
+              <div class="track"><div class="fill" style="width:${s.value}%;background:${TONE_COLOR[s.tone]}"></div></div>
+              <span class="badge" style="background:${TONE_COLOR[s.tone]}">${s.value}</span>
+            </div>
+          `).join('');
+          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Percentile breakdown</div>${statsHtml}</div>`;
+        } else if (g.projRows && g.projRows.length) {
+          const rowsHtml = g.projRows.map((p) => {
+            const m = p.market;
+            const marketHtml = m
+              ? `<span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--text)">line ${m.line} · model ${m.modelOver}% over</span>
+                 <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:${m.edge >= 1.5 ? 'var(--positive)' : 'var(--textDim)'}">${m.side} ${m.line} (${m.price > 0 ? '+' + m.price : m.price}) · +${m.edge}% edge</span>`
+              : `<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">no prop line</span>`;
+            return `
+            <div style="display:flex;align-items:baseline;gap:10px;margin-top:10px;flex-wrap:wrap">
+              <span style="font-family:'Barlow Condensed';font-weight:600;font-size:16px;text-transform:uppercase;min-width:120px">${esc(p.name)}</span>
+              <span style="font-family:'IBM Plex Mono';font-size:14px;color:var(--accent);font-weight:600">${p.proj} K</span>
+              <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--textDim)">80% ${p.lo} – ${p.hi}</span>
+              <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">opp K ${p.oppKpct}%</span>
+              ${marketHtml}
+            </div>`;
+          }).join('');
+          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Projected strikeouts — model vs. market</div>${rowsHtml}<div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: K/9 × expected innings × opponent K-rate. Edge = model P(over) vs. the vig-free line.</div></div>`;
+        } else {
+          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Model projection pending</div><div style="color:var(--textDim);font-size:13px">Live game from tonight's slate — probable pitcher not posted yet.</div></div>`;
+        }
       }
 
       return rowHtml + detailHtml;
@@ -394,11 +534,11 @@
   function renderComparePanel() {
     const showPanel = state.compareMode && state.compareIds.length === 2;
     if (!showPanel) { el.comparePanel.innerHTML = ''; return; }
-    const compareGames = RAW_GAMES.filter((g) => state.compareIds.includes(g.id));
+    const compareGames = getGames().filter((g) => state.compareIds.includes(g.id));
     const sidesHtml = compareGames.map((g) => {
-      const edgeLabel = (g.edge > 0 ? '+' : '') + g.edge.toFixed(1) + '%';
-      const edgeClass = g.edge > 0 ? 'positive' : '';
-      const edgeColor = g.edge > 0 ? 'var(--positive)' : 'var(--danger)';
+      const hasEdge = g.edge != null;
+      const edgeLabel = !hasEdge ? '—' : (g.edge > 0 ? '+' : '') + g.edge.toFixed(1) + '%';
+      const edgeColor = !hasEdge ? 'var(--textDim)' : (g.edge > 0 ? 'var(--positive)' : 'var(--danger)');
       return `
         <div class="compare-side">
           <div class="name">${esc(g.matchup)}</div>
@@ -406,7 +546,7 @@
           <div class="stats-row">
             <div><div class="stat-k">Pick</div><div class="stat-v">${esc(g.pick)}</div></div>
             <div><div class="stat-k">Edge</div><div class="stat-v" style="color:${edgeColor}">${esc(edgeLabel)}</div></div>
-            <div><div class="stat-k">Tier</div><div class="stat-v tier">${esc(TIER_LABEL[g.tier])}</div></div>
+            <div><div class="stat-k">Tier</div><div class="stat-v tier">${esc(TIER_LABEL[g.tier] || '—')}</div></div>
           </div>
         </div>
       `;
@@ -494,7 +634,7 @@
   }
 
   function renderPitchers() {
-    el.pitchersGrid.innerHTML = HOT_PITCHERS.map((p, i) => {
+    el.pitchersGrid.innerHTML = getPitchers().map((p, i) => {
       const isSelected = state.pitcherCompareIds.includes(i);
       const cardClasses = ['hitter-card'];
       if (state.pitcherCompareMode) cardClasses.push('compare-active');
@@ -505,6 +645,10 @@
       const clickAttr = state.pitcherCompareMode
         ? ` data-action="pitcher-card-click" data-idx="${i}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(p.name)} to compare"`
         : '';
+      const statVal = p.statVal || (p.csw + '%');
+      const statLabel = p.statLabel || 'CSW% · L3 starts';
+      const chip1 = p.chip1 || (p.kRate + ' K/9');
+      const chip2 = p.chip2 || (p.era + ' ERA');
       return `
         <div class="${cardClasses.join(' ')}"${clickAttr}>
           <div class="top-row">
@@ -513,11 +657,11 @@
           </div>
           <div class="name">${esc(p.name)}</div>
           <div class="team">${esc(p.team)}</div>
-          <div class="stat-num">${p.csw}%</div>
-          <div class="stat-sub">CSW% · L3 starts</div>
+          <div class="stat-num">${esc(statVal)}</div>
+          <div class="stat-sub">${esc(statLabel)}</div>
           <div class="chip-row">
-            <span class="chip positive">${esc(p.kRate)} K/9</span>
-            <span class="chip plain">${esc(p.era)} ERA</span>
+            <span class="chip positive">${esc(chip1)}</span>
+            <span class="chip plain">${esc(chip2)}</span>
           </div>
         </div>
       `;
@@ -527,18 +671,24 @@
   function renderPitcherComparePanel() {
     const showPanel = state.pitcherCompareMode && state.pitcherCompareIds.length === 2;
     if (!showPanel) { el.pitcherComparePanel.innerHTML = ''; return; }
-    const comparePitchers = state.pitcherCompareIds.map((i) => HOT_PITCHERS[i]);
-    const sidesHtml = comparePitchers.map((p) => `
+    const pitchers = getPitchers();
+    const comparePitchers = state.pitcherCompareIds.map((i) => pitchers[i]).filter(Boolean);
+    const sidesHtml = comparePitchers.map((p) => {
+      const cmp = p.cmp || [
+        { k: 'CSW% L3', v: p.csw + '%' },
+        { k: 'K/9', v: p.kRate },
+        { k: 'ERA', v: p.era },
+      ];
+      const cls = ['big accent', 'big', 'positive'];
+      const cells = cmp.map((m, j) => `<div><div class="stat-k">${esc(m.k)}</div><div class="stat-v ${cls[j] || ''}">${esc(m.v)}</div></div>`).join('');
+      return `
       <div class="compare-side">
         <div class="name">${esc(p.name)}</div>
         <div class="sub">${esc(p.team)}</div>
-        <div class="stats-row">
-          <div><div class="stat-k">CSW% L3</div><div class="stat-v big accent">${p.csw}%</div></div>
-          <div><div class="stat-k">K/9</div><div class="stat-v big">${esc(p.kRate)}</div></div>
-          <div><div class="stat-k">ERA</div><div class="stat-v positive">${esc(p.era)}</div></div>
-        </div>
+        <div class="stats-row">${cells}</div>
       </div>
-    `).join('');
+    `;
+    }).join('');
     el.pitcherComparePanel.innerHTML = `
       <div class="compare-panel">
         <div class="compare-panel-head">
@@ -784,9 +934,14 @@
     // stay well within The Odds API monthly credit quota.
     refreshLiveData();
     setInterval(refreshLiveData, 60000);
-    // Season hitting leaders change slowly — load once, refresh every 10 min.
+    // Season leaderboards change slowly — load once, refresh every 10 min.
     refreshHitters();
     setInterval(refreshHitters, 600000);
+    refreshPitchers();
+    setInterval(refreshPitchers, 600000);
+    // Board carries the model + real prop lines (credits) — poll every 5 min.
+    refreshBoard();
+    setInterval(refreshBoard, 300000);
   } else {
     // Mock mode: keep the ticker lively with simulated score nudges.
     setInterval(() => {
