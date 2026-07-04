@@ -19,13 +19,14 @@ export default {
   async fetch(request, env, ctx) {
     const p = new URL(request.url).pathname;
 
-    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters' || p === '/api/pitchers' || p === '/api/board' || p === '/api/track-record') {
+    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters' || p === '/api/pitchers' || p === '/api/board' || p === '/api/track-record' || p === '/api/injuries') {
       if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
 
       if (p === '/api/hitters') return hitters();
       if (p === '/api/pitchers') return pitchers();
       if (p === '/api/board') return board(env, ctx);
       if (p === '/api/track-record') return trackRecord(env);
+      if (p === '/api/injuries') return injuries();
 
       const key = env.ODDS_API_KEY;
       if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -518,6 +519,47 @@ function slateDate() {
   try {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   } catch (e) { return new Date().toISOString().slice(0, 10); }
+}
+
+// -------------------------------------------------------------------------
+// /api/injuries — real recent injured-list moves from MLB StatsAPI
+// transactions (last 3 days), newest first. Shaped like the alert banner.
+// -------------------------------------------------------------------------
+async function injuries() {
+  const end = slateDate();
+  const start = slateDateOffset(-3);
+  let data;
+  try {
+    const r = await fetch(`${STATS}/transactions?startDate=${start}&endDate=${end}`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return cors(json([], 300));
+    data = await r.json();
+  } catch (e) { return cors(json([], 300)); }
+
+  const txns = (data.transactions || []).filter((t) => /injured list/i.test(t.description || ''));
+  txns.sort((a, b) => String(b.effectiveDate || b.date || '').localeCompare(String(a.effectiveDate || a.date || '')));
+
+  const seen = new Set();
+  const rows = [];
+  for (const t of txns) {
+    const text = String(t.description || '').trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    rows.push({ text, time: txnDateLabel(t.effectiveDate || t.date) });
+    if (rows.length >= 8) break;
+  }
+  return cors(json(rows, 600)); // 10 min
+}
+
+function slateDateOffset(days) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + days * 86400000));
+  } catch (e) { return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10); }
+}
+function txnDateLabel(d) {
+  if (!d) return '';
+  try {
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' }).format(new Date(String(d) + 'T18:00:00Z'));
+  } catch (e) { return String(d); }
 }
 
 function shortName(full) {

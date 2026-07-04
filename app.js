@@ -99,6 +99,7 @@
     livePitchers: null,
     liveBoard: null,
     trackRecord: null,
+    liveInjuries: null,
     quotaRemaining: null,
   };
 
@@ -399,7 +400,9 @@
   }
 
   function renderInjuryAlerts() {
-    el.injuryAlerts.innerHTML = INJURY_ALERTS.map((a) => `
+    // Real feed once loaded (even if empty); the sample banner until then.
+    const alerts = state.liveInjuries !== null ? state.liveInjuries : INJURY_ALERTS;
+    el.injuryAlerts.innerHTML = alerts.map((a) => `
       <div class="alert">
         <span class="alert-dot"></span>
         <b>ALERT</b>
@@ -407,6 +410,20 @@
         <span class="alert-time">${esc(a.time)}</span>
       </div>
     `).join('');
+  }
+
+  // Real injured-list moves from MLB StatsAPI transactions (via /api/injuries).
+  async function refreshInjuries() {
+    if (!LIVE_MODE) return;
+    try {
+      const rows = await fetchJson('/api/injuries');
+      if (Array.isArray(rows)) {
+        state.liveInjuries = rows; // may be empty -> no alerts, which is honest
+        renderInjuryAlerts();
+      }
+    } catch (e) {
+      console.warn('Injuries refresh failed:', e.message);
+    }
   }
 
   function getFilteredSortedGames() {
@@ -1088,6 +1105,9 @@
     // Track record grades finished games on read — refresh every 10 min.
     refreshTrackRecord();
     setInterval(refreshTrackRecord, 600000);
+    // Injury wire (recent IL moves) — refresh every 10 min.
+    refreshInjuries();
+    setInterval(refreshInjuries, 600000);
   } else {
     // Mock mode: keep the demo lively — simulated win-prob and score nudges.
     setInterval(() => {
