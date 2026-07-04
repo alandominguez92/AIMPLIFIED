@@ -535,7 +535,12 @@ async function injuries() {
     data = await r.json();
   } catch (e) { return cors(json([], 300)); }
 
-  const txns = (data.transactions || []).filter((t) => /injured list/i.test(t.description || ''));
+  // Batters only — pitcher IL moves don't change tonight's known starters,
+  // but a hurt/scratched hitter shifts the opposing lineup's strikeout profile.
+  const txns = (data.transactions || []).filter((t) => {
+    const d = t.description || '';
+    return /injured list/i.test(d) && !isPitcherMove(d);
+  });
   txns.sort((a, b) => String(b.effectiveDate || b.date || '').localeCompare(String(a.effectiveDate || a.date || '')));
 
   const seen = new Set();
@@ -548,6 +553,14 @@ async function injuries() {
     if (rows.length >= 8) break;
   }
   return cors(json(rows, 600)); // 10 min
+}
+
+// True when a transaction describes a pitcher (position code before the name
+// is P/RHP/LHP/SP/RP). Unparseable -> treated as non-pitcher (kept).
+function isPitcherMove(desc) {
+  const m = String(desc).match(/\b(?:placed|activated|reinstated|transferred|optioned|recalled|designated|selected|claimed|signed)\s+([A-Z0-9]{1,3})\s+[A-Z][a-z]/);
+  const pos = m ? m[1].toUpperCase() : '';
+  return /^(P|RHP|LHP|SP|RP)$/.test(pos);
 }
 
 function slateDateOffset(days) {
