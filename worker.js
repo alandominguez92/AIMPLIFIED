@@ -143,7 +143,7 @@ async function pitchers() {
 // -------------------------------------------------------------------------
 async function board(env, ctx) {
   const season = new Date().getUTCFullYear();
-  const date = new Date().toISOString().slice(0, 10);
+  const date = etDate(); // MLB slates are keyed to the Eastern date, not UTC
 
   let sched;
   try {
@@ -378,7 +378,7 @@ async function logPicks(db, rows, date) {
 
 async function gradeUngraded(env) {
   const db = env.DB;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = etDate();
   const games = (await db.prepare('SELECT DISTINCT game_id FROM picks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
   for (const g of games.slice(0, 30)) {
     const pk = String(g.game_id).replace(/^g/, '');
@@ -495,6 +495,12 @@ function timeLabelET(iso) {
   try {
     return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }).format(new Date(iso)) + ' ET';
   } catch (e) { return ''; }
+}
+// Today's date on the US East Coast (YYYY-MM-DD) — the MLB "slate" date.
+function etDate() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch (e) { return new Date().toISOString().slice(0, 10); }
 }
 
 function shortName(full) {
