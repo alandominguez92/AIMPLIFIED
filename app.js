@@ -98,6 +98,7 @@
     liveHitters: null,
     livePitchers: null,
     liveBoard: null,
+    trackRecord: null,
     quotaRemaining: null,
   };
 
@@ -185,6 +186,12 @@
     pitcherComparePanel: document.getElementById('pitcherComparePanel'),
     pitcherSplitRows: document.getElementById('pitcherSplitRows'),
     calibrationPoints: document.getElementById('calibrationPoints'),
+    trkNote: document.getElementById('trkNote'),
+    trkLabel1: document.getElementById('trkLabel1'),
+    trkVal1: document.getElementById('trkVal1'),
+    trkVal2: document.getElementById('trkVal2'),
+    trkVal3: document.getElementById('trkVal3'),
+    trkVal4: document.getElementById('trkVal4'),
   };
 
   // ---------------------------------------------------------------------
@@ -713,9 +720,43 @@
   }
 
   function renderCalibration() {
-    el.calibrationPoints.innerHTML = CALIBRATION_BUCKETS.map((b) => `
+    const tr = state.trackRecord;
+    const buckets = (tr && tr.calibration && tr.calibration.length) ? tr.calibration : CALIBRATION_BUCKETS;
+    el.calibrationPoints.innerHTML = buckets.map((b) => `
       <div class="calibration-dot" style="left:calc(${b.predicted}% - 6px);bottom:calc(${b.actual}% - 6px)" title="Predicted ${b.predicted}% · Actual ${b.actual}% (n=${b.n})"></div>
     `).join('');
+  }
+
+  function renderRecord() {
+    const tr = state.trackRecord;
+    if (!tr) return;
+    if (!tr.empty) {
+      // Real graded results are in — swap the tiles to live numbers.
+      el.trkLabel1.textContent = 'Win Rate';
+      el.trkVal1.textContent = (tr.winRate != null ? tr.winRate : 0) + '%';
+      el.trkVal2.textContent = String(tr.tracked);
+      el.trkVal3.textContent = tr.tier1;
+      el.trkVal4.textContent = (tr.units > 0 ? '+' : '') + tr.units + 'u';
+      el.trkNote.textContent = `${tr.tracked} graded picks · updated as games finalize`;
+    } else if (tr.logged > 0) {
+      // Picks logged but none graded yet — say so, keep the placeholder tiles.
+      el.trkNote.textContent = `${tr.logged} picks logged · grading as tonight's games finalize`;
+    }
+  }
+
+  // Real, self-building track record from graded picks (via /api/track-record).
+  async function refreshTrackRecord() {
+    if (!LIVE_MODE) return;
+    try {
+      const tr = await fetchJson('/api/track-record');
+      if (tr && typeof tr === 'object') {
+        state.trackRecord = tr;
+        renderRecord();
+        renderCalibration();
+      }
+    } catch (e) {
+      console.warn('Track record refresh failed:', e.message);
+    }
   }
 
   function renderAll() {
@@ -942,6 +983,9 @@
     // Board carries the model + real prop lines (credits) — poll every 5 min.
     refreshBoard();
     setInterval(refreshBoard, 300000);
+    // Track record grades finished games on read — refresh every 10 min.
+    refreshTrackRecord();
+    setInterval(refreshTrackRecord, 600000);
   } else {
     // Mock mode: keep the ticker lively with simulated score nudges.
     setInterval(() => {

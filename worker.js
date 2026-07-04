@@ -8,16 +8,24 @@
 const ODDS = 'https://api.the-odds-api.com/v4/sports/baseball_mlb';
 const STATS = 'https://statsapi.mlb.com/api/v1';
 
+// Model calibration. Strikeouts per start are overdispersed vs a Poisson
+// (innings vary, matchup variance), so pricing off Poisson makes P(over) too
+// confident and edges too large. Use an overdispersed spread, and regress the
+// projection modestly toward the (sharp) market line to temper model error.
+const DISPERSION = 1.55;   // Var(K) / mean at the game level
+const LINE_SHRINK = 0.20;  // fraction of the projection pulled toward the line
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const p = new URL(request.url).pathname;
 
-    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters' || p === '/api/pitchers' || p === '/api/board') {
+    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters' || p === '/api/pitchers' || p === '/api/board' || p === '/api/track-record') {
       if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
 
       if (p === '/api/hitters') return hitters();
       if (p === '/api/pitchers') return pitchers();
-      if (p === '/api/board') return board(env);
+      if (p === '/api/board') return board(env, ctx);
+      if (p === '/api/track-record') return trackRecord(env);
 
       const key = env.ODDS_API_KEY;
       if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -133,7 +141,7 @@ async function pitchers() {
 // projection. Degrades gracefully (defaults) if a stats feed hiccups; []
 // if the schedule itself fails, so the page uses its Odds-API slate.
 // -------------------------------------------------------------------------
-async function board(env) {
+async function board(env, ctx) {
   const season = new Date().getUTCFullYear();
   const date = new Date().toISOString().slice(0, 10);
 
@@ -229,14 +237,17 @@ async function board(env) {
       const k9 = st.k9 > 0 ? st.k9 : 8.5;
       const expIP = clamp(st.gs > 0 ? st.ip / st.gs : 5.5, 4, 6.8);
       const projK = (k9 * expIP / 9) * (lgK > 0 ? oppK / lgK : 1);
-      const sd = Math.sqrt(Math.max(projK, 1));
+      const sd = Math.sqrt(Math.max(projK, 1) * DISPERSION);
 
       // Market: compare the projection to the real strikeout line.
       let market = null;
       const prop = propByName[normName(pp.fullName)];
       if (prop && prop.point != null && (prop.over != null || prop.under != null)) {
         const L = prop.point;
-        const pOver = 1 - poissonCdf(Math.ceil(L) - 1, projK); // P(K over the line)
+        // Overdispersed normal, with the projection regressed toward the line.
+        const lam = (1 - LINE_SHRINK) * projK + LINE_SHRINK * L;
+        const sigma = Math.sqrt(Math.max(lam, 1) * DISPERSION);
+        const pOver = 1 - normCdf((L - lam) / sigma); // P(K over the line)
         const impO = prop.over != null ? amProb(prop.over) : null;
         const impU = prop.under != null ? amProb(prop.under) : null;
         let fairOver;
@@ -258,6 +269,7 @@ async function board(env) {
       }
 
       return {
+        id: pp.id,
         name: shortName(pp.fullName),
         team: teamAbbr(g.teams[side].team),
         proj: round1(projK),
@@ -302,16 +314,150 @@ async function board(env) {
     };
   }).sort((a, b) => a.timeMs - b.timeMs);
 
+  // Log tonight's priced picks to the track record (idempotent) — non-blocking.
+  if (env && env.DB) {
+    const write = logPicks(env.DB, rows, date).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(write);
+  }
+
   return cors(json(rows, 300)); // 5 min — props are the expensive part
 }
 
-// P(X <= n) for X ~ Poisson(lambda).
-function poissonCdf(n, lambda) {
-  if (n < 0) return 0;
-  let term = Math.exp(-lambda);
-  let sum = term;
-  for (let k = 1; k <= n; k++) { term *= lambda / k; sum += term; }
-  return Math.min(1, sum);
+// -------------------------------------------------------------------------
+// Track record (Cloudflare D1). Picks are logged as the board is viewed and
+// graded on read once their games are final — no cron needed. All D1 access
+// is guarded, so the site works normally before the DB is set up.
+// -------------------------------------------------------------------------
+async function trackRecord(env) {
+  if (!env || !env.DB) return cors(json({ empty: true, logged: 0 }, 60));
+  try {
+    await ensureSchema(env.DB);
+    await gradeUngraded(env);
+    const res = await env.DB.prepare('SELECT * FROM picks').all();
+    return cors(json(buildTrackRecord(res.results || []), 120));
+  } catch (e) {
+    return cors(json({ empty: true, logged: 0, error: String(e) }, 60));
+  }
+}
+
+async function ensureSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS picks (
+    date TEXT, game_id TEXT, pitcher_id INTEGER, pitcher TEXT, team TEXT,
+    line REAL, side TEXT, price INTEGER, proj REAL, model_over REAL,
+    edge REAL, tier TEXT, actual_k INTEGER, result TEXT,
+    PRIMARY KEY (date, game_id, pitcher_id)
+  )`).run();
+}
+
+async function logPicks(db, rows, date) {
+  await ensureSchema(db);
+  const stmts = [];
+  for (const r of rows) {
+    for (const p of (r.pitchers || [])) {
+      if (!p.market || p.market.price == null || p.id == null) continue;
+      stmts.push(db.prepare(
+        `INSERT OR IGNORE INTO picks (date,game_id,pitcher_id,pitcher,team,line,side,price,proj,model_over,edge,tier)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, r.id, p.id, p.name, p.team, p.market.line, p.market.side, p.market.price, p.proj, p.market.modelOver, p.market.edge, String(p.market.tier)));
+    }
+  }
+  if (stmts.length) await db.batch(stmts);
+}
+
+async function gradeUngraded(env) {
+  const db = env.DB;
+  const today = new Date().toISOString().slice(0, 10);
+  const games = (await db.prepare('SELECT DISTINCT game_id FROM picks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
+  for (const g of games.slice(0, 30)) {
+    const pk = String(g.game_id).replace(/^g/, '');
+    let box;
+    try {
+      const r = await fetch(`${STATS}/game/${pk}/boxscore`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      box = await r.json();
+    } catch (e) { continue; }
+    const kById = pitcherKsFromBox(box);
+    const picks = (await db.prepare('SELECT * FROM picks WHERE game_id=? AND result IS NULL').bind(g.game_id).all()).results || [];
+    const stmts = [];
+    for (const p of picks) {
+      const k = kById[p.pitcher_id];
+      if (k == null) continue;
+      const result = gradePick(p.side, p.line, k);
+      stmts.push(db.prepare('UPDATE picks SET actual_k=?, result=? WHERE date=? AND game_id=? AND pitcher_id=?').bind(k, result, p.date, p.game_id, p.pitcher_id));
+    }
+    if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* skip */ } }
+  }
+}
+
+function pitcherKsFromBox(box) {
+  const out = {};
+  ['away', 'home'].forEach((side) => {
+    const players = ((box.teams || {})[side] || {}).players || {};
+    Object.keys(players).forEach((key) => {
+      const pl = players[key];
+      const id = pl.person && pl.person.id;
+      const k = pl.stats && pl.stats.pitching && pl.stats.pitching.strikeOuts;
+      if (id != null && k != null && k !== '') out[id] = toNum(k);
+    });
+  });
+  return out;
+}
+
+function gradePick(side, line, k) {
+  if (k === line) return 'push';
+  const over = k > line;
+  return (side === 'Over' ? over : !over) ? 'win' : 'loss';
+}
+
+function profitUnits(result, price) {
+  if (result === 'push') return 0;
+  if (result === 'loss') return -1;
+  return price > 0 ? price / 100 : 100 / (-price); // win, at 1u stake
+}
+
+function buildTrackRecord(rows) {
+  const graded = rows.filter((r) => r.result === 'win' || r.result === 'loss');
+  let w = 0, l = 0, units = 0, t1w = 0, t1l = 0;
+  for (const r of graded) {
+    if (r.tier === 'pass') continue;
+    if (r.result === 'win') w++; else l++;
+    units += profitUnits(r.result, r.price);
+    if (String(r.tier) === '1') { if (r.result === 'win') t1w++; else t1l++; }
+  }
+  const plays = w + l;
+
+  // Calibration: bucket graded picks by model P(over), compare to actual over-rate.
+  const buckets = {};
+  for (const r of graded) {
+    if (r.model_over == null || r.actual_k == null) continue;
+    const b = Math.min(9, Math.max(0, Math.floor(r.model_over / 10)));
+    (buckets[b] = buckets[b] || []).push(r);
+  }
+  const calibration = Object.keys(buckets).map((b) => {
+    const arr = buckets[b];
+    const predicted = round1(arr.reduce((s, r) => s + r.model_over, 0) / arr.length);
+    const overs = arr.filter((r) => r.actual_k > r.line).length;
+    return { predicted, actual: round1(overs / arr.length * 100), n: arr.length };
+  }).sort((a, b) => a.predicted - b.predicted);
+
+  return {
+    empty: plays === 0,
+    logged: rows.length,
+    tracked: plays,
+    winRate: plays ? round1(w / plays * 100) : null,
+    record: `${w}–${l}`,
+    tier1: `${t1w}–${t1l}`,
+    units: Math.round(units * 10) / 10,
+    calibration,
+  };
+}
+
+// Standard normal CDF (Abramowitz & Stegun 7.1.26 erf approximation).
+function normCdf(z) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327 * Math.exp(-z * z / 2);
+  const p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return z >= 0 ? 1 - p : p;
 }
 // American odds -> implied probability.
 function amProb(odds) {
