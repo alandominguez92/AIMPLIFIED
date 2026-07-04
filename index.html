@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aimplified — Tonight's MLB Slate</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A1622'/%3E%3Ctext x='16' y='23' font-family='Barlow Condensed,Arial,sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='%23F0EFEA'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23E8B84B'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="logo">AIMPLIFIED<span>.</span></div>
+    <nav class="nav-links">
+      <a href="#slate">Tonight's Slate</a>
+      <a href="#record">Track Record</a>
+      <a href="#">Model</a>
+      <a href="#">YouTube</a>
+    </nav>
+    <div class="clv-chip"><span class="dot"></span>SEASON CLV&nbsp;<b>+2.4%</b>&nbsp;· 312 tracked bets</div>
+    <button class="theme-toggle" data-action="toggle-theme"></button>
+  </div>
+</header>
+
+<div class="sports">
+  <div class="wrap sports-inner">
+    <a class="stab active" href="#"><span>MLB</span><span class="mini">Model + Picks</span></a>
+    <a class="stab" href="#"><span>NBA</span><span class="mini">Scores &amp; Stats</span></a>
+    <a class="stab" href="#"><span>Soccer</span><span class="mini">World Cup Hub</span></a>
+  </div>
+</div>
+
+<main class="wrap">
+
+  <div class="ticker" id="ticker"></div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="eyebrow">Tonight's Ace Duel · Fri Jul 3 · 7:10 PM PT</div>
+    <h1>Skubal <span class="vs">vs</span> Yamamoto</h1>
+    <p class="sub">Model projection with calibrated intervals — not a hot take. Every number below is benchmarked against the closing line, win or lose.</p>
+
+    <div class="duel">
+      <div class="side">
+        <div class="name">Tarik Skubal</div>
+        <div class="team">DET · LHP · 2.61 xERA</div>
+        <div class="proj">
+          <div class="label">Projected strikeouts</div>
+          <div class="num">7.4</div>
+          <div class="ci">80% interval: 5.6 – 9.1 · Line: O/U 6.5</div>
+        </div>
+        <div class="pct">
+          <div class="row"><span class="stat">CSW%</span><div class="track"><div class="fill hot" style="width:94%"></div></div><span class="badge hot">94</span></div>
+          <div class="row"><span class="stat">Whiff%</span><div class="track"><div class="fill hot" style="width:91%"></div></div><span class="badge hot">91</span></div>
+          <div class="row"><span class="stat">Opp Chase</span><div class="track"><div class="fill warm" style="width:78%"></div></div><span class="badge warm">78</span></div>
+        </div>
+      </div>
+      <div class="side">
+        <div class="name">Yoshinobu Yamamoto</div>
+        <div class="team">LAD · RHP · 3.08 xERA</div>
+        <div class="proj">
+          <div class="label">Projected strikeouts</div>
+          <div class="num">6.1</div>
+          <div class="ci">80% interval: 4.3 – 7.8 · Line: O/U 6.5</div>
+        </div>
+        <div class="pct">
+          <div class="row"><span class="stat">CSW%</span><div class="track"><div class="fill warm" style="width:81%"></div></div><span class="badge warm">81</span></div>
+          <div class="row"><span class="stat">Whiff%</span><div class="track"><div class="fill warm" style="width:74%"></div></div><span class="badge warm">74</span></div>
+          <div class="row"><span class="stat">Opp Chase</span><div class="track"><div class="fill cool" style="width:38%"></div></div><span class="badge cool">38</span></div>
+        </div>
+      </div>
+      <div class="pick-strip">
+        <span class="stars">★★★★☆</span>
+        <span class="pick">Skubal <b>OVER 6.5 Ks (−115)</b></span>
+        <span class="tier">Tier 1 · 1.2u Kelly</span>
+        <span class="edge">+5.8% edge vs. close</span>
+      </div>
+      <div class="winprob">
+        <div class="winprob-head"><span class="live-dot"></span><span class="winprob-label">Live model win probability</span></div>
+        <div class="winprob-row">
+          <span class="winprob-team">Skubal O 6.5</span>
+          <div class="track big"><div class="fill accent-fill" id="winProbFill"></div></div>
+          <span class="winprob-pct" id="winProbPct"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLATE BOARD -->
+  <section id="slate">
+    <div id="injuryAlerts"></div>
+
+    <div class="sec-head">
+      <h2>Tonight's Board</h2>
+      <span class="count" id="gameCount"></span>
+      <span class="tracked-pill" id="trackedPill"></span>
+      <a class="all" href="#">Full slate →</a>
+    </div>
+
+    <div class="board-search">
+      <input type="text" id="searchInput" placeholder="Search team or pitcher…" autocomplete="off">
+    </div>
+
+    <div class="board-controls">
+      <button class="filter-btn" data-action="set-filter" data-filter="all">All</button>
+      <button class="filter-btn" data-action="set-filter" data-filter="1">Tier 1</button>
+      <button class="filter-btn" data-action="set-filter" data-filter="2">Tier 2</button>
+      <button class="filter-btn" data-action="set-filter" data-filter="3">Tier 3</button>
+      <button class="filter-btn" data-action="set-filter" data-filter="pass">Pass</button>
+      <button class="sort-btn" data-action="toggle-sort">Sort: <span id="sortLabel"></span> ↕</button>
+      <button class="compare-btn" data-action="toggle-compare-mode" id="compareModeBtn"></button>
+    </div>
+
+    <div class="compare-hint" id="compareHint"></div>
+
+    <div class="board" id="boardWrap">
+      <div class="board-inner" id="boardInner">
+        <div class="board-head-row">
+          <span></span>
+          <span class="col-label">Matchup</span>
+          <span class="col-label">Pick</span>
+          <span class="col-label">Odds</span>
+          <span class="col-label">Edge</span>
+          <span class="col-label">80% Interval</span>
+          <span class="col-label">Tier</span>
+          <span></span>
+        </div>
+        <div id="boardRows"></div>
+        <div class="no-results" id="noResults" hidden>No games match this filter.</div>
+      </div>
+    </div>
+
+    <div id="comparePanel"></div>
+  </section>
+
+  <!-- HOTTEST HITTERS -->
+  <section>
+    <div class="sec-head">
+      <h2>Hottest Hitters</h2>
+      <span class="count">rolling 10-game wOBA</span>
+      <button class="compare-btn" data-action="toggle-hitter-compare-mode" id="hitterCompareModeBtn"></button>
+    </div>
+    <div class="compare-hint" id="hitterCompareHint"></div>
+    <div class="hitters-grid grid-hitters" id="hittersGrid"></div>
+    <div id="hitterComparePanel"></div>
+
+    <div class="subsection">
+      <h3>Matchup Splits — wOBA vs. Handedness</h3>
+      <div class="splits-table">
+        <div class="splits-head-row">
+          <span class="col-label">Hitter</span>
+          <span class="col-label center">vs LHP</span>
+          <span class="col-label center">vs RHP</span>
+        </div>
+        <div id="splitRows"></div>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <div class="sec-head sec-head-sub">
+        <h3>Hottest Pitchers</h3>
+        <span class="count">rolling 3-start CSW%</span>
+        <button class="compare-btn" data-action="toggle-pitcher-compare-mode" id="pitcherCompareModeBtn"></button>
+      </div>
+      <div class="compare-hint" id="pitcherCompareHint"></div>
+      <div class="hitters-grid grid-hitters" id="pitchersGrid"></div>
+      <div id="pitcherComparePanel"></div>
+
+      <div class="subsection">
+        <h3>Matchup Splits — wOBA-against vs. Handedness</h3>
+        <div class="splits-table">
+          <div class="splits-head-row">
+            <span class="col-label">Pitcher</span>
+            <span class="col-label center">vs LHB</span>
+            <span class="col-label center">vs RHB</span>
+          </div>
+          <div id="pitcherSplitRows"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="card">
+        <h3>Why Skubal Over — the actual reason</h3>
+        <p>The Dodgers chase <b>31.8%</b> of sliders out of the zone — 4th-highest in MLB — and Skubal's slider usage is up to <b>29%</b> since June with a <b>41% whiff rate</b> on the pitch. Park and ump draw are neutral. The line hasn't moved off 6.5 while sharp money sits on the over at Pinnacle.</p>
+        <div class="why-stat">
+          <span>Chase vs SL <i>31.8%</i></span>
+          <span>SL Whiff <i>41%</i></span>
+          <span>CSW% <i>33.2</i></span>
+          <span>Pinnacle O <i>−121</i></span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Tonight on the channel</h3>
+        <div class="video">
+          <span class="video-tag">EP. 84 · CY YOUNG WATCH</span>
+          <div class="play"></div>
+        </div>
+        <p>Full slate breakdown in 8 minutes — every Tier 1 and Tier 2 play, with the Statcast reasoning behind each number.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PUBLIC RECORD -->
+  <section id="record">
+    <div class="sec-head"><h2>Public Track Record</h2><span class="count">updated nightly · wins and losses both stay up</span></div>
+    <div class="record">
+      <div class="cell"><div class="k">Season CLV</div><div class="v g">+2.4%</div></div>
+      <div class="cell"><div class="k">Tracked Bets</div><div class="v">312</div></div>
+      <div class="cell"><div class="k">Tier 1 Record</div><div class="v a">41–29</div></div>
+      <div class="cell"><div class="k">Units (flat)</div><div class="v g">+11.3u</div></div>
+    </div>
+
+    <div class="card">
+      <h3>Model Calibration — Predicted vs. Actual</h3>
+      <p class="calibration-sub">Each point is a bucket of past picks grouped by predicted probability. On the diagonal = well-calibrated.</p>
+      <div class="calibration">
+        <div class="calibration-axes"></div>
+        <div class="calibration-diagonal"></div>
+        <div id="calibrationPoints"></div>
+        <span class="calibration-tick x0">0</span>
+        <span class="calibration-tick x50">50%</span>
+        <span class="calibration-tick x100">100%</span>
+        <span class="calibration-tick y50">50%</span>
+        <span class="calibration-tick y100">100%</span>
+        <span class="calibration-xlabel">Predicted probability →</span>
+        <span class="calibration-ylabel">Actual hit rate →</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Aimplified is a sports analytics and entertainment product. Nothing here is gambling advice. Projections are model outputs with stated uncertainty — respect the intervals. 21+ where applicable. If you or someone you know has a gambling problem, call 1-800-GAMBLER.
+    <br><br>© 2026 Aimplified · Data: MLB StatsAPI · Baseball Savant · Odds refresh every 30 minutes
+  </footer>
+
+</main>
+
+<script>
+  // How to reach the Odds API proxy (see DEPLOY.md).
+  //   ""            -> built-in mock data (default)
+  //   "same-origin" -> Cloudflare Pages Functions at /api/* (recommended)
+  //   full URL      -> a separately-hosted proxy Worker
+  window.AIMPLIFIED_API_BASE = "same-origin";
+</script>
+<script src="app.js"></script>
+</body>
+</html>

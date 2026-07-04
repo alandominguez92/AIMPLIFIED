@@ -1,0 +1,10 @@
+name = "aimplified"
+compatibility_date = "2024-11-01"
+main = "worker.js"
+
+# Serve the repo's static files, and route anything that isn't a file (i.e.
+# /api/*) to the Worker in worker.js. ODDS_API_KEY is set as a Worker secret
+# in the dashboard (or .dev.vars locally) — never committed.
+[assets]
+directory = "."
+binding = "ASSETS"
