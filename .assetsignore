@@ -1,0 +1,12 @@
+# Files that must NOT be served as public static assets.
+.git/
+.wrangler/
+*.map
+.gitignore
+.dev.vars
+.dev.vars.example
+.assetsignore
+wrangler.toml
+worker.js
+DEPLOY.md
+aimplified.bundle
