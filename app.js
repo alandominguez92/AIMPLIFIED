@@ -93,10 +93,14 @@
     searchQuery: '',
     winProb: 64,
     tickerScores: { g1: '0-0', g2: '2-1', g3: '0-2', g4: '3-3', g5: '1-0', g6: '0-0' },
-    // Live feed (null until the Odds API proxy returns data; falls back to mock).
+    // Live feeds (null until the proxy returns data; each falls back to mock).
     liveTicker: null,
+    liveHitters: null,
     quotaRemaining: null,
   };
+
+  // Real hitters when the feed has loaded, otherwise the built-in sample.
+  const getHitters = () => (state.liveHitters && state.liveHitters.length ? state.liveHitters : HOT_HITTERS);
 
   // How to reach the Odds API proxy. Empty => mock-only mode.
   //   "same-origin" (or "/") => Cloudflare Pages Functions at /api/* on this
@@ -256,6 +260,23 @@
     }
   }
 
+  // Real season hitting leaders from MLB StatsAPI (via /api/hitters).
+  async function refreshHitters() {
+    if (!LIVE_MODE) return;
+    try {
+      const rows = await fetchJson('/api/hitters');
+      if (Array.isArray(rows) && rows.length) {
+        state.liveHitters = rows;
+        // A live refresh can invalidate index-based compare selections.
+        state.hitterCompareIds = state.hitterCompareIds.filter((i) => i < rows.length);
+        renderHittersGrid();
+        renderHitterComparePanel();
+      }
+    } catch (e) {
+      console.warn('Hitters refresh failed:', e.message);
+    }
+  }
+
   function renderWinProb() {
     el.winProbFill.style.width = state.winProb + '%';
     el.winProbPct.textContent = state.winProb.toFixed(1) + '%';
@@ -402,7 +423,7 @@
   }
 
   function renderHittersGrid() {
-    el.hittersGrid.innerHTML = HOT_HITTERS.map((h, i) => {
+    el.hittersGrid.innerHTML = getHitters().map((h, i) => {
       const isSelected = state.hitterCompareIds.includes(i);
       const cardClasses = ['hitter-card'];
       if (state.hitterCompareMode) cardClasses.push('compare-active');
@@ -413,6 +434,8 @@
       const clickAttr = state.hitterCompareMode
         ? ` data-action="hitter-card-click" data-idx="${i}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(h.name)} to compare"`
         : '';
+      const statVal = h.statVal || h.woba;
+      const statLabel = h.statLabel || 'wOBA · L10';
       return `
         <div class="${cardClasses.join(' ')}"${clickAttr}>
           <div class="top-row">
@@ -421,8 +444,8 @@
           </div>
           <div class="name">${esc(h.name)}</div>
           <div class="team">${esc(h.team)}</div>
-          <div class="stat-num">${esc(h.woba)}</div>
-          <div class="stat-sub">wOBA · L10</div>
+          <div class="stat-num">${esc(statVal)}</div>
+          <div class="stat-sub">${esc(statLabel)}</div>
           <div class="chip-row">
             <span class="chip positive">${esc(h.streak)}</span>
             <span class="chip plain">${h.hrs} HR</span>
@@ -435,15 +458,16 @@
   function renderHitterComparePanel() {
     const showPanel = state.hitterCompareMode && state.hitterCompareIds.length === 2;
     if (!showPanel) { el.hitterComparePanel.innerHTML = ''; return; }
-    const compareHitters = state.hitterCompareIds.map((i) => HOT_HITTERS[i]);
+    const hitters = getHitters();
+    const compareHitters = state.hitterCompareIds.map((i) => hitters[i]).filter(Boolean);
     const sidesHtml = compareHitters.map((h) => `
       <div class="compare-side">
         <div class="name">${esc(h.name)}</div>
         <div class="sub">${esc(h.team)}</div>
         <div class="stats-row">
-          <div><div class="stat-k">wOBA L10</div><div class="stat-v big accent">${esc(h.woba)}</div></div>
+          <div><div class="stat-k">${esc(h.statLabel ? h.statLabel.split(' · ')[0] : 'wOBA L10')}</div><div class="stat-v big accent">${esc(h.statVal || h.woba)}</div></div>
           <div><div class="stat-k">HR</div><div class="stat-v big">${h.hrs}</div></div>
-          <div><div class="stat-k">Streak</div><div class="stat-v positive">${esc(h.streak)}</div></div>
+          <div><div class="stat-k">${h.statLabel ? 'AVG' : 'Streak'}</div><div class="stat-v positive">${esc(h.streak)}</div></div>
         </div>
       </div>
     `).join('');
@@ -760,6 +784,9 @@
     // stay well within The Odds API monthly credit quota.
     refreshLiveData();
     setInterval(refreshLiveData, 60000);
+    // Season hitting leaders change slowly — load once, refresh every 10 min.
+    refreshHitters();
+    setInterval(refreshHitters, 600000);
   } else {
     // Mock mode: keep the ticker lively with simulated score nudges.
     setInterval(() => {
