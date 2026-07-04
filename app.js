@@ -139,7 +139,7 @@
   const americanOdds = (n) => (typeof n === 'number' ? (n > 0 ? '+' + n : String(n)) : '—');
   const timeLabel = (iso) => {
     try {
-      return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }).format(new Date(iso)) + ' ET';
+      return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' }).format(new Date(iso)) + ' PT';
     } catch (e) { return ''; }
   };
 
@@ -772,7 +772,7 @@
   // ---------------------------------------------------------------------
   function heroDateLabel(ms) {
     try {
-      return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York' })
+      return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' })
         .format(new Date(ms)).replace(',', '');
     } catch (e) { return ''; }
   }

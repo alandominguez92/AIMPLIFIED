@@ -143,7 +143,7 @@ async function pitchers() {
 // -------------------------------------------------------------------------
 async function board(env, ctx) {
   const season = new Date().getUTCFullYear();
-  const date = etDate(); // MLB slates are keyed to the Eastern date, not UTC
+  const date = slateDate(); // the site's slate day, in Pacific time
 
   let sched;
   try {
@@ -310,7 +310,7 @@ async function board(env, ctx) {
       matchup: `${teamAbbr(away.team)} @ ${teamAbbr(home.team)}`,
       pitcherNames: pitchers.map((p) => p.name),
       timeMs: Date.parse(g.gameDate) || 0,
-      timeLabel: timeLabelET(g.gameDate),
+      timeLabel: timeLabelPT(g.gameDate),
       status,
       score: hasScore ? `${aR}-${hR}` : null,
       pick: lead
@@ -378,9 +378,26 @@ async function logPicks(db, rows, date) {
 
 async function gradeUngraded(env) {
   const db = env.DB;
-  const today = etDate();
-  const games = (await db.prepare('SELECT DISTINCT game_id FROM picks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
-  for (const g of games.slice(0, 30)) {
+  const today = slateDate();
+  const rows = (await db.prepare('SELECT DISTINCT game_id, date FROM picks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
+  if (!rows.length) return;
+
+  // Only grade games that are actually Final (never a live/postponed one).
+  // One schedule call per date gives every game's status.
+  const statusByGame = {};
+  for (const d of [...new Set(rows.map((r) => r.date))]) {
+    try {
+      const r = await fetch(`${STATS}/schedule?sportId=1&date=${d}`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      const sd = await r.json();
+      (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
+        statusByGame['g' + g.gamePk] = (g.status && g.status.abstractGameState) || '';
+      });
+    } catch (e) { /* skip this date */ }
+  }
+
+  for (const g of rows.slice(0, 30)) {
+    if (statusByGame[g.game_id] !== 'Final') continue;
     const pk = String(g.game_id).replace(/^g/, '');
     let box;
     try {
@@ -491,15 +508,15 @@ function numOr(a, b) {
   if (typeof b === 'number') return b;
   return null;
 }
-function timeLabelET(iso) {
+function timeLabelPT(iso) {
   try {
-    return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }).format(new Date(iso)) + ' ET';
+    return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' }).format(new Date(iso)) + ' PT';
   } catch (e) { return ''; }
 }
-// Today's date on the US East Coast (YYYY-MM-DD) — the MLB "slate" date.
-function etDate() {
+// Today's date on the US West Coast (YYYY-MM-DD) — the site's "slate" date.
+function slateDate() {
   try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   } catch (e) { return new Date().toISOString().slice(0, 10); }
 }
 
