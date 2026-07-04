@@ -165,6 +165,9 @@
     ticker: document.getElementById('ticker'),
     winProbFill: document.getElementById('winProbFill'),
     winProbPct: document.getElementById('winProbPct'),
+    heroEyebrow: document.getElementById('heroEyebrow'),
+    heroTitle: document.getElementById('heroTitle'),
+    heroDuel: document.getElementById('heroDuel'),
     injuryAlerts: document.getElementById('injuryAlerts'),
     gameCount: document.getElementById('gameCount'),
     trackedPill: document.getElementById('trackedPill'),
@@ -303,6 +306,8 @@
             matchup: b.matchup,
             subline,
             time: b.timeMs || 0,
+            status: b.status,
+            timeLabel: b.timeLabel,
             pick: b.pick,
             odds: b.odds,
             edge: b.edge,
@@ -348,6 +353,7 @@
         renderControls();
         renderBoard();
         renderComparePanel();
+        renderHero();
       }
     } catch (e) {
       console.warn('Board refresh failed:', e.message);
@@ -759,6 +765,109 @@
     }
   }
 
+  // ---------------------------------------------------------------------
+  // HERO — "Tonight's Ace Duel". Auto-selects the marquee upcoming matchup
+  // (highest combined projected Ks) from the live board and renders it from
+  // real data. Leaves the static mock hero in place when the board isn't live.
+  // ---------------------------------------------------------------------
+  function heroDateLabel(ms) {
+    try {
+      return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York' })
+        .format(new Date(ms)).replace(',', '');
+    } catch (e) { return ''; }
+  }
+  function lastName(name) {
+    const parts = String(name || '').trim().split(/\s+/);
+    return parts.length ? parts[parts.length - 1] : String(name || '');
+  }
+  function heroBar(label, badge, fillPct, tone) {
+    const w = Math.max(2, Math.min(98, fillPct));
+    return `<div class="row"><span class="stat">${esc(label)}</span><div class="track"><div class="fill ${tone}" style="width:${w}%"></div></div><span class="badge ${tone}">${esc(String(badge))}</span></div>`;
+  }
+  function heroSide(p) {
+    const handLabel = p.hand === 'L' ? 'LHP' : p.hand === 'R' ? 'RHP' : '';
+    const meta = [p.team, handLabel, p.era ? p.era + ' ERA' : ''].filter(Boolean).join(' · ');
+    const bars = [];
+    if (typeof p.k9 === 'number' && p.k9 > 0) {
+      const t = p.k9 >= 11 ? 'hot' : p.k9 >= 8.5 ? 'warm' : 'cool';
+      bars.push(heroBar('K/9', p.k9.toFixed(1), (p.k9 - 5) / 8 * 100, t));
+    }
+    if (typeof p.oppKpct === 'number' && p.oppKpct > 0) {
+      const t = p.oppKpct >= 24 ? 'hot' : p.oppKpct >= 21 ? 'warm' : 'cool';
+      bars.push(heroBar('Opp K%', p.oppKpct, (p.oppKpct - 16) / 12 * 100, t));
+    }
+    if (p.market && p.market.modelOver != null) {
+      const mo = p.market.modelOver;
+      const t = mo >= 60 ? 'hot' : mo >= 45 ? 'warm' : 'cool';
+      bars.push(heroBar('Model O%', mo, mo, t));
+    }
+    const lineTxt = p.market ? ` · Line: O/U ${p.market.line}` : '';
+    return `
+      <div class="side">
+        <div class="name">${esc(p.fullName || p.name)}</div>
+        <div class="team">${esc(meta)}</div>
+        <div class="proj">
+          <div class="label">Projected strikeouts</div>
+          <div class="num">${p.proj}</div>
+          <div class="ci">80% interval: ${p.lo} – ${p.hi}${lineTxt}</div>
+        </div>
+        <div class="pct">${bars.join('')}</div>
+      </div>`;
+  }
+  function kellyUnits(prob, price) {
+    const dec = price > 0 ? price / 100 + 1 : 100 / (-price) + 1;
+    const b = dec - 1;
+    const f = (prob * dec - 1) / b;
+    if (f <= 0) return 0;
+    // Half-Kelly, 1u = 1% of bankroll, capped at 2.5u (edges are still being calibrated).
+    return Math.min(2.5, Math.round(f * 0.5 * 100 * 10) / 10);
+  }
+  function renderHero() {
+    if (!boardIsLive()) return; // keep the static mock hero
+    const hasDuo = (g) => g.projRows && g.projRows.length === 2 && g.projRows.every((p) => typeof p.proj === 'number');
+    const preview = state.liveBoard.filter((g) => g.status === 'Preview' && hasDuo(g));
+    const pool = preview.length ? preview : state.liveBoard.filter(hasDuo);
+    if (!pool.length) return;
+    const combined = (g) => g.projRows.reduce((s, p) => s + p.proj, 0);
+    const feature = pool.reduce((m, g) => (!m || combined(g) > combined(m) ? g : m), null);
+    const [a, b] = feature.projRows;
+
+    el.heroEyebrow.textContent = `Tonight's Ace Duel · ${heroDateLabel(feature.time)} · ${feature.timeLabel || ''}`.replace(/ · $/, '');
+    el.heroTitle.innerHTML = `${esc(lastName(a.fullName || a.name))} <span class="vs">vs</span> ${esc(lastName(b.fullName || b.name))}`;
+
+    const priced = feature.projRows.filter((p) => p.market && p.market.price != null);
+    const lead = priced.length ? priced.reduce((m, p) => (!m || p.market.edge > m.market.edge ? p : m), null) : null;
+
+    let pickStrip, winprob = '';
+    if (lead) {
+      const m = lead.market;
+      const modelPct = m.side === 'Over' ? m.modelOver : Math.round((100 - m.modelOver) * 10) / 10;
+      const kelly = kellyUnits(modelPct / 100, m.price);
+      const kellyTxt = kelly > 0 ? ` · ${kelly}u Kelly` : '';
+      const priceStr = m.price > 0 ? '+' + m.price : String(m.price);
+      pickStrip = `
+        <div class="pick-strip">
+          <span class="stars">${esc(TIER_LABEL[m.tier] || '—')}</span>
+          <span class="pick">${esc(lead.name)} <b>${m.side.toUpperCase()} ${m.line} Ks (${priceStr})</b></span>
+          <span class="tier">Tier ${esc(String(m.tier))}${kellyTxt}</span>
+          <span class="edge">+${m.edge}% edge vs. line</span>
+        </div>`;
+      winprob = `
+        <div class="winprob">
+          <div class="winprob-head"><span class="live-dot"></span><span class="winprob-label">Model win probability</span></div>
+          <div class="winprob-row">
+            <span class="winprob-team">${esc(lead.name)} ${m.side === 'Over' ? 'O' : 'U'} ${m.line}</span>
+            <div class="track big"><div class="fill accent-fill" style="width:${modelPct}%"></div></div>
+            <span class="winprob-pct">${modelPct}%</span>
+          </div>
+        </div>`;
+    } else {
+      pickStrip = `<div class="pick-strip"><span class="pick">No strikeout prop posted yet — projection only</span></div>`;
+    }
+
+    el.heroDuel.innerHTML = heroSide(a) + heroSide(b) + pickStrip + winprob;
+  }
+
   function renderAll() {
     renderTheme();
     renderTicker();
@@ -963,16 +1072,9 @@
   // TIMERS
   // ---------------------------------------------------------------------
 
-  setInterval(() => {
-    const delta = Math.random() * 4 - 2;
-    const next = Math.min(80, Math.max(50, state.winProb + delta));
-    state.winProb = Math.round(next * 10) / 10;
-    renderWinProb();
-  }, 4000);
-
   if (LIVE_MODE) {
-    // Live mode: poll the real feed. Proxy caches 30s; poll every 60s to
-    // stay well within The Odds API monthly credit quota.
+    // Live mode: the hero shows the real model win probability (static),
+    // so no simulated ticking. Poll the real feeds.
     refreshLiveData();
     setInterval(refreshLiveData, 60000);
     // Season leaderboards change slowly — load once, refresh every 10 min.
@@ -987,7 +1089,13 @@
     refreshTrackRecord();
     setInterval(refreshTrackRecord, 600000);
   } else {
-    // Mock mode: keep the ticker lively with simulated score nudges.
+    // Mock mode: keep the demo lively — simulated win-prob and score nudges.
+    setInterval(() => {
+      const delta = Math.random() * 4 - 2;
+      const next = Math.min(80, Math.max(50, state.winProb + delta));
+      state.winProb = Math.round(next * 10) / 10;
+      renderWinProb();
+    }, 4000);
     setInterval(() => {
       const scores = { ...state.tickerScores };
       Object.keys(scores).forEach((id) => {

@@ -203,7 +203,13 @@ async function board(env, ctx) {
         (d.people || []).forEach((pl) => {
           const sp = (((pl.stats || [])[0] || {}).splits || [])[0];
           const st = sp ? sp.stat : {};
-          pmap[pl.id] = { k9: toNum(st.strikeoutsPer9Inn), ip: toNum(st.inningsPitched), gs: toNum(st.gamesStarted) };
+          pmap[pl.id] = {
+            k9: toNum(st.strikeoutsPer9Inn),
+            ip: toNum(st.inningsPitched),
+            gs: toNum(st.gamesStarted),
+            era: (st.era == null || st.era === '') ? null : String(st.era),
+            hand: (pl.pitchHand && pl.pitchHand.code) || null,
+          };
         });
       }
     } catch (e) { /* projections fall back to defaults */ }
@@ -271,7 +277,11 @@ async function board(env, ctx) {
       return {
         id: pp.id,
         name: shortName(pp.fullName),
+        fullName: pp.fullName,
         team: teamAbbr(g.teams[side].team),
+        hand: st.hand || null,
+        era: st.era || null,
+        k9: round1(k9),
         proj: round1(projK),
         lo: round1(Math.max(0, projK - 1.28 * sd)),
         hi: round1(projK + 1.28 * sd),
