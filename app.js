@@ -372,6 +372,7 @@
         state.hitterCompareIds = state.hitterCompareIds.filter((i) => i < rows.length);
         renderHittersGrid();
         renderHitterComparePanel();
+        renderSplits();
       }
     } catch (e) {
       console.warn('Hitters refresh failed:', e.message);
@@ -388,6 +389,7 @@
         state.pitcherCompareIds = state.pitcherCompareIds.filter((i) => i < rows.length);
         renderPitchers();
         renderPitcherComparePanel();
+        renderPitcherSplits();
       }
     } catch (e) {
       console.warn('Pitchers refresh failed:', e.message);
@@ -653,14 +655,24 @@
   }
 
   function renderSplits() {
-    const tone = (v) => v >= 370 ? 'var(--positive)' : v >= 330 ? 'var(--accent)' : 'var(--textDim)';
-    el.splitRows.innerHTML = HOT_HITTERS.map((h) => `
-      <div class="split-row">
-        <span class="split-name">${esc(h.name)}</span>
-        <span class="split-val" style="color:${tone(h.lhp)}">.${h.lhp}</span>
-        <span class="split-val" style="color:${tone(h.rhp)}">.${h.rhp}</span>
-      </div>
-    `).join('');
+    // Live = OPS split (higher better); mock = wOBA-ish integer.
+    const opsTone = (v) => v >= 800 ? 'var(--positive)' : v >= 700 ? 'var(--accent)' : 'var(--textDim)';
+    const wobaTone = (v) => v >= 370 ? 'var(--positive)' : v >= 330 ? 'var(--accent)' : 'var(--textDim)';
+    el.splitRows.innerHTML = getHitters().map((h) => {
+      let lL = '—', rL = '—', lT = 'var(--textDim)', rT = 'var(--textDim)';
+      if (h.splitL != null || h.splitR != null) {
+        if (h.splitL != null) { lL = h.splitL; lT = opsTone(h.splitLnum || 0); }
+        if (h.splitR != null) { rL = h.splitR; rT = opsTone(h.splitRnum || 0); }
+      } else if (typeof h.lhp === 'number') {
+        lL = '.' + h.lhp; rL = '.' + h.rhp; lT = wobaTone(h.lhp); rT = wobaTone(h.rhp);
+      }
+      return `
+        <div class="split-row">
+          <span class="split-name">${esc(h.name)}</span>
+          <span class="split-val" style="color:${lT}">${esc(lL)}</span>
+          <span class="split-val" style="color:${rT}">${esc(rL)}</span>
+        </div>`;
+    }).join('');
   }
 
   function renderPitchers() {
@@ -731,15 +743,24 @@
   }
 
   function renderPitcherSplits() {
-    // Lower wOBA-against is better for a pitcher, so the tone scale inverts.
-    const tone = (v) => v <= 275 ? 'var(--positive)' : v <= 305 ? 'var(--accent)' : 'var(--textDim)';
-    el.pitcherSplitRows.innerHTML = HOT_PITCHERS.map((p) => `
-      <div class="split-row">
-        <span class="split-name">${esc(p.name)}</span>
-        <span class="split-val" style="color:${tone(p.vsL)}">.${p.vsL}</span>
-        <span class="split-val" style="color:${tone(p.vsR)}">.${p.vsR}</span>
-      </div>
-    `).join('');
+    // Opponent OPS-against — lower is better for a pitcher, so tone inverts.
+    const opsTone = (v) => v <= 650 ? 'var(--positive)' : v <= 720 ? 'var(--accent)' : 'var(--textDim)';
+    const wobaTone = (v) => v <= 275 ? 'var(--positive)' : v <= 305 ? 'var(--accent)' : 'var(--textDim)';
+    el.pitcherSplitRows.innerHTML = getPitchers().map((p) => {
+      let lL = '—', rL = '—', lT = 'var(--textDim)', rT = 'var(--textDim)';
+      if (p.splitL != null || p.splitR != null) {
+        if (p.splitL != null) { lL = p.splitL; lT = opsTone(p.splitLnum || 999); }
+        if (p.splitR != null) { rL = p.splitR; rT = opsTone(p.splitRnum || 999); }
+      } else if (typeof p.vsL === 'number') {
+        lL = '.' + p.vsL; rL = '.' + p.vsR; lT = wobaTone(p.vsL); rT = wobaTone(p.vsR);
+      }
+      return `
+        <div class="split-row">
+          <span class="split-name">${esc(p.name)}</span>
+          <span class="split-val" style="color:${lT}">${esc(lL)}</span>
+          <span class="split-val" style="color:${rT}">${esc(rL)}</span>
+        </div>`;
+    }).join('');
   }
 
   function renderCalibration() {

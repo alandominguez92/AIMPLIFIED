@@ -67,6 +67,7 @@ async function hitters() {
     .map((s) => {
       const st = s.stat || {};
       return {
+        id: (s.player || {}).id,
         name: shortName((s.player || {}).fullName),
         team: teamAbbr(s.team),
         ops: toNum(st.ops),
@@ -81,6 +82,7 @@ async function hitters() {
     .sort((a, b) => b.ops - a.ops)
     .slice(0, 10);
 
+  await attachSplits(rows, 'hitting'); // OPS vs LHP / vs RHP
   return cors(json(rows, 300)); // cache 5 min — season stats move slowly
 }
 
@@ -112,6 +114,7 @@ async function pitchers() {
       const era = (st.era === undefined || st.era === null) ? '—' : String(st.era);
       const k = typeof st.strikeOuts === 'number' ? st.strikeOuts : toNum(st.strikeOuts || st.strikeouts);
       return {
+        id: (s.player || {}).id,
         name: shortName((s.player || {}).fullName),
         team: teamAbbr(s.team),
         k9,
@@ -131,7 +134,37 @@ async function pitchers() {
     .sort((a, b) => b.k9 - a.k9)
     .slice(0, 10);
 
+  await attachSplits(rows, 'pitching'); // opponent OPS vs LHB / vs RHB
   return cors(json(rows, 300));
+}
+
+// Attach real handedness splits (OPS vs L / vs R) to leader rows, in one bulk
+// call. For hitters this is their OPS by pitcher hand; for pitchers it's the
+// opponent OPS-against by batter hand. Silently no-ops if unavailable.
+async function attachSplits(rows, group) {
+  const ids = rows.map((r) => r.id).filter(Boolean);
+  if (!ids.length) return;
+  const season = new Date().getUTCFullYear();
+  try {
+    const r = await fetch(`${STATS}/people?personIds=${ids.join(',')}&hydrate=stats(group=[${group}],type=[statSplits],sitCodes=[vl,vr],season=${season})`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return;
+    const d = await r.json();
+    const byId = {};
+    (d.people || []).forEach((pl) => {
+      const m = {};
+      (((pl.stats || [])[0] || {}).splits || []).forEach((sp) => {
+        const code = sp.split && sp.split.code;
+        if (code === 'vl' || code === 'vr') m[code] = toNum((sp.stat || {}).ops);
+      });
+      byId[pl.id] = m;
+    });
+    rows.forEach((row) => {
+      const m = byId[row.id];
+      if (!m) return;
+      if (m.vl != null) { row.splitL = ops3(m.vl); row.splitLnum = Math.round(m.vl * 1000); }
+      if (m.vr != null) { row.splitR = ops3(m.vr); row.splitRnum = Math.round(m.vr * 1000); }
+    });
+  } catch (e) { /* leave rows without splits -> table falls back */ }
 }
 
 // -------------------------------------------------------------------------
@@ -619,6 +652,13 @@ function avg3(v) {
   if (v === undefined || v === null || v === '') return '—';
   let s = String(v);
   if (s.startsWith('0.')) s = s.slice(1);   // 0.312 -> .312
+  return s;
+}
+// OPS to three decimals with the leading zero dropped: 0.99 -> ".990".
+function ops3(v) {
+  if (v == null || isNaN(v)) return '—';
+  let s = Number(v).toFixed(3);
+  if (s.startsWith('0.')) s = s.slice(1);
   return s;
 }
 function teamAbbr(team) {
