@@ -353,6 +353,8 @@ async function logPicks(db, rows, date) {
   await ensureSchema(db);
   const stmts = [];
   for (const r of rows) {
+    // Only log genuine pre-game picks — never a game already under way/final.
+    if (r.status !== 'Preview') continue;
     for (const p of (r.pitchers || [])) {
       if (!p.market || p.market.price == null || p.id == null) continue;
       stmts.push(db.prepare(
