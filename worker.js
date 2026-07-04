@@ -535,11 +535,13 @@ async function injuries() {
     data = await r.json();
   } catch (e) { return cors(json([], 300)); }
 
-  // Batters only — pitcher IL moves don't change tonight's known starters,
-  // but a hurt/scratched hitter shifts the opposing lineup's strikeout profile.
+  // MLB only (the feed includes every minor-league level) and batters only —
+  // pitcher IL moves don't change tonight's known starters, but a hurt/scratched
+  // hitter shifts the opposing lineup's strikeout profile.
   const txns = (data.transactions || []).filter((t) => {
     const d = t.description || '';
-    return /injured list/i.test(d) && !isPitcherMove(d);
+    const mlb = MLB_TEAM_IDS.has((t.toTeam || {}).id) || MLB_TEAM_IDS.has((t.fromTeam || {}).id);
+    return mlb && /injured list/i.test(d) && !isPitcherMove(d);
   });
   txns.sort((a, b) => String(b.effectiveDate || b.date || '').localeCompare(String(a.effectiveDate || a.date || '')));
 
@@ -554,6 +556,9 @@ async function injuries() {
   }
   return cors(json(rows, 600)); // 10 min
 }
+
+// The 30 MLB team ids (the transactions feed also carries every minor league).
+const MLB_TEAM_IDS = new Set([108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 158]);
 
 // True when a transaction describes a pitcher (position code before the name
 // is P/RHP/LHP/SP/RP). Unparseable -> treated as non-pitcher (kept).
