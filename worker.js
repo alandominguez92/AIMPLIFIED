@@ -546,16 +546,44 @@ async function injuries() {
   txns.sort((a, b) => String(b.effectiveDate || b.date || '').localeCompare(String(a.effectiveDate || a.date || '')));
 
   const seen = new Set();
-  const rows = [];
+  const cand = [];
   for (const t of txns) {
     const text = String(t.description || '').trim();
-    if (!text || seen.has(text)) continue;
+    const pid = t.person && t.person.id;
+    if (!text || !pid || seen.has(text)) continue;
     seen.add(text);
-    rows.push({ text, time: txnDateLabel(t.effectiveDate || t.date) });
-    if (rows.length >= 8) break;
+    cand.push({ text, time: txnDateLabel(t.effectiveDate || t.date), pid });
   }
+  if (!cand.length) return cors(json([], 600));
+
+  // Keep only regular starters — gauge by season plate appearances, so bench
+  // bats and fresh call-ups don't clutter the wire. One bulk stats call.
+  const season = new Date().getUTCFullYear();
+  const paById = {};
+  let haveStats = false;
+  try {
+    const ids = [...new Set(cand.map((c) => c.pid))].join(',');
+    const r = await fetch(`${STATS}/people?personIds=${ids}&hydrate=stats(group=[hitting],type=[season],season=${season})`, { headers: { accept: 'application/json' } });
+    if (r.ok) {
+      const d = await r.json();
+      (d.people || []).forEach((pl) => {
+        const sp = (((pl.stats || [])[0] || {}).splits || [])[0];
+        paById[pl.id] = sp ? toNum(sp.stat.plateAppearances) : 0;
+      });
+      haveStats = true;
+    }
+  } catch (e) { /* if stats are unavailable, don't over-filter */ }
+
+  const rows = cand
+    .filter((c) => !haveStats || (paById[c.pid] || 0) >= STARTER_PA)
+    .slice(0, 8)
+    .map((c) => ({ text: c.text, time: c.time }));
   return cors(json(rows, 600)); // 10 min
 }
+
+// A "regular starter" bar: season plate appearances. Tune to taste (higher =
+// only everyday regulars; lower = includes platoon/part-time starters).
+const STARTER_PA = 150;
 
 // The 30 MLB team ids (the transactions feed also carries every minor league).
 const MLB_TEAM_IDS = new Set([108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 158]);
