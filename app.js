@@ -2,12 +2,11 @@
   'use strict';
 
   // ---------------------------------------------------------------------
-  // DATA LAYER — mock data shaped like the real feeds it stands in for.
-  // To go live, replace RAW_GAMES / HOT_HITTERS / HOT_PITCHERS /
-  // INJURY_ALERTS / CALIBRATION_BUCKETS / tickerScores with fetches to:
-  //   - MLB StatsAPI (schedule, live scores, lineups/injuries)
-  //   - Baseball Savant (Statcast: CSW%, whiff%, chase%, xERA)
-  //   - An odds provider (The Odds API, Pinnacle, etc.) for live lines
+  // DATA LAYER — mock data shaped like the real feeds it stands in for. Used
+  // only offline (file:// / localhost); the deployed site pulls live data from:
+  //   - MLB StatsAPI (schedule, scores, season stats, transactions)
+  //   - The Odds API (DraftKings + FanDuel lines: strikeouts, batter props, h2h)
+  // The model (projections, edges, tiers, percentiles) is computed in worker.js.
   // Keep the shape of each object identical and the rest of this file
   // (filtering, sorting, compare mode, theming) needs no changes.
   // ---------------------------------------------------------------------
@@ -230,6 +229,10 @@
     trkVal2: document.getElementById('trkVal2'),
     trkVal3: document.getElementById('trkVal3'),
     trkVal4: document.getElementById('trkVal4'),
+    clvChipText: document.getElementById('clvChipText'),
+    whyTitle: document.getElementById('whyTitle'),
+    whyBody: document.getElementById('whyBody'),
+    whyStats: document.getElementById('whyStats'),
     pinNote: document.getElementById('pinNote'),
     slip: document.getElementById('slip'),
     slipCount: document.getElementById('slipCount'),
@@ -968,9 +971,34 @@
       el.trkVal3.textContent = tr.tier1;
       el.trkVal4.textContent = (tr.units > 0 ? '+' : '') + tr.units + 'u';
       el.trkNote.textContent = `${tr.tracked} graded picks · updated as games finalize`;
-    } else if (tr.logged > 0) {
-      // Picks logged but none graded yet — say so, keep the placeholder tiles.
-      el.trkNote.textContent = `${tr.logged} picks logged · grading as tonight's games finalize`;
+    } else {
+      // No graded results yet — never show placeholder numbers as if they were real.
+      el.trkLabel1.textContent = 'Win Rate';
+      el.trkVal1.textContent = '—';
+      el.trkVal2.textContent = tr.logged > 0 ? String(tr.logged) : '—';
+      el.trkVal3.textContent = '—';
+      el.trkVal4.textContent = '—';
+      el.trkNote.textContent = tr.logged > 0
+        ? `${tr.logged} picks logged · grading as tonight's games finalize`
+        : 'Tracking begins with tonight’s slate · wins and losses both stay up';
+    }
+    renderClvChip();
+  }
+
+  // Header chip: real season numbers from the track record, or an honest
+  // "tracking" state. Never the old hardcoded "CLV +2.4% · 312 bets".
+  function renderClvChip() {
+    if (!el.clvChipText) return;
+    if (!LIVE_MODE) { el.clvChipText.textContent = 'Model preview'; return; }
+    const tr = state.trackRecord;
+    if (tr && !tr.empty && tr.tracked > 0) {
+      const cls = tr.roi >= 0 ? 'clv-pos' : 'clv-neg';
+      const roi = (tr.roi > 0 ? '+' : '') + tr.roi + '%';
+      el.clvChipText.innerHTML = `SEASON ROI <b class="${cls}">${esc(roi)}</b> · ${tr.tracked} graded picks`;
+    } else if (tr && tr.logged > 0) {
+      el.clvChipText.textContent = `${tr.logged} picks logged · grading nightly`;
+    } else {
+      el.clvChipText.textContent = 'Model live · tracking picks';
     }
   }
 
@@ -1225,11 +1253,31 @@
             <span class="winprob-pct">${modelPct}%</span>
           </div>
         </div>`;
+      renderWhyCard(lead, m, modelPct);
     } else {
       pickStrip = `<div class="pick-strip"><span class="pick">No strikeout prop posted yet — projection only</span></div>`;
     }
 
     el.heroDuel.innerHTML = heroSide(a) + heroSide(b) + pickStrip + winprob;
+  }
+
+  // Fill the "Why" card with the hero pick's real model numbers (no fabricated
+  // narrative). Leaves the methodology default in place if elements are absent.
+  function renderWhyCard(lead, m, modelPct) {
+    if (!el.whyTitle || !el.whyBody || !el.whyStats) return;
+    const side = m.side.toLowerCase();
+    let parkNote = '';
+    if (typeof lead.parkK === 'number' && lead.parkK !== 1) {
+      const pct = Math.round((lead.parkK - 1) * 100);
+      parkNote = `, in a park that runs ${pct > 0 ? '+' : ''}${pct}% on strikeouts`;
+    }
+    const wxNote = (typeof lead.temp === 'number' && lead.temp > 0) ? ` with ${lead.temp}°F conditions` : '';
+    el.whyTitle.textContent = `Why ${lead.name} ${m.side} ${m.line} — the model's read`;
+    el.whyBody.innerHTML = `The model projects <b>${lead.proj} strikeouts</b> for ${esc(lead.name)} against a line of <b>${m.line}</b> — about a <b>${modelPct}%</b> chance to land ${esc(side)}. The opposing lineup strikes out <b>${lead.oppKpct}%</b> of the time${parkNote}${wxNote}. That puts the model <b>${m.edge}%</b> ahead of the vig-free line.`;
+    el.whyStats.innerHTML = [
+      ['K/9', lead.k9], ['Opp K%', lead.oppKpct + '%'],
+      [`Model ${m.side}`, modelPct + '%'], ['Proj', lead.proj + ' K'],
+    ].map(([k, v]) => `<span>${esc(k)} <i>${esc(String(v))}</i></span>`).join('');
   }
 
   function renderAll() {
@@ -1241,6 +1289,7 @@
     renderBoard();
     renderComparePanel();
     renderSlip();
+    renderClvChip();
     renderHittersGrid();
     renderHitterComparePanel();
     renderSplits();

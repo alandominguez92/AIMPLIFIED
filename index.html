@@ -20,7 +20,7 @@
       <a href="#">Model</a>
       <a href="#">YouTube</a>
     </nav>
-    <div class="clv-chip"><span class="dot"></span>SEASON CLV&nbsp;<b>+2.4%</b>&nbsp;· 312 tracked bets</div>
+    <div class="clv-chip" id="clvChip"><span class="dot"></span><span id="clvChipText">Model live · tracking picks</span></div>
     <button class="theme-toggle" data-action="toggle-theme"></button>
   </div>
 </header>
@@ -202,13 +202,13 @@
 
     <div class="split">
       <div class="card">
-        <h3>Why Skubal Over — the actual reason</h3>
-        <p>The Dodgers chase <b>31.8%</b> of sliders out of the zone — 4th-highest in MLB — and Skubal's slider usage is up to <b>29%</b> since June with a <b>41% whiff rate</b> on the pitch. Park and ump draw are neutral. The line hasn't moved off 6.5 while sharp money sits on the over at Pinnacle.</p>
-        <div class="why-stat">
-          <span>Chase vs SL <i>31.8%</i></span>
-          <span>SL Whiff <i>41%</i></span>
-          <span>CSW% <i>33.2</i></span>
-          <span>Pinnacle O <i>−121</i></span>
+        <h3 id="whyTitle">How tonight's numbers are built</h3>
+        <p id="whyBody">Every projection is a transparent rate model: a pitcher's strikeout rate scaled by his expected innings and the opposing lineup's strikeout tendency, then adjusted for park and game-time weather. The edge is the model's probability measured against the vig-free line — never a hunch.</p>
+        <div class="why-stat" id="whyStats">
+          <span>Rate <i>K/9 × IP</i></span>
+          <span>Opponent <i>K rate</i></span>
+          <span>Park <i>× factor</i></span>
+          <span>Weather <i>× temp</i></span>
         </div>
       </div>
       <div class="card">
@@ -217,19 +217,19 @@
           <span class="video-tag">EP. 84 · CY YOUNG WATCH</span>
           <div class="play"></div>
         </div>
-        <p>Full slate breakdown in 8 minutes — every Tier 1 and Tier 2 play, with the Statcast reasoning behind each number.</p>
+        <p>Full slate breakdown in 8 minutes — every Tier 1 and Tier 2 play, with the model reasoning behind each number.</p>
       </div>
     </div>
   </section>
 
   <!-- PUBLIC RECORD -->
   <section id="record">
-    <div class="sec-head"><h2>Public Track Record</h2><span class="count" id="trkNote">updated nightly · wins and losses both stay up</span></div>
+    <div class="sec-head"><h2>Public Track Record</h2><span class="count" id="trkNote">tracking begins with tonight’s slate · wins and losses both stay up</span></div>
     <div class="record">
-      <div class="cell"><div class="k" id="trkLabel1">Season CLV</div><div class="v g" id="trkVal1">+2.4%</div></div>
-      <div class="cell"><div class="k">Tracked Bets</div><div class="v" id="trkVal2">312</div></div>
-      <div class="cell"><div class="k">Tier 1 Record</div><div class="v a" id="trkVal3">41–29</div></div>
-      <div class="cell"><div class="k">Units (flat)</div><div class="v g" id="trkVal4">+11.3u</div></div>
+      <div class="cell"><div class="k" id="trkLabel1">Win Rate</div><div class="v" id="trkVal1">—</div></div>
+      <div class="cell"><div class="k">Tracked Bets</div><div class="v" id="trkVal2">—</div></div>
+      <div class="cell"><div class="k">Tier 1 Record</div><div class="v" id="trkVal3">—</div></div>
+      <div class="cell"><div class="k">Units (flat)</div><div class="v" id="trkVal4">—</div></div>
     </div>
 
     <div class="card" id="roiCard" hidden>
@@ -264,7 +264,7 @@
 
   <footer>
     Aimplified is a sports analytics and entertainment product. Nothing here is gambling advice. Projections are model outputs with stated uncertainty — respect the intervals. 21+ where applicable. If you or someone you know has a gambling problem, call 1-800-GAMBLER.
-    <br><br>© 2026 Aimplified · Data: MLB StatsAPI · Baseball Savant · Odds refresh every 30 minutes
+    <br><br>© 2026 Aimplified · Data: MLB StatsAPI · The Odds API (DraftKings + FanDuel) · Board refreshes every 5 minutes
   </footer>
 
 </main>
