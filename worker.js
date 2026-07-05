@@ -266,6 +266,44 @@ async function board(env, ctx) {
   } catch (e) { /* opponent adjustment falls back to neutral */ }
   const lgK = lgPA > 0 ? lgSO / lgPA : 0.222;
 
+  // Team win% (for the moneyline model) — one standings call.
+  const teamWL = {};
+  try {
+    const r = await fetch(`${STATS}/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason`, { headers: { accept: 'application/json' } });
+    if (r.ok) {
+      const d = await r.json();
+      (d.records || []).forEach((rec) => {
+        (rec.teamRecords || []).forEach((tr) => {
+          const id = tr.team && tr.team.id;
+          if (id) teamWL[id] = { w: toNum(tr.wins), l: toNum(tr.losses) };
+        });
+      });
+    }
+  } catch (e) { /* moneyline model falls back to even teams */ }
+  const teamWinP = (id) => {
+    const r = teamWL[id];
+    if (!r || (r.w + r.l) === 0) return 0.5;
+    return (r.w + 10) / (r.w + r.l + 20); // shrink toward .500
+  };
+
+  // Real moneylines (paid Odds API h2h) — one call, keyed by home team name.
+  const mlByHome = {};
+  if (key) {
+    try {
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      if (r.ok) {
+        const events = await r.json();
+        (Array.isArray(events) ? events : []).forEach((ev) => {
+          const bk = (ev.bookmakers || [])[0];
+          const mk = bk && (bk.markets || []).find((m) => m.key === 'h2h');
+          if (!mk) return;
+          const price = (name) => { const o = (mk.outcomes || []).find((x) => x.name === name); return o ? o.price : null; };
+          mlByHome[ev.home_team] = { home: price(ev.home_team), away: price(ev.away_team) };
+        });
+      }
+    } catch (e) { /* no moneylines -> ml pick is model-only */ }
+  }
+
   const rows = games.map((g) => {
     const away = g.teams.away, home = g.teams.home;
     const projFor = (side) => {
@@ -339,6 +377,10 @@ async function board(env, ctx) {
       : null;
     const projLean = pitchers.reduce((m, p) => (!m || p.proj > m.proj ? p : m), null);
 
+    // Moneyline model: team win% via log5 + home field + starting-pitcher ERA,
+    // priced against the real moneyline.
+    const ml = moneyline(g, home, away, teamWinP, pmap, mlByHome[home.team && home.team.name]);
+
     return {
       id: 'g' + g.gamePk,
       matchup: `${teamAbbr(away.team)} @ ${teamAbbr(home.team)}`,
@@ -355,6 +397,7 @@ async function board(env, ctx) {
       tier: lead ? lead.market.tier : 'model',
       interval: lead ? `${lead.lo} – ${lead.hi}` : (projLean ? `${projLean.lo} – ${projLean.hi}` : '—'),
       pitchers,
+      ml,
     };
   }).sort((a, b) => a.timeMs - b.timeMs);
 
@@ -365,6 +408,57 @@ async function board(env, ctx) {
   }
 
   return cors(json(rows, 300)); // 5 min — props are the expensive part
+}
+
+// Moneyline model for one game. Team win% -> log5 matchup, plus home-field
+// and a modest starting-pitcher ERA adjustment, priced vs the real moneyline.
+function moneyline(g, home, away, teamWinP, pmap, oddsPair) {
+  const pH = teamWinP(home.team && home.team.id);
+  const pA = teamWinP(away.team && away.team.id);
+  // log5: probability the home team beats the away team on neutral ground.
+  let homeWin = (pH - pH * pA) / (pH + pA - 2 * pH * pA);
+  if (!isFinite(homeWin)) homeWin = 0.5;
+  homeWin += 0.035; // home-field advantage
+
+  // Starting-pitcher edge: better (lower) ERA nudges that side.
+  const eraOf = (pp) => { const s = pp && pp.id ? pmap[pp.id] : null; return s && s.era != null ? parseFloat(s.era) : null; };
+  const hERA = eraOf(home.probablePitcher), aERA = eraOf(away.probablePitcher);
+  if (hERA != null && aERA != null) homeWin += clamp((aERA - hERA) * 0.025, -0.08, 0.08);
+  homeWin = clamp(homeWin, 0.05, 0.95);
+
+  const model = { home: homeWin, away: 1 - homeWin };
+  const price = oddsPair || {};
+  const impH = amProb(price.home), impA = amProb(price.away);
+  let fairH = null;
+  if (impH != null && impA != null) { const v = impH + impA; fairH = v > 0 ? impH / v : impH; }
+
+  const sideFor = (side) => {
+    const teamObj = side === 'home' ? home.team : away.team;
+    const p = model[side];
+    const pr = side === 'home' ? price.home : price.away;
+    const fair = fairH == null ? null : (side === 'home' ? fairH : 1 - fairH);
+    const edge = fair == null ? null : round1((p - fair) * 100);
+    return { side, teamAbbr: teamAbbr(teamObj), winProb: Math.round(p * 100), price: pr != null ? pr : null, edge };
+  };
+  const h = sideFor('home'), a = sideFor('away');
+
+  // Pick the +EV side (largest edge); with no market, pick the model favorite.
+  let chosen;
+  if (h.edge == null || a.edge == null) chosen = model.home >= model.away ? h : a;
+  else chosen = h.edge >= a.edge ? h : a;
+
+  const e = chosen.edge;
+  const tier = e == null ? 'model' : e >= 4 ? 1 : e >= 2.5 ? 2 : e >= 1 ? 3 : 'pass';
+  return {
+    pick: `${chosen.teamAbbr} ML`,
+    teamAbbr: chosen.teamAbbr,
+    winProb: chosen.winProb,
+    price: chosen.price,
+    edge: e,
+    tier,
+    homeAbbr: h.teamAbbr, awayAbbr: a.teamAbbr,
+    homeWinProb: h.winProb, awayWinProb: a.winProb,
+  };
 }
 
 // -------------------------------------------------------------------------

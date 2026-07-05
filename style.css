@@ -154,6 +154,9 @@ section { padding:44px 0; }
 .alert .alert-time { color:var(--textDim); margin-left:auto; font-family:'IBM Plex Mono'; font-size:12px; }
 
 /* ---------- board controls ---------- */
+.board-view { display:flex; gap:8px; margin-bottom:14px; }
+.viewtab { font-family:'Barlow Condensed'; font-weight:600; font-size:15px; letter-spacing:.06em; text-transform:uppercase; border-radius:6px; padding:8px 16px; cursor:pointer; border:1px solid var(--border); background:none; color:var(--textDim); }
+.viewtab.active { border-color:var(--accent); background:var(--accent); color:var(--ink); }
 .board-search { margin-bottom:12px; }
 .board-search input { width:260px; max-width:100%; font-family:'IBM Plex Mono'; font-size:13px; color:var(--text); background:var(--board); border:1px solid var(--border); border-radius:5px; padding:8px 12px; outline:none; }
 .board-controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }

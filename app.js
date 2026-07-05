@@ -14,17 +14,23 @@
 
   const RAW_GAMES = [
     { id: 'g1', matchup: 'DET @ LAD', subline: 'Skubal v. Yamamoto · 7:10 PT', time: 1, pick: 'Skubal O 6.5 Ks', odds: -115, edge: 5.8, interval: '5.6 – 9.1', tier: 1, weather: 'Out wind 6mph · Park +3% Ks', weatherTone: 'positive',
-      stats: [ { label: 'CSW%', value: 94, tone: 'hot' }, { label: 'Whiff%', value: 91, tone: 'hot' }, { label: 'Opp Chase', value: 78, tone: 'warm' } ] },
+      stats: [ { label: 'CSW%', value: 94, tone: 'hot' }, { label: 'Whiff%', value: 91, tone: 'hot' }, { label: 'Opp Chase', value: 78, tone: 'warm' } ],
+      ml: { pick: 'LAD ML', teamAbbr: 'LAD', winProb: 71, price: -225, edge: 4.2, tier: 1, homeAbbr: 'LAD', awayAbbr: 'DET', homeWinProb: 71, awayWinProb: 29 } },
     { id: 'g2', matchup: 'NYY @ HOU', subline: 'Cole v. Valdez · 5:10 PT', time: 3, pick: 'Valdez U 5.5 Ks', odds: 102, edge: 3.4, interval: '3.1 – 6.2', tier: 2, weather: 'Roof closed · Neutral park', weatherTone: 'textDim',
-      stats: [ { label: 'CSW%', value: 82, tone: 'warm' }, { label: 'Whiff%', value: 77, tone: 'warm' }, { label: 'Opp Chase', value: 61, tone: 'warm' } ] },
+      stats: [ { label: 'CSW%', value: 82, tone: 'warm' }, { label: 'Whiff%', value: 77, tone: 'warm' }, { label: 'Opp Chase', value: 61, tone: 'warm' } ],
+      ml: { pick: 'HOU ML', teamAbbr: 'HOU', winProb: 64, price: -166, edge: 3.1, tier: 2, homeAbbr: 'HOU', awayAbbr: 'NYY', homeWinProb: 64, awayWinProb: 36 } },
     { id: 'g3', matchup: 'BOS @ TOR', subline: 'Bello v. Gausman · 4:07 PT', time: 2, pick: 'Bello U 4.5 Ks', odds: -120, edge: 4.6, interval: '2.8 – 5.5', tier: 1, weather: 'Roof closed · Neutral park', weatherTone: 'textDim',
-      stats: [ { label: 'CSW%', value: 88, tone: 'hot' }, { label: 'Whiff%', value: 85, tone: 'hot' }, { label: 'Opp Chase', value: 70, tone: 'warm' } ] },
+      stats: [ { label: 'CSW%', value: 88, tone: 'hot' }, { label: 'Whiff%', value: 85, tone: 'hot' }, { label: 'Opp Chase', value: 70, tone: 'warm' } ],
+      ml: { pick: 'TOR ML', teamAbbr: 'TOR', winProb: 55, price: -122, edge: 1.8, tier: 3, homeAbbr: 'TOR', awayAbbr: 'BOS', homeWinProb: 55, awayWinProb: 45 } },
     { id: 'g4', matchup: 'ATL @ PHI', subline: 'Wheeler v. Sale · 4:05 PT', time: 2, pick: 'Wheeler O 7.5 Ks', odds: -108, edge: 2.1, interval: '5.9 – 9.4', tier: 2, weather: 'In wind 9mph · Park −2% Ks', weatherTone: 'warm',
-      stats: [ { label: 'CSW%', value: 79, tone: 'warm' }, { label: 'Whiff%', value: 73, tone: 'warm' }, { label: 'Opp Chase', value: 55, tone: 'cool' } ] },
+      stats: [ { label: 'CSW%', value: 79, tone: 'warm' }, { label: 'Whiff%', value: 73, tone: 'warm' }, { label: 'Opp Chase', value: 55, tone: 'cool' } ],
+      ml: { pick: 'PHI ML', teamAbbr: 'PHI', winProb: 59, price: -135, edge: 2.4, tier: 3, homeAbbr: 'PHI', awayAbbr: 'ATL', homeWinProb: 59, awayWinProb: 41 } },
     { id: 'g5', matchup: 'MIL @ CHC', subline: 'Peralta v. Imanaga · 5:20 PT', time: 4, pick: 'Peralta O 6.5 Ks', odds: -102, edge: 1.2, interval: '4.6 – 8.2', tier: 3, weather: 'Wrigley crosswind · High variance', weatherTone: 'warm',
-      stats: [ { label: 'CSW%', value: 68, tone: 'warm' }, { label: 'Whiff%', value: 64, tone: 'warm' }, { label: 'Opp Chase', value: 50, tone: 'cool' } ] },
+      stats: [ { label: 'CSW%', value: 68, tone: 'warm' }, { label: 'Whiff%', value: 64, tone: 'warm' }, { label: 'Opp Chase', value: 50, tone: 'cool' } ],
+      ml: { pick: 'CHC ML', teamAbbr: 'CHC', winProb: 53, price: -110, edge: 0.9, tier: 'pass', homeAbbr: 'CHC', awayAbbr: 'MIL', homeWinProb: 53, awayWinProb: 47 } },
     { id: 'g6', matchup: 'SD @ SF', subline: 'Cease v. Webb · 6:45 PT', time: 5, pick: 'No edge — pass', odds: null, edge: -0.6, interval: '4.4 – 8.0', tier: 'pass', weather: 'Marine layer · Park −4% Ks', weatherTone: 'positive',
-      stats: [ { label: 'CSW%', value: 61, tone: 'cool' }, { label: 'Whiff%', value: 58, tone: 'cool' }, { label: 'Opp Chase', value: 44, tone: 'cool' } ] },
+      stats: [ { label: 'CSW%', value: 61, tone: 'cool' }, { label: 'Whiff%', value: 58, tone: 'cool' }, { label: 'Opp Chase', value: 44, tone: 'cool' } ],
+      ml: { pick: 'SF ML', teamAbbr: 'SF', winProb: 54, price: null, edge: -0.4, tier: 'pass', homeAbbr: 'SF', awayAbbr: 'SD', homeWinProb: 54, awayWinProb: 46 } },
   ];
 
   const TONE_COLOR = { hot: 'var(--danger)', warm: 'var(--warm)', cool: 'var(--positive)' };
@@ -100,6 +106,7 @@
     liveBoard: null,
     trackRecord: null,
     liveInjuries: null,
+    boardView: 'kprops', // 'kprops' | 'moneyline'
     quotaRemaining: null,
   };
 
@@ -108,9 +115,13 @@
   const getPitchers = () => (state.livePitchers && state.livePitchers.length ? state.livePitchers : HOT_PITCHERS);
   const boardIsLive = () => !!(state.liveBoard && state.liveBoard.length);
   const getGames = () => (boardIsLive() ? state.liveBoard : RAW_GAMES);
-  // "Modeled" = the board carries real market tiers (prop lines available),
-  // so the tier filters and edge sort are meaningful again.
-  const boardModeled = () => boardIsLive() && state.liveBoard.some((g) => typeof g.tier === 'number');
+  const isML = () => state.boardView === 'moneyline';
+  // A game's tier/edge for the active view (K props vs moneyline).
+  const activeTier = (g) => isML() ? (g.ml ? g.ml.tier : 'model') : g.tier;
+  const activeEdge = (g) => isML() ? (g.ml ? g.ml.edge : null) : g.edge;
+  // "Modeled" = the board carries real market tiers, so tier filters + edge
+  // sort are meaningful. (Moneyline is always live-modeled when the board is.)
+  const boardModeled = () => boardIsLive() && state.liveBoard.some((g) => typeof activeTier(g) === 'number');
 
   // How to reach the Odds API proxy. Empty => mock-only mode.
   //   "same-origin" (or "/") => Cloudflare Pages Functions at /api/* on this
@@ -177,6 +188,7 @@
     compareModeBtn: document.getElementById('compareModeBtn'),
     compareHint: document.getElementById('compareHint'),
     boardRows: document.getElementById('boardRows'),
+    boardHead: document.getElementById('boardHead'),
     noResults: document.getElementById('noResults'),
     comparePanel: document.getElementById('comparePanel'),
     hitterCompareModeBtn: document.getElementById('hitterCompareModeBtn'),
@@ -317,6 +329,7 @@
             weather: '', weatherTone: 'textDim',
             stats: [],
             projRows: b.pitchers || [],
+            ml: b.ml || null,
           };
         }).sort((a, b) => a.time - b.time);
       } else {
@@ -431,13 +444,13 @@
   function getFilteredSortedGames() {
     // Only force time-sort on a live slate with no market tiers.
     const forceTime = boardIsLive() && !boardModeled();
-    let games = getGames().filter((g) => state.filter === 'all' ? true : String(g.tier) === state.filter);
+    let games = getGames().filter((g) => state.filter === 'all' ? true : String(activeTier(g)) === state.filter);
     const q = state.searchQuery.trim().toLowerCase();
     if (q) {
       games = games.filter((g) => g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
     }
     const byTime = (a, b) => a.time - b.time;
-    const byEdge = (a, b) => (b.edge ?? -Infinity) - (a.edge ?? -Infinity);
+    const byEdge = (a, b) => (activeEdge(b) ?? -Infinity) - (activeEdge(a) ?? -Infinity);
     games = [...games].sort(forceTime || state.sortBy !== 'edge' ? byTime : byEdge);
     return games;
   }
@@ -451,6 +464,10 @@
     const trackedCount = Object.values(state.tracked).filter(Boolean).length;
     el.trackedPill.textContent = `${trackedCount} tracked`;
     el.sortLabel.textContent = state.sortBy === 'edge' ? 'Edge' : 'Time';
+
+    document.querySelectorAll('.viewtab').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.view === state.boardView);
+    });
 
     // Hide tier/edge controls only on a live slate with no market tiers.
     const hideModelControls = live && !modeled;
@@ -482,20 +499,44 @@
     el.compareModeBtn.setAttribute('aria-pressed', state.compareMode);
   }
 
+  function renderBoardHead() {
+    const cols = isML()
+      ? ['', 'Matchup', 'Team to win', 'Moneyline', 'Edge', 'Win Prob', 'Tier', '']
+      : ['', 'Matchup', 'Pick', 'Odds', 'Edge', '80% Interval', 'Tier', ''];
+    el.boardHead.innerHTML = cols.map((c) => c ? `<span class="col-label">${c}</span>` : '<span></span>').join('');
+  }
+
   function renderBoard() {
+    renderBoardHead();
     const games = getFilteredSortedGames();
     el.noResults.hidden = games.length !== 0;
 
     el.boardRows.innerHTML = games.map((g) => {
+      const ml = g.ml || {};
       const isTracked = !!state.tracked[g.id];
       const isSelected = state.compareIds.includes(g.id);
       const isExpanded = state.expandedId === g.id;
-      const hasEdge = g.edge != null;
-      const edgeColor = !hasEdge ? 'var(--textDim)' : (g.edge > 0 ? 'var(--positive)' : 'var(--danger)');
-      const edgeLabel = !hasEdge ? '—' : (g.edge > 0 ? '+' : '') + g.edge.toFixed(1) + '%';
-      const oddsLabel = g.odds == null ? '—' : (g.odds > 0 ? '+' + g.odds : String(g.odds));
-      const tierLabel = TIER_LABEL[g.tier] || '—';
-      const tierIsPlain = !TIER_LABEL[g.tier] || g.tier === 'pass';
+
+      const edgeVal = activeEdge(g);
+      const hasEdge = edgeVal != null;
+      const edgeColor = !hasEdge ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
+      const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
+      const tierVal = activeTier(g);
+      const tierLabel = TIER_LABEL[tierVal] || '—';
+      const tierIsPlain = !TIER_LABEL[tierVal] || tierVal === 'pass';
+
+      // The four view-specific cells (pick, odds, [edge — shared], detail).
+      const money = (v) => v == null ? '—' : (v > 0 ? '+' + v : String(v));
+      let pickCell, oddsCell, detailCell;
+      if (isML()) {
+        pickCell = esc(ml.pick || '—');
+        oddsCell = `<span class="odds-cell mono">${esc(money(ml.price))}</span>`;
+        detailCell = `<span class="interval-cell" style="color:var(--accent)">${ml.winProb != null ? ml.winProb + '%' : '—'}</span>`;
+      } else {
+        pickCell = esc(g.pick);
+        oddsCell = `<span class="odds-cell mono">${esc(money(g.odds))}</span>`;
+        detailCell = `<span class="interval-cell">${esc(g.interval)}</span>`;
+      }
 
       const leadingHtml = state.compareMode
         ? `<span class="leading checkbox${isSelected ? ' selected' : ''}" data-action="leading-click" data-id="${g.id}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(g.matchup)} to compare" title="Select to compare">${isSelected ? '✓' : ''}</span>`
@@ -517,17 +558,31 @@
             <span class="matchup-sub">${esc(g.subline)}</span>
             <span class="weather-label" style="color:var(--${g.weatherTone})">${esc(g.weather)}</span>
           </div>
-          <span>${esc(g.pick)}</span>
-          <span class="odds-cell mono">${esc(oddsLabel)}</span>
+          <span>${pickCell}</span>
+          ${oddsCell}
           <span class="edge-cell" style="color:${edgeColor}">${esc(edgeLabel)}</span>
-          <span class="interval-cell">${esc(g.interval)}</span>
+          ${detailCell}
           <span class="tier-cell${tierIsPlain ? ' pass' : ''}" style="${tierIsPlain ? '' : 'color:var(--accent)'}">${esc(tierLabel)}</span>
           <span class="chevron">${isExpanded ? '▲' : '▼'}</span>
         </div>
       `;
 
       let detailHtml = '';
-      if (isExpanded) {
+      if (isExpanded && isML()) {
+        if (g.ml) {
+          const priceStr = g.ml.price == null ? '—' : money(g.ml.price);
+          const edgeStr = g.ml.edge == null ? '—' : `+${g.ml.edge}% edge`;
+          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Model win probability</div>
+            <div style="display:flex;gap:24px;margin-top:6px;font-family:'IBM Plex Mono';font-size:14px">
+              <span>${esc(g.ml.awayAbbr || '')} <b style="color:var(--accent)">${g.ml.awayWinProb != null ? g.ml.awayWinProb + '%' : '—'}</b></span>
+              <span>${esc(g.ml.homeAbbr || '')} <b style="color:var(--accent)">${g.ml.homeWinProb != null ? g.ml.homeWinProb + '%' : '—'}</b></span>
+              <span style="color:var(--textDim)">pick ${esc(g.ml.pick || '—')} (${esc(priceStr)}) · ${esc(edgeStr)}</span>
+            </div>
+            <div style="color:var(--textDim);font-size:12px;margin-top:12px">Team win% (log5) + home field + starting-pitcher ERA, priced vs. the vig-free moneyline.</div></div>`;
+        } else {
+          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Moneyline pending</div><div style="color:var(--textDim);font-size:13px">No moneyline posted for this game yet.</div></div>`;
+        }
+      } else if (isExpanded) {
         if (g.stats && g.stats.length) {
           const statsHtml = g.stats.map((s) => `
             <div class="stat-row">
@@ -568,17 +623,24 @@
     if (!showPanel) { el.comparePanel.innerHTML = ''; return; }
     const compareGames = getGames().filter((g) => state.compareIds.includes(g.id));
     const sidesHtml = compareGames.map((g) => {
-      const hasEdge = g.edge != null;
-      const edgeLabel = !hasEdge ? '—' : (g.edge > 0 ? '+' : '') + g.edge.toFixed(1) + '%';
-      const edgeColor = !hasEdge ? 'var(--textDim)' : (g.edge > 0 ? 'var(--positive)' : 'var(--danger)');
+      const ml = g.ml || {};
+      const pick = isML() ? (ml.pick || '—') : g.pick;
+      const edgeVal = activeEdge(g);
+      const tierVal = activeTier(g);
+      const hasEdge = edgeVal != null;
+      const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
+      const edgeColor = !hasEdge ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
+      const third = isML()
+        ? `<div><div class="stat-k">Win prob</div><div class="stat-v" style="color:var(--accent)">${ml.winProb != null ? ml.winProb + '%' : '—'}</div></div>`
+        : `<div><div class="stat-k">Tier</div><div class="stat-v tier">${esc(TIER_LABEL[tierVal] || '—')}</div></div>`;
       return `
         <div class="compare-side">
           <div class="name">${esc(g.matchup)}</div>
           <div class="sub">${esc(g.subline)}</div>
           <div class="stats-row">
-            <div><div class="stat-k">Pick</div><div class="stat-v">${esc(g.pick)}</div></div>
+            <div><div class="stat-k">Pick</div><div class="stat-v">${esc(pick)}</div></div>
             <div><div class="stat-k">Edge</div><div class="stat-v" style="color:${edgeColor}">${esc(edgeLabel)}</div></div>
-            <div><div class="stat-k">Tier</div><div class="stat-v tier">${esc(TIER_LABEL[g.tier] || '—')}</div></div>
+            ${third}
           </div>
         </div>
       `;
@@ -939,6 +1001,17 @@
     renderBoard();
   }
 
+  function setView(v) {
+    if (state.boardView === v) return;
+    state.boardView = v;
+    state.filter = 'all';       // tiers differ between views
+    state.expandedId = null;
+    state.compareIds = [];
+    renderControls();
+    renderBoard();
+    renderComparePanel();
+  }
+
   function toggleSort() {
     state.sortBy = state.sortBy === 'edge' ? 'time' : 'edge';
     renderControls();
@@ -1068,6 +1141,7 @@
     switch (action) {
       case 'toggle-theme': toggleTheme(); break;
       case 'set-filter': setFilter(target.dataset.filter); break;
+      case 'set-view': setView(target.dataset.view); break;
       case 'toggle-sort': toggleSort(); break;
       case 'toggle-compare-mode': toggleCompareMode(); break;
       case 'toggle-hitter-compare-mode': toggleHitterCompareMode(); break;

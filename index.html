@@ -100,6 +100,11 @@
       <a class="all" href="#">Full slate →</a>
     </div>
 
+    <div class="board-view">
+      <button class="viewtab" data-action="set-view" data-view="kprops">K Props</button>
+      <button class="viewtab" data-action="set-view" data-view="moneyline">Moneyline</button>
+    </div>
+
     <div class="board-search">
       <input type="text" id="searchInput" placeholder="Search team or pitcher…" autocomplete="off">
     </div>
@@ -118,7 +123,7 @@
 
     <div class="board" id="boardWrap">
       <div class="board-inner" id="boardInner">
-        <div class="board-head-row">
+        <div class="board-head-row" id="boardHead">
           <span></span>
           <span class="col-label">Matchup</span>
           <span class="col-label">Pick</span>
