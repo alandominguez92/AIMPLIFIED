@@ -219,6 +219,18 @@
       <div class="cell"><div class="k">Units (flat)</div><div class="v g" id="trkVal4">+11.3u</div></div>
     </div>
 
+    <div class="card" id="roiCard" hidden>
+      <h3>ROI &amp; Model Accuracy</h3>
+      <p class="calibration-sub">Return on 1u-flat stakes, where each unit is 1% of bankroll. Projection error is the average miss between projected and actual strikeouts.</p>
+      <div class="roi-stats" id="roiStats"></div>
+      <div class="roi-chart">
+        <div class="roi-chart-title">Cumulative units</div>
+        <svg id="roiChart" viewBox="0 0 320 96" preserveAspectRatio="none" role="img" aria-label="Cumulative units over time"></svg>
+        <div class="roi-chart-cap" id="roiChartCap"></div>
+      </div>
+      <div class="roi-tables" id="roiTables"></div>
+    </div>
+
     <div class="card">
       <h3>Model Calibration — Predicted vs. Actual</h3>
       <p class="calibration-sub">Each point is a bucket of past picks grouped by predicted probability. On the diagonal = well-calibrated.</p>
@@ -249,7 +261,7 @@
   //   ""            -> built-in mock data (default)
   //   "same-origin" -> Cloudflare Pages Functions at /api/* (recommended)
   //   full URL      -> a separately-hosted proxy Worker
-  window.AIMPLIFIED_API_BASE = "same-origin";
+  window.AIMPLIFIED_API_BASE = "";
 </script>
 <script src="app.js"></script>
 </body>

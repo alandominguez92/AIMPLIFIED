@@ -249,6 +249,20 @@ async function board(env, ctx) {
     } catch (e) { /* projections fall back to defaults */ }
   }
 
+  // Live weather per game — temperature drives a small strikeout adjustment.
+  // `fields`-filtered so each call returns only the weather subtree (light,
+  // cached with the board). Degrades to neutral if unavailable.
+  const wxByGame = {};
+  await Promise.all(games.map(async (g) => {
+    try {
+      const r = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${g.gamePk}/feed/live?fields=gameData,weather,condition,temp,wind`, { headers: { accept: 'application/json' } });
+      if (!r.ok) return;
+      const d = await r.json();
+      const w = d && d.gameData && d.gameData.weather;
+      if (w && (w.temp != null || w.condition)) wxByGame[g.gamePk] = { temp: toNum(w.temp), cond: w.condition || '', wind: w.wind || '' };
+    } catch (e) { /* neutral weather for this game */ }
+  }));
+
   // Team strikeout rate + league baseline (one call).
   const teamK = {}; let lgSO = 0, lgPA = 0;
   try {
@@ -306,6 +320,11 @@ async function board(env, ctx) {
 
   const rows = games.map((g) => {
     const away = g.teams.away, home = g.teams.home;
+    // Venue + weather adjustments (shared by both starters in this game).
+    const homeAbbr = teamAbbr(home.team);
+    const parkK = PARK_K_FACTOR[homeAbbr] || 1;
+    const wx = wxByGame[g.gamePk] || null;
+    const wxK = weatherK(wx);
     const projFor = (side) => {
       const pp = g.teams[side].probablePitcher;
       if (!pp || !pp.id) return null;
@@ -314,7 +333,8 @@ async function board(env, ctx) {
       const oppK = teamK[oppTeam.id] || lgK;
       const k9 = st.k9 > 0 ? st.k9 : 8.5;
       const expIP = clamp(st.gs > 0 ? st.ip / st.gs : 5.5, 4, 6.8);
-      const projK = (k9 * expIP / 9) * (lgK > 0 ? oppK / lgK : 1);
+      // Base rate model, then scale by park (strikeout factor) and weather (temp).
+      const projK = (k9 * expIP / 9) * (lgK > 0 ? oppK / lgK : 1) * parkK * wxK;
       const sd = Math.sqrt(Math.max(projK, 1) * DISPERSION);
 
       // Market: compare the projection to the real strikeout line.
@@ -358,6 +378,11 @@ async function board(env, ctx) {
         lo: round1(Math.max(0, projK - 1.28 * sd)),
         hi: round1(projK + 1.28 * sd),
         oppKpct: Math.round(oppK * 1000) / 10,
+        parkK: Math.round(parkK * 1000) / 1000,
+        park: homeAbbr,
+        temp: wx && wx.temp > 0 ? wx.temp : null,
+        wxCond: wx ? wx.cond : null,
+        wxK: Math.round(wxK * 1000) / 1000,
         modeled: k9 !== 8.5,
         market,
       };
@@ -583,6 +608,40 @@ function buildTrackRecord(rows) {
   }
   const plays = w + l;
 
+  // ROI, per-tier and per-side breakdowns, projection accuracy (MAE), and a
+  // cumulative-units series for the units-over-time chart.
+  const roi = plays ? round1(units / plays * 100) : null; // 1u staked per play
+  const byTier = { '1': { w: 0, l: 0, units: 0 }, '2': { w: 0, l: 0, units: 0 }, '3': { w: 0, l: 0, units: 0 } };
+  const bySide = { Over: { w: 0, l: 0, units: 0 }, Under: { w: 0, l: 0, units: 0 } };
+  const byDate = {};
+  for (const r of graded) {
+    if (r.tier === 'pass') continue;
+    const u = profitUnits(r.result, r.price);
+    const bt = byTier[String(r.tier)];
+    if (bt) { if (r.result === 'win') bt.w++; else bt.l++; bt.units += u; }
+    const bs = bySide[r.side];
+    if (bs) { if (r.result === 'win') bs.w++; else bs.l++; bs.units += u; }
+    byDate[r.date] = (byDate[r.date] || 0) + u;
+  }
+  const breakdown = (map, keyName, keys) => keys.map((k) => {
+    const b = map[k]; const n = b.w + b.l;
+    return { [keyName]: k, record: `${b.w}–${b.l}`, n, units: Math.round(b.units * 10) / 10, roi: n ? round1(b.units / n * 100) : null };
+  }).filter((x) => x.n > 0);
+  const tierBreakdown = breakdown(byTier, 'tier', ['1', '2', '3']);
+  const sideBreakdown = breakdown(bySide, 'side', ['Over', 'Under']);
+  let cum = 0;
+  const cumulative = Object.keys(byDate).sort().map((d) => { cum += byDate[d]; return { date: d, units: Math.round(cum * 10) / 10 }; });
+
+  // Projection accuracy: mean absolute error of projected vs actual Ks, over
+  // every graded pick (not just non-pass), since it measures the model itself.
+  let maeSum = 0, maeN = 0;
+  for (const r of rows) {
+    if (r.actual_k != null && r.proj != null && (r.result === 'win' || r.result === 'loss' || r.result === 'push')) {
+      maeSum += Math.abs(r.proj - r.actual_k); maeN++;
+    }
+  }
+  const mae = maeN ? round1(maeSum / maeN) : null;
+
   // Calibration: bucket graded picks by model P(over), compare to actual over-rate.
   const buckets = {};
   for (const r of graded) {
@@ -605,8 +664,36 @@ function buildTrackRecord(rows) {
     record: `${w}–${l}`,
     tier1: `${t1w}–${t1l}`,
     units: Math.round(units * 10) / 10,
+    roi,
+    mae,
+    cumulative,
+    tierBreakdown,
+    sideBreakdown,
     calibration,
   };
+}
+
+// Strikeout park factors (normalized ~1.00; >1 = more Ks). Approximate, stable
+// season-level values — thin-air Coors suppresses whiffs; pitcher parks lift
+// them. Keyed by home-team abbreviation.
+const PARK_K_FACTOR = {
+  SEA: 1.03, SD: 1.02, MIA: 1.02, ATH: 1.02, OAK: 1.02, TB: 1.01, DET: 1.01,
+  NYM: 1.01, LAD: 1.01, SF: 1.01, HOU: 1.00, CLE: 1.00, PIT: 1.00, WSH: 1.00,
+  MIN: 1.00, LAA: 1.00, CHC: 1.00, ATL: 1.00, MIL: 1.00, PHI: 0.99, NYY: 0.99,
+  STL: 0.99, TOR: 0.99, BAL: 0.99, ARI: 0.99, AZ: 0.99, CWS: 0.99, TEX: 0.99,
+  KC: 0.98, BOS: 0.98, CIN: 0.98, COL: 0.95,
+};
+
+// Weather -> strikeout multiplier. Cold, dense air breaks pitches a touch more
+// (~+0.5% Ks / 10°F below 70); domes/closed roofs are climate-controlled and
+// stay neutral. Capped at ±3% so it never dominates the projection.
+function weatherK(wx) {
+  if (!wx) return 1;
+  const c = String(wx.cond || '').toLowerCase();
+  if (c.includes('dome') || c.includes('roof closed')) return 1;
+  const t = wx.temp;
+  if (!(t > 0)) return 1;
+  return clamp(1 + (70 - t) * 0.0006, 0.97, 1.03);
 }
 
 // Standard normal CDF (Abramowitz & Stegun 7.1.26 erf approximation).

@@ -265,6 +265,28 @@ section { padding:44px 0; }
 .record .v.g { color:var(--positive); }
 .record .v.a { color:var(--accent); }
 
+/* ROI & Model Accuracy card */
+.roi-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin:4px 0 22px; }
+.roi-stat { background:var(--board); padding:16px 18px; }
+.roi-stat-k { font-size:11px; color:var(--textDim); text-transform:uppercase; letter-spacing:.09em; }
+.roi-stat-v { font-family:'IBM Plex Mono'; font-weight:600; font-size:22px; margin-top:5px; color:var(--text); }
+.roi-stat-v.g { color:var(--positive); }
+.roi-stat-v.r { color:var(--danger); }
+.roi-chart { margin-bottom:22px; }
+.roi-chart-title { font-family:'IBM Plex Mono'; font-size:11px; color:var(--textDim); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; }
+.roi-chart svg { width:100%; height:96px; display:block; }
+.roi-chart-cap { font-family:'IBM Plex Mono'; font-size:12px; color:var(--textDim); margin-top:6px; }
+.roi-tables { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+@media (max-width:640px){ .roi-tables { grid-template-columns:1fr; } .roi-stats { grid-template-columns:repeat(2,1fr); } }
+.roi-table { border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.roi-table-head, .roi-table-row { display:grid; grid-template-columns:1.3fr 1fr 1fr 1fr; gap:8px; padding:9px 14px; align-items:center; }
+.roi-table-head { font-family:'IBM Plex Mono'; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--textDim); background:var(--board); border-bottom:1px solid var(--border); }
+.roi-table-row { font-family:'IBM Plex Mono'; font-size:13px; color:var(--text); }
+.roi-table-row:nth-child(even) { background:var(--board); }
+.roi-table-row span:first-child { font-family:'Barlow Condensed'; font-weight:600; font-size:15px; text-transform:uppercase; letter-spacing:.02em; }
+.roi-table-row .g { color:var(--positive); }
+.roi-table-row .r { color:var(--danger); }
+
 .calibration { position:relative; width:100%; max-width:420px; aspect-ratio:1/1; margin:0 auto; }
 .calibration-axes { position:absolute; inset:0; border-left:1px solid var(--border); border-bottom:1px solid var(--border); }
 .calibration-diagonal { position:absolute; left:0; right:0; bottom:0; top:0; background:linear-gradient(to top right, transparent calc(50% - 1px), var(--border) 50%, transparent calc(50% + 1px)); }

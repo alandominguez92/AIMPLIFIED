@@ -208,6 +208,11 @@
     trkVal2: document.getElementById('trkVal2'),
     trkVal3: document.getElementById('trkVal3'),
     trkVal4: document.getElementById('trkVal4'),
+    roiCard: document.getElementById('roiCard'),
+    roiStats: document.getElementById('roiStats'),
+    roiChart: document.getElementById('roiChart'),
+    roiChartCap: document.getElementById('roiChartCap'),
+    roiTables: document.getElementById('roiTables'),
   };
 
   // ---------------------------------------------------------------------
@@ -499,6 +504,22 @@
     el.compareModeBtn.setAttribute('aria-pressed', state.compareMode);
   }
 
+  // Park + weather chips for a pitcher's projection detail. Only shows a factor
+  // when it actually moves the number (park ≠ 1.00) or a real temp is posted.
+  function parkWxHtml(p) {
+    const out = [];
+    if (typeof p.parkK === 'number' && p.parkK !== 1) {
+      const pct = Math.round((p.parkK - 1) * 100);
+      const col = pct > 0 ? 'var(--danger)' : 'var(--positive)';
+      out.push(`<span style="font-family:'IBM Plex Mono';font-size:12px;color:${col}" title="${esc(p.park || '')} park strikeout factor">${p.park || 'park'} ${pct > 0 ? '+' : ''}${pct}% K</span>`);
+    }
+    if (typeof p.temp === 'number' && p.temp > 0) {
+      const wxAdj = typeof p.wxK === 'number' && p.wxK !== 1 ? ` (${p.wxK > 1 ? '+' : ''}${Math.round((p.wxK - 1) * 100)}% K)` : '';
+      out.push(`<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)" title="game-time weather">${p.temp}°F${p.wxCond ? ' ' + esc(p.wxCond) : ''}${wxAdj}</span>`);
+    }
+    return out.join('');
+  }
+
   function renderBoardHead() {
     const cols = isML()
       ? ['', 'Matchup', 'Team to win', 'Moneyline', 'Edge', 'Win Prob', 'Tier', '']
@@ -605,10 +626,11 @@
               <span style="font-family:'IBM Plex Mono';font-size:14px;color:var(--accent);font-weight:600">${p.proj} K</span>
               <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--textDim)">80% ${p.lo} – ${p.hi}</span>
               <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">opp K ${p.oppKpct}%</span>
+              ${parkWxHtml(p)}
               ${marketHtml}
             </div>`;
           }).join('');
-          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Projected strikeouts — model vs. market</div>${rowsHtml}<div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: K/9 × expected innings × opponent K-rate. Edge = model P(over) vs. the vig-free line.</div></div>`;
+          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Projected strikeouts — model vs. market</div>${rowsHtml}<div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: K/9 × expected innings × opponent K-rate × park × weather. Edge = model P(over) vs. the vig-free line.</div></div>`;
         } else {
           detailHtml = `<div class="expanded-detail"><div class="expanded-title">Model projection pending</div><div style="color:var(--textDim);font-size:13px">Live game from tonight's slate — probable pitcher not posted yet.</div></div>`;
         }
@@ -850,6 +872,67 @@
     }
   }
 
+  // ROI, cumulative-units chart, per-tier / per-side breakdowns, projection MAE.
+  // Hidden until real graded picks exist; degrades field-by-field if any are absent.
+  function renderRoi() {
+    const tr = state.trackRecord;
+    if (!el.roiCard) return;
+    if (!tr || tr.empty || !tr.tracked) { el.roiCard.hidden = true; return; }
+    el.roiCard.hidden = false;
+
+    const sign = (n, suf) => (n > 0 ? '+' : '') + n + (suf || '');
+    const roiTxt = tr.roi == null ? '—' : sign(tr.roi, '%');
+    const uTxt = tr.units == null ? '—' : sign(tr.units, 'u');
+    const stats = [
+      { k: 'ROI', v: roiTxt, tone: tr.roi == null ? '' : (tr.roi >= 0 ? 'g' : 'r') },
+      { k: 'Units (flat)', v: uTxt, tone: tr.units == null ? '' : (tr.units >= 0 ? 'g' : 'r') },
+      { k: 'Proj. error (MAE)', v: tr.mae == null ? '—' : '±' + tr.mae + ' K', tone: '' },
+      { k: 'Graded plays', v: String(tr.tracked), tone: '' },
+    ];
+    el.roiStats.innerHTML = stats.map((s) => `
+      <div class="roi-stat"><div class="roi-stat-k">${s.k}</div><div class="roi-stat-v ${s.tone}">${esc(s.v)}</div></div>`).join('');
+
+    renderRoiChart(tr.cumulative || []);
+
+    const tierRows = (tr.tierBreakdown || []).map((t) => ({ label: 'Tier ' + t.tier, r: t.record, u: t.units, roi: t.roi }));
+    const sideRows = (tr.sideBreakdown || []).map((s) => ({ label: s.side, r: s.record, u: s.units, roi: s.roi }));
+    const tbl = (title, rows) => rows.length ? `
+      <div class="roi-table">
+        <div class="roi-table-head"><span>${title}</span><span>W–L</span><span>Units</span><span>ROI</span></div>
+        ${rows.map((x) => `<div class="roi-table-row">
+          <span>${esc(x.label)}</span>
+          <span>${esc(x.r)}</span>
+          <span class="${x.u >= 0 ? 'g' : 'r'}">${(x.u > 0 ? '+' : '') + x.u}u</span>
+          <span class="${x.roi == null ? '' : (x.roi >= 0 ? 'g' : 'r')}">${x.roi == null ? '—' : (x.roi > 0 ? '+' : '') + x.roi + '%'}</span>
+        </div>`).join('')}
+      </div>` : '';
+    el.roiTables.innerHTML = tbl('By tier', tierRows) + tbl('By side', sideRows);
+  }
+
+  function renderRoiChart(series) {
+    const W = 320, H = 96, padX = 8, padY = 10;
+    if (!series.length) { el.roiChart.innerHTML = ''; el.roiChartCap.textContent = ''; return; }
+    const vals = series.map((p) => p.units).concat(0);
+    let min = Math.min(...vals), max = Math.max(...vals);
+    if (min === max) { min -= 1; max += 1; }
+    const n = series.length;
+    const xFor = (i) => padX + (n === 1 ? (W - 2 * padX) / 2 : i / (n - 1) * (W - 2 * padX));
+    const yFor = (u) => H - padY - (u - min) / (max - min) * (H - 2 * padY);
+    const last = series[n - 1].units;
+    const stroke = last >= 0 ? 'var(--positive)' : 'var(--danger)';
+    const zeroY = yFor(0);
+    const pts = series.map((p, i) => `${xFor(i).toFixed(1)},${yFor(p.units).toFixed(1)}`).join(' ');
+    const area = `${padX},${zeroY.toFixed(1)} ${pts} ${xFor(n - 1).toFixed(1)},${zeroY.toFixed(1)}`;
+    el.roiChart.innerHTML = `
+      <line x1="${padX}" y1="${zeroY.toFixed(1)}" x2="${W - padX}" y2="${zeroY.toFixed(1)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 3"/>
+      <polygon points="${area}" fill="${stroke}" opacity="0.12"/>
+      ${n === 1
+        ? `<circle cx="${xFor(0).toFixed(1)}" cy="${yFor(last).toFixed(1)}" r="3.5" fill="${stroke}"/>`
+        : `<polyline points="${pts}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+           <circle cx="${xFor(n - 1).toFixed(1)}" cy="${yFor(last).toFixed(1)}" r="3" fill="${stroke}"/>`}`;
+    el.roiChartCap.textContent = `${n} day${n > 1 ? 's' : ''} · ${last > 0 ? '+' : ''}${last}u to date`;
+  }
+
   // Real, self-building track record from graded picks (via /api/track-record).
   async function refreshTrackRecord() {
     if (!LIVE_MODE) return;
@@ -859,6 +942,7 @@
         state.trackRecord = tr;
         renderRecord();
         renderCalibration();
+        renderRoi();
       }
     } catch (e) {
       console.warn('Track record refresh failed:', e.message);
