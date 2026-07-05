@@ -127,7 +127,14 @@
   //   "same-origin" (or "/") => Cloudflare Pages Functions at /api/* on this
   //                             origin (recommended — no CORS).
   //   full URL                => a separately-hosted proxy Worker.
-  const rawBase = (window.AIMPLIFIED_API_BASE || '').trim();
+  // Auto-detect: when the page is served over http(s) from a real host (i.e.
+  // the deployed Worker), default to same-origin /api/* so live data works with
+  // no config edit. Only file:// or localhost stays in built-in mock mode,
+  // unless AIMPLIFIED_API_BASE is set explicitly.
+  const rawBaseRaw = (window.AIMPLIFIED_API_BASE || '').trim();
+  const isServed = /^https?:$/.test(location.protocol)
+    && !/^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/.test(location.hostname);
+  const rawBase = rawBaseRaw.length > 0 ? rawBaseRaw : (isServed ? 'same-origin' : '');
   const LIVE_MODE = rawBase.length > 0;
   const API_BASE = (rawBase === 'same-origin' || rawBase === '/')
     ? ''
