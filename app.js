@@ -889,16 +889,16 @@
     const meta = [p.team, handLabel, p.era ? p.era + ' ERA' : ''].filter(Boolean).join(' · ');
     const bars = [];
     if (typeof p.k9 === 'number' && p.k9 > 0) {
-      const t = p.k9 >= 11 ? 'hot' : p.k9 >= 8.5 ? 'warm' : 'cool';
+      const t = p.k9 >= 10 ? 'hot' : p.k9 >= 8 ? 'warm' : 'cool';   // elite / good / low
       bars.push(heroBar('K/9', p.k9.toFixed(1), (p.k9 - 5) / 8 * 100, t));
     }
     if (typeof p.oppKpct === 'number' && p.oppKpct > 0) {
-      const t = p.oppKpct >= 24 ? 'hot' : p.oppKpct >= 21 ? 'warm' : 'cool';
+      const t = p.oppKpct >= 23 ? 'hot' : p.oppKpct >= 20 ? 'warm' : 'cool'; // whiffy / avg / contact
       bars.push(heroBar('Opp K%', p.oppKpct, (p.oppKpct - 16) / 12 * 100, t));
     }
     if (p.market && p.market.modelOver != null) {
       const mo = p.market.modelOver;
-      const t = mo >= 60 ? 'hot' : mo >= 45 ? 'warm' : 'cool';
+      const t = mo >= 55 ? 'hot' : mo >= 45 ? 'warm' : 'cool';   // over lean / neutral / under lean
       bars.push(heroBar('Model O%', mo, mo, t));
     }
     const lineTxt = p.market ? ` · Line: O/U ${p.market.line}` : '';
