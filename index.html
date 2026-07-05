@@ -103,6 +103,7 @@
     <div class="board-view">
       <button class="viewtab" data-action="set-view" data-view="kprops">K Props</button>
       <button class="viewtab" data-action="set-view" data-view="moneyline">Moneyline</button>
+      <button class="viewtab" data-action="set-view" data-view="batter">Batter Props</button>
     </div>
 
     <p class="pin-note" id="pinNote" hidden>Prices pinned to <b>DraftKings</b> + <b>FanDuel</b> · best of the two highlighted <span class="pin-chk">✓</span></p>
@@ -141,6 +142,16 @@
     </div>
 
     <div id="comparePanel"></div>
+  </section>
+
+  <!-- MY SLIP -->
+  <section id="slipSection">
+    <div class="sec-head">
+      <h2>My Slip</h2>
+      <span class="slip-count" id="slipCount">0 legs</span>
+      <button class="slip-clear" data-action="clear-slip" id="slipClearBtn" hidden>Clear</button>
+    </div>
+    <div class="slip" id="slip"></div>
   </section>
 
   <!-- HOTTEST HITTERS -->

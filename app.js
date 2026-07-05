@@ -104,9 +104,12 @@
     liveHitters: null,
     livePitchers: null,
     liveBoard: null,
+    liveBatters: null,
     trackRecord: null,
     liveInjuries: null,
-    boardView: 'kprops', // 'kprops' | 'moneyline'
+    boardView: 'kprops', // 'kprops' | 'moneyline' | 'batter'
+    slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
+    stake: 1,   // units per bet
     quotaRemaining: null,
   };
 
@@ -114,14 +117,22 @@
   const getHitters = () => (state.liveHitters && state.liveHitters.length ? state.liveHitters : HOT_HITTERS);
   const getPitchers = () => (state.livePitchers && state.livePitchers.length ? state.livePitchers : HOT_PITCHERS);
   const boardIsLive = () => !!(state.liveBoard && state.liveBoard.length);
-  const getGames = () => (boardIsLive() ? state.liveBoard : RAW_GAMES);
   const isML = () => state.boardView === 'moneyline';
-  // A game's tier/edge for the active view (K props vs moneyline).
+  const isBatter = () => state.boardView === 'batter';
+  const battersLive = () => !!(state.liveBatters && state.liveBatters.length);
+  // The rows for the active view: batter props come from their own feed.
+  const getGames = () => {
+    if (isBatter()) return state.liveBatters || [];
+    return boardIsLive() ? state.liveBoard : RAW_GAMES;
+  };
+  // A row's tier/edge for the active view. Batter + K-props both read g.tier/edge;
+  // moneyline reads the nested ml object.
   const activeTier = (g) => isML() ? (g.ml ? g.ml.tier : 'model') : g.tier;
   const activeEdge = (g) => isML() ? (g.ml ? g.ml.edge : null) : g.edge;
-  // "Modeled" = the board carries real market tiers, so tier filters + edge
-  // sort are meaningful. (Moneyline is always live-modeled when the board is.)
-  const boardModeled = () => boardIsLive() && state.liveBoard.some((g) => typeof activeTier(g) === 'number');
+  // "Modeled" = the active board carries real market tiers, so tier filters +
+  // edge sort are meaningful.
+  const boardHasLive = () => isBatter() ? battersLive() : boardIsLive();
+  const boardModeled = () => boardHasLive() && getGames().some((g) => typeof activeTier(g) === 'number');
 
   // How to reach the Odds API proxy. Empty => mock-only mode.
   //   "same-origin" (or "/") => Cloudflare Pages Functions at /api/* on this
@@ -163,8 +174,12 @@
   };
 
   try {
-    const savedTracked = JSON.parse(localStorage.getItem('aimplified_tracked') || '{}');
-    state.tracked = savedTracked;
+    const savedSlip = JSON.parse(localStorage.getItem('aimplified_slip') || '{}');
+    if (savedSlip && typeof savedSlip === 'object') state.slip = savedSlip;
+  } catch (e) {}
+  try {
+    const s = parseFloat(localStorage.getItem('aimplified_stake'));
+    if (s > 0) state.stake = s;
   } catch (e) {}
   try {
     const savedTheme = localStorage.getItem('aimplified_theme');
@@ -216,6 +231,9 @@
     trkVal3: document.getElementById('trkVal3'),
     trkVal4: document.getElementById('trkVal4'),
     pinNote: document.getElementById('pinNote'),
+    slip: document.getElementById('slip'),
+    slipCount: document.getElementById('slipCount'),
+    slipClearBtn: document.getElementById('slipClearBtn'),
     roiCard: document.getElementById('roiCard'),
     roiStats: document.getElementById('roiStats'),
     roiChart: document.getElementById('roiChart'),
@@ -388,6 +406,32 @@
     }
   }
 
+  // Real batter props (HR / total bases / H+R+RBI) from /api/batters. Rows are
+  // reshaped to the board layout: the player is the "matchup" headline, the game
+  // + time is the subline.
+  async function refreshBatters() {
+    if (!LIVE_MODE) return;
+    try {
+      const rows = await fetchJson('/api/batters');
+      if (!Array.isArray(rows)) return;
+      const mapped = rows.map((b) => ({
+        ...b,
+        matchup: b.name,
+        subline: `${b.matchup}${b.timeLabel ? ' · ' + b.timeLabel : ''}`,
+        time: b.timeMs || 0,
+      }));
+      state.liveBatters = mapped;
+      if (isBatter()) {
+        const ids = new Set(mapped.map((g) => g.id));
+        if (state.expandedId && !ids.has(state.expandedId)) state.expandedId = null;
+        renderControls();
+        renderBoard();
+      }
+    } catch (e) {
+      console.warn('Batters refresh failed:', e.message);
+    }
+  }
+
   // Real season hitting leaders from MLB StatsAPI (via /api/hitters).
   async function refreshHitters() {
     if (!LIVE_MODE) return;
@@ -470,12 +514,13 @@
   }
 
   function renderControls() {
-    const live = boardIsLive();
+    const live = boardHasLive();
     const modeled = boardModeled();
+    const noun = isBatter() ? 'batters' : 'games';
     el.gameCount.textContent = !live
       ? `${RAW_GAMES.length} games · odds refresh :30`
-      : (modeled ? `${getGames().length} games · model vs. live lines` : `${getGames().length} games · tonight's slate · live`);
-    const trackedCount = Object.values(state.tracked).filter(Boolean).length;
+      : (modeled ? `${getGames().length} ${noun} · model vs. live lines` : `${getGames().length} ${noun} · tonight's slate · live`);
+    const trackedCount = Object.keys(state.slip).length;
     el.trackedPill.textContent = `${trackedCount} tracked`;
     el.sortLabel.textContent = state.sortBy === 'edge' ? 'Edge' : 'Time';
 
@@ -558,11 +603,12 @@
     renderBoardHead();
     const games = getFilteredSortedGames();
     el.noResults.hidden = games.length !== 0;
+    if (!games.length) el.noResults.textContent = isBatter() && !battersLive() ? "Loading tonight's batter props…" : 'No games match this filter.';
     if (el.pinNote) el.pinNote.hidden = !getGames().some((g) => Array.isArray(g.oddsBooks) && g.oddsBooks.length);
 
     el.boardRows.innerHTML = games.map((g) => {
       const ml = g.ml || {};
-      const isTracked = !!state.tracked[g.id];
+      const isTracked = !!state.slip[legIdFor(g)];
       const isSelected = state.compareIds.includes(g.id);
       const isExpanded = state.expandedId === g.id;
 
@@ -605,7 +651,7 @@
           <div>
             <b>${esc(g.matchup)}</b>
             <span class="matchup-sub">${esc(g.subline)}</span>
-            <span class="weather-label" style="color:var(--${g.weatherTone})">${esc(g.weather)}</span>
+            ${g.weather ? `<span class="weather-label" style="color:var(--${g.weatherTone || 'textDim'})">${esc(g.weather)}</span>` : ''}
           </div>
           <span>${pickCell}</span>
           ${oddsCell}
@@ -617,7 +663,31 @@
       `;
 
       let detailHtml = '';
-      if (isExpanded && isML()) {
+      if (isExpanded && isBatter()) {
+        const bm = (g.batterMarkets || []).map((m) => {
+          if (m.none) return `<div class="bm-row"><span class="bm-label">${esc(m.label)}</span><span class="bm-none">no line · proj ${esc(String(m.proj))}</span></div>`;
+          const booksStr = Array.isArray(m.books) && m.books.length
+            ? m.books.map((b) => `${b.book} ${b.off && b.line != null ? b.line + ' ' : ''}${b.price > 0 ? '+' + b.price : b.price}${b.best ? ' ✓' : ''}`).join(' · ')
+            : '';
+          return `<div class="bm-row">
+            <span class="bm-label">${esc(m.label)}</span>
+            <span class="bm-proj">proj ${esc(String(m.proj))} · model ${m.modelOver}% over</span>
+            <span class="bm-pick" style="color:${m.edge >= 1.5 ? 'var(--positive)' : 'var(--textDim)'}">${m.side} ${m.line} · +${m.edge}%</span>
+            <span class="bm-books">${esc(booksStr)}</span>
+          </div>`;
+        }).join('');
+        const statsHtml = (g.stats || []).map((s) => `
+          <div class="stat-row">
+            <span class="stat-label">${esc(s.label)}</span>
+            <div class="track"><div class="fill" style="width:${s.value}%;background:${TONE_COLOR[s.tone]}"></div></div>
+            <span class="badge" style="background:${TONE_COLOR[s.tone]}">${s.value}</span>
+          </div>`).join('');
+        detailHtml = `<div class="expanded-detail">
+          <div class="expanded-title">Batter props — model vs. market</div>${bm}
+          <div class="expanded-title" style="margin-top:16px">Season percentiles (vs. priced pool)</div>${statsHtml}
+          <div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: season rate × expected plate appearances, priced Poisson. Edges are directional — calibrating against results.</div>
+        </div>`;
+      } else if (isExpanded && isML()) {
         if (g.ml) {
           const priceStr = g.ml.price == null ? '—' : money(g.ml.price);
           const edgeStr = g.ml.edge == null ? '—' : `+${g.ml.edge}% edge`;
@@ -904,6 +974,84 @@
     }
   }
 
+  // ---------------------------------------------------------------------
+  // MY SLIP — cross-board bet slip, persisted, with true parlay math.
+  // ---------------------------------------------------------------------
+  const toDecimal = (a) => (typeof a !== 'number' ? null : (a > 0 ? 1 + a / 100 : 1 + 100 / -a));
+  const decToAmerican = (d) => (d >= 2 ? Math.round((d - 1) * 100) : -Math.round(100 / (d - 1)));
+  const fmtAm = (a) => (a == null ? '—' : (a > 0 ? '+' + a : String(a)));
+  const u1 = (n) => (Math.round(n * 100) / 100);
+
+  function renderSlip() {
+    if (!el.slip) return;
+    const legs = Object.values(state.slip);
+    const n = legs.length;
+    if (el.slipCount) el.slipCount.textContent = `${n} leg${n === 1 ? '' : 's'}`;
+    if (el.slipClearBtn) el.slipClearBtn.hidden = n === 0;
+
+    if (!n) {
+      el.slip.innerHTML = `<div class="slip-empty">Tap the ★ on any pick above to build your slip. Picks persist across visits and every board.</div>`;
+      return;
+    }
+
+    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter' };
+    const legHtml = legs.map((leg) => `
+      <div class="slip-leg">
+        <span class="slip-tag ${boardTag[leg.board] || ''}">${esc(leg.board)}</span>
+        <span class="slip-leg-main">
+          <span class="slip-leg-title">${esc(leg.title)}</span>
+          <span class="slip-leg-sub">${esc(leg.sub || '')}</span>
+        </span>
+        <span class="slip-leg-odds mono">${esc(fmtAm(leg.odds))}</span>
+        <button class="slip-remove" data-action="remove-leg" data-leg="${esc(leg.id)}" title="Remove" aria-label="Remove leg">✕</button>
+      </div>`).join('');
+
+    // Parlay math over legs that carry a real price.
+    const priced = legs.filter((l) => typeof l.odds === 'number');
+    const stake = state.stake > 0 ? state.stake : 0;
+    let summaryHtml;
+    if (!priced.length) {
+      summaryHtml = `<div class="slip-note">None of these legs has a posted price yet — add priced picks to see parlay and straight-bet returns.</div>`;
+    } else {
+      const parlayDec = priced.reduce((d, l) => d * toDecimal(l.odds), 1);
+      const parlayAm = decToAmerican(parlayDec);
+      const parlayProfit = u1(stake * (parlayDec - 1));
+      const parlayReturn = u1(stake * parlayDec);
+      const straightProfit = u1(priced.reduce((s, l) => s + stake * (toDecimal(l.odds) - 1), 0));
+      const missing = legs.length - priced.length;
+
+      summaryHtml = `
+        <div class="slip-stake">
+          <label for="stakeInput">Unit stake</label>
+          <input type="number" id="stakeInput" min="0" step="0.5" value="${stake}" inputmode="decimal">
+          <span class="slip-stake-note">1u = 1% of bankroll</span>
+        </div>
+        <div class="slip-summary">
+          <div class="slip-metric">
+            <div class="slip-metric-k">${priced.length}-leg parlay</div>
+            <div class="slip-metric-v accent">${fmtAm(parlayAm)}</div>
+            <div class="slip-metric-sub">${parlayDec.toFixed(2)}× decimal</div>
+          </div>
+          <div class="slip-metric">
+            <div class="slip-metric-k">Parlay returns ${stake}u</div>
+            <div class="slip-metric-v g">+${parlayProfit}u</div>
+            <div class="slip-metric-sub">${parlayReturn}u back incl. stake</div>
+          </div>
+          <div class="slip-metric">
+            <div class="slip-metric-k">If bet straight (${stake}u each)</div>
+            <div class="slip-metric-v">${straightProfit >= 0 ? '+' : ''}${straightProfit}u</div>
+            <div class="slip-metric-sub">total if all ${priced.length} win</div>
+          </div>
+        </div>
+        ${missing ? `<div class="slip-note">${missing} leg${missing === 1 ? '' : 's'} without a posted price ${missing === 1 ? 'is' : 'are'} excluded from the parlay.</div>` : ''}`;
+    }
+
+    el.slip.innerHTML = `<div class="slip-legs">${legHtml}</div>${summaryHtml}`;
+
+    const stakeInput = document.getElementById('stakeInput');
+    if (stakeInput) stakeInput.addEventListener('change', (e) => setStake(e.target.value));
+  }
+
   // ROI, cumulative-units chart, per-tier / per-side breakdowns, projection MAE.
   // Hidden until real graded picks exist; degrades field-by-field if any are absent.
   function renderRoi() {
@@ -1092,6 +1240,7 @@
     renderControls();
     renderBoard();
     renderComparePanel();
+    renderSlip();
     renderHittersGrid();
     renderHitterComparePanel();
     renderSplits();
@@ -1123,6 +1272,7 @@
     state.filter = 'all';       // tiers differ between views
     state.expandedId = null;
     state.compareIds = [];
+    if (v === 'batter' && !battersLive()) refreshBatters(); // lazy first load
     renderControls();
     renderBoard();
     renderComparePanel();
@@ -1139,11 +1289,61 @@
     renderBoard();
   }
 
-  function toggleTrack(id) {
-    state.tracked = { ...state.tracked, [id]: !state.tracked[id] };
-    try { localStorage.setItem('aimplified_tracked', JSON.stringify(state.tracked)); } catch (e) {}
+  // The slip is keyed per view, so the same game can carry a K-props leg, a
+  // moneyline leg, and batter legs independently.
+  function legIdFor(g) {
+    if (isBatter()) return 'batter:' + g.id;
+    return (isML() ? 'ml:' : 'kprops:') + g.id;
+  }
+  function buildLeg(g) {
+    if (isML()) {
+      const ml = g.ml || {};
+      return { id: legIdFor(g), board: 'ML', title: ml.pick || '—', sub: g.matchup, odds: typeof ml.price === 'number' ? ml.price : null, tier: ml.tier };
+    }
+    if (isBatter()) {
+      // g.matchup is the batter name; g.subline is "EVENT · TIME".
+      return { id: legIdFor(g), board: 'Batter', title: `${g.matchup} ${g.pick}`, sub: (g.subline || '').split(' · ')[0], odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier };
+    }
+    return { id: legIdFor(g), board: 'K Prop', title: g.pick, sub: g.matchup, odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier };
+  }
+  function persistSlip() {
+    try { localStorage.setItem('aimplified_slip', JSON.stringify(state.slip)); } catch (e) {}
+  }
+  function toggleSlip(id) {
+    const g = getGames().find((x) => x.id === id);
+    if (!g) return;
+    const leg = buildLeg(g);
+    const next = { ...state.slip };
+    if (next[leg.id]) delete next[leg.id];
+    else next[leg.id] = leg;
+    state.slip = next;
+    persistSlip();
     renderControls();
     renderBoard();
+    renderSlip();
+  }
+  function removeLeg(legId) {
+    if (!state.slip[legId]) return;
+    const next = { ...state.slip };
+    delete next[legId];
+    state.slip = next;
+    persistSlip();
+    renderControls();
+    renderBoard();
+    renderSlip();
+  }
+  function clearSlip() {
+    state.slip = {};
+    persistSlip();
+    renderControls();
+    renderBoard();
+    renderSlip();
+  }
+  function setStake(v) {
+    const n = parseFloat(v);
+    state.stake = n > 0 ? n : 0;
+    try { localStorage.setItem('aimplified_stake', String(state.stake)); } catch (e) {}
+    renderSlip();
   }
 
   function toggleCompareMode() {
@@ -1237,7 +1437,7 @@
 
   function onLeadingClick(id) {
     if (state.compareMode) toggleCompareSelect(id);
-    else toggleTrack(id);
+    else toggleSlip(id);
   }
 
   function onHitterCardClick(idx) {
@@ -1271,6 +1471,8 @@
         onLeadingClick(target.dataset.id);
         break;
       case 'row-click': onRowClick(target.dataset.id); break;
+      case 'remove-leg': if (e) e.stopPropagation(); removeLeg(target.dataset.leg); break;
+      case 'clear-slip': clearSlip(); break;
       case 'hitter-card-click': onHitterCardClick(Number(target.dataset.idx)); break;
       case 'pitcher-card-click': onPitcherCardClick(Number(target.dataset.idx)); break;
     }
@@ -1313,6 +1515,9 @@
     // Board carries the model + real prop lines (credits) — poll every 5 min.
     refreshBoard();
     setInterval(refreshBoard, 300000);
+    // Batter props are a second per-event props call — only poll while that tab
+    // is open, to protect the Odds API quota.
+    setInterval(() => { if (isBatter()) refreshBatters(); }, 300000);
     // Track record grades finished games on read — refresh every 10 min.
     refreshTrackRecord();
     setInterval(refreshTrackRecord, 600000);

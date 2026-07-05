@@ -24,12 +24,13 @@ export default {
   async fetch(request, env, ctx) {
     const p = new URL(request.url).pathname;
 
-    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters' || p === '/api/pitchers' || p === '/api/board' || p === '/api/track-record' || p === '/api/injuries') {
+    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters' || p === '/api/pitchers' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/injuries') {
       if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
 
       if (p === '/api/hitters') return hitters();
       if (p === '/api/pitchers') return pitchers();
       if (p === '/api/board') return board(env, ctx);
+      if (p === '/api/batters') return batters(env);
       if (p === '/api/track-record') return trackRecord(env);
       if (p === '/api/injuries') return injuries();
 
@@ -478,6 +479,158 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair) {
 }
 
 // -------------------------------------------------------------------------
+// /api/batters — tonight's real batter props (HR, total bases, H+R+RBI) from
+// the paid Odds API, priced against a per-game rate model. Percentile bars
+// (power / slugging / contact / discipline) are computed from real season
+// stats across the priced pool. Empty [] on any trouble so the tab degrades.
+// -------------------------------------------------------------------------
+const BATTER_MARKETS = [
+  { key: 'batter_home_runs', label: 'HR', metric: 'hr' },
+  { key: 'batter_total_bases', label: 'TB', metric: 'tb' },
+  { key: 'batter_hits_runs_rbis', label: 'H+R+RBI', metric: 'hrr' },
+];
+
+async function batters(env) {
+  const season = new Date().getUTCFullYear();
+  const key = env && env.ODDS_API_KEY;
+  if (!key) return cors(json([], 300));
+
+  // 1) Which events are on, and their batter prop lines (DK/FD), per player.
+  let events;
+  try {
+    const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+    if (!evR.ok) return cors(json([], 300));
+    events = await evR.json();
+  } catch (e) { return cors(json([], 300)); }
+  if (!Array.isArray(events) || !events.length) return cors(json([], 300));
+
+  const marketKeys = BATTER_MARKETS.map((m) => m.key).join(',');
+  const byName = {}; // normName -> { name, matchup, timeMs, timeLabel, props:{metric:{DK,FD}} }
+  await Promise.all(events.map(async (ev) => {
+    try {
+      const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      if (!r.ok) return;
+      const d = await r.json();
+      const matchup = `${TEAM_ABBR_BY_NAME[ev.away_team] || abbrFromName(ev.away_team)} @ ${TEAM_ABBR_BY_NAME[ev.home_team] || abbrFromName(ev.home_team)}`;
+      for (const bm of (d.bookmakers || [])) {
+        const label = BOOKS[bm.key];
+        if (!label) continue;
+        for (const spec of BATTER_MARKETS) {
+          const mk = (bm.markets || []).find((m) => m.key === spec.key);
+          if (!mk) continue;
+          for (const oc of (mk.outcomes || [])) {
+            const nm = normName(oc.description);
+            if (!nm) continue;
+            const rec = byName[nm] || (byName[nm] = { name: oc.description, matchup, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), props: {} });
+            const mp = rec.props[spec.metric] || (rec.props[spec.metric] = {});
+            const b = mp[label] || (mp[label] = {});
+            if (oc.point != null) b.point = oc.point;
+            if (oc.name === 'Over') b.over = oc.price;
+            else if (oc.name === 'Under') b.under = oc.price;
+          }
+        }
+      }
+    } catch (e) { /* skip this event */ }
+  }));
+  if (!Object.keys(byName).length) return cors(json([], 300));
+
+  // 2) Season hitting stats for every batter, keyed by name for matching.
+  const statByName = {};
+  try {
+    const r = await fetch(`${STATS}/stats?stats=season&group=hitting&gameType=R&season=${season}&sportId=1&playerPool=All&limit=2000`, { headers: { accept: 'application/json' } });
+    if (r.ok) {
+      const d = await r.json();
+      ((d.stats || [])[0] || {}).splits?.forEach((s) => {
+        const nm = normName((s.player || {}).fullName);
+        if (nm) statByName[nm] = { st: s.stat || {}, id: (s.player || {}).id, team: teamAbbr(s.team) };
+      });
+    }
+  } catch (e) { /* projections fall back to rate-only where possible */ }
+
+  // 3) Build priced rows; collect pool arrays for percentile bars.
+  const pool = { iso: [], slg: [], contact: [], disc: [] };
+  const draft = [];
+  for (const nm of Object.keys(byName)) {
+    const rec = byName[nm];
+    const match = statByName[nm];
+    if (!match) continue;              // no stats -> can't project; skip
+    const st = match.st;
+    const gp = toNum(st.gamesPlayed), pa = toNum(st.plateAppearances);
+    if (gp < 10 || pa < 30) continue;  // too small a sample to model
+    const expPA = pa / gp;
+    const hr = toNum(st.homeRuns), tb = toNum(st.totalBases);
+    const hits = toNum(st.hits), runs = toNum(st.runs), rbi = toNum(st.rbi);
+    const iso = Math.max(0, toNum(st.slg) - toNum(st.avg));
+    const kpct = pa > 0 ? toNum(st.strikeOuts) / pa : 0;
+    const bbpct = pa > 0 ? toNum(st.baseOnBalls) / pa : 0;
+    pool.iso.push(iso); pool.slg.push(toNum(st.slg)); pool.contact.push(1 - kpct); pool.disc.push(bbpct);
+
+    const lambda = {
+      hr: (hr / pa) * expPA,
+      tb: (tb / pa) * expPA,
+      hrr: (hits + runs + rbi) / gp,
+    };
+    const markets = {};
+    for (const spec of BATTER_MARKETS) {
+      markets[spec.metric] = priceBatterProp(rec.props[spec.metric], lambda[spec.metric]);
+    }
+    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets });
+  }
+  if (!draft.length) return cors(json([], 300));
+
+  const pr = (arr, v) => arr.length ? Math.round(arr.filter((x) => x <= v).length / arr.length * 100) : 0;
+  const tone = (v) => v >= 66 ? 'cool' : v >= 33 ? 'warm' : 'hot';
+
+  const rows = draft.map((b) => {
+    const priced = BATTER_MARKETS
+      .map((spec) => ({ spec, m: b.markets[spec.metric] }))
+      .filter((x) => x.m && x.m.price != null);
+    // Headline = the market with the biggest edge.
+    const lead = priced.reduce((best, x) => (!best || x.m.edge > best.m.edge ? x : best), null);
+    const expFor = (metric) => round2(b.lambda[metric]);
+    const power = pr(pool.iso, b.iso), slug = pr(pool.slg, b.slg);
+    const contact = pr(pool.contact, 1 - b.kpct), disc = pr(pool.disc, b.bbpct);
+
+    return {
+      id: 'b' + (b.match.id || b.nm.replace(/\s/g, '')),
+      name: shortName(b.rec.name),
+      team: b.match.team,
+      matchup: b.rec.matchup,
+      timeMs: b.rec.timeMs,
+      timeLabel: b.rec.timeLabel,
+      status: 'Preview',
+      pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : '—',
+      odds: lead ? lead.m.price : null,
+      oddsBooks: lead ? lead.m.books : null,
+      edge: lead ? lead.m.edge : null,
+      tier: lead ? lead.m.tier : 'pass',
+      interval: lead ? `proj ${expFor(lead.spec.metric)} ${lead.spec.label}` : '—',
+      // Per-market detail for the expanded row.
+      batterMarkets: BATTER_MARKETS.map((spec) => {
+        const m = b.markets[spec.metric];
+        return m ? { label: spec.label, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, proj: expFor(spec.metric), books: m.books } : { label: spec.label, none: true, proj: expFor(spec.metric) };
+      }),
+      // Real percentile bars from the priced pool.
+      stats: [
+        { label: 'Power (ISO)', value: power, tone: tone(power) },
+        { label: 'Slugging', value: slug, tone: tone(slug) },
+        { label: 'Contact', value: contact, tone: tone(contact) },
+        { label: 'Discipline', value: disc, tone: tone(disc) },
+      ],
+    };
+  }).filter((r) => r.odds != null)
+    .sort((a, b) => (b.edge || 0) - (a.edge || 0))
+    .slice(0, 40);
+
+  return cors(json(rows, 300)); // 5 min — batter props are the expensive call
+}
+
+function abbrFromName(name) {
+  return String(name || '').split(' ').pop().slice(0, 3).toUpperCase();
+}
+function round2(n) { return Math.round(n * 100) / 100; }
+
+// -------------------------------------------------------------------------
 // Track record (Cloudflare D1). Picks are logged as the board is viewed and
 // graded on read once their games are final — no cron needed. All D1 access
 // is guarded, so the site works normally before the DB is set up.
@@ -668,18 +821,19 @@ function buildTrackRecord(rows) {
 // model edge, quotes the better price of the two books for that side, and
 // returns a per-book breakdown for the line-shop display. `prop` is
 // { DK:{point,over,under}, FD:{point,over,under} } (either book may be absent).
-function priceStrikeouts(prop, projK) {
+// Given DK/FD prices for a prop and a model P(over) at the reference line, pick
+// the +edge side, quote the better of the two prices, and return a per-book
+// breakdown for the line-shop display. `prop` is
+// { DK:{point,over,under}, FD:{point,over,under} }; `probOver(line)` returns the
+// model's P(over) at that line. Shared by strikeouts and batter props.
+function bestBookMarket(prop, probOver) {
   if (!prop) return null;
   const dk = prop.DK, fd = prop.FD;
-  // Reference line: prefer DK's, else FD's.
   const refLine = (dk && dk.point != null) ? dk.point
     : (fd && fd.point != null ? fd.point : null);
   if (refLine == null) return null;
 
-  // Overdispersed normal, projection regressed toward the line -> P(over).
-  const lam = (1 - LINE_SHRINK) * projK + LINE_SHRINK * refLine;
-  const sigma = Math.sqrt(Math.max(lam, 1) * DISPERSION);
-  const pOver = 1 - normCdf((refLine - lam) / sigma);
+  const pOver = probOver(refLine);
 
   // Vig-free fair over% from a two-sided book at the reference line (prefer DK).
   const atRef = [dk, fd].filter((b) => b && b.point === refLine);
@@ -717,6 +871,30 @@ function priceStrikeouts(prop, projK) {
     tier: edgePts >= 5 ? 1 : edgePts >= 3 ? 2 : edgePts >= 1.5 ? 3 : 'pass',
     books,              // [{ book, price, line, off, best }]
   };
+}
+
+// Strikeout prop: overdispersed normal around the projection, regressed to line.
+function priceStrikeouts(prop, projK) {
+  return bestBookMarket(prop, (L) => {
+    const lam = (1 - LINE_SHRINK) * projK + LINE_SHRINK * L;
+    const sigma = Math.sqrt(Math.max(lam, 1) * DISPERSION);
+    return 1 - normCdf((L - lam) / sigma);
+  });
+}
+
+// Batter counting-stat prop (HR / total bases / H+R+RBI): Poisson around the
+// per-game expectation. An approximation (these aren't strictly Poisson), so
+// edges are directional — grade and calibrate before trusting the magnitude.
+function priceBatterProp(prop, lambda) {
+  return bestBookMarket(prop, (L) => 1 - poissonCdf(Math.floor(L), lambda));
+}
+
+// Poisson CDF P(X <= k) for mean lambda.
+function poissonCdf(k, lambda) {
+  if (!(lambda > 0)) return 1;
+  let term = Math.exp(-lambda), sum = term;
+  for (let i = 1; i <= k; i++) { term *= lambda / i; sum += term; }
+  return Math.min(1, sum);
 }
 
 // American-odds payout multiple (decimal profit per 1u). Higher = better price.

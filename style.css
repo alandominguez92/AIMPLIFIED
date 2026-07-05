@@ -158,6 +158,46 @@ section { padding:44px 0; }
 .pin-note { font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--textDim); margin-bottom:14px; }
 .pin-note b { color:var(--accent); font-weight:600; }
 .pin-note .pin-chk { color:var(--positive); }
+
+/* ---------- batter-props expanded detail ---------- */
+.bm-row { display:grid; grid-template-columns:104px 1.6fr 1.1fr 1.4fr; gap:12px; align-items:baseline; margin-top:9px; font-family:'IBM Plex Mono'; font-size:12.5px; }
+.bm-label { font-family:'Barlow Condensed'; font-weight:600; font-size:16px; text-transform:uppercase; letter-spacing:.02em; }
+.bm-proj { color:var(--textDim); }
+.bm-books { color:var(--textDim); }
+.bm-none { color:var(--muted); grid-column:2 / -1; }
+@media (max-width:640px){ .bm-row { grid-template-columns:1fr 1fr; } }
+
+/* ---------- My Slip ---------- */
+.slip-count { font-family:'IBM Plex Mono'; font-size:12px; color:var(--accent); border:1px solid var(--border); border-radius:99px; padding:2px 10px; }
+.slip-clear { margin-left:auto; font-family:'IBM Plex Mono'; font-size:12px; color:var(--textDim); background:none; border:1px solid var(--border); border-radius:5px; padding:5px 12px; cursor:pointer; }
+.slip { background:var(--board); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.slip-empty { padding:26px 20px; text-align:center; color:var(--textDim); font-size:14px; }
+.slip-legs { border-bottom:1px solid var(--border); }
+.slip-leg { display:flex; align-items:center; gap:14px; padding:13px 18px; border-bottom:1px solid var(--border); }
+.slip-leg:last-child { border-bottom:none; }
+.slip-tag { font-family:'IBM Plex Mono'; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink); background:var(--accent); border-radius:4px; padding:3px 7px; flex:none; min-width:56px; text-align:center; }
+.slip-tag.ml { background:var(--positive); }
+.slip-tag.batter { background:var(--warm); }
+.slip-leg-main { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
+.slip-leg-title { font-size:14px; font-weight:500; }
+.slip-leg-sub { font-family:'IBM Plex Mono'; font-size:11.5px; color:var(--textDim); }
+.slip-leg-odds { color:var(--accent); font-weight:600; font-size:14px; }
+.slip-remove { flex:none; font-family:'IBM Plex Mono'; font-size:13px; color:var(--textDim); background:none; border:1px solid var(--border); border-radius:5px; width:26px; height:26px; cursor:pointer; }
+.slip-remove:hover { color:var(--danger); border-color:var(--danger); }
+.slip-stake { display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid var(--border); }
+.slip-stake label { font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--textDim); }
+.slip-stake input { width:76px; font-family:'IBM Plex Mono'; font-size:15px; font-weight:600; color:var(--text); background:var(--board3); border:1px solid var(--border); border-radius:5px; padding:6px 10px; outline:none; }
+.slip-stake input:focus { border-color:var(--accent); }
+.slip-stake-note { font-family:'IBM Plex Mono'; font-size:11.5px; color:var(--textDim); }
+.slip-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); }
+@media (max-width:640px){ .slip-summary { grid-template-columns:1fr; } }
+.slip-metric { background:var(--board); padding:16px 18px; }
+.slip-metric-k { font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); }
+.slip-metric-v { font-family:'IBM Plex Mono'; font-weight:600; font-size:22px; margin-top:5px; color:var(--text); }
+.slip-metric-v.accent { color:var(--accent); }
+.slip-metric-v.g { color:var(--positive); }
+.slip-metric-sub { font-family:'IBM Plex Mono'; font-size:11.5px; color:var(--textDim); margin-top:3px; }
+.slip-note { padding:12px 18px; font-family:'IBM Plex Mono'; font-size:12px; color:var(--textDim); }
 .viewtab { font-family:'Barlow Condensed'; font-weight:600; font-size:15px; letter-spacing:.06em; text-transform:uppercase; border-radius:6px; padding:8px 16px; cursor:pointer; border:1px solid var(--border); background:none; color:var(--textDim); }
 .viewtab.active { border-color:var(--accent); background:var(--accent); color:var(--ink); }
 .board-search { margin-bottom:12px; }
