@@ -215,6 +215,7 @@
     trkVal2: document.getElementById('trkVal2'),
     trkVal3: document.getElementById('trkVal3'),
     trkVal4: document.getElementById('trkVal4'),
+    pinNote: document.getElementById('pinNote'),
     roiCard: document.getElementById('roiCard'),
     roiStats: document.getElementById('roiStats'),
     roiChart: document.getElementById('roiChart'),
@@ -335,6 +336,7 @@
             timeLabel: b.timeLabel,
             pick: b.pick,
             odds: b.odds,
+            oddsBooks: b.oddsBooks || null,
             edge: b.edge,
             interval: b.interval,
             tier: b.tier,
@@ -527,10 +529,28 @@
     return out.join('');
   }
 
+  // Two-book odds cell (DraftKings / FanDuel), best payout highlighted in teal.
+  // Falls back to a single price when per-book data isn't available (mock mode).
+  function oddsBooksCell(g, money) {
+    const books = g.oddsBooks;
+    if (!Array.isArray(books) || !books.length) {
+      return `<span class="odds-cell mono">${esc(money(g.odds))}</span>`;
+    }
+    const rows = books.map((b) => {
+      const lineTag = b.off && b.line != null ? `<span class="bk-line">${esc(String(b.line))}</span>` : '';
+      return `<span class="bk${b.best ? ' best' : ''}">
+        <span class="bk-name">${esc(b.book)}</span>${lineTag}
+        <span class="bk-price">${esc(money(b.price))}</span>
+        <span class="bk-chk">✓</span>
+      </span>`;
+    }).join('');
+    return `<span class="odds-books">${rows}</span>`;
+  }
+
   function renderBoardHead() {
     const cols = isML()
       ? ['', 'Matchup', 'Team to win', 'Moneyline', 'Edge', 'Win Prob', 'Tier', '']
-      : ['', 'Matchup', 'Pick', 'Odds', 'Edge', '80% Interval', 'Tier', ''];
+      : ['', 'Matchup', 'Pick', 'Odds · DK/FD', 'Edge', '80% Interval', 'Tier', ''];
     el.boardHead.innerHTML = cols.map((c) => c ? `<span class="col-label">${c}</span>` : '<span></span>').join('');
   }
 
@@ -538,6 +558,7 @@
     renderBoardHead();
     const games = getFilteredSortedGames();
     el.noResults.hidden = games.length !== 0;
+    if (el.pinNote) el.pinNote.hidden = !getGames().some((g) => Array.isArray(g.oddsBooks) && g.oddsBooks.length);
 
     el.boardRows.innerHTML = games.map((g) => {
       const ml = g.ml || {};
@@ -562,7 +583,7 @@
         detailCell = `<span class="interval-cell" style="color:var(--accent)">${ml.winProb != null ? ml.winProb + '%' : '—'}</span>`;
       } else {
         pickCell = esc(g.pick);
-        oddsCell = `<span class="odds-cell mono">${esc(money(g.odds))}</span>`;
+        oddsCell = oddsBooksCell(g, money);
         detailCell = `<span class="interval-cell">${esc(g.interval)}</span>`;
       }
 
@@ -623,9 +644,13 @@
         } else if (g.projRows && g.projRows.length) {
           const rowsHtml = g.projRows.map((p) => {
             const m = p.market;
+            const booksStr = m && Array.isArray(m.books) && m.books.length
+              ? m.books.map((b) => `${b.book} ${b.off && b.line != null ? b.line + ' ' : ''}${b.price > 0 ? '+' + b.price : b.price}${b.best ? ' ✓' : ''}`).join(' · ')
+              : '';
             const marketHtml = m
               ? `<span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--text)">line ${m.line} · model ${m.modelOver}% over</span>
-                 <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:${m.edge >= 1.5 ? 'var(--positive)' : 'var(--textDim)'}">${m.side} ${m.line} (${m.price > 0 ? '+' + m.price : m.price}) · +${m.edge}% edge</span>`
+                 <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:${m.edge >= 1.5 ? 'var(--positive)' : 'var(--textDim)'}">${m.side} ${m.line} · +${m.edge}% edge</span>
+                 ${booksStr ? `<span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--textDim)">${esc(booksStr)}</span>` : ''}`
               : `<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">no prop line</span>`;
             return `
             <div style="display:flex;align-items:baseline;gap:10px;margin-top:10px;flex-wrap:wrap">

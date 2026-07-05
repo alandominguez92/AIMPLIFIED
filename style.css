@@ -155,6 +155,9 @@ section { padding:44px 0; }
 
 /* ---------- board controls ---------- */
 .board-view { display:flex; gap:8px; margin-bottom:14px; }
+.pin-note { font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--textDim); margin-bottom:14px; }
+.pin-note b { color:var(--accent); font-weight:600; }
+.pin-note .pin-chk { color:var(--positive); }
 .viewtab { font-family:'Barlow Condensed'; font-weight:600; font-size:15px; letter-spacing:.06em; text-transform:uppercase; border-radius:6px; padding:8px 16px; cursor:pointer; border:1px solid var(--border); background:none; color:var(--textDim); }
 .viewtab.active { border-color:var(--accent); background:var(--accent); color:var(--ink); }
 .board-search { margin-bottom:12px; }
@@ -168,12 +171,12 @@ section { padding:44px 0; }
 /* ---------- board ---------- */
 .board { background:var(--board); border:1px solid var(--border); border-radius:8px; overflow:hidden; font-size:14px; }
 .board-inner { min-width:0; }
-.board-cols { display:grid; grid-template-columns:26px 2fr 1.6fr .8fr .9fr 1fr .8fr 34px; }
-.board-head-row { display:grid; grid-template-columns:26px 2fr 1.6fr .8fr .9fr 1fr .8fr 34px; padding:12px 16px; border-bottom:1px solid var(--border); }
+.board-cols { display:grid; grid-template-columns:26px 2fr 1.45fr 1.3fr .85fr .95fr .8fr 34px; }
+.board-head-row { display:grid; grid-template-columns:26px 2fr 1.45fr 1.3fr .85fr .95fr .8fr 34px; padding:12px 16px; border-bottom:1px solid var(--border); }
 .col-label { font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--textDim); font-weight:500; }
 .col-label.center { text-align:center; }
 
-.board-row { display:grid; grid-template-columns:26px 2fr 1.6fr .8fr .9fr 1fr .8fr 34px; padding:14px 16px; border-bottom:1px solid var(--border); align-items:center; cursor:pointer; background:transparent; }
+.board-row { display:grid; grid-template-columns:26px 2fr 1.45fr 1.3fr .85fr .95fr .8fr 34px; padding:14px 16px; border-bottom:1px solid var(--border); align-items:center; cursor:pointer; background:transparent; }
 .board-row.selected { background:var(--selectedBg); }
 .board-row.expanded { background:var(--board3); }
 .board-row .leading { font-size:15px; color:var(--muted); cursor:pointer; user-select:none; }
@@ -183,6 +186,15 @@ section { padding:44px 0; }
 .board-row .matchup-sub { color:var(--textDim); font-size:12.5px; display:block; margin-top:2px; }
 .board-row .weather-label { font-size:11px; font-family:'IBM Plex Mono'; display:block; margin-top:3px; }
 .board-row .odds-cell { color:var(--accent); font-weight:600; font-family:'IBM Plex Mono'; }
+/* two-book (DK / FD) line-shop odds cell */
+.board-row .odds-books { display:flex; flex-direction:column; gap:3px; }
+.odds-books .bk { display:flex; align-items:center; gap:6px; font-family:'IBM Plex Mono'; font-size:13px; color:var(--textDim); }
+.odds-books .bk-name { font-size:10.5px; letter-spacing:.06em; color:var(--textDim); min-width:26px; }
+.odds-books .bk-line { font-size:10.5px; color:var(--warm); }
+.odds-books .bk-price { font-weight:600; }
+.odds-books .bk-chk { visibility:hidden; font-size:11px; color:var(--positive); }
+.odds-books .bk.best .bk-price { color:var(--positive); }
+.odds-books .bk.best .bk-chk { visibility:visible; }
 .board-row .edge-cell { font-family:'IBM Plex Mono'; }
 .board-row .interval-cell { color:var(--textDim); font-size:12.5px; font-family:'IBM Plex Mono'; }
 .board-row .tier-cell { letter-spacing:1px; font-size:14px; }

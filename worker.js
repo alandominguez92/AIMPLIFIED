@@ -15,6 +15,11 @@ const STATS = 'https://statsapi.mlb.com/api/v1';
 const DISPERSION = 1.55;   // Var(K) / mean at the game level
 const LINE_SHRINK = 0.20;  // fraction of the projection pulled toward the line
 
+// The books we price against (the user's accounts). Odds API bookmaker keys ->
+// short display labels. Prices are pinned to these two only, and the better of
+// the two is highlighted so the board doubles as a line-shop.
+const BOOKS = { draftkings: 'DK', fanduel: 'FD' };
+
 export default {
   async fetch(request, env, ctx) {
     const p = new URL(request.url).pathname;
@@ -204,16 +209,18 @@ async function board(env, ctx) {
             if (!pr.ok) return;
             const pd = await pr.json();
             for (const bm of (pd.bookmakers || [])) {
+              const label = BOOKS[bm.key]; // 'DK' | 'FD'
+              if (!label) continue;        // only DraftKings + FanDuel
               const mk = (bm.markets || []).find((m) => m.key === 'pitcher_strikeouts');
               if (!mk) continue;
               for (const oc of (mk.outcomes || [])) {
                 const nm = normName(oc.description);
                 if (!nm) continue;
-                const cur = propByName[nm] || {};
-                if (oc.point != null) cur.point = oc.point;
-                if (oc.name === 'Over') cur.over = oc.price;
-                else if (oc.name === 'Under') cur.under = oc.price;
-                propByName[nm] = cur;
+                const rec = propByName[nm] || (propByName[nm] = {});
+                const b = rec[label] || (rec[label] = {});
+                if (oc.point != null) b.point = oc.point;
+                if (oc.name === 'Over') b.over = oc.price;
+                else if (oc.name === 'Under') b.under = oc.price;
               }
             }
           } catch (e) { /* skip this event */ }
@@ -308,11 +315,19 @@ async function board(env, ctx) {
       if (r.ok) {
         const events = await r.json();
         (Array.isArray(events) ? events : []).forEach((ev) => {
-          const bk = (ev.bookmakers || [])[0];
-          const mk = bk && (bk.markets || []).find((m) => m.key === 'h2h');
-          if (!mk) return;
-          const price = (name) => { const o = (mk.outcomes || []).find((x) => x.name === name); return o ? o.price : null; };
-          mlByHome[ev.home_team] = { home: price(ev.home_team), away: price(ev.away_team) };
+          // Best moneyline across DraftKings + FanDuel only.
+          const wanted = (ev.bookmakers || []).filter((b) => BOOKS[b.key]);
+          const priceBest = (name) => {
+            let best = null;
+            for (const b of wanted) {
+              const mk = (b.markets || []).find((m) => m.key === 'h2h');
+              const o = mk && (mk.outcomes || []).find((x) => x.name === name);
+              if (o && o.price != null && (best == null || payoutMult(o.price) > payoutMult(best))) best = o.price;
+            }
+            return best;
+          };
+          if (!wanted.length) return;
+          mlByHome[ev.home_team] = { home: priceBest(ev.home_team), away: priceBest(ev.away_team) };
         });
       }
     } catch (e) { /* no moneylines -> ml pick is model-only */ }
@@ -337,34 +352,9 @@ async function board(env, ctx) {
       const projK = (k9 * expIP / 9) * (lgK > 0 ? oppK / lgK : 1) * parkK * wxK;
       const sd = Math.sqrt(Math.max(projK, 1) * DISPERSION);
 
-      // Market: compare the projection to the real strikeout line.
-      let market = null;
-      const prop = propByName[normName(pp.fullName)];
-      if (prop && prop.point != null && (prop.over != null || prop.under != null)) {
-        const L = prop.point;
-        // Overdispersed normal, with the projection regressed toward the line.
-        const lam = (1 - LINE_SHRINK) * projK + LINE_SHRINK * L;
-        const sigma = Math.sqrt(Math.max(lam, 1) * DISPERSION);
-        const pOver = 1 - normCdf((L - lam) / sigma); // P(K over the line)
-        const impO = prop.over != null ? amProb(prop.over) : null;
-        const impU = prop.under != null ? amProb(prop.under) : null;
-        let fairOver;
-        if (impO != null && impU != null) { const v = impO + impU; fairOver = v > 0 ? impO / v : impO; }
-        else if (impO != null) fairOver = impO;
-        else fairOver = 1 - impU;
-        const edgeOver = pOver - fairOver;
-        const over = edgeOver >= 0;
-        const price = over ? prop.over : prop.under;
-        const edgePts = round1(Math.abs(edgeOver) * 100);
-        market = {
-          line: L,
-          side: over ? 'Over' : 'Under',
-          price: price != null ? price : null,
-          edge: edgePts,
-          modelOver: round1(pOver * 100),
-          tier: edgePts >= 5 ? 1 : edgePts >= 3 ? 2 : edgePts >= 1.5 ? 3 : 'pass',
-        };
-      }
+      // Market: price the projection against the DK/FD strikeout lines, taking
+      // the better of the two prices for the chosen side.
+      const market = priceStrikeouts(propByName[normName(pp.fullName)], projK);
 
       return {
         id: pp.id,
@@ -418,6 +408,7 @@ async function board(env, ctx) {
         ? `${lead.name} ${lead.market.side === 'Over' ? 'O' : 'U'} ${lead.market.line} Ks`
         : (projLean ? `${projLean.name} proj ${projLean.proj} Ks` : '—'),
       odds: lead ? lead.market.price : null,
+      oddsBooks: lead ? lead.market.books : null,
       edge: lead ? lead.market.edge : null,
       tier: lead ? lead.market.tier : 'model',
       interval: lead ? `${lead.lo} – ${lead.hi}` : (projLean ? `${projLean.lo} – ${projLean.hi}` : '—'),
@@ -672,6 +663,64 @@ function buildTrackRecord(rows) {
     calibration,
   };
 }
+
+// Price a strikeout projection against the DK/FD lines. Picks the side with a
+// model edge, quotes the better price of the two books for that side, and
+// returns a per-book breakdown for the line-shop display. `prop` is
+// { DK:{point,over,under}, FD:{point,over,under} } (either book may be absent).
+function priceStrikeouts(prop, projK) {
+  if (!prop) return null;
+  const dk = prop.DK, fd = prop.FD;
+  // Reference line: prefer DK's, else FD's.
+  const refLine = (dk && dk.point != null) ? dk.point
+    : (fd && fd.point != null ? fd.point : null);
+  if (refLine == null) return null;
+
+  // Overdispersed normal, projection regressed toward the line -> P(over).
+  const lam = (1 - LINE_SHRINK) * projK + LINE_SHRINK * refLine;
+  const sigma = Math.sqrt(Math.max(lam, 1) * DISPERSION);
+  const pOver = 1 - normCdf((refLine - lam) / sigma);
+
+  // Vig-free fair over% from a two-sided book at the reference line (prefer DK).
+  const atRef = [dk, fd].filter((b) => b && b.point === refLine);
+  const twoSided = atRef.find((b) => b.over != null && b.under != null);
+  let fairOver;
+  if (twoSided) { const io = amProb(twoSided.over), iu = amProb(twoSided.under); const v = io + iu; fairOver = v > 0 ? io / v : io; }
+  else { const one = atRef.find((b) => b.over != null || b.under != null); if (!one) return null; fairOver = one.over != null ? amProb(one.over) : 1 - amProb(one.under); }
+
+  const over = (pOver - fairOver) >= 0;
+  const side = over ? 'Over' : 'Under';
+  const edgePts = round1(Math.abs(pOver - fairOver) * 100);
+
+  // Per-book prices for the chosen side; mark the best payout.
+  const books = [];
+  for (const [label, b] of [['DK', dk], ['FD', fd]]) {
+    if (!b) continue;
+    const px = over ? b.over : b.under;
+    if (px == null) continue;
+    books.push({ book: label, price: px, line: b.point, off: b.point !== refLine });
+  }
+  if (!books.length) return null;
+  const comparable = books.filter((x) => !x.off);
+  const pool = comparable.length ? comparable : books;
+  let best = pool[0].price;
+  pool.forEach((x) => { if (payoutMult(x.price) > payoutMult(best)) best = x.price; });
+  const bestSet = comparable.length ? comparable : books;
+  books.forEach((x) => { x.best = bestSet.includes(x) && x.price === best; });
+
+  return {
+    line: refLine,
+    side,
+    price: best,        // the better of DK/FD for the chosen side — what you'd bet
+    edge: edgePts,
+    modelOver: round1(pOver * 100),
+    tier: edgePts >= 5 ? 1 : edgePts >= 3 ? 2 : edgePts >= 1.5 ? 3 : 'pass',
+    books,              // [{ book, price, line, off, best }]
+  };
+}
+
+// American-odds payout multiple (decimal profit per 1u). Higher = better price.
+function payoutMult(a) { return a > 0 ? a / 100 : 100 / (-a); }
 
 // Strikeout park factors (normalized ~1.00; >1 = more Ks). Approximate, stable
 // season-level values — thin-air Coors suppresses whiffs; pitcher parks lift
