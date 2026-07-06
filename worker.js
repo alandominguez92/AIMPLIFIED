@@ -747,9 +747,9 @@ async function liveNow(env) {
     const st = pitchingLive(b, p.pitcher_id);
     if (!st) continue;
     cards.push(liveCard({
-      id: 'lp' + p.game_id + p.pitcher_id, name: p.pitcher, team: p.team, pos: 'P',
+      id: 'lp' + p.game_id + p.pitcher_id, pid: 'p' + p.pitcher_id, name: p.pitcher, team: p.team, pos: 'P',
       stat: st.k, label: 'K', line: p.line, side: p.side, m,
-      note: `${st.pitches} pitches · ${st.ip} IP`, progress: st.outs / (EXP_IP * 3), edge: p.edge,
+      note: `${st.pitches} pitches · ${st.ip} IP`, progress: st.outs / (EXP_IP * 3), pitches: st.pitches, edge: p.edge,
     }));
   }
   for (const p of bpicks) {
@@ -758,20 +758,30 @@ async function liveNow(env) {
     const st = battingLive(b, p.player_id, p.market);
     if (!st) continue;
     cards.push(liveCard({
-      id: 'lb' + p.game_id + p.player_id + p.market, name: p.player, team: p.team, pos: 'B',
+      id: 'lb' + p.game_id + p.player_id + p.market, pid: 'b' + p.player_id, name: p.player, team: p.team, pos: 'B',
       stat: st.val, label: MARKET_SHORT[p.market] || p.market, line: p.line, side: p.side, m,
       note: st.note, progress: st.ab / EXP_AB, edge: p.edge,
     }));
   }
 
-  // Cashing first (the fun ones), then live, then cooling; break ties by edge.
+  // One card per player — a batter carries multiple markets, so keep the one
+  // where they're doing best (highest fill), breaking ties by model edge.
+  const byPid = new Map();
+  for (const c of cards) {
+    const ex = byPid.get(c._pid);
+    if (!ex || c.fill > ex.fill || (c.fill === ex.fill && c._edge > ex._edge)) byPid.set(c._pid, c);
+  }
+  // Rank: cashing (the fun ones) first, then live, then cooling; within a state
+  // put the players with the most going on (higher fill) up top.
   const order = { cashing: 0, live: 1, cooling: 2 };
-  cards.sort((a, b) => (order[a.state] - order[b.state]) || ((b.edge || 0) - (a.edge || 0)));
-  return cors(json(cards.slice(0, 9), 30)); // 30s — live data
+  const ranked = [...byPid.values()].sort((a, b) =>
+    (order[a.state] - order[b.state]) || (b.fill - a.fill) || (b._edge - a._edge));
+  const out = ranked.slice(0, 9).map(({ _pid, _edge, ...c }) => c);
+  return cors(json(out, 30)); // 30s — live data
 }
 
 function liveCard(o) {
-  const state = liveState(o.stat, o.line, o.side, o.progress);
+  const state = liveState(o.stat, o.line, o.side, o.progress, o.pos, o.pitches);
   const scale = Math.max(o.line * 1.7, o.stat + 0.5, o.line + 1);
   return {
     id: o.id, name: o.name, team: o.team, pos: o.pos,
@@ -780,23 +790,29 @@ function liveCard(o) {
     inning: o.m.inning, note: o.note, state,
     fill: Math.round(Math.min(100, Math.max(0, o.stat / scale * 100))),
     tick: Math.round(Math.min(100, o.line / scale * 100)),
+    _pid: o.pid, _edge: o.edge || 0,
   };
 }
 
-// cashing = already cleared the number; live = still on track / opportunity
-// remains; cooling = trending to miss.
-function liveState(stat, line, side, progress) {
-  const nearDone = progress >= 0.85;
-  const pace = stat / Math.max(progress, 0.15);
+// cashing = already cleared the number; live = still on track / chances remain;
+// cooling = trending to miss. Pitchers read off K pace (Ks accrue steadily);
+// batters read off at-bats remaining (hits are lumpy, so pace is noisy early).
+function liveState(stat, line, side, progress, type, pitches) {
+  const oppFrac = 1 - progress;              // fraction of the start / plate appearances left
+  const pace = stat / Math.max(progress, 0.2);
   if (side === 'Over') {
     if (stat > line) return 'cashing';
-    if (nearDone) return 'cooling';
-    if (pace >= line) return 'live';
-    return line <= 1.5 ? 'live' : 'cooling'; // rare-event lines stay live while chances remain
+    if (type === 'P') {
+      if ((pitches || 0) >= 105) return 'cooling';   // near the pitch limit and still short
+      return pace >= line ? 'live' : 'cooling';
+    }
+    if (line <= 0.5) return oppFrac > 0.1 ? 'live' : 'cooling'; // to-hit props: live while an AB remains
+    return oppFrac >= 0.3 ? 'live' : 'cooling';                 // enough at-bats left to get there
   }
-  if (stat > line) return 'cooling';         // Under, already over the number
-  if (nearDone) return 'cashing';
-  return pace <= line ? 'live' : 'cooling';
+  // Under
+  if (stat > line) return 'cooling';         // already over the number
+  if (type === 'P') return pace <= line ? 'live' : 'cooling';
+  return oppFrac < 0.3 ? 'cashing' : 'live'; // held under with few at-bats left = nearly there
 }
 
 function pitchingLive(box, pid) {

@@ -1010,6 +1010,7 @@
   }
 
   function renderPitcherSplits() {
+    if (!el.pitcherSplitRows) return; // section removed — nothing to render
     // Opponent OPS-against — lower is better for a pitcher, so tone inverts.
     const opsTone = (v) => v <= 650 ? 'var(--positive)' : v <= 720 ? 'var(--accent)' : 'var(--textDim)';
     const wobaTone = (v) => v <= 275 ? 'var(--positive)' : v <= 305 ? 'var(--accent)' : 'var(--textDim)';
