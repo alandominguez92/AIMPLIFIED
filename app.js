@@ -876,10 +876,10 @@
           <div class="top-row">
             <span class="rank">#${i + 1}</span>
             ${checkboxHtml}
+            <span class="stat-num">${esc(statVal)}</span>
           </div>
           <div class="name">${esc(h.name)}</div>
           <div class="team">${esc(h.team)}</div>
-          <div class="stat-num">${esc(statVal)}</div>
           <div class="stat-sub">${esc(statLabel)}</div>
           <div class="chip-row">
             <span class="chip positive">${esc(h.streak)}</span>
@@ -963,10 +963,10 @@
           <div class="top-row">
             <span class="rank">#${i + 1}</span>
             ${checkboxHtml}
+            <span class="stat-num">${esc(statVal)}</span>
           </div>
           <div class="name">${esc(p.name)}</div>
           <div class="team">${esc(p.team)}</div>
-          <div class="stat-num">${esc(statVal)}</div>
           <div class="stat-sub">${esc(statLabel)}</div>
           <div class="chip-row">
             <span class="chip positive">${esc(chip1)}</span>
