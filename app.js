@@ -1104,6 +1104,7 @@
 
     const tierRows = (tr.tierBreakdown || []).map((t) => ({ label: 'Tier ' + t.tier, r: t.record, u: t.units, roi: t.roi }));
     const sideRows = (tr.sideBreakdown || []).map((s) => ({ label: s.side, r: s.record, u: s.units, roi: s.roi }));
+    const marketRows = (tr.marketBreakdown || []).map((m) => ({ label: m.market, r: m.record, u: m.units, roi: m.roi }));
     const tbl = (title, rows) => rows.length ? `
       <div class="roi-table">
         <div class="roi-table-head"><span>${title}</span><span>W–L</span><span>Units</span><span>ROI</span></div>
@@ -1114,7 +1115,7 @@
           <span class="${x.roi == null ? '' : (x.roi >= 0 ? 'g' : 'r')}">${x.roi == null ? '—' : (x.roi > 0 ? '+' : '') + x.roi + '%'}</span>
         </div>`).join('')}
       </div>` : '';
-    el.roiTables.innerHTML = tbl('By tier', tierRows) + tbl('By side', sideRows);
+    el.roiTables.innerHTML = tbl('By market', marketRows) + tbl('By tier', tierRows) + tbl('By side', sideRows);
   }
 
   function renderRoiChart(series) {

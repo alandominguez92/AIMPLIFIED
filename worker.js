@@ -30,7 +30,7 @@ export default {
       if (p === '/api/hitters') return hitters();
       if (p === '/api/pitchers') return pitchers();
       if (p === '/api/board') return board(env, ctx);
-      if (p === '/api/batters') return batters(env);
+      if (p === '/api/batters') return batters(env, ctx);
       if (p === '/api/track-record') return trackRecord(env);
       if (p === '/api/injuries') return injuries();
 
@@ -490,7 +490,7 @@ const BATTER_MARKETS = [
   { key: 'batter_hits_runs_rbis', label: 'H+R+RBI', metric: 'hrr' },
 ];
 
-async function batters(env) {
+async function batters(env, ctx) {
   const season = new Date().getUTCFullYear();
   const key = env && env.ODDS_API_KEY;
   if (!key) return cors(json([], 300));
@@ -504,6 +504,20 @@ async function batters(env) {
   } catch (e) { return cors(json([], 300)); }
   if (!Array.isArray(events) || !events.length) return cors(json([], 300));
 
+  // Map each "AWAY@HOME" to its real MLB gamePk + status, so batter picks can
+  // be logged and later graded from the boxscore (needs the gamePk).
+  const schedByMatchup = {};
+  try {
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}&hydrate=team`, { headers: { accept: 'application/json' } });
+    if (r.ok) {
+      const sd = await r.json();
+      (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
+        const away = teamAbbr(g.teams.away.team), home = teamAbbr(g.teams.home.team);
+        schedByMatchup[`${away}@${home}`] = { gamePk: g.gamePk, status: (g.status && g.status.abstractGameState) || 'Preview' };
+      });
+    }
+  } catch (e) { /* no gamePk mapping -> batter picks just won't be logged */ }
+
   const marketKeys = BATTER_MARKETS.map((m) => m.key).join(',');
   const byName = {}; // normName -> { name, matchup, timeMs, timeLabel, props:{metric:{DK,FD}} }
   await Promise.all(events.map(async (ev) => {
@@ -511,7 +525,10 @@ async function batters(env) {
       const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (!r.ok) return;
       const d = await r.json();
-      const matchup = `${TEAM_ABBR_BY_NAME[ev.away_team] || abbrFromName(ev.away_team)} @ ${TEAM_ABBR_BY_NAME[ev.home_team] || abbrFromName(ev.home_team)}`;
+      const awayAb = TEAM_ABBR_BY_NAME[ev.away_team] || abbrFromName(ev.away_team);
+      const homeAb = TEAM_ABBR_BY_NAME[ev.home_team] || abbrFromName(ev.home_team);
+      const matchup = `${awayAb} @ ${homeAb}`;
+      const sched = schedByMatchup[`${awayAb}@${homeAb}`] || null;
       for (const bm of (d.bookmakers || [])) {
         const label = BOOKS[bm.key];
         if (!label) continue;
@@ -521,7 +538,7 @@ async function batters(env) {
           for (const oc of (mk.outcomes || [])) {
             const nm = normName(oc.description);
             if (!nm) continue;
-            const rec = byName[nm] || (byName[nm] = { name: oc.description, matchup, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), props: {} });
+            const rec = byName[nm] || (byName[nm] = { name: oc.description, matchup, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), gamePk: sched ? sched.gamePk : null, gameStatus: sched ? sched.status : 'Preview', props: {} });
             const mp = rec.props[spec.metric] || (rec.props[spec.metric] = {});
             const b = mp[label] || (mp[label] = {});
             if (oc.point != null) b.point = oc.point;
@@ -595,20 +612,22 @@ async function batters(env) {
       id: 'b' + (b.match.id || b.nm.replace(/\s/g, '')),
       name: shortName(b.rec.name),
       team: b.match.team,
+      playerId: b.match.id || null,
+      gamePk: b.rec.gamePk || null,
+      status: b.rec.gameStatus || 'Preview',
       matchup: b.rec.matchup,
       timeMs: b.rec.timeMs,
       timeLabel: b.rec.timeLabel,
-      status: 'Preview',
       pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : '—',
       odds: lead ? lead.m.price : null,
       oddsBooks: lead ? lead.m.books : null,
       edge: lead ? lead.m.edge : null,
       tier: lead ? lead.m.tier : 'pass',
       interval: lead ? `proj ${expFor(lead.spec.metric)} ${lead.spec.label}` : '—',
-      // Per-market detail for the expanded row.
+      // Per-market detail for the expanded row (also carries what logging needs).
       batterMarkets: BATTER_MARKETS.map((spec) => {
         const m = b.markets[spec.metric];
-        return m ? { label: spec.label, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, proj: expFor(spec.metric), books: m.books } : { label: spec.label, none: true, proj: expFor(spec.metric) };
+        return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
       }),
       // Real percentile bars from the priced pool.
       stats: [
@@ -621,6 +640,12 @@ async function batters(env) {
   }).filter((r) => r.odds != null)
     .sort((a, b) => (b.edge || 0) - (a.edge || 0))
     .slice(0, 40);
+
+  // Log tonight's priced batter picks to the track record (idempotent).
+  if (env && env.DB) {
+    const write = logBatterPicks(env.DB, rows, slateDate()).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(write); else await write;
+  }
 
   return cors(json(rows, 300)); // 5 min — batter props are the expensive call
 }
@@ -639,9 +664,18 @@ async function trackRecord(env) {
   if (!env || !env.DB) return cors(json({ empty: true, logged: 0 }, 60));
   try {
     await ensureSchema(env.DB);
+    await ensureBatterSchema(env.DB);
     await gradeUngraded(env);
-    const res = await env.DB.prepare('SELECT * FROM picks').all();
-    return cors(json(buildTrackRecord(res.results || []), 120));
+    await gradeBatterPicks(env);
+    const kres = await env.DB.prepare('SELECT * FROM picks').all();
+    const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
+    // Normalize both feeds to one row shape: pitcher picks are market 'K' with
+    // actual_k; batter picks map their per-market actual into the same field.
+    const unified = [
+      ...(kres.results || []).map((r) => ({ ...r, market: 'K' })),
+      ...(bres.results || []).map((r) => ({ ...r, actual_k: r.actual, market: String(r.market || '').toUpperCase() })),
+    ];
+    return cors(json(buildTrackRecord(unified), 120));
   } catch (e) {
     return cors(json({ empty: true, logged: 0, error: String(e) }, 60));
   }
@@ -654,6 +688,94 @@ async function ensureSchema(db) {
     edge REAL, tier TEXT, actual_k INTEGER, result TEXT,
     PRIMARY KEY (date, game_id, pitcher_id)
   )`).run();
+}
+
+// Batter picks live in their own table (a player carries up to 3 markets per
+// game, so the key includes the market).
+async function ensureBatterSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS bpicks (
+    date TEXT, game_id TEXT, player_id INTEGER, player TEXT, team TEXT,
+    market TEXT, line REAL, side TEXT, price INTEGER, proj REAL, model_over REAL,
+    edge REAL, tier TEXT, actual REAL, result TEXT,
+    PRIMARY KEY (date, game_id, player_id, market)
+  )`).run();
+}
+
+async function logBatterPicks(db, rows, date) {
+  await ensureBatterSchema(db);
+  const stmts = [];
+  for (const r of rows) {
+    // Only genuine pre-game picks with a resolvable MLB game.
+    if (r.status !== 'Preview' || !r.gamePk || r.playerId == null) continue;
+    for (const m of (r.batterMarkets || [])) {
+      if (m.none || m.price == null) continue;
+      stmts.push(db.prepare(
+        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, 'g' + r.gamePk, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier)));
+    }
+  }
+  if (stmts.length) await db.batch(stmts);
+}
+
+// Grade finished batter picks from the boxscore (same Final-only guard as the
+// pitcher grader). HR / total bases / H+R+RBI are read/derived per market.
+async function gradeBatterPicks(env) {
+  const db = env.DB;
+  const today = slateDate();
+  const rows = (await db.prepare('SELECT DISTINCT game_id, date FROM bpicks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
+  if (!rows.length) return;
+
+  const statusByGame = {};
+  for (const d of [...new Set(rows.map((r) => r.date))]) {
+    try {
+      const r = await fetch(`${STATS}/schedule?sportId=1&date=${d}`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      const sd = await r.json();
+      (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
+        statusByGame['g' + g.gamePk] = (g.status && g.status.abstractGameState) || '';
+      });
+    } catch (e) { /* skip this date */ }
+  }
+
+  for (const g of rows.slice(0, 30)) {
+    if (statusByGame[g.game_id] !== 'Final') continue;
+    const pk = String(g.game_id).replace(/^g/, '');
+    let box;
+    try {
+      const r = await fetch(`${STATS}/game/${pk}/boxscore`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      box = await r.json();
+    } catch (e) { continue; }
+    const picks = (await db.prepare('SELECT * FROM bpicks WHERE game_id=? AND result IS NULL').bind(g.game_id).all()).results || [];
+    const stmts = [];
+    for (const p of picks) {
+      const actual = batterActual(box, p.player_id, p.market);
+      if (actual == null) continue; // didn't play / not found -> leave ungraded (void)
+      const result = gradePick(p.side, p.line, actual);
+      stmts.push(db.prepare('UPDATE bpicks SET actual=?, result=? WHERE date=? AND game_id=? AND player_id=? AND market=?').bind(actual, result, p.date, p.game_id, p.player_id, p.market));
+    }
+    if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* skip */ } }
+  }
+}
+
+// A batter's actual value for a market from the boxscore batting line.
+function batterActual(box, playerId, market) {
+  let bat = null;
+  ['away', 'home'].forEach((side) => {
+    const players = ((box.teams || {})[side] || {}).players || {};
+    Object.keys(players).forEach((k) => {
+      const pl = players[k];
+      if (pl.person && pl.person.id === playerId && pl.stats && pl.stats.batting) bat = pl.stats.batting;
+    });
+  });
+  if (!bat) return null;
+  const h = toNum(bat.hits), d = toNum(bat.doubles), t = toNum(bat.triples), hr = toNum(bat.homeRuns);
+  const runs = toNum(bat.runs), rbi = toNum(bat.rbi);
+  if (market === 'hr') return hr;
+  if (market === 'tb') return h + d + 2 * t + 3 * hr; // 1B + 2·2B + 3·3B + 4·HR
+  if (market === 'hrr') return h + runs + rbi;
+  return null;
 }
 
 async function logPicks(db, rows, date) {
@@ -757,6 +879,7 @@ function buildTrackRecord(rows) {
   const roi = plays ? round1(units / plays * 100) : null; // 1u staked per play
   const byTier = { '1': { w: 0, l: 0, units: 0 }, '2': { w: 0, l: 0, units: 0 }, '3': { w: 0, l: 0, units: 0 } };
   const bySide = { Over: { w: 0, l: 0, units: 0 }, Under: { w: 0, l: 0, units: 0 } };
+  const byMarket = {};
   const byDate = {};
   for (const r of graded) {
     if (r.tier === 'pass') continue;
@@ -765,6 +888,9 @@ function buildTrackRecord(rows) {
     if (bt) { if (r.result === 'win') bt.w++; else bt.l++; bt.units += u; }
     const bs = bySide[r.side];
     if (bs) { if (r.result === 'win') bs.w++; else bs.l++; bs.units += u; }
+    const mk = r.market || 'K';
+    const bmk = byMarket[mk] || (byMarket[mk] = { w: 0, l: 0, units: 0 });
+    if (r.result === 'win') bmk.w++; else bmk.l++; bmk.units += u;
     byDate[r.date] = (byDate[r.date] || 0) + u;
   }
   const breakdown = (map, keyName, keys) => keys.map((k) => {
@@ -773,13 +899,19 @@ function buildTrackRecord(rows) {
   }).filter((x) => x.n > 0);
   const tierBreakdown = breakdown(byTier, 'tier', ['1', '2', '3']);
   const sideBreakdown = breakdown(bySide, 'side', ['Over', 'Under']);
+  const MARKET_LABEL = { K: 'Strikeouts', HR: 'Home Runs', TB: 'Total Bases', HRR: 'H+R+RBI' };
+  const marketBreakdown = Object.keys(byMarket).map((k) => {
+    const b = byMarket[k]; const n = b.w + b.l;
+    return { market: MARKET_LABEL[k] || k, n, record: `${b.w}–${b.l}`, units: Math.round(b.units * 10) / 10, roi: n ? round1(b.units / n * 100) : null };
+  }).filter((x) => x.n > 0).sort((a, b) => b.n - a.n);
   let cum = 0;
   const cumulative = Object.keys(byDate).sort().map((d) => { cum += byDate[d]; return { date: d, units: Math.round(cum * 10) / 10 }; });
 
-  // Projection accuracy: mean absolute error of projected vs actual Ks, over
-  // every graded pick (not just non-pass), since it measures the model itself.
+  // Projection accuracy: mean absolute error of projected vs actual Ks. Kept
+  // strikeout-only — mixing K (0–15) with HR/TB (0–4) scales would be meaningless.
   let maeSum = 0, maeN = 0;
   for (const r of rows) {
+    if ((r.market || 'K') !== 'K') continue;
     if (r.actual_k != null && r.proj != null && (r.result === 'win' || r.result === 'loss' || r.result === 'push')) {
       maeSum += Math.abs(r.proj - r.actual_k); maeN++;
     }
@@ -813,6 +945,7 @@ function buildTrackRecord(rows) {
     cumulative,
     tierBreakdown,
     sideBreakdown,
+    marketBreakdown,
     calibration,
   };
 }
