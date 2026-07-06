@@ -46,7 +46,7 @@
 }
 
 * { margin:0; padding:0; box-sizing:border-box; }
-html { scroll-behavior:smooth; }
+html { scroll-behavior:smooth; scroll-padding-top:72px; } /* offset the sticky header on anchor jumps */
 body {
   background:var(--field);
   color:var(--text);
@@ -363,9 +363,32 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .hitters-grid { grid-template-columns:repeat(2,1fr) !important; }
   .nav-links { display:none !important; }
   .clv-chip { display:none !important; }
-  .board { overflow-x:auto !important; }
-  .board-inner { min-width:640px; }
   h1 { font-size:clamp(34px,11vw,56px) !important; }
+}
+
+/* Phone: the 8-column board can't fit, so reflow each row into a stacked
+   card. The head row (column labels) is dropped; fields self-place by area. */
+@media (max-width:640px) {
+  .board-inner { min-width:0; }
+  .board-head-row { display:none; }
+  .board-row {
+    grid-template-columns:26px minmax(0,1fr) auto;
+    grid-template-areas:
+      "star matchup tier"
+      "star pick    odds"
+      "star edge    chev";
+    row-gap:7px; column-gap:12px; padding:15px 14px;
+  }
+  .board-row > .leading { grid-area:star; align-self:start; font-size:20px; line-height:1; }
+  .board-row > div { grid-area:matchup; min-width:0; }
+  .board-row > span:not([class]) { grid-area:pick; font-weight:500; align-self:center; }
+  .board-row > .odds-books, .board-row > .odds-cell { grid-area:odds; justify-self:end; text-align:right; }
+  .board-row > .edge-cell { grid-area:edge; align-self:center; }
+  .board-row > .interval-cell { display:none; } /* secondary — still in the expand */
+  .board-row > .tier-cell { grid-area:tier; justify-self:end; }
+  .board-row > .chevron { grid-area:chev; justify-self:end; align-self:center; }
+  .expanded-detail { padding:16px 14px 20px; }
+  .bm-row { grid-template-columns:1fr; row-gap:2px; }
 }
 @media (max-width:480px) {
   .hitters-grid { grid-template-columns:1fr 1fr !important; }
