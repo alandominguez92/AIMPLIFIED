@@ -22,7 +22,7 @@ const BOOKS = { draftkings: 'DK', fanduel: 'FD' };
 
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
-  '/api/board', '/api/batters', '/api/track-record', '/api/injuries',
+  '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
 ]);
 
 export default {
@@ -61,6 +61,7 @@ async function handleApi(p, env, ctx) {
   if (p === '/api/batters') return batters(env, ctx);
   if (p === '/api/track-record') return trackRecord(env);
   if (p === '/api/injuries') return injuries();
+  if (p === '/api/live-now') return liveNow(env);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -684,6 +685,155 @@ function keyAbbr(name) {
   return TEAM_ABBR_BY_NAME[name] || abbrFromName(name);
 }
 function round2(n) { return Math.round(n * 100) / 100; }
+
+// -------------------------------------------------------------------------
+// /api/live-now — tonight's logged picks whose games are in progress, scored
+// against the live boxscore: each player's current stat vs the prop line, the
+// game state, and a cashing / live / cooling read. Real pitch-by-pitch data
+// flows straight in (the boxscore updates continuously). [] when nothing's live.
+// -------------------------------------------------------------------------
+const MARKET_SHORT = { hr: 'HR', tb: 'TB', hrr: 'H+R+RBI' };
+const EXP_IP = 6;   // expected innings for a start (pace denominator)
+const EXP_AB = 4;   // expected at-bats for a hitter
+
+async function liveNow(env) {
+  const date = slateDate();
+  if (!env || !env.DB) return cors(json([], 30));
+
+  // 1) Which of tonight's games are in progress (+ score / inning).
+  let games = [];
+  try {
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${date}&hydrate=linescore,team`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return cors(json([], 30));
+    games = (((await r.json()).dates || [])[0] || {}).games || [];
+  } catch (e) { return cors(json([], 30)); }
+
+  const meta = {};
+  for (const g of games) {
+    if (((g.status || {}).abstractGameState) !== 'Live') continue;
+    const ls = g.linescore || {};
+    const runs = (side) => numOr((ls.teams && ls.teams[side] && ls.teams[side].runs), g.teams[side].score) ?? 0;
+    meta['g' + g.gamePk] = {
+      away: teamAbbr(g.teams.away.team), home: teamAbbr(g.teams.home.team),
+      awayR: runs('away'), homeR: runs('home'),
+      inning: ls.currentInningOrdinal ? `${(ls.inningHalf || '').replace('Bottom', 'Bot')} ${ls.currentInningOrdinal}`.trim() : 'Live',
+    };
+  }
+  if (!Object.keys(meta).length) return cors(json([], 30));
+
+  // 2) Tonight's logged picks (lines/sides) from D1.
+  let picks = [], bpicks = [];
+  try {
+    await ensureSchema(env.DB); await ensureBatterSchema(env.DB);
+    picks = (await env.DB.prepare('SELECT * FROM picks WHERE date=?').bind(date).all()).results || [];
+    bpicks = (await env.DB.prepare('SELECT * FROM bpicks WHERE date=?').bind(date).all()).results || [];
+  } catch (e) { return cors(json([], 30)); }
+
+  // 3) One boxscore per live game that carries a pick.
+  const need = [...new Set([...picks, ...bpicks].map((p) => p.game_id).filter((id) => meta[id]))];
+  if (!need.length) return cors(json([], 30));
+  const box = {};
+  await Promise.all(need.map(async (gid) => {
+    try {
+      const r = await fetch(`${STATS}/game/${String(gid).replace(/^g/, '')}/boxscore`, { headers: { accept: 'application/json' } });
+      if (r.ok) box[gid] = await r.json();
+    } catch (e) { /* skip */ }
+  }));
+
+  const cards = [];
+  for (const p of picks) {
+    const m = meta[p.game_id], b = box[p.game_id];
+    if (!m || !b) continue;
+    const st = pitchingLive(b, p.pitcher_id);
+    if (!st) continue;
+    cards.push(liveCard({
+      id: 'lp' + p.game_id + p.pitcher_id, name: p.pitcher, team: p.team, pos: 'P',
+      stat: st.k, label: 'K', line: p.line, side: p.side, m,
+      note: `${st.pitches} pitches · ${st.ip} IP`, progress: st.outs / (EXP_IP * 3), edge: p.edge,
+    }));
+  }
+  for (const p of bpicks) {
+    const m = meta[p.game_id], b = box[p.game_id];
+    if (!m || !b) continue;
+    const st = battingLive(b, p.player_id, p.market);
+    if (!st) continue;
+    cards.push(liveCard({
+      id: 'lb' + p.game_id + p.player_id + p.market, name: p.player, team: p.team, pos: 'B',
+      stat: st.val, label: MARKET_SHORT[p.market] || p.market, line: p.line, side: p.side, m,
+      note: st.note, progress: st.ab / EXP_AB, edge: p.edge,
+    }));
+  }
+
+  // Cashing first (the fun ones), then live, then cooling; break ties by edge.
+  const order = { cashing: 0, live: 1, cooling: 2 };
+  cards.sort((a, b) => (order[a.state] - order[b.state]) || ((b.edge || 0) - (a.edge || 0)));
+  return cors(json(cards.slice(0, 9), 30)); // 30s — live data
+}
+
+function liveCard(o) {
+  const state = liveState(o.stat, o.line, o.side, o.progress);
+  const scale = Math.max(o.line * 1.7, o.stat + 0.5, o.line + 1);
+  return {
+    id: o.id, name: o.name, team: o.team, pos: o.pos,
+    stat: o.stat, statLabel: o.label, line: o.line, side: o.side,
+    matchup: `${o.m.away} ${o.m.awayR} – ${o.m.home} ${o.m.homeR}`,
+    inning: o.m.inning, note: o.note, state,
+    fill: Math.round(Math.min(100, Math.max(0, o.stat / scale * 100))),
+    tick: Math.round(Math.min(100, o.line / scale * 100)),
+  };
+}
+
+// cashing = already cleared the number; live = still on track / opportunity
+// remains; cooling = trending to miss.
+function liveState(stat, line, side, progress) {
+  const nearDone = progress >= 0.85;
+  const pace = stat / Math.max(progress, 0.15);
+  if (side === 'Over') {
+    if (stat > line) return 'cashing';
+    if (nearDone) return 'cooling';
+    if (pace >= line) return 'live';
+    return line <= 1.5 ? 'live' : 'cooling'; // rare-event lines stay live while chances remain
+  }
+  if (stat > line) return 'cooling';         // Under, already over the number
+  if (nearDone) return 'cashing';
+  return pace <= line ? 'live' : 'cooling';
+}
+
+function pitchingLive(box, pid) {
+  let s = null;
+  ['away', 'home'].forEach((side) => {
+    const players = ((box.teams || {})[side] || {}).players || {};
+    Object.keys(players).forEach((k) => {
+      const pl = players[k];
+      if (pl.person && pl.person.id === pid && pl.stats && pl.stats.pitching && Object.keys(pl.stats.pitching).length) s = pl.stats.pitching;
+    });
+  });
+  if (!s) return null;
+  const ip = String(s.inningsPitched || '0.0');
+  const [whole, frac] = ip.split('.');
+  const outs = (parseInt(whole, 10) || 0) * 3 + (parseInt(frac, 10) || 0);
+  return { k: toNum(s.strikeOuts), outs, pitches: toNum(s.numberOfPitches != null ? s.numberOfPitches : s.pitchesThrown), ip };
+}
+
+function battingLive(box, pid, market) {
+  let s = null;
+  ['away', 'home'].forEach((side) => {
+    const players = ((box.teams || {})[side] || {}).players || {};
+    Object.keys(players).forEach((k) => {
+      const pl = players[k];
+      if (pl.person && pl.person.id === pid && pl.stats && pl.stats.batting) s = pl.stats.batting;
+    });
+  });
+  if (!s) return null;
+  const h = toNum(s.hits), d = toNum(s.doubles), t = toNum(s.triples), hr = toNum(s.homeRuns);
+  const r = toNum(s.runs), rbi = toNum(s.rbi), ab = toNum(s.atBats);
+  let val;
+  if (market === 'hr') val = hr;
+  else if (market === 'tb') val = h + d + 2 * t + 3 * hr;
+  else if (market === 'hrr') val = h + r + rbi;
+  else return null;
+  return { val, ab, note: `${h}-for-${ab}` };
+}
 
 // -------------------------------------------------------------------------
 // Track record (Cloudflare D1). Picks are logged as the board is viewed and
