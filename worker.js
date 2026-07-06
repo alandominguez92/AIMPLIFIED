@@ -1192,22 +1192,97 @@ function slateDate() {
 }
 
 // -------------------------------------------------------------------------
-// /api/injuries — real recent injured-list moves from MLB StatsAPI
-// transactions (last 3 days), newest first. Shaped like the alert banner.
+// /api/injuries — batters currently on the injured list for tonight's teams,
+// read from each team's roster status (so a star who's been out for a week+
+// still shows — not just the last 3 days of IL transactions). Falls back to
+// the recent-transaction wire if the roster read comes back empty.
 // -------------------------------------------------------------------------
 async function injuries() {
+  const season = new Date().getUTCFullYear();
+  const date = slateDate();
+
+  // Which teams play tonight (+ their abbreviations for the label).
+  const teamIds = new Set();
+  const abbrById = {};
+  try {
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${date}&hydrate=team`, { headers: { accept: 'application/json' } });
+    if (r.ok) {
+      const sd = await r.json();
+      (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
+        ['away', 'home'].forEach((s) => {
+          const t = g.teams && g.teams[s] && g.teams[s].team;
+          if (t && t.id) { teamIds.add(t.id); abbrById[t.id] = keyAbbr(t.name); }
+        });
+      });
+    }
+  } catch (e) { /* fall through to the transaction wire below */ }
+
+  // Current injured-list batters on those rosters.
+  const cand = [];
+  await Promise.all([...teamIds].map(async (tid) => {
+    try {
+      const r = await fetch(`${STATS}/teams/${tid}/roster?rosterType=fullSeason&season=${season}`, { headers: { accept: 'application/json' } });
+      if (!r.ok) return;
+      const d = await r.json();
+      for (const e of (d.roster || [])) {
+        const desc = (e.status && e.status.description) || '';
+        if (!/injured list/i.test(desc)) continue;      // currently on some IL
+        const pos = e.position || {};
+        if (pos.type === 'Pitcher' || pos.abbreviation === 'P') continue; // batters only
+        const pid = e.person && e.person.id, name = e.person && e.person.fullName;
+        if (pid && name) cand.push({ pid, name, team: tid, status: shortIL(desc) });
+      }
+    } catch (e) { /* skip this team */ }
+  }));
+
+  let rows;
+  if (cand.length) {
+    // Rank by season PA so everyday regulars lead; keep the notable ones.
+    const paById = await batterPAs(cand.map((c) => c.pid), season);
+    rows = cand
+      .filter((c) => (paById[c.pid] || 0) >= STARTER_PA)
+      .sort((a, b) => (paById[b.pid] || 0) - (paById[a.pid] || 0))
+      .slice(0, 10)
+      .map((c) => ({ text: `${c.name}${abbrById[c.team] ? ' · ' + abbrById[c.team] : ''}`, time: c.status }));
+  } else {
+    // Fallback: the recent IL-transaction wire (widened to 14 days).
+    rows = await recentILTransactions(season);
+  }
+  return cors(json(rows, 600)); // 10 min
+}
+
+// "10-Day Injured List" -> "10-Day IL".
+function shortIL(desc) { return String(desc).replace(/injured list/i, 'IL').replace(/\s+/g, ' ').trim(); }
+
+// Bulk season plate appearances by player id.
+async function batterPAs(pids, season) {
+  const paById = {};
+  const ids = [...new Set(pids)].filter(Boolean);
+  if (!ids.length) return paById;
+  try {
+    const r = await fetch(`${STATS}/people?personIds=${ids.join(',')}&hydrate=stats(group=[hitting],type=[season],season=${season})`, { headers: { accept: 'application/json' } });
+    if (r.ok) {
+      const d = await r.json();
+      (d.people || []).forEach((pl) => {
+        const sp = (((pl.stats || [])[0] || {}).splits || [])[0];
+        paById[pl.id] = sp ? toNum(sp.stat.plateAppearances) : 0;
+      });
+    }
+  } catch (e) { /* leave empty -> no PA gate */ }
+  return paById;
+}
+
+// Fallback: recent IL placements from the transactions feed (MLB batters only).
+async function recentILTransactions(season) {
   const end = slateDate();
-  const start = slateDateOffset(-3);
+  const start = slateDateOffset(-14);
   let data;
   try {
     const r = await fetch(`${STATS}/transactions?startDate=${start}&endDate=${end}`, { headers: { accept: 'application/json' } });
-    if (!r.ok) return cors(json([], 300));
+    if (!r.ok) return [];
     data = await r.json();
-  } catch (e) { return cors(json([], 300)); }
+  } catch (e) { return []; }
 
-  // MLB only (the feed includes every minor-league level) and batters only —
-  // pitcher IL moves don't change tonight's known starters, but a hurt/scratched
-  // hitter shifts the opposing lineup's strikeout profile.
   const txns = (data.transactions || []).filter((t) => {
     const d = t.description || '';
     const mlb = MLB_TEAM_IDS.has((t.toTeam || {}).id) || MLB_TEAM_IDS.has((t.fromTeam || {}).id);
@@ -1215,8 +1290,7 @@ async function injuries() {
   });
   txns.sort((a, b) => String(b.effectiveDate || b.date || '').localeCompare(String(a.effectiveDate || a.date || '')));
 
-  const seen = new Set();
-  const cand = [];
+  const seen = new Set(), cand = [];
   for (const t of txns) {
     const text = String(t.description || '').trim();
     const pid = t.person && t.person.id;
@@ -1224,31 +1298,12 @@ async function injuries() {
     seen.add(text);
     cand.push({ text, time: txnDateLabel(t.effectiveDate || t.date), pid });
   }
-  if (!cand.length) return cors(json([], 600));
-
-  // Keep only regular starters — gauge by season plate appearances, so bench
-  // bats and fresh call-ups don't clutter the wire. One bulk stats call.
-  const season = new Date().getUTCFullYear();
-  const paById = {};
-  let haveStats = false;
-  try {
-    const ids = [...new Set(cand.map((c) => c.pid))].join(',');
-    const r = await fetch(`${STATS}/people?personIds=${ids}&hydrate=stats(group=[hitting],type=[season],season=${season})`, { headers: { accept: 'application/json' } });
-    if (r.ok) {
-      const d = await r.json();
-      (d.people || []).forEach((pl) => {
-        const sp = (((pl.stats || [])[0] || {}).splits || [])[0];
-        paById[pl.id] = sp ? toNum(sp.stat.plateAppearances) : 0;
-      });
-      haveStats = true;
-    }
-  } catch (e) { /* if stats are unavailable, don't over-filter */ }
-
-  const rows = cand
-    .filter((c) => !haveStats || (paById[c.pid] || 0) >= STARTER_PA)
+  if (!cand.length) return [];
+  const paById = await batterPAs(cand.map((c) => c.pid), season);
+  return cand
+    .filter((c) => (paById[c.pid] || 0) >= STARTER_PA)
     .slice(0, 8)
     .map((c) => ({ text: c.text, time: c.time }));
-  return cors(json(rows, 600)); // 10 min
 }
 
 // A "regular starter" bar: season plate appearances. Tune to taste (higher =
