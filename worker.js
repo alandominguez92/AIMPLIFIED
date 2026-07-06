@@ -535,7 +535,9 @@ async function batters(env, ctx) {
     if (r.ok) {
       const sd = await r.json();
       (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
-        const away = teamAbbr(g.teams.away.team), home = teamAbbr(g.teams.home.team);
+        // Key by team NAME through the same table the Odds events use, so
+        // StatsAPI abbreviations that differ (e.g. AZ vs ARI) still match.
+        const away = keyAbbr((g.teams.away.team || {}).name), home = keyAbbr((g.teams.home.team || {}).name);
         schedByMatchup[`${away}@${home}`] = { gamePk: g.gamePk, status: (g.status && g.status.abstractGameState) || 'Preview' };
       });
     }
@@ -548,8 +550,8 @@ async function batters(env, ctx) {
       const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (!r.ok) return;
       const d = await r.json();
-      const awayAb = TEAM_ABBR_BY_NAME[ev.away_team] || abbrFromName(ev.away_team);
-      const homeAb = TEAM_ABBR_BY_NAME[ev.home_team] || abbrFromName(ev.home_team);
+      const awayAb = keyAbbr(ev.away_team);
+      const homeAb = keyAbbr(ev.home_team);
       const matchup = `${awayAb} @ ${homeAb}`;
       const sched = schedByMatchup[`${awayAb}@${homeAb}`] || null;
       for (const bm of (d.bookmakers || [])) {
@@ -675,6 +677,11 @@ async function batters(env, ctx) {
 
 function abbrFromName(name) {
   return String(name || '').split(' ').pop().slice(0, 3).toUpperCase();
+}
+// Team full name -> our canonical abbreviation. Used on BOTH the Odds event and
+// the MLB schedule so the two always key the same (avoids AZ/ARI-style misses).
+function keyAbbr(name) {
+  return TEAM_ABBR_BY_NAME[name] || abbrFromName(name);
 }
 function round2(n) { return Math.round(n * 100) / 100; }
 
