@@ -104,6 +104,7 @@
     livePitchers: null,
     liveBoard: null,
     liveBatters: null,
+    liveNow: null,
     trackRecord: null,
     liveInjuries: null,
     boardView: 'kprops', // 'kprops' | 'moneyline' | 'batter'
@@ -206,6 +207,10 @@
     heroTitle: document.getElementById('heroTitle'),
     heroDuel: document.getElementById('heroDuel'),
     injuryAlerts: document.getElementById('injuryAlerts'),
+    liveNowSection: document.getElementById('liveNow'),
+    liveNowGrid: document.getElementById('liveNowGrid'),
+    liveNowNote: document.getElementById('liveNowNote'),
+    navLive: document.getElementById('navLive'),
     gameCount: document.getElementById('gameCount'),
     trackedPill: document.getElementById('trackedPill'),
     searchInput: document.getElementById('searchInput'),
@@ -492,6 +497,57 @@
         <span class="alert-time">${esc(a.time)}</span>
       </div>
     `).join('');
+  }
+
+  // LIVE NOW — tonight's picks whose games are in progress, scored live.
+  function liveVs(c) {
+    const s = c.statLabel;
+    if (s === 'K') return `${c.side} ${c.line} Ks`;
+    if (s === 'TB') return `${c.side} ${c.line} Total Bases`;
+    if (s === 'HR') return (c.side === 'Over' && c.line === 0.5) ? 'To Hit a HR' : `${c.side} ${c.line} HR`;
+    return `${c.side} ${c.line} ${s}`; // H+R+RBI
+  }
+  function renderLiveNow() {
+    const cards = state.liveNow;
+    const has = Array.isArray(cards) && cards.length > 0;
+    if (el.liveNowSection) el.liveNowSection.hidden = !has;
+    if (el.navLive) el.navLive.hidden = !has;
+    if (!has) { if (el.liveNowGrid) el.liveNowGrid.innerHTML = ''; return; }
+    if (el.liveNowNote) el.liveNowNote.textContent = `${cards.length} in-progress · updating every pitch`;
+    el.liveNowGrid.innerHTML = cards.map((c) => {
+      const unit = c.statLabel === 'H+R+RBI' ? '' : c.statLabel;
+      return `
+        <div class="livecard ${esc(c.state)}">
+          <div class="livecard-top">
+            <div>
+              <div class="livecard-name">${esc(c.name)}</div>
+              <div class="livecard-meta">${esc(c.team)}${c.pos === 'P' ? ' · P' : ''}</div>
+            </div>
+            <span class="livecard-pill ${esc(c.state)}">${esc(c.state.toUpperCase())}</span>
+          </div>
+          <div class="livecard-stat">
+            <span class="livecard-num ${esc(c.state)}">${esc(String(c.stat))}</span>
+            ${unit ? `<span class="livecard-unit">${esc(unit)}</span>` : ''}
+            <span class="livecard-vs">${esc(liveVs(c))}</span>
+          </div>
+          <div class="livecard-bar">
+            <div class="livecard-fill ${esc(c.state)}" style="width:${c.fill}%"></div>
+            <div class="livecard-tick" style="left:${c.tick}%"></div>
+          </div>
+          <div class="livecard-foot">
+            <span class="livecard-dot ${esc(c.state)}"></span>
+            <span class="livecard-game">${esc(c.matchup)}${c.inning ? ' · ' + esc(c.inning) : ''}</span>
+          </div>
+          ${c.note ? `<div class="livecard-note">${esc(c.note)}</div>` : ''}
+        </div>`;
+    }).join('');
+  }
+  async function refreshLiveNow() {
+    if (!LIVE_MODE) return;
+    try {
+      const rows = await fetchJson('/api/live-now');
+      if (Array.isArray(rows)) { state.liveNow = rows; renderLiveNow(); }
+    } catch (e) { console.warn('Live Now refresh failed:', e.message); }
   }
 
   // Real injured-list moves from MLB StatsAPI transactions (via /api/injuries).
@@ -1344,6 +1400,7 @@
     renderTicker();
     renderWinProb();
     renderHero();
+    renderLiveNow();
     renderInjuryAlerts();
     renderControls();
     renderBoard();
@@ -1633,6 +1690,9 @@
     // Injury wire (recent IL moves) — refresh every 10 min.
     refreshInjuries();
     setInterval(refreshInjuries, 600000);
+    // Live Now — in-progress picks scored live; poll every 45s.
+    refreshLiveNow();
+    setInterval(refreshLiveNow, 45000);
   } else {
     // Mock mode: keep the demo lively — simulated win-prob and score nudges.
     setInterval(() => {
