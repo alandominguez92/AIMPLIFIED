@@ -76,6 +76,11 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .logo span { color:var(--accent); }
 .nav-links { display:flex; gap:22px; font-size:14px; font-weight:500; color:var(--textDim); }
 .nav-links a:hover { color:var(--text); }
+/* "Soon" roadmap tag — signals an intentional placeholder, not a broken link */
+.soon { font-family:'IBM Plex Mono'; font-size:8.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); border:1px solid var(--border); border-radius:3px; padding:1px 4px; margin-left:6px; vertical-align:middle; line-height:1; white-space:nowrap; }
+.soon-link { opacity:.72; cursor:default; }
+.soon-tab { opacity:.72; cursor:default; }
+.stab .soon { margin-left:0; }
 .clv-chip { margin-left:auto; display:flex; align-items:center; gap:8px; border:1px solid var(--border); border-radius:4px; padding:7px 12px; font-family:'IBM Plex Mono'; font-size:12.5px; background:var(--board); white-space:nowrap; }
 .clv-chip .dot { width:7px; height:7px; border-radius:50%; background:var(--positive); box-shadow:0 0 8px var(--positive); }
 .clv-chip b { color:var(--accent); font-weight:600; }
