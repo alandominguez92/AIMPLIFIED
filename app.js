@@ -493,7 +493,7 @@
       <div class="alert">
         <span class="alert-dot"></span>
         <b>ALERT</b>
-        <span>${esc(a.text)}</span>
+        <span class="alert-who">${esc(a.text)}</span>
         <span class="alert-time">${esc(a.time)}</span>
       </div>
     `).join('');
