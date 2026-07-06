@@ -20,32 +20,55 @@ const LINE_SHRINK = 0.20;  // fraction of the projection pulled toward the line
 // the two is highlighted so the board doubles as a line-shop.
 const BOOKS = { draftkings: 'DK', fanduel: 'FD' };
 
+const API_ROUTES = new Set([
+  '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
+  '/api/board', '/api/batters', '/api/track-record', '/api/injuries',
+]);
+
 export default {
   async fetch(request, env, ctx) {
-    const p = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const p = url.pathname;
 
-    if (p === '/api/odds' || p === '/api/scores' || p === '/api/hitters' || p === '/api/pitchers' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/injuries') {
-      if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
+    if (!API_ROUTES.has(p)) return env.ASSETS.fetch(request); // static site
 
-      if (p === '/api/hitters') return hitters();
-      if (p === '/api/pitchers') return pitchers();
-      if (p === '/api/board') return board(env, ctx);
-      if (p === '/api/batters') return batters(env, ctx);
-      if (p === '/api/track-record') return trackRecord(env);
-      if (p === '/api/injuries') return injuries();
+    if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
 
-      const key = env.ODDS_API_KEY;
-      if (!key) return err('ODDS_API_KEY is not configured', 500);
-      const upstream = p === '/api/odds'
-        ? `${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h,totals&oddsFormat=american&dateFormat=iso`
-        : `${ODDS}/scores?apiKey=${key}&daysFrom=1&dateFormat=iso`;
-      return proxy(upstream);
+    // Shared edge cache: every viewer reuses one upstream burst per TTL (the TTL
+    // is each handler's Cache-Control max-age). This is what protects the paid
+    // Odds API quota — usage drops from per-viewer to ~once per window per colo.
+    // Side effects (D1 logging, self-grading) run only on a miss, i.e. once per
+    // window, which is the cadence we want anyway.
+    const cache = caches.default;
+    const cacheKey = new Request(url.origin + p); // ignore any query string
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+
+    const resp = await handleApi(p, env, ctx);
+    // Only cache real successes — never an error (so a transient failure can't
+    // stick). Empty [] uses a short TTL in its handler, so it self-heals fast.
+    if (resp && resp.status === 200 && ctx && ctx.waitUntil) {
+      ctx.waitUntil(cache.put(cacheKey, resp.clone()));
     }
-
-    // Everything else: serve the static site.
-    return env.ASSETS.fetch(request);
+    return resp;
   },
 };
+
+async function handleApi(p, env, ctx) {
+  if (p === '/api/hitters') return hitters();
+  if (p === '/api/pitchers') return pitchers();
+  if (p === '/api/board') return board(env, ctx);
+  if (p === '/api/batters') return batters(env, ctx);
+  if (p === '/api/track-record') return trackRecord(env);
+  if (p === '/api/injuries') return injuries();
+
+  const key = env.ODDS_API_KEY;
+  if (!key) return err('ODDS_API_KEY is not configured', 500);
+  const upstream = p === '/api/odds'
+    ? `${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h,totals&oddsFormat=american&dateFormat=iso`
+    : `${ODDS}/scores?apiKey=${key}&daysFrom=1&dateFormat=iso`;
+  return proxy(upstream);
+}
 
 // -------------------------------------------------------------------------
 // /api/hitters — real season hitting leaders (by OPS) from MLB StatsAPI.
