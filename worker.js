@@ -1226,7 +1226,8 @@ async function injuries() {
       const d = await r.json();
       for (const e of (d.roster || [])) {
         const desc = (e.status && e.status.description) || '';
-        if (!/injured list/i.test(desc)) continue;      // currently on some IL
+        // Roster status reads "Injured 10-Day" / "Injured 60-Day" / etc.
+        if (!/injured/i.test(desc)) continue;            // currently on some IL
         const pos = e.position || {};
         if (pos.type === 'Pitcher' || pos.abbreviation === 'P') continue; // batters only
         const pid = e.person && e.person.id, name = e.person && e.person.fullName;
@@ -1251,8 +1252,14 @@ async function injuries() {
   return cors(json(rows, 600)); // 10 min
 }
 
+// Roster status -> short IL label. "Injured 10-Day" -> "10-Day IL";
 // "10-Day Injured List" -> "10-Day IL".
-function shortIL(desc) { return String(desc).replace(/injured list/i, 'IL').replace(/\s+/g, ' ').trim(); }
+function shortIL(desc) {
+  const s = String(desc).trim();
+  const m = s.match(/^injured\s+(.+)$/i);      // "Injured 10-Day" -> "10-Day"
+  if (m) return `${m[1].trim()} IL`;
+  return s.replace(/injured list/i, 'IL').replace(/\s+/g, ' ').trim();
+}
 
 // Bulk season plate appearances by player id.
 async function batterPAs(pids, season) {
@@ -1286,7 +1293,9 @@ async function recentILTransactions(season) {
   const txns = (data.transactions || []).filter((t) => {
     const d = t.description || '';
     const mlb = MLB_TEAM_IDS.has((t.toTeam || {}).id) || MLB_TEAM_IDS.has((t.fromTeam || {}).id);
-    return mlb && /injured list/i.test(d) && !isPitcherMove(d);
+    // Placements/transfers TO the IL — never activations/reinstatements FROM it
+    // (those are players coming back healthy, not injury news).
+    return mlb && /injured list/i.test(d) && !/activated|reinstated/i.test(d) && !isPitcherMove(d);
   });
   txns.sort((a, b) => String(b.effectiveDate || b.date || '').localeCompare(String(a.effectiveDate || a.date || '')));
 
