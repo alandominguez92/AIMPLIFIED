@@ -702,7 +702,7 @@
         detailHtml = `<div class="expanded-detail">
           <div class="expanded-title">Batter props — model vs. market</div>${bm}
           <div class="expanded-title" style="margin-top:16px">Season percentiles (vs. priced pool)</div>${statsHtml}
-          <div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: season rate × expected plate appearances, priced Poisson. Edges are directional — calibrating against results.</div>
+          <div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: season rate × expected PAs, priced Poisson, then regressed toward the market while the batter model builds a track record — so edges stay conservative until results justify more.</div>
         </div>`;
       } else if (isExpanded && isML()) {
         if (g.ml) {

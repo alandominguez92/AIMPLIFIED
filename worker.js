@@ -1041,14 +1041,19 @@ function buildTrackRecord(rows) {
 // breakdown for the line-shop display. `prop` is
 // { DK:{point,over,under}, FD:{point,over,under} }; `probOver(line)` returns the
 // model's P(over) at that line. Shared by strikeouts and batter props.
-function bestBookMarket(prop, probOver) {
+// opts.shrink (default 1) regresses the model probability toward the market's
+// fair probability — used to temper an uncalibrated model (batters) so edges
+// don't wildly overstate. opts.tiers sets the [T1,T2,T3] edge cutoffs.
+function bestBookMarket(prop, probOver, opts) {
   if (!prop) return null;
+  const shrink = (opts && opts.shrink != null) ? opts.shrink : 1;
+  const tiers = (opts && opts.tiers) || [5, 3, 1.5];
   const dk = prop.DK, fd = prop.FD;
   const refLine = (dk && dk.point != null) ? dk.point
     : (fd && fd.point != null ? fd.point : null);
   if (refLine == null) return null;
 
-  const pOver = probOver(refLine);
+  const pRaw = probOver(refLine);
 
   // Vig-free fair over% from a two-sided book at the reference line (prefer DK).
   const atRef = [dk, fd].filter((b) => b && b.point === refLine);
@@ -1057,6 +1062,8 @@ function bestBookMarket(prop, probOver) {
   if (twoSided) { const io = amProb(twoSided.over), iu = amProb(twoSided.under); const v = io + iu; fairOver = v > 0 ? io / v : io; }
   else { const one = atRef.find((b) => b.over != null || b.under != null); if (!one) return null; fairOver = one.over != null ? amProb(one.over) : 1 - amProb(one.under); }
 
+  // Regress the model toward the market (shrink<1 for an uncalibrated model).
+  const pOver = fairOver + shrink * (pRaw - fairOver);
   const over = (pOver - fairOver) >= 0;
   const side = over ? 'Over' : 'Under';
   const edgePts = round1(Math.abs(pOver - fairOver) * 100);
@@ -1084,7 +1091,7 @@ function bestBookMarket(prop, probOver) {
     edge: edgePts,
     modelOver: round1(pOver * 100),
     fairOver: Math.round(fairOver * 1e4) / 1e4, // vig-free market P(over) — for CLV
-    tier: edgePts >= 5 ? 1 : edgePts >= 3 ? 2 : edgePts >= 1.5 ? 3 : 'pass',
+    tier: edgePts >= tiers[0] ? 1 : edgePts >= tiers[1] ? 2 : edgePts >= tiers[2] ? 3 : 'pass',
     books,              // [{ book, price, line, off, best }]
   };
 }
@@ -1098,11 +1105,17 @@ function priceStrikeouts(prop, projK) {
   });
 }
 
+// The batter model is a Poisson approximation and not yet calibrated (early
+// grading shows it wildly overstates edges), so until it has a track record we
+// regress it hard toward the market and price it on stricter tiers. This keeps
+// batter picks honest — most land Tier 2/3/pass, not a board full of Tier 1.
+const BATTER_SHRINK = 0.25;      // keep ~25% of the raw model-vs-market gap
+const BATTER_TIERS = [8, 5, 3];  // T1/T2/T3 edge cutoffs (vs 5/3/1.5 for Ks)
+
 // Batter counting-stat prop (HR / total bases / H+R+RBI): Poisson around the
-// per-game expectation. An approximation (these aren't strictly Poisson), so
-// edges are directional — grade and calibrate before trusting the magnitude.
+// per-game expectation, then regressed toward the market (see BATTER_SHRINK).
 function priceBatterProp(prop, lambda) {
-  return bestBookMarket(prop, (L) => 1 - poissonCdf(Math.floor(L), lambda));
+  return bestBookMarket(prop, (L) => 1 - poissonCdf(Math.floor(L), lambda), { shrink: BATTER_SHRINK, tiers: BATTER_TIERS });
 }
 
 // Poisson CDF P(X <= k) for mean lambda.
