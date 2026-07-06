@@ -112,17 +112,21 @@
     quotaRemaining: null,
   };
 
-  // Real data when the feed has loaded, otherwise the built-in sample.
-  const getHitters = () => (state.liveHitters && state.liveHitters.length ? state.liveHitters : HOT_HITTERS);
-  const getPitchers = () => (state.livePitchers && state.livePitchers.length ? state.livePitchers : HOT_PITCHERS);
+  // Real data when the feed has loaded. The built-in samples are ONLY for the
+  // offline demo (file:// / localhost) — on the live site an empty/failed feed
+  // shows an honest empty state, never fabricated data dressed up as real.
+  const getHitters = () => (state.liveHitters && state.liveHitters.length ? state.liveHitters : (LIVE_MODE ? [] : HOT_HITTERS));
+  const getPitchers = () => (state.livePitchers && state.livePitchers.length ? state.livePitchers : (LIVE_MODE ? [] : HOT_PITCHERS));
   const boardIsLive = () => !!(state.liveBoard && state.liveBoard.length);
   const isML = () => state.boardView === 'moneyline';
   const isBatter = () => state.boardView === 'batter';
   const battersLive = () => !!(state.liveBatters && state.liveBatters.length);
+  // Whether the active view's feed hasn't returned yet (vs. returned empty).
+  const isFeedLoading = () => (isBatter() ? state.liveBatters : state.liveBoard) === null;
   // The rows for the active view: batter props come from their own feed.
   const getGames = () => {
     if (isBatter()) return state.liveBatters || [];
-    return boardIsLive() ? state.liveBoard : RAW_GAMES;
+    return boardIsLive() ? state.liveBoard : (LIVE_MODE ? [] : RAW_GAMES);
   };
   // A row's tier/edge for the active view. Batter + K-props both read g.tier/edge;
   // moneyline reads the nested ml object.
@@ -255,14 +259,15 @@
   }
 
   function renderTicker() {
-    // Prefer live feed from the Odds API proxy; fall back to mock ticker.
+    // Live feed from the Odds API proxy. The mock ticker is offline-demo only —
+    // in live mode an empty feed leaves the ticker empty, never fabricated games.
     const items = state.liveTicker && state.liveTicker.length
       ? state.liveTicker
-      : RAW_GAMES.map((g) => ({
+      : (LIVE_MODE ? [] : RAW_GAMES.map((g) => ({
           matchup: g.matchup,
           score: state.tickerScores[g.id] || '0-0',
           oddsLabel: g.tier === 'pass' ? 'PASS' : americanOdds(g.odds),
-        }));
+        })));
     el.ticker.innerHTML = items.map((it) =>
       `<span class="tick-item"><span class="live-dot"></span><b>${esc(it.matchup)}</b><span class="score">${esc(it.score)}</span><span class="odds">${esc(it.oddsLabel)}</span></span>`
     ).join('');
@@ -477,8 +482,8 @@
   }
 
   function renderInjuryAlerts() {
-    // Real feed once loaded (even if empty); the sample banner until then.
-    const alerts = state.liveInjuries !== null ? state.liveInjuries : INJURY_ALERTS;
+    // Real feed once loaded (even if empty); the sample banner only in the demo.
+    const alerts = state.liveInjuries !== null ? state.liveInjuries : (LIVE_MODE ? [] : INJURY_ALERTS);
     el.injuryAlerts.innerHTML = alerts.map((a) => `
       <div class="alert">
         <span class="alert-dot"></span>
@@ -522,7 +527,7 @@
     const modeled = boardModeled();
     const noun = isBatter() ? 'batters' : 'games';
     el.gameCount.textContent = !live
-      ? `${RAW_GAMES.length} games · odds refresh :30`
+      ? (LIVE_MODE ? (isFeedLoading() ? 'loading tonight’s slate…' : 'no games posted yet') : `${RAW_GAMES.length} games · odds refresh :30`)
       : (modeled ? `${getGames().length} ${noun} · model vs. live lines` : `${getGames().length} ${noun} · tonight's slate · live`);
     const trackedCount = Object.keys(state.slip).length;
     el.trackedPill.textContent = `${trackedCount} tracked`;
@@ -603,11 +608,19 @@
     el.boardHead.innerHTML = cols.map((c) => c ? `<span class="col-label">${c}</span>` : '<span></span>').join('');
   }
 
+  // Honest empty-state copy for the board — distinguishes "still loading",
+  // "genuinely no games tonight", and "filter/search hid everything".
+  function emptyBoardMessage() {
+    if (isFeedLoading()) return `Loading tonight’s ${isBatter() ? 'batter props' : 'slate'}…`;
+    if (LIVE_MODE && !boardHasLive()) return `No ${isBatter() ? 'batter props' : 'games'} on tonight’s board yet.`;
+    return state.searchQuery.trim() ? 'No games match your search.' : 'No games match this filter.';
+  }
+
   function renderBoard() {
     renderBoardHead();
     const games = getFilteredSortedGames();
     el.noResults.hidden = games.length !== 0;
-    if (!games.length) el.noResults.textContent = isBatter() && !battersLive() ? "Loading tonight's batter props…" : 'No games match this filter.';
+    if (!games.length) el.noResults.textContent = emptyBoardMessage();
     if (el.pinNote) el.pinNote.hidden = !getGames().some((g) => Array.isArray(g.oddsBooks) && g.oddsBooks.length);
 
     el.boardRows.innerHTML = games.map((g) => {
@@ -785,6 +798,10 @@
   }
 
   function renderHittersGrid() {
+    if (!getHitters().length) {
+      el.hittersGrid.innerHTML = `<div class="leaders-empty">${state.liveHitters === null ? 'Loading season leaders…' : 'Leaders appear once the season’s stats post.'}</div>`;
+      return;
+    }
     el.hittersGrid.innerHTML = getHitters().map((h, i) => {
       const isSelected = state.hitterCompareIds.includes(i);
       const cardClasses = ['hitter-card'];
@@ -866,6 +883,10 @@
   }
 
   function renderPitchers() {
+    if (!getPitchers().length) {
+      el.pitchersGrid.innerHTML = `<div class="leaders-empty">${state.livePitchers === null ? 'Loading season leaders…' : 'Leaders appear once the season’s stats post.'}</div>`;
+      return;
+    }
     el.pitchersGrid.innerHTML = getPitchers().map((p, i) => {
       const isSelected = state.pitcherCompareIds.includes(i);
       const cardClasses = ['hitter-card'];
@@ -955,7 +976,12 @@
 
   function renderCalibration() {
     const tr = state.trackRecord;
-    const buckets = (tr && tr.calibration && tr.calibration.length) ? tr.calibration : CALIBRATION_BUCKETS;
+    // Sample dots only in the offline demo; live shows real buckets or nothing.
+    const buckets = (tr && tr.calibration && tr.calibration.length) ? tr.calibration : (LIVE_MODE ? [] : CALIBRATION_BUCKETS);
+    if (!buckets.length) {
+      el.calibrationPoints.innerHTML = LIVE_MODE ? '<div class="calibration-empty">Calibration plots here as tonight’s picks grade.</div>' : '';
+      return;
+    }
     el.calibrationPoints.innerHTML = buckets.map((b) => `
       <div class="calibration-dot" style="left:calc(${b.predicted}% - 6px);bottom:calc(${b.actual}% - 6px)" title="Predicted ${b.predicted}% · Actual ${b.actual}% (n=${b.n})"></div>
     `).join('');
@@ -1234,12 +1260,25 @@
     // Half-Kelly, 1u = 1% of bankroll, capped at 2.5u (edges are still being calibrated).
     return Math.min(2.5, Math.round(f * 0.5 * 100 * 10) / 10);
   }
+  // Honest hero placeholder for live mode when there's no duel to show.
+  function renderHeroPlaceholder(hasGames) {
+    const loading = state.liveBoard === null;
+    el.heroEyebrow.textContent = loading ? 'Loading tonight’s slate…' : (hasGames ? 'Tonight’s slate' : 'No games scheduled');
+    el.heroTitle.innerHTML = loading || hasGames ? 'Tonight’s Slate' : 'No Games Tonight';
+    el.heroDuel.innerHTML = `<div class="hero-empty">${
+      loading ? 'Pulling tonight’s probable pitchers, lines, and model projections…'
+        : hasGames ? 'Model projections are on the board below — no marquee two-ace duel posted for tonight.'
+          : 'No MLB games are posted right now. The board fills in on game days.'
+    }</div>`;
+  }
+
   function renderHero() {
-    if (!boardIsLive()) return; // keep the static mock hero
+    if (!LIVE_MODE) return; // offline demo keeps the static sample hero
+    if (!boardIsLive()) { renderHeroPlaceholder(false); return; }
     const hasDuo = (g) => g.projRows && g.projRows.length === 2 && g.projRows.every((p) => typeof p.proj === 'number');
     const preview = state.liveBoard.filter((g) => g.status === 'Preview' && hasDuo(g));
     const pool = preview.length ? preview : state.liveBoard.filter(hasDuo);
-    if (!pool.length) return;
+    if (!pool.length) { renderHeroPlaceholder(true); return; }
     const combined = (g) => g.projRows.reduce((s, p) => s + p.proj, 0);
     const feature = pool.reduce((m, g) => (!m || combined(g) > combined(m) ? g : m), null);
     const [a, b] = feature.projRows;
@@ -1304,6 +1343,7 @@
     renderTheme();
     renderTicker();
     renderWinProb();
+    renderHero();
     renderInjuryAlerts();
     renderControls();
     renderBoard();
