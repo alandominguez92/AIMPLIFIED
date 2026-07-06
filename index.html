@@ -233,9 +233,10 @@
     </div>
 
     <div class="card" id="roiCard" hidden>
-      <h3>ROI &amp; Model Accuracy</h3>
-      <p class="calibration-sub">Return on 1u-flat stakes, where each unit is 1% of bankroll. Projection error is the average miss between projected and actual strikeouts.</p>
+      <h3>ROI, CLV &amp; Model Accuracy</h3>
+      <p class="calibration-sub">CLV is how far the vig-free market moved toward each pick between when it logged and when the game started — the truest measure of a good bet. ROI is return on 1u-flat stakes (1u = 1% of bankroll); projection error is the average miss between projected and actual strikeouts.</p>
       <div class="roi-stats" id="roiStats"></div>
+      <p class="roi-clv-note" id="roiClvNote" hidden></p>
       <div class="roi-chart">
         <div class="roi-chart-title">Cumulative units</div>
         <svg id="roiChart" viewBox="0 0 320 96" preserveAspectRatio="none" role="img" aria-label="Cumulative units over time"></svg>

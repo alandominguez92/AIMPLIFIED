@@ -627,7 +627,7 @@ async function batters(env, ctx) {
       // Per-market detail for the expanded row (also carries what logging needs).
       batterMarkets: BATTER_MARKETS.map((spec) => {
         const m = b.markets[spec.metric];
-        return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
+        return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
       }),
       // Real percentile bars from the priced pool.
       stats: [
@@ -686,8 +686,10 @@ async function ensureSchema(db) {
     date TEXT, game_id TEXT, pitcher_id INTEGER, pitcher TEXT, team TEXT,
     line REAL, side TEXT, price INTEGER, proj REAL, model_over REAL,
     edge REAL, tier TEXT, actual_k INTEGER, result TEXT,
+    entry_over REAL, close_line REAL, close_price INTEGER, close_over REAL,
     PRIMARY KEY (date, game_id, pitcher_id)
   )`).run();
+  await addColumns(db, 'picks', CLV_COLUMNS);
 }
 
 // Batter picks live in their own table (a player carries up to 3 markets per
@@ -697,8 +699,22 @@ async function ensureBatterSchema(db) {
     date TEXT, game_id TEXT, player_id INTEGER, player TEXT, team TEXT,
     market TEXT, line REAL, side TEXT, price INTEGER, proj REAL, model_over REAL,
     edge REAL, tier TEXT, actual REAL, result TEXT,
+    entry_over REAL, close_line REAL, close_price INTEGER, close_over REAL,
     PRIMARY KEY (date, game_id, player_id, market)
   )`).run();
+  await addColumns(db, 'bpicks', CLV_COLUMNS);
+}
+
+// CLV columns, added to pre-existing tables via guarded ALTER (D1 throws if the
+// column already exists — that's fine, we ignore it).
+const CLV_COLUMNS = [
+  ['entry_over', 'REAL'], ['close_line', 'REAL'], ['close_price', 'INTEGER'], ['close_over', 'REAL'],
+];
+async function addColumns(db, table, cols) {
+  for (const [name, type] of cols) {
+    try { await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run(); }
+    catch (e) { /* column already exists */ }
+  }
 }
 
 async function logBatterPicks(db, rows, date) {
@@ -709,10 +725,20 @@ async function logBatterPicks(db, rows, date) {
     if (r.status !== 'Preview' || !r.gamePk || r.playerId == null) continue;
     for (const m of (r.batterMarkets || [])) {
       if (m.none || m.price == null) continue;
+      const gid = 'g' + r.gamePk;
       stmts.push(db.prepare(
-        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(date, 'g' + r.gamePk, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier)));
+        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null));
+      // Continuous close capture: latest line/price always; the vig-free over%
+      // only when the line still matches entry (so a late line move never
+      // clobbers the last comparable close).
+      stmts.push(db.prepare('UPDATE bpicks SET close_line=?, close_price=? WHERE date=? AND game_id=? AND player_id=? AND market=?')
+        .bind(m.line, m.price, date, gid, r.playerId, m.metric));
+      if (m.fairOver != null) {
+        stmts.push(db.prepare('UPDATE bpicks SET close_over=? WHERE date=? AND game_id=? AND player_id=? AND market=? AND line=?')
+          .bind(m.fairOver, date, gid, r.playerId, m.metric, m.line));
+      }
     }
   }
   if (stmts.length) await db.batch(stmts);
@@ -786,10 +812,18 @@ async function logPicks(db, rows, date) {
     if (r.status !== 'Preview') continue;
     for (const p of (r.pitchers || [])) {
       if (!p.market || p.market.price == null || p.id == null) continue;
+      const m = p.market;
       stmts.push(db.prepare(
-        `INSERT OR IGNORE INTO picks (date,game_id,pitcher_id,pitcher,team,line,side,price,proj,model_over,edge,tier)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(date, r.id, p.id, p.name, p.team, p.market.line, p.market.side, p.market.price, p.proj, p.market.modelOver, p.market.edge, String(p.market.tier)));
+        `INSERT OR IGNORE INTO picks (date,game_id,pitcher_id,pitcher,team,line,side,price,proj,model_over,edge,tier,entry_over)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, r.id, p.id, p.name, p.team, m.line, m.side, m.price, p.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null));
+      // Continuous close capture (see logBatterPicks for the rationale).
+      stmts.push(db.prepare('UPDATE picks SET close_line=?, close_price=? WHERE date=? AND game_id=? AND pitcher_id=?')
+        .bind(m.line, m.price, date, r.id, p.id));
+      if (m.fairOver != null) {
+        stmts.push(db.prepare('UPDATE picks SET close_over=? WHERE date=? AND game_id=? AND pitcher_id=? AND line=?')
+          .bind(m.fairOver, date, r.id, p.id, m.line));
+      }
     }
   }
   if (stmts.length) await db.batch(stmts);
@@ -907,6 +941,20 @@ function buildTrackRecord(rows) {
   let cum = 0;
   const cumulative = Object.keys(byDate).sort().map((d) => { cum += byDate[d]; return { date: d, units: Math.round(cum * 10) / 10 }; });
 
+  // Closing-line value: how far the vig-free market moved toward the bet side
+  // between entry and close. Only picks whose line didn't move are directly
+  // comparable; line-move picks are counted separately.
+  let clvSum = 0, clvN = 0, beat = 0, lineMoved = 0;
+  for (const r of graded) {
+    if (r.tier === 'pass') continue;
+    if (r.close_line != null && r.line != null && r.close_line !== r.line) { lineMoved++; continue; }
+    if (r.close_over == null || r.entry_over == null) continue;
+    const clv = r.side === 'Over' ? (r.close_over - r.entry_over) : (r.entry_over - r.close_over);
+    clvSum += clv; clvN++; if (clv > 0) beat++;
+  }
+  const clv = clvN ? round1(clvSum / clvN * 100) : null;   // avg probability points
+  const clvBeatRate = clvN ? round1(beat / clvN * 100) : null;
+
   // Projection accuracy: mean absolute error of projected vs actual Ks. Kept
   // strikeout-only — mixing K (0–15) with HR/TB (0–4) scales would be meaningless.
   let maeSum = 0, maeN = 0;
@@ -946,6 +994,10 @@ function buildTrackRecord(rows) {
     tierBreakdown,
     sideBreakdown,
     marketBreakdown,
+    clv,
+    clvBeatRate,
+    clvN,
+    clvLineMoved: lineMoved,
     calibration,
   };
 }
@@ -1001,6 +1053,7 @@ function bestBookMarket(prop, probOver) {
     price: best,        // the better of DK/FD for the chosen side — what you'd bet
     edge: edgePts,
     modelOver: round1(pOver * 100),
+    fairOver: Math.round(fairOver * 1e4) / 1e4, // vig-free market P(over) — for CLV
     tier: edgePts >= 5 ? 1 : edgePts >= 3 ? 2 : edgePts >= 1.5 ? 3 : 'pass',
     books,              // [{ book, price, line, off, best }]
   };

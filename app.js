@@ -239,6 +239,7 @@
     slipClearBtn: document.getElementById('slipClearBtn'),
     roiCard: document.getElementById('roiCard'),
     roiStats: document.getElementById('roiStats'),
+    roiClvNote: document.getElementById('roiClvNote'),
     roiChart: document.getElementById('roiChart'),
     roiChartCap: document.getElementById('roiChartCap'),
     roiTables: document.getElementById('roiTables'),
@@ -991,7 +992,12 @@
     if (!el.clvChipText) return;
     if (!LIVE_MODE) { el.clvChipText.textContent = 'Model preview'; return; }
     const tr = state.trackRecord;
-    if (tr && !tr.empty && tr.tracked > 0) {
+    if (tr && tr.clvN > 0 && tr.clv != null) {
+      // Real closing-line value — the truest credibility metric.
+      const cls = tr.clv >= 0 ? 'clv-pos' : 'clv-neg';
+      const v = (tr.clv > 0 ? '+' : '') + tr.clv + '%';
+      el.clvChipText.innerHTML = `SEASON CLV <b class="${cls}">${esc(v)}</b> · ${tr.clvN} picks`;
+    } else if (tr && !tr.empty && tr.tracked > 0) {
       const cls = tr.roi >= 0 ? 'clv-pos' : 'clv-neg';
       const roi = (tr.roi > 0 ? '+' : '') + tr.roi + '%';
       el.clvChipText.innerHTML = `SEASON ROI <b class="${cls}">${esc(roi)}</b> · ${tr.tracked} graded picks`;
@@ -1091,7 +1097,9 @@
     const sign = (n, suf) => (n > 0 ? '+' : '') + n + (suf || '');
     const roiTxt = tr.roi == null ? '—' : sign(tr.roi, '%');
     const uTxt = tr.units == null ? '—' : sign(tr.units, 'u');
+    const clvTxt = tr.clv == null ? '—' : sign(tr.clv, '%');
     const stats = [
+      { k: 'CLV vs close', v: clvTxt, tone: tr.clv == null ? '' : (tr.clv >= 0 ? 'g' : 'r') },
       { k: 'ROI', v: roiTxt, tone: tr.roi == null ? '' : (tr.roi >= 0 ? 'g' : 'r') },
       { k: 'Units (flat)', v: uTxt, tone: tr.units == null ? '' : (tr.units >= 0 ? 'g' : 'r') },
       { k: 'Proj. error (MAE)', v: tr.mae == null ? '—' : '±' + tr.mae + ' K', tone: '' },
@@ -1099,6 +1107,17 @@
     ];
     el.roiStats.innerHTML = stats.map((s) => `
       <div class="roi-stat"><div class="roi-stat-k">${s.k}</div><div class="roi-stat-v ${s.tone}">${esc(s.v)}</div></div>`).join('');
+
+    if (el.roiClvNote) {
+      if (tr.clvN > 0) {
+        const moved = tr.clvLineMoved ? ` · ${tr.clvLineMoved} excluded (line moved)` : '';
+        el.roiClvNote.hidden = false;
+        el.roiClvNote.textContent = `Beat the close on ${tr.clvBeatRate}% of ${tr.clvN} comparable picks${moved}.`;
+      } else {
+        el.roiClvNote.hidden = false;
+        el.roiClvNote.textContent = 'CLV builds as picks reach game time — closing lines are captured pre-game.';
+      }
+    }
 
     renderRoiChart(tr.cumulative || []);
 
