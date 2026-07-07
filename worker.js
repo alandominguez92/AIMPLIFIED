@@ -532,10 +532,14 @@ async function batters(env, ctx) {
   if (!Array.isArray(events) || !events.length) return cors(json([], 300));
 
   // Map each "AWAY@HOME" to its real MLB gamePk + status, so batter picks can
-  // be logged and later graded from the boxscore (needs the gamePk).
+  // be logged and later graded from the boxscore (needs the gamePk). The same
+  // request hydrates posted starting lineups: once a manager's card is up we
+  // know who actually plays tonight and where they bat.
   const schedByMatchup = {};
+  const lineupSlotById = {};        // playerId -> batting slot 1-9
+  const lineupPostedTeamIds = new Set(); // teams whose lineup is posted
   try {
-    const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}&hydrate=team`, { headers: { accept: 'application/json' } });
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}&hydrate=team,lineups`, { headers: { accept: 'application/json' } });
     if (r.ok) {
       const sd = await r.json();
       (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
@@ -543,6 +547,13 @@ async function batters(env, ctx) {
         // StatsAPI abbreviations that differ (e.g. AZ vs ARI) still match.
         const away = keyAbbr((g.teams.away.team || {}).name), home = keyAbbr((g.teams.home.team || {}).name);
         schedByMatchup[`${away}@${home}`] = { gamePk: g.gamePk, status: (g.status && g.status.abstractGameState) || 'Preview' };
+        const lp = g.lineups || {};
+        [['awayPlayers', g.teams.away.team], ['homePlayers', g.teams.home.team]].forEach(([k, team]) => {
+          const arr = lp[k] || [];
+          if (!arr.length || !team || !team.id) return;
+          lineupPostedTeamIds.add(team.id);
+          arr.forEach((p, i) => { if (p && p.id) lineupSlotById[p.id] = i + 1; });
+        });
       });
     }
   } catch (e) { /* no gamePk mapping -> batter picks just won't be logged */ }
@@ -588,7 +599,7 @@ async function batters(env, ctx) {
       const d = await r.json();
       ((d.stats || [])[0] || {}).splits?.forEach((s) => {
         const nm = normName((s.player || {}).fullName);
-        if (nm) statByName[nm] = { st: s.stat || {}, id: (s.player || {}).id, team: teamAbbr(s.team) };
+        if (nm) statByName[nm] = { st: s.stat || {}, id: (s.player || {}).id, team: teamAbbr(s.team), teamId: (s.team || {}).id };
       });
     }
   } catch (e) { /* projections fall back to rate-only where possible */ }
@@ -603,7 +614,14 @@ async function batters(env, ctx) {
     const st = match.st;
     const gp = toNum(st.gamesPlayed), pa = toNum(st.plateAppearances);
     if (gp < 10 || pa < 30) continue;  // too small a sample to model
-    const expPA = pa / gp;
+    // Confirmed lineups: if this batter's team has posted tonight's card and
+    // he's not on it, he isn't starting — drop him rather than price a dead
+    // pick. If he IS on it, project tonight's PA from his batting slot
+    // instead of his historical average (leadoff sees ~a full PA more than
+    // the 9-hole). No card posted yet -> behave exactly as before.
+    const slot = lineupSlotById[match.id] || 0;
+    if (!slot && match.teamId && lineupPostedTeamIds.has(match.teamId)) continue;
+    const expPA = slot ? SLOT_PA[slot - 1] : pa / gp;
     const hr = toNum(st.homeRuns), tb = toNum(st.totalBases);
     const hits = toNum(st.hits), runs = toNum(st.runs), rbi = toNum(st.rbi);
     const iso = Math.max(0, toNum(st.slg) - toNum(st.avg));
@@ -614,13 +632,13 @@ async function batters(env, ctx) {
     const lambda = {
       hr: (hr / pa) * expPA,
       tb: (tb / pa) * expPA,
-      hrr: (hits + runs + rbi) / gp,
+      hrr: slot ? ((hits + runs + rbi) / pa) * expPA : (hits + runs + rbi) / gp,
     };
     const markets = {};
     for (const spec of BATTER_MARKETS) {
       markets[spec.metric] = priceBatterProp(rec.props[spec.metric], lambda[spec.metric]);
     }
-    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets });
+    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot });
   }
   if (!draft.length) return cors(json([], 300));
 
@@ -647,6 +665,7 @@ async function batters(env, ctx) {
       matchup: b.rec.matchup,
       timeMs: b.rec.timeMs,
       timeLabel: b.rec.timeLabel,
+      lineupSlot: b.slot || null,
       pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : '—',
       odds: lead ? lead.m.price : null,
       oddsBooks: lead ? lead.m.books : null,
@@ -1280,6 +1299,11 @@ function priceStrikeouts(prop, projK) {
 // batter picks honest — most land Tier 2/3/pass, not a board full of Tier 1.
 const BATTER_SHRINK = 0.25;      // keep ~25% of the raw model-vs-market gap
 const BATTER_TIERS = [8, 5, 3];  // T1/T2/T3 edge cutoffs (vs 5/3/1.5 for Ks)
+
+// Expected plate appearances by batting-order slot (league-typical: leadoff
+// ~4.65, dropping ~0.11 per slot to ~3.77 in the 9-hole). Used once tonight's
+// lineup is posted; before that, a batter's own season PA/G stands in.
+const SLOT_PA = [4.65, 4.54, 4.43, 4.32, 4.21, 4.10, 3.99, 3.88, 3.77];
 
 // Batter counting-stat prop (HR / total bases / H+R+RBI): Poisson around the
 // per-game expectation, then regressed toward the market (see BATTER_SHRINK).
