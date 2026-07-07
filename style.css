@@ -118,6 +118,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .duel .team { color:var(--textDim); font-size:13px; margin-top:2px; }
 .proj { margin-top:20px; }
 .proj .label { font-size:12px; color:var(--textDim); text-transform:uppercase; letter-spacing:.1em; }
+.label-short { display:none; } /* phone-only variant of the proj label */
 .proj .num { font-family:'IBM Plex Mono'; font-weight:600; font-size:38px; color:var(--accent); line-height:1.1; font-variant-numeric:tabular-nums; }
 .proj .ci { font-family:'IBM Plex Mono'; font-size:13px; color:var(--textDim); }
 
@@ -412,11 +413,33 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* ---------- responsive ---------- */
 @media (max-width:760px) {
-  .duel, .record, .split { grid-template-columns:1fr !important; }
+  .record, .split { grid-template-columns:1fr !important; }
   .hitters-grid { grid-template-columns:repeat(2,1fr) !important; }
   .nav-links { display:none !important; }
   .clv-chip { display:none !important; }
-  h1 { font-size:clamp(34px,11vw,56px) !important; }
+  h1 { font-size:clamp(28px,8.5vw,38px) !important; }
+
+  /* Hero: keep the duel head-to-head on phones — compact type instead of
+     stacking, so one matchup stays under a screen. */
+  .hero { padding:24px 0 20px; }
+  .hero p.sub { font-size:12.5px; }
+  .duel { margin-top:14px; }
+  .duel .side { padding:13px 13px 14px; }
+  .duel .name { font-size:17px; line-height:1.05; }
+  .duel .team { font-size:10.5px; }
+  .proj { margin-top:9px; display:flex; align-items:baseline; column-gap:6px; flex-wrap:wrap; }
+  .proj .num { order:1; font-size:24px; line-height:1; }
+  .proj .label { order:2; font-size:9px; }
+  .proj .ci { order:3; flex-basis:100%; font-size:9.5px; margin-top:2px; }
+  .label-long { display:none; }
+  .label-short { display:inline; }
+  .pct { margin-top:9px; }
+  .pct .row { gap:6px; margin-top:6px; }
+  .pct .stat { width:52px; font-size:9px; white-space:nowrap; }
+  .pct .badge { min-width:26px; height:18px; font-size:10.5px; padding:0 4px; }
+  .pick-strip { padding:11px 14px; gap:8px 12px; }
+  .winprob { padding:12px 14px 14px; }
+  .winprob-team { width:auto; font-size:13px; }
 }
 
 /* Phone: the 8-column board can't fit, so reflow each row into a stacked

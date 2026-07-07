@@ -1302,7 +1302,7 @@
         <div class="name">${esc(p.fullName || p.name)}</div>
         <div class="team">${esc(meta)}</div>
         <div class="proj">
-          <div class="label">Projected strikeouts</div>
+          <div class="label"><span class="label-long">Projected strikeouts</span><span class="label-short">Proj Ks</span></div>
           <div class="num">${p.proj}</div>
           <div class="ci">80% interval: ${p.lo} – ${p.hi}${lineTxt}</div>
         </div>
