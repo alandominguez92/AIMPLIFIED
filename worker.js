@@ -13,7 +13,10 @@ const STATS = 'https://statsapi.mlb.com/api/v1';
 // confident and edges too large. Use an overdispersed spread, and regress the
 // projection modestly toward the (sharp) market line to temper model error.
 const DISPERSION = 1.55;   // Var(K) / mean at the game level
-const LINE_SHRINK = 0.20;  // fraction of the projection pulled toward the line
+// Burn-in period (Jul 7 - ~Aug 4, 2026): shrink raised 0.20 -> 0.30 while the
+// graded-pick sample accrues; plan is to drop to 0.24 after, unless the CLV
+// beat rate / Brier on real picks argues otherwise.
+const LINE_SHRINK = 0.30;  // fraction of the projection pulled toward the line
 
 // The books we price against (the user's accounts). Odds API bookmaker keys ->
 // short display labels. Prices are pinned to these two only, and the better of
