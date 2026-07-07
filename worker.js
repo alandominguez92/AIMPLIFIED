@@ -231,7 +231,13 @@ async function board(env, ctx) {
       const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (evR.ok) {
         const events = await evR.json();
-        await Promise.all((Array.isArray(events) ? events : []).map(async (ev) => {
+        // Only price games that haven't started — a live game's pre-game prop is
+        // gone, so the per-event call just burns Odds API quota for nothing. This
+        // trims calls exactly through the afternoon/evening as games go live.
+        const now = Date.now();
+        const upcoming = (Array.isArray(events) ? events : [])
+          .filter((ev) => !ev.commence_time || Date.parse(ev.commence_time) > now);
+        await Promise.all(upcoming.map(async (ev) => {
           try {
             const pr = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=pitcher_strikeouts&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
             if (!pr.ok) return;
@@ -582,7 +588,11 @@ async function batters(env, ctx) {
 
   const marketKeys = BATTER_MARKETS.map((m) => m.key).join(',');
   const byName = {}; // normName -> { name, matchup, timeMs, timeLabel, props:{metric:{DK,FD}} }
-  await Promise.all(events.map(async (ev) => {
+  // Skip started games — no pre-game props to fetch, so don't spend the quota
+  // (batter markets cost more: 3 markets per event vs. 1 for strikeouts).
+  const nowB = Date.now();
+  const upcomingB = events.filter((ev) => !ev.commence_time || Date.parse(ev.commence_time) > nowB);
+  await Promise.all(upcomingB.map(async (ev) => {
     try {
       const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (!r.ok) return;
