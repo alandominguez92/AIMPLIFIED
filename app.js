@@ -33,6 +33,7 @@
   ];
 
   const TONE_COLOR = { hot: 'var(--danger)', warm: 'var(--warm)', cool: 'var(--positive)' };
+  const clampPct = (v) => Math.max(0, Math.min(100, v)); // bar width, 0–100
   const TIER_LABEL = { 1: '★★★★☆', 2: '★★★☆☆', 3: '★★☆☆☆', pass: 'Pass' };
 
   const INJURY_ALERTS = [
@@ -870,13 +871,52 @@
         if (g.ml) {
           const priceStr = g.ml.price == null ? '—' : money(g.ml.price);
           const edgeStr = g.ml.edge == null ? '—' : `+${g.ml.edge}% edge`;
-          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Model win probability</div>
-            <div style="display:flex;gap:24px;margin-top:6px;font-family:'IBM Plex Mono';font-size:14px">
+
+          // Head-to-head starting-pitcher duel, built from the two real starters
+          // on this game (projRows). Pick's side is ordered first so it's on top
+          // when the two columns stack on a phone. Bars are a 0–100 "goodness"
+          // score (same thresholds as the batter percentile bars); the badge
+          // shows the real stat. ERA is inverted — lower is better.
+          const toneOf = (v) => v >= 66 ? 'cool' : v >= 33 ? 'warm' : 'hot';
+          const wpFor = (t) => t === g.ml.homeAbbr ? g.ml.homeWinProb : t === g.ml.awayAbbr ? g.ml.awayWinProb : null;
+          const starters = (Array.isArray(g.projRows) ? g.projRows : []).filter((p) => p && p.name);
+          const ordered = starters.slice().sort((a, b) =>
+            (b.team === g.ml.teamAbbr ? 1 : 0) - (a.team === g.ml.teamAbbr ? 1 : 0));
+
+          let duelHtml = '';
+          if (ordered.length) {
+            const bar = (score, tone) => `<div class="track"><div class="fill" style="width:${clampPct(score)}%;background:${TONE_COLOR[tone]}"></div></div>`;
+            const statRow = (label, score, tone, badge) =>
+              `<div class="stat-row"><span class="stat-label">${label}</span>${bar(score, tone)}<span class="badge" style="color:${TONE_COLOR[tone]}">${badge}</span></div>`;
+            duelHtml = `<div class="ml-duel">` + ordered.map((p) => {
+              const isPick = p.team === g.ml.teamAbbr;
+              const wp = wpFor(p.team);
+              const eraNum = p.era != null ? parseFloat(p.era) : null;
+              const projScore = p.proj != null ? p.proj / 10 * 100 : 0;
+              const k9Score = p.k9 != null ? p.k9 / 14 * 100 : 0;
+              const eraScore = eraNum != null ? (6 - eraNum) / 6 * 100 : 0;
+              return `<div class="ml-pcol${isPick ? ' pick-side' : ''}">
+                <div class="ml-phead">
+                  <span class="ml-pname">${esc(p.name)}${isPick ? '<span class="ml-picktag">◄ pick</span>' : ''}</span>
+                  <span class="ml-pwp ${isPick ? 'on' : 'off'}">${esc(p.team)} · ${wp != null ? wp + '%' : '—'}</span>
+                </div>
+                ${statRow('Proj Ks', projScore, toneOf(projScore), p.proj != null ? p.proj : '—')}
+                ${statRow('K/9', k9Score, toneOf(k9Score), p.k9 != null ? p.k9 : '—')}
+                ${statRow('ERA', eraScore, toneOf(eraScore), p.era != null ? p.era : '—')}
+              </div>`;
+            }).join('') + `</div>`;
+          } else {
+            duelHtml = `<div style="display:flex;gap:24px;margin-top:6px;font-family:'IBM Plex Mono';font-size:14px">
               <span>${esc(g.ml.awayAbbr || '')} <b style="color:var(--accent)">${g.ml.awayWinProb != null ? g.ml.awayWinProb + '%' : '—'}</b></span>
               <span>${esc(g.ml.homeAbbr || '')} <b style="color:var(--accent)">${g.ml.homeWinProb != null ? g.ml.homeWinProb + '%' : '—'}</b></span>
-              <span style="color:var(--textDim)">pick ${esc(g.ml.pick || '—')} (${esc(priceStr)}) · ${esc(edgeStr)}</span>
-            </div>
-            <div style="color:var(--textDim);font-size:12px;margin-top:12px">Team win% (log5) + home field + starting-pitcher ERA, priced vs. the vig-free moneyline.</div></div>`;
+            </div>`;
+          }
+
+          detailHtml = `<div class="expanded-detail">
+            <div class="expanded-title">Starting pitchers — model matchup</div>
+            ${duelHtml}
+            <div class="ml-pickline">pick ${esc(g.ml.pick || '—')} <span style="color:var(--text)">(${esc(priceStr)})</span> · ${esc(edgeStr)}</div>
+            <div style="color:var(--textDim);font-size:12px;margin-top:12px">Win% blends log5 team rating, home field, and starter ERA, priced vs. the vig-free moneyline. Bars score each starter's projected Ks, season K/9, and ERA (lower is better).</div></div>`;
         } else {
           detailHtml = `<div class="expanded-detail"><div class="expanded-title">Moneyline pending</div><div style="color:var(--textDim);font-size:13px">No moneyline posted for this game yet.</div></div>`;
         }
