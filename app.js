@@ -210,6 +210,7 @@
     liveNowSection: document.getElementById('liveNow'),
     liveNowGrid: document.getElementById('liveNowGrid'),
     liveNowNote: document.getElementById('liveNowNote'),
+    liveNowDots: document.getElementById('liveNowDots'),
     navLive: document.getElementById('navLive'),
     gameCount: document.getElementById('gameCount'),
     trackedPill: document.getElementById('trackedPill'),
@@ -541,6 +542,33 @@
           ${c.note ? `<div class="livecard-note">${esc(c.note)}</div>` : ''}
         </div>`;
     }).join('');
+    renderLiveNowDots(cards.length);
+  }
+
+  // Dot indicators for the mobile swipe carousel: one per card, the one nearest
+  // the scroll position highlighted. CSS hides the row on desktop (grid layout).
+  function renderLiveNowDots(n) {
+    const dots = el.liveNowDots, grid = el.liveNowGrid;
+    if (!dots || !grid) return;
+    if (n <= 1) { dots.hidden = true; dots.innerHTML = ''; grid.onscroll = null; return; }
+    dots.hidden = false;
+    dots.innerHTML = Array.from({ length: n }, (_, i) =>
+      `<span class="d${i === 0 ? ' active' : ''}" data-i="${i}"></span>`).join('');
+    const activate = (i) => {
+      [...dots.children].forEach((d, j) => d.classList.toggle('active', j === i));
+    };
+    grid.onscroll = () => {
+      const cards = grid.children;
+      if (cards.length < 2) return;
+      const stride = cards[1].offsetLeft - cards[0].offsetLeft;
+      if (stride <= 0) return;
+      activate(Math.max(0, Math.min(n - 1, Math.round(grid.scrollLeft / stride))));
+    };
+    dots.onclick = (e) => {
+      const d = e.target.closest('.d'); if (!d) return;
+      const i = +d.dataset.i, cards = grid.children;
+      if (cards[i] && cards[0]) grid.scrollTo({ left: cards[i].offsetLeft - cards[0].offsetLeft, behavior: 'smooth' });
+    };
   }
   async function refreshLiveNow() {
     if (!LIVE_MODE) return;

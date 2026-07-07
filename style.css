@@ -177,7 +177,26 @@ section { padding:44px 0; }
 .livenow-dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--danger); box-shadow:0 0 9px var(--danger); margin-right:11px; vertical-align:middle; animation:aiPulse 1.4s ease-in-out infinite; }
 .livenow-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
 @media (max-width:860px){ .livenow-grid { grid-template-columns:repeat(2,1fr); } }
-@media (max-width:560px){ .livenow-grid { grid-template-columns:1fr; } }
+/* Phone: switch the grid to a horizontal swipe carousel. Cards sit side by
+   side at ~86% width so the next one peeks, with scroll-snap for a clean stop. */
+@media (max-width:560px){
+  .livenow-grid {
+    display:flex; grid-template-columns:none; gap:12px;
+    overflow-x:auto; scroll-snap-type:x mandatory;
+    -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
+    padding-bottom:2px; scrollbar-width:none;
+  }
+  .livenow-grid::-webkit-scrollbar { display:none; }
+  .livenow-grid > .livecard { flex:0 0 86%; scroll-snap-align:start; }
+}
+.livenow-swipe { display:none; }
+.livenow-dots { display:none; }
+@media (max-width:560px){
+  .livenow-swipe { display:inline; margin-left:auto; font-family:'IBM Plex Mono'; font-size:11.5px; letter-spacing:.04em; color:var(--textDim); }
+  .livenow-dots { display:flex; justify-content:center; gap:7px; margin-top:13px; }
+  .livenow-dots .d { width:6px; height:6px; border-radius:50%; background:var(--muted); cursor:pointer; transition:background .2s ease, transform .2s ease; }
+  .livenow-dots .d.active { background:var(--textDim); transform:scale(1.3); }
+}
 
 .livecard { background:var(--board); border:1px solid var(--border); border-radius:10px; padding:16px 18px 15px; }
 .livecard.cashing { border-color:rgba(63,182,163,.4); }
