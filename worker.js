@@ -65,6 +65,7 @@ async function handleApi(p, env, ctx) {
   if (p === '/api/track-record') return trackRecord(env);
   if (p === '/api/injuries') return injuries();
   if (p === '/api/live-now') return liveNow(env);
+  if (p === '/api/ml-debug') return mlDebug(env);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -361,7 +362,11 @@ async function board(env, ctx) {
             return best;
           };
           if (!wanted.length) return;
-          mlByHome[ev.home_team] = { home: priceBest(ev.home_team), away: priceBest(ev.away_team) };
+          // Key by canonical abbreviation (same as the props/batter matching) so
+          // an Odds-vs-StatsAPI name difference (e.g. Athletics, AZ/ARI) can't
+          // silently miss and blank the moneyline. priceBest still reads outcomes
+          // by the Odds API's own full team name.
+          mlByHome[keyAbbr(ev.home_team)] = { home: priceBest(ev.home_team), away: priceBest(ev.away_team) };
         });
       }
     } catch (e) { /* no moneylines -> ml pick is model-only */ }
@@ -434,7 +439,7 @@ async function board(env, ctx) {
     // priced against the real moneyline. Prefer the live line; fall back to the
     // last-known line for this game so Edge/Tier survive once the book pulls it.
     const gid = 'g' + g.gamePk;
-    const livePair = mlByHome[home.team && home.team.name];
+    const livePair = mlByHome[keyAbbr(home.team && home.team.name)];
     const liveHasPrice = livePair && (livePair.home != null || livePair.away != null);
     const effPair = liveHasPrice ? livePair : (savedLines[gid] || null);
     const ml = moneyline(g, home, away, teamWinP, pmap, effPair);
@@ -469,7 +474,7 @@ async function board(env, ctx) {
     // Persist tonight's live moneylines so they survive the book pulling the
     // market — captured every window while a price is still offered.
     const livePairs = games.map((g) => {
-      const home = g.teams.home, lp = mlByHome[home.team && home.team.name];
+      const home = g.teams.home, lp = mlByHome[keyAbbr(home.team && home.team.name)];
       return (lp && (lp.home != null || lp.away != null))
         ? { gameId: 'g' + g.gamePk, home: lp.home, away: lp.away } : null;
     }).filter(Boolean);
@@ -1442,6 +1447,65 @@ function timeLabelPT(iso) {
   } catch (e) { return ''; }
 }
 // Today's date on the US West Coast (YYYY-MM-DD) — the site's "slate" date.
+// /api/ml-debug — read-only diagnostic for the moneyline pipeline. Shows the
+// schedule games, what the h2h odds feed actually returns (names, book keys),
+// and whether each schedule game finds a matching odds line via keyAbbr. The
+// API key never appears in the output. Safe to leave in; it makes no extra paid
+// calls beyond the one h2h fetch this endpoint does itself.
+async function mlDebug(env) {
+  const key = env && env.ODDS_API_KEY;
+  const date = slateDate();
+  const out = { slateDate: date, hasKey: !!key, schedule: [], odds: {}, matches: [] };
+  try {
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${date}&hydrate=team`, { headers: { accept: 'application/json' } });
+    const d = await r.json();
+    const games = (((d.dates || [])[0] || {}).games) || [];
+    out.schedule = games.map((g) => ({
+      matchup: `${teamAbbr(g.teams.away.team)} @ ${teamAbbr(g.teams.home.team)}`,
+      homeName: (g.teams.home.team || {}).name,
+      homeKey: keyAbbr((g.teams.home.team || {}).name),
+      status: (g.status && g.status.abstractGameState) || '',
+    }));
+  } catch (e) { out.scheduleError = String(e && e.message || e); }
+
+  const byKey = {};
+  if (key) {
+    try {
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      out.odds.status = r.status;
+      const events = await r.json();
+      if (Array.isArray(events)) {
+        out.odds.count = events.length;
+        out.odds.events = events.map((ev) => {
+          const info = {
+            home: ev.home_team, homeKey: keyAbbr(ev.home_team),
+            commence: ev.commence_time,
+            books: (ev.bookmakers || []).map((b) => b.key),
+            dkfd: (ev.bookmakers || []).filter((b) => BOOKS[b.key]).map((b) => b.key),
+          };
+          byKey[info.homeKey] = info;
+          return info;
+        });
+      } else {
+        // Odds API error bodies carry a message/error_code — never the key.
+        out.odds.error = (events && (events.message || events.error_code)) || 'non-array response';
+      }
+    } catch (e) { out.odds.fetchError = String(e && e.message || e); }
+  }
+
+  out.matches = out.schedule.map((s) => {
+    const m = byKey[s.homeKey];
+    return { matchup: s.matchup, homeKey: s.homeKey, oddsFound: !!m, dkfd: m ? m.dkfd : [] };
+  });
+  out.summary = {
+    scheduleGames: out.schedule.length,
+    oddsEvents: out.odds.count || 0,
+    matched: out.matches.filter((m) => m.oddsFound).length,
+    matchedWithDkFd: out.matches.filter((m) => m.dkfd && m.dkfd.length).length,
+  };
+  return cors(json(out, 10));
+}
+
 function slateDate() {
   try {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
