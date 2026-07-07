@@ -26,6 +26,7 @@ const BOOKS = { draftkings: 'DK', fanduel: 'FD' };
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
+  '/api/ml-debug',
 ]);
 
 export default {
