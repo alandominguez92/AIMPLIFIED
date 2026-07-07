@@ -107,6 +107,8 @@
     liveNow: null,
     trackRecord: null,
     liveInjuries: null,
+    injBarOpen: false,       // mobile injury bar collapsed by default
+    injBarFilter: 'rel',     // 'rel' (in your picks) | 'all'
     boardView: 'kprops', // 'kprops' | 'moneyline' | 'batter'
     slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
     stake: 1,   // units per bet
@@ -207,6 +209,7 @@
     heroTitle: document.getElementById('heroTitle'),
     heroDuel: document.getElementById('heroDuel'),
     injuryAlerts: document.getElementById('injuryAlerts'),
+    injuryBar: document.getElementById('injuryBar'),
     liveNowSection: document.getElementById('liveNow'),
     liveNowGrid: document.getElementById('liveNowGrid'),
     liveNowNote: document.getElementById('liveNowNote'),
@@ -415,6 +418,7 @@
         renderBoard();
         renderComparePanel();
         renderHero();
+        renderInjuryAlerts(); // board now known -> injury relevance can resolve
       }
     } catch (e) {
       console.warn('Board refresh failed:', e.message);
@@ -487,9 +491,28 @@
     el.winProbPct.textContent = state.winProb.toFixed(1) + '%';
   }
 
+  // Teams that appear in a game we have a pick on tonight (non-pass tier on the
+  // K-props board). Used to flag which injuries land in a game on your card.
+  // null = board not loaded yet, so relevance is unknown (don't split).
+  function actionTeamSet() {
+    const games = boardIsLive() ? state.liveBoard : (LIVE_MODE ? null : RAW_GAMES);
+    if (!Array.isArray(games) || !games.length) return null;
+    const set = new Set();
+    games.forEach((g) => {
+      if (g.tier && g.tier !== 'pass') {
+        const ml = g.ml || {};
+        if (ml.awayAbbr) set.add(ml.awayAbbr);
+        if (ml.homeAbbr) set.add(ml.homeAbbr);
+      }
+    });
+    return set;
+  }
+
   function renderInjuryAlerts() {
     // Real feed once loaded (even if empty); the sample banner only in the demo.
     const alerts = state.liveInjuries !== null ? state.liveInjuries : (LIVE_MODE ? [] : INJURY_ALERTS);
+
+    // Desktop keeps the flat two-column grid (unchanged).
     el.injuryAlerts.innerHTML = alerts.map((a) => `
       <div class="alert">
         <span class="alert-dot"></span>
@@ -498,6 +521,61 @@
         <span class="alert-time">${esc(a.time)}</span>
       </div>
     `).join('');
+
+    renderInjuryBar(alerts);
+  }
+
+  // Mobile: a collapsed-by-default alert bar with a relevance filter. Rows whose
+  // team is in a game you have a pick on lead ("in tonight's picks"); the rest
+  // fold under "also out". Conservative — it states the game, never a causal claim.
+  function renderInjuryBar(alerts) {
+    const bar = el.injuryBar;
+    if (!bar) return;
+    if (!alerts.length) { bar.innerHTML = ''; return; }
+
+    const action = actionTeamSet();
+    const rel = alerts.filter((a) => action && a.teamAbbr && action.has(a.teamAbbr));
+    const rest = alerts.filter((a) => !(action && a.teamAbbr && action.has(a.teamAbbr)));
+    const canSplit = rel.length > 0 && rest.length > 0;
+
+    const row = (a, isRel) => `
+      <div class="ialert ${isRel ? 'rel' : ''}">
+        <div class="ialert-who">
+          <div class="ialert-nm">${esc(a.text)}</div>
+          ${isRel && a.game ? `<div class="ialert-game">${esc(a.game)} · on tonight's board</div>` : ''}
+        </div>
+        <span class="ialert-il">${esc(a.time)}</span>
+      </div>`;
+
+    const summary = canSplit
+      ? `<b>${rel.length}</b> in tonight's picks <span class="ib-sep">·</span> <span class="ib-rest">${rest.length} more</span>`
+      : `<b>${alerts.length}</b> ${alerts.length === 1 ? 'bat' : 'bats'} out tonight`;
+
+    const filter = canSplit ? `
+      <div class="ib-filter" role="tablist">
+        <button data-action="injbar-filter" data-mode="rel" role="tab">In your picks <span class="cnt">· ${rel.length}</span></button>
+        <button data-action="injbar-filter" data-mode="all" role="tab">All out <span class="cnt">· ${alerts.length}</span></button>
+      </div>` : '';
+
+    const listRel = rel.map((a) => row(a, true)).join('');
+    const listRest = rest.map((a) => row(a, false)).join('');
+    const body = canSplit
+      ? `<div class="ib-group">In a game on your board</div>${listRel}<div class="ib-group ib-rest-group">Also out tonight</div><div class="ib-rest-rows">${listRest}</div>`
+      : alerts.map((a) => row(a, false)).join('');
+
+    bar.innerHTML = `
+      <div class="alertbar${state.injBarOpen ? ' open' : ''}" data-filter="${state.injBarFilter}">
+        <button class="ab-summary" data-action="injbar-toggle" aria-expanded="${state.injBarOpen ? 'true' : 'false'}">
+          <span class="ab-dot"></span>
+          <span class="ab-kicker">ALERTS</span>
+          <span class="ab-lead">${summary}</span>
+          <span class="ab-chev">⌄</span>
+        </button>
+        <div class="ab-panel"><div class="ab-panel-inner"><div class="ab-body">
+          ${filter}
+          <div class="ib-list">${body}</div>
+        </div></div></div>
+      </div>`;
   }
 
   // LIVE NOW — tonight's picks whose games are in progress, scored live.
@@ -1670,6 +1748,10 @@
       case 'clear-slip': clearSlip(); break;
       case 'hitter-card-click': onHitterCardClick(Number(target.dataset.idx)); break;
       case 'pitcher-card-click': onPitcherCardClick(Number(target.dataset.idx)); break;
+      case 'injbar-toggle': state.injBarOpen = !state.injBarOpen; renderInjuryAlerts(); break;
+      case 'injbar-filter':
+        if (e) e.stopPropagation();
+        state.injBarFilter = target.dataset.mode; renderInjuryAlerts(); break;
     }
   }
 

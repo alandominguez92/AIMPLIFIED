@@ -1394,17 +1394,23 @@ async function injuries() {
   const season = new Date().getUTCFullYear();
   const date = slateDate();
 
-  // Which teams play tonight (+ their abbreviations for the label).
+  // Which teams play tonight (+ their abbreviations and each team's matchup, so
+  // an alert can name the game — the client uses that to flag injuries in a game
+  // you have a pick on).
   const teamIds = new Set();
   const abbrById = {};
+  const gameByTeam = {};
   try {
     const r = await fetch(`${STATS}/schedule?sportId=1&date=${date}&hydrate=team`, { headers: { accept: 'application/json' } });
     if (r.ok) {
       const sd = await r.json();
       (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
+        const aw = g.teams && g.teams.away && g.teams.away.team;
+        const hm = g.teams && g.teams.home && g.teams.home.team;
+        const matchup = (aw && hm) ? `${keyAbbr(aw.name)} @ ${keyAbbr(hm.name)}` : '';
         ['away', 'home'].forEach((s) => {
           const t = g.teams && g.teams[s] && g.teams[s].team;
-          if (t && t.id) { teamIds.add(t.id); abbrById[t.id] = keyAbbr(t.name); }
+          if (t && t.id) { teamIds.add(t.id); abbrById[t.id] = keyAbbr(t.name); gameByTeam[t.id] = matchup; }
         });
       });
     }
@@ -1437,7 +1443,12 @@ async function injuries() {
       .filter((c) => (paById[c.pid] || 0) >= STARTER_PA)
       .sort((a, b) => (paById[b.pid] || 0) - (paById[a.pid] || 0))
       .slice(0, 10)
-      .map((c) => ({ text: `${c.name}${abbrById[c.team] ? ' · ' + abbrById[c.team] : ''}`, time: c.status }));
+      .map((c) => ({
+        text: `${c.name}${abbrById[c.team] ? ' · ' + abbrById[c.team] : ''}`,
+        time: c.status,
+        teamAbbr: abbrById[c.team] || '',
+        game: gameByTeam[c.team] || '',
+      }));
   } else {
     // Fallback: the recent IL-transaction wire (widened to 14 days).
     rows = await recentILTransactions(season);
