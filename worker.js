@@ -361,6 +361,10 @@ async function board(env, ctx) {
     } catch (e) { /* no moneylines -> ml pick is model-only */ }
   }
 
+  // Last-known moneylines from D1 — fallback when the live h2h feed stops
+  // returning a price for a game (book pulled it pre-game, or it aged out).
+  const savedLines = (env && env.DB) ? await loadMlLines(env.DB, date) : {};
+
   const rows = games.map((g) => {
     const away = g.teams.away, home = g.teams.home;
     // Venue + weather adjustments (shared by both starters in this game).
@@ -421,8 +425,14 @@ async function board(env, ctx) {
     const projLean = pitchers.reduce((m, p) => (!m || p.proj > m.proj ? p : m), null);
 
     // Moneyline model: team win% via log5 + home field + starting-pitcher ERA,
-    // priced against the real moneyline.
-    const ml = moneyline(g, home, away, teamWinP, pmap, mlByHome[home.team && home.team.name]);
+    // priced against the real moneyline. Prefer the live line; fall back to the
+    // last-known line for this game so Edge/Tier survive once the book pulls it.
+    const gid = 'g' + g.gamePk;
+    const livePair = mlByHome[home.team && home.team.name];
+    const liveHasPrice = livePair && (livePair.home != null || livePair.away != null);
+    const effPair = liveHasPrice ? livePair : (savedLines[gid] || null);
+    const ml = moneyline(g, home, away, teamWinP, pmap, effPair);
+    if (ml && !liveHasPrice && effPair) ml.lineStale = true; // shown from last-known line
 
     return {
       id: 'g' + g.gamePk,
@@ -449,6 +459,18 @@ async function board(env, ctx) {
   if (env && env.DB) {
     const write = logPicks(env.DB, rows, date).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(write);
+
+    // Persist tonight's live moneylines so they survive the book pulling the
+    // market — captured every window while a price is still offered.
+    const livePairs = games.map((g) => {
+      const home = g.teams.home, lp = mlByHome[home.team && home.team.name];
+      return (lp && (lp.home != null || lp.away != null))
+        ? { gameId: 'g' + g.gamePk, home: lp.home, away: lp.away } : null;
+    }).filter(Boolean);
+    if (livePairs.length) {
+      const wl = saveMlLines(env.DB, date, livePairs).catch(() => {});
+      if (ctx && ctx.waitUntil) ctx.waitUntil(wl);
+    }
   }
 
   return cors(json(rows, 300)); // 5 min — props are the expensive part
@@ -921,6 +943,38 @@ async function ensureBatterSchema(db) {
     PRIMARY KEY (date, game_id, player_id, market)
   )`).run();
   await addColumns(db, 'bpicks', CLV_COLUMNS);
+}
+
+// Moneyline last-known lines. Unlike strikeout picks, the moneyline is never
+// logged, so it lives only in the live h2h feed. The book only offers it
+// pre-game — once the game starts (or the feed drops it) the price vanishes and
+// the board loses Edge/Tier with nothing to fall back on. We persist each
+// game's most recent line so the board keeps showing the last real market
+// number (the close) instead of blanking mid-day.
+async function ensureMlSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS ml_lines (
+    date TEXT, game_id TEXT, home_price INTEGER, away_price INTEGER, updated_at INTEGER,
+    PRIMARY KEY (date, game_id)
+  )`).run();
+}
+async function loadMlLines(db, date) {
+  try {
+    await ensureMlSchema(db);
+    const rows = (await db.prepare('SELECT game_id, home_price, away_price FROM ml_lines WHERE date=?').bind(date).all()).results || [];
+    const map = {};
+    for (const r of rows) map[r.game_id] = { home: r.home_price, away: r.away_price };
+    return map;
+  } catch (e) { return {}; } // best-effort — never block the board
+}
+async function saveMlLines(db, date, pairs) {
+  try {
+    await ensureMlSchema(db);
+    const now = Date.now();
+    const stmts = pairs.map((p) => db.prepare(
+      'INSERT OR REPLACE INTO ml_lines (date, game_id, home_price, away_price, updated_at) VALUES (?,?,?,?,?)'
+    ).bind(date, p.gameId, p.home ?? null, p.away ?? null, now));
+    if (stmts.length) await db.batch(stmts);
+  } catch (e) { /* persistence is best-effort; never break the board */ }
 }
 
 // CLV columns, added to pre-existing tables via guarded ALTER (D1 throws if the
