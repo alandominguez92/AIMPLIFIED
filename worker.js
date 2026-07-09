@@ -22,6 +22,10 @@ const LINE_SHRINK = 0.30;  // fraction of the projection pulled toward the line
 // short display labels. Prices are pinned to these two only, and the better of
 // the two is highlighted so the board doubles as a line-shop.
 const BOOKS = { draftkings: 'DK', fanduel: 'FD' };
+// Sharp reference book: Pinnacle's de-vigged line is the closest thing to a true
+// probability. We price value against it (fair line) but still bet DK/FD (the
+// books you can actually use). Pinnacle lives in the Odds API's `eu` region.
+const REF_BOOK = 'pinnacle';
 
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
@@ -343,31 +347,34 @@ async function board(env, ctx) {
     return (r.w + 10) / (r.w + r.l + 20); // shrink toward .500
   };
 
-  // Real moneylines (paid Odds API h2h) — one call, keyed by home team name.
-  const mlByHome = {};
+  // Real moneylines — one call across US (DraftKings/FanDuel, the books we bet)
+  // and EU (Pinnacle, the sharp reference we price value against).
+  const mlByHome = {};   // DK/FD best price per side — what you'd actually bet
+  const pinByHome = {};  // Pinnacle price per side — the sharp fair line
   if (key) {
     try {
-      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (r.ok) {
         const events = await r.json();
+        // Best price for a team name across a set of bookmakers.
+        const priceFrom = (books, name) => {
+          let best = null;
+          for (const b of books) {
+            const mk = (b.markets || []).find((m) => m.key === 'h2h');
+            const o = mk && (mk.outcomes || []).find((x) => x.name === name);
+            if (o && o.price != null && (best == null || payoutMult(o.price) > payoutMult(best))) best = o.price;
+          }
+          return best;
+        };
         (Array.isArray(events) ? events : []).forEach((ev) => {
-          // Best moneyline across DraftKings + FanDuel only.
-          const wanted = (ev.bookmakers || []).filter((b) => BOOKS[b.key]);
-          const priceBest = (name) => {
-            let best = null;
-            for (const b of wanted) {
-              const mk = (b.markets || []).find((m) => m.key === 'h2h');
-              const o = mk && (mk.outcomes || []).find((x) => x.name === name);
-              if (o && o.price != null && (best == null || payoutMult(o.price) > payoutMult(best))) best = o.price;
-            }
-            return best;
-          };
-          if (!wanted.length) return;
-          // Key by canonical abbreviation (same as the props/batter matching) so
-          // an Odds-vs-StatsAPI name difference (e.g. Athletics, AZ/ARI) can't
-          // silently miss and blank the moneyline. priceBest still reads outcomes
-          // by the Odds API's own full team name.
-          mlByHome[keyAbbr(ev.home_team)] = { home: priceBest(ev.home_team), away: priceBest(ev.away_team) };
+          const bms = ev.bookmakers || [];
+          const dkfd = bms.filter((b) => BOOKS[b.key]);
+          const pin = bms.filter((b) => b.key === REF_BOOK);
+          // Key by canonical abbreviation (same as the props matching) so an
+          // Odds-vs-StatsAPI name difference (e.g. Athletics, AZ/ARI) can't miss.
+          const k2 = keyAbbr(ev.home_team);
+          if (dkfd.length) mlByHome[k2] = { home: priceFrom(dkfd, ev.home_team), away: priceFrom(dkfd, ev.away_team) };
+          if (pin.length) pinByHome[k2] = { home: priceFrom(pin, ev.home_team), away: priceFrom(pin, ev.away_team) };
         });
       }
     } catch (e) { /* no moneylines -> ml pick is model-only */ }
@@ -436,14 +443,15 @@ async function board(env, ctx) {
       : null;
     const projLean = pitchers.reduce((m, p) => (!m || p.proj > m.proj ? p : m), null);
 
-    // Moneyline model: team win% via log5 + home field + starting-pitcher ERA,
-    // priced against the real moneyline. Prefer the live line; fall back to the
-    // last-known line for this game so Edge/Tier survive once the book pulls it.
+    // Moneyline: price the DK/FD line you'd bet against Pinnacle's sharp fair
+    // line. Prefer the live DK/FD price; fall back to the last-known line so
+    // Edge/Tier survive once the book pulls it. Pinnacle is the fair reference.
     const gid = 'g' + g.gamePk;
-    const livePair = mlByHome[keyAbbr(home.team && home.team.name)];
+    const hKey = keyAbbr(home.team && home.team.name);
+    const livePair = mlByHome[hKey];
     const liveHasPrice = livePair && (livePair.home != null || livePair.away != null);
     const effPair = liveHasPrice ? livePair : (savedLines[gid] || null);
-    const ml = moneyline(g, home, away, teamWinP, pmap, effPair);
+    const ml = moneyline(g, home, away, teamWinP, pmap, effPair, pinByHome[hKey] || null);
     if (ml && !liveHasPrice && effPair) ml.lineStale = true; // shown from last-known line
 
     return {
@@ -490,41 +498,63 @@ async function board(env, ctx) {
   return cors(json(rows, 300)); // 5 min — props are the expensive part
 }
 
-// Moneyline model for one game. Team win% -> log5 matchup, plus home-field
-// and a modest starting-pitcher ERA adjustment, priced vs the real moneyline.
-function moneyline(g, home, away, teamWinP, pmap, oddsPair) {
+// Moneyline for one game. Fair line = Pinnacle's de-vigged probability (the
+// sharpest read available); edge = how much the DK/FD price you'd actually bet
+// beats that fair number. If Pinnacle is missing we fall back to DK/FD-de-vig vs
+// our log5 model, and if there's no market at all, to the model favorite.
+function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair) {
+  // log5 team model (kept as a fallback fair line and a reference number).
   const pH = teamWinP(home.team && home.team.id);
   const pA = teamWinP(away.team && away.team.id);
-  // log5: probability the home team beats the away team on neutral ground.
   let homeWin = (pH - pH * pA) / (pH + pA - 2 * pH * pA);
   if (!isFinite(homeWin)) homeWin = 0.5;
   homeWin += 0.035; // home-field advantage
-
-  // Starting-pitcher edge: better (lower) ERA nudges that side.
   const eraOf = (pp) => { const s = pp && pp.id ? pmap[pp.id] : null; return s && s.era != null ? parseFloat(s.era) : null; };
   const hERA = eraOf(home.probablePitcher), aERA = eraOf(away.probablePitcher);
   if (hERA != null && aERA != null) homeWin += clamp((aERA - hERA) * 0.025, -0.08, 0.08);
   homeWin = clamp(homeWin, 0.05, 0.95);
-
   const model = { home: homeWin, away: 1 - homeWin };
-  const price = oddsPair || {};
-  const impH = amProb(price.home), impA = amProb(price.away);
-  let fairH = null;
-  if (impH != null && impA != null) { const v = impH + impA; fairH = v > 0 ? impH / v : impH; }
 
+  // De-vig a two-way price pair into a fair P(home).
+  const devigHome = (pair) => {
+    if (!pair) return null;
+    const iH = amProb(pair.home), iA = amProb(pair.away);
+    if (iH == null || iA == null) return null;
+    const v = iH + iA;
+    return v > 0 ? iH / v : iH;
+  };
+  const pinFairH = devigHome(pinPair);   // sharp fair (preferred)
+  const dkFairH = devigHome(oddsPair);   // soft-book fair (fallback)
+  let fairH, fairSource;
+  if (pinFairH != null) { fairH = pinFairH; fairSource = 'pinnacle'; }
+  else if (dkFairH != null) { fairH = dkFairH; fairSource = 'dkfd'; }
+  else { fairH = model.home; fairSource = 'model'; }
+
+  const price = oddsPair || {}; // the DK/FD price you'd actually bet
   const sideFor = (side) => {
     const teamObj = side === 'home' ? home.team : away.team;
-    const p = model[side];
+    const fair = side === 'home' ? fairH : 1 - fairH; // sharp true prob for this side
     const pr = side === 'home' ? price.home : price.away;
-    const fair = fairH == null ? null : (side === 'home' ? fairH : 1 - fairH);
-    const edge = fair == null ? null : round1((p - fair) * 100);
-    return { side, teamAbbr: teamAbbr(teamObj), winProb: Math.round(p * 100), price: pr != null ? pr : null, edge };
+    let edge = null;
+    if (fairSource === 'pinnacle') {
+      // Value of the DK/FD price vs Pinnacle's fair number (the real +EV read).
+      const imp = amProb(pr);
+      edge = imp == null ? null : round1((fair - imp) * 100);
+    } else if (fairSource === 'dkfd') {
+      // No sharp line — fall back to our model vs the soft de-vig.
+      edge = round1((model[side] - fair) * 100);
+    }
+    return {
+      side, teamAbbr: teamAbbr(teamObj),
+      winProb: Math.round(fair * 100), price: pr != null ? pr : null, edge,
+      modelProb: Math.round(model[side] * 100),
+    };
   };
   const h = sideFor('home'), a = sideFor('away');
 
-  // Pick the +EV side (largest edge); with no market, pick the model favorite.
+  // Bet the side with the larger edge; with no edge, name the fair favorite.
   let chosen;
-  if (h.edge == null || a.edge == null) chosen = model.home >= model.away ? h : a;
+  if (h.edge == null || a.edge == null) chosen = fairH >= 0.5 ? h : a;
   else chosen = h.edge >= a.edge ? h : a;
 
   const e = chosen.edge;
@@ -532,12 +562,14 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair) {
   return {
     pick: `${chosen.teamAbbr} ML`,
     teamAbbr: chosen.teamAbbr,
-    winProb: chosen.winProb,
-    price: chosen.price,
+    winProb: chosen.winProb,   // fair (sharp) win prob of the pick
+    price: chosen.price,       // DK/FD price you'd bet
     edge: e,
     tier,
+    fairSource,                // 'pinnacle' | 'dkfd' | 'model'
     homeAbbr: h.teamAbbr, awayAbbr: a.teamAbbr,
-    homeWinProb: h.winProb, awayWinProb: a.winProb,
+    homeWinProb: h.winProb, awayWinProb: a.winProb,        // fair probs
+    homeModelProb: h.modelProb, awayModelProb: a.modelProb, // log5 model, for reference
   };
 }
 
@@ -1592,7 +1624,7 @@ async function mlDebug(env) {
   const byKey = {};
   if (key) {
     try {
-      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       out.odds.status = r.status;
       const events = await r.json();
       if (Array.isArray(events)) {
@@ -1601,8 +1633,8 @@ async function mlDebug(env) {
           const info = {
             home: ev.home_team, homeKey: keyAbbr(ev.home_team),
             commence: ev.commence_time,
-            books: (ev.bookmakers || []).map((b) => b.key),
             dkfd: (ev.bookmakers || []).filter((b) => BOOKS[b.key]).map((b) => b.key),
+            pinnacle: (ev.bookmakers || []).some((b) => b.key === REF_BOOK),
           };
           byKey[info.homeKey] = info;
           return info;
@@ -1616,13 +1648,14 @@ async function mlDebug(env) {
 
   out.matches = out.schedule.map((s) => {
     const m = byKey[s.homeKey];
-    return { matchup: s.matchup, homeKey: s.homeKey, oddsFound: !!m, dkfd: m ? m.dkfd : [] };
+    return { matchup: s.matchup, homeKey: s.homeKey, oddsFound: !!m, dkfd: m ? m.dkfd : [], pinnacle: m ? m.pinnacle : false };
   });
   out.summary = {
     scheduleGames: out.schedule.length,
     oddsEvents: out.odds.count || 0,
     matched: out.matches.filter((m) => m.oddsFound).length,
     matchedWithDkFd: out.matches.filter((m) => m.dkfd && m.dkfd.length).length,
+    matchedWithPinnacle: out.matches.filter((m) => m.pinnacle).length,
   };
   return cors(json(out, 10));
 }

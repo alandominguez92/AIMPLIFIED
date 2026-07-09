@@ -912,11 +912,16 @@
             </div>`;
           }
 
+          const fairNote = g.ml.fairSource === 'pinnacle'
+            ? `Win% is Pinnacle's sharp de-vigged line (the fair number). Edge = how much the DK/FD price you'd bet beats that fair line.`
+            : g.ml.fairSource === 'dkfd'
+              ? `No Pinnacle line yet — win% is the DK/FD vig-free line and edge is our model vs. that.`
+              : `No market line yet — win% is our log5 model (team rating + home field + starter ERA).`;
           detailHtml = `<div class="expanded-detail">
             <div class="expanded-title">Starting pitchers — model matchup</div>
             ${duelHtml}
             <div class="ml-pickline">pick ${esc(g.ml.pick || '—')} <span style="color:var(--text)">(${esc(priceStr)})</span> · ${esc(edgeStr)}</div>
-            <div style="color:var(--textDim);font-size:12px;margin-top:12px">Win% blends log5 team rating, home field, and starter ERA, priced vs. the vig-free moneyline. Bars score each starter's projected Ks, season K/9, and ERA (lower is better).</div></div>`;
+            <div style="color:var(--textDim);font-size:12px;margin-top:12px">${fairNote} Bars score each starter's projected Ks, season K/9, and ERA (lower is better).</div></div>`;
         } else {
           detailHtml = `<div class="expanded-detail"><div class="expanded-title">Moneyline pending</div><div style="color:var(--textDim);font-size:13px">No moneyline posted for this game yet.</div></div>`;
         }
