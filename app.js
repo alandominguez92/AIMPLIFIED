@@ -379,6 +379,7 @@
             tier: b.tier,
             weather: '', weatherTone: 'textDim',
             stats: [],
+            scorePart,
             projRows: b.pitchers || [],
             ml: b.ml || null,
           };
@@ -825,14 +826,37 @@
         ? `role="button" tabindex="0" aria-pressed="${isSelected}" aria-label="Compare ${esc(g.matchup)}"`
         : `role="button" tabindex="0" aria-expanded="${isExpanded}" aria-label="${esc(g.matchup)} — toggle breakdown"`;
 
+      // Matchup cell. K-props lead with the pitcher duel (the arm is the play);
+      // moneyline/batter views keep the team-led headline.
+      const weatherHtml = g.weather ? `<span class="weather-label" style="color:var(--${g.weatherTone || 'textDim'})">${esc(g.weather)}</span>` : '';
+      const starters = (!isML() && !isBatter() && Array.isArray(g.projRows)) ? g.projRows.filter((p) => p && p.name) : [];
+      let matchupCell;
+      if (starters.length >= 2) {
+        const lastName = (n) => String(n).replace(/^[A-Z]\.\s+/, '');
+        const handTag = (h) => h === 'L' ? 'LHP' : h === 'R' ? 'RHP' : '';
+        const duel = starters.slice(0, 2).map((p) => {
+          const isPick = g.pick && g.pick.indexOf(p.name) === 0;
+          const ht = handTag(p.hand);
+          return `<span class="mp-name${isPick ? ' pick' : ''}">${esc(lastName(p.name))}${ht ? `<span class="mp-hand">${ht}</span>` : ''}</span>`;
+        }).join('<span class="mp-vs">vs</span>');
+        const sub = [g.matchup, g.timeLabel, g.scorePart].filter(Boolean).join(' · ');
+        matchupCell = `<div>
+            <div class="mp-duel">${duel}</div>
+            <span class="matchup-sub">${esc(sub)}</span>
+            ${weatherHtml}
+          </div>`;
+      } else {
+        matchupCell = `<div>
+            <b>${esc(g.matchup)}</b>
+            <span class="matchup-sub">${esc(g.subline)}</span>
+            ${weatherHtml}
+          </div>`;
+      }
+
       const rowHtml = `
         <div class="${rowClasses.join(' ')}" data-action="row-click" data-id="${g.id}" ${rowA11y}>
           ${leadingHtml}
-          <div>
-            <b>${esc(g.matchup)}</b>
-            <span class="matchup-sub">${esc(g.subline)}</span>
-            ${g.weather ? `<span class="weather-label" style="color:var(--${g.weatherTone || 'textDim'})">${esc(g.weather)}</span>` : ''}
-          </div>
+          ${matchupCell}
           <span>${pickCell}</span>
           ${oddsCell}
           <span class="edge-cell" style="color:${edgeColor}">${esc(edgeLabel)}</span>
