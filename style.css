@@ -364,9 +364,13 @@ section { padding:44px 0; }
 .ml-pcol.pick-side .ml-phead { border-bottom-color:color-mix(in srgb, var(--accent) 50%, transparent); }
 .ml-pname { font-family:'Barlow Condensed'; font-weight:600; font-size:16px; text-transform:uppercase; letter-spacing:.02em; }
 .ml-picktag { font-family:'IBM Plex Mono'; font-size:9px; letter-spacing:.06em; color:var(--accent); margin-left:6px; vertical-align:middle; }
+.ml-pwp-wrap { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
 .ml-pwp { font-family:'IBM Plex Mono'; font-size:12.5px; font-weight:600; white-space:nowrap; }
 .ml-pwp.on { color:var(--accent); }
 .ml-pwp.off { color:var(--textDim); }
+.ml-pmodel { font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--textDim); white-space:nowrap; }
+.ml-delta { margin-left:5px; padding:0 4px; border-radius:99px; border:1px solid var(--border); font-size:10px; }
+.ml-delta.big { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 45%, transparent); }
 .ml-duel .stat-row { max-width:none; margin-top:8px; }
 .ml-duel .badge { min-width:32px; height:auto; padding:0; border-radius:0; background:none !important; justify-content:flex-end; font-size:12.5px; }
 .ml-pickline { font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--textDim); margin-top:15px; }

@@ -879,6 +879,7 @@
           // shows the real stat. ERA is inverted — lower is better.
           const toneOf = (v) => v >= 66 ? 'cool' : v >= 33 ? 'warm' : 'hot';
           const wpFor = (t) => t === g.ml.homeAbbr ? g.ml.homeWinProb : t === g.ml.awayAbbr ? g.ml.awayWinProb : null;
+          const modelFor = (t) => t === g.ml.homeAbbr ? g.ml.homeModelProb : t === g.ml.awayAbbr ? g.ml.awayModelProb : null;
           const starters = (Array.isArray(g.projRows) ? g.projRows : []).filter((p) => p && p.name);
           const ordered = starters.slice().sort((a, b) =>
             (b.team === g.ml.teamAbbr ? 1 : 0) - (a.team === g.ml.teamAbbr ? 1 : 0));
@@ -891,6 +892,15 @@
             duelHtml = `<div class="ml-duel">` + ordered.map((p) => {
               const isPick = p.team === g.ml.teamAbbr;
               const wp = wpFor(p.team);
+              const mp = modelFor(p.team);
+              // Show our log5 model next to the sharp fair line, with the gap.
+              // Positive delta = model is more bullish on this team than Pinnacle.
+              const showModel = mp != null && g.ml.fairSource !== 'model';
+              const delta = (showModel && wp != null) ? mp - wp : null;
+              const deltaCls = delta == null ? '' : Math.abs(delta) >= 5 ? ' big' : '';
+              const modelLine = showModel
+                ? `<span class="ml-pmodel">model ${mp}%${delta != null ? `<span class="ml-delta${deltaCls}">${delta > 0 ? '+' : ''}${delta}</span>` : ''}</span>`
+                : '';
               const eraNum = p.era != null ? parseFloat(p.era) : null;
               const projScore = p.proj != null ? p.proj / 10 * 100 : 0;
               const k9Score = p.k9 != null ? p.k9 / 14 * 100 : 0;
@@ -898,7 +908,10 @@
               return `<div class="ml-pcol${isPick ? ' pick-side' : ''}">
                 <div class="ml-phead">
                   <span class="ml-pname">${esc(p.name)}${isPick ? '<span class="ml-picktag">◄ pick</span>' : ''}</span>
-                  <span class="ml-pwp ${isPick ? 'on' : 'off'}">${esc(p.team)} · ${wp != null ? wp + '%' : '—'}</span>
+                  <span class="ml-pwp-wrap">
+                    <span class="ml-pwp ${isPick ? 'on' : 'off'}">${esc(p.team)} · ${wp != null ? wp + '%' : '—'}</span>
+                    ${modelLine}
+                  </span>
                 </div>
                 ${statRow('Proj Ks', projScore, toneOf(projScore), p.proj != null ? p.proj : '—')}
                 ${statRow('K/9', k9Score, toneOf(k9Score), p.k9 != null ? p.k9 : '—')}
