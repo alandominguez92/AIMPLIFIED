@@ -471,6 +471,8 @@ async function board(env, ctx) {
   if (env && env.DB) {
     const write = logPicks(env.DB, rows, date).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(write);
+    const writeMl = logMlPicks(env.DB, rows, date).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(writeMl);
 
     // Persist tonight's live moneylines so they survive the book pulling the
     // market — captured every window while a price is still offered.
@@ -923,6 +925,7 @@ async function trackRecord(env) {
     await ensureBatterSchema(env.DB);
     await gradeUngraded(env);
     await gradeBatterPicks(env);
+    await gradeMlPicks(env);
     const kres = await env.DB.prepare('SELECT * FROM picks').all();
     const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
     // Normalize both feeds to one row shape: pitcher picks are market 'K' with
@@ -931,7 +934,12 @@ async function trackRecord(env) {
       ...(kres.results || []).map((r) => ({ ...r, market: 'K' })),
       ...(bres.results || []).map((r) => ({ ...r, actual_k: r.actual, market: String(r.market || '').toUpperCase() })),
     ];
-    return cors(json(buildTrackRecord(unified), 120));
+    const out = buildTrackRecord(unified);
+    try {
+      const mlres = await env.DB.prepare('SELECT * FROM mlpicks').all();
+      out.ml = buildMlRecord(mlres.results || []);
+    } catch (e) { /* ML record is additive — never break the props track record */ }
+    return cors(json(out, 120));
   } catch (e) {
     return cors(json({ empty: true, logged: 0, error: String(e) }, 60));
   }
@@ -970,6 +978,19 @@ async function ensureBatterSchema(db) {
 async function ensureMlSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS ml_lines (
     date TEXT, game_id TEXT, home_price INTEGER, away_price INTEGER, updated_at INTEGER,
+    PRIMARY KEY (date, game_id)
+  )`).run();
+}
+
+// Moneyline PICKS — the logged bet (one per game), so the ML model builds a
+// real graded track record instead of being eyeballed. entry_price freezes on
+// first log; edge/tier/win_prob/close_price refresh to the pre-game close.
+async function ensureMlPickSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS mlpicks (
+    date TEXT, game_id TEXT, team TEXT, opp TEXT, is_home INTEGER,
+    tier TEXT, win_prob INTEGER, edge REAL,
+    entry_price INTEGER, close_price INTEGER,
+    result TEXT, team_score INTEGER, opp_score INTEGER,
     PRIMARY KEY (date, game_id)
   )`).run();
 }
@@ -1157,6 +1178,105 @@ async function gradeUngraded(env) {
     }
     if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* skip */ } }
   }
+}
+
+// Log tonight's moneyline picks (one row per game) the same way logPicks does
+// for strikeouts: only genuine pre-game picks, entry price frozen, close price
+// captured continuously. The graded side is whatever the model backed at entry.
+async function logMlPicks(db, rows, date) {
+  await ensureMlPickSchema(db);
+  const stmts = [];
+  for (const r of rows) {
+    if (r.status !== 'Preview') continue;
+    const ml = r.ml;
+    if (!ml || ml.price == null || !ml.teamAbbr) continue;
+    const isHome = ml.teamAbbr === ml.homeAbbr ? 1 : 0;
+    const opp = isHome ? ml.awayAbbr : ml.homeAbbr;
+    stmts.push(db.prepare(
+      `INSERT OR IGNORE INTO mlpicks (date,game_id,team,opp,is_home,tier,win_prob,edge,entry_price,close_price)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    ).bind(date, r.id, ml.teamAbbr, opp || '', isHome, String(ml.tier), ml.winProb ?? null, ml.edge ?? null, ml.price, ml.price));
+    // Refresh close only while the logged side is still the model's pick, so a
+    // mid-day side flip can't overwrite our entry side's closing price.
+    stmts.push(db.prepare(
+      'UPDATE mlpicks SET close_price=?, edge=?, tier=?, win_prob=? WHERE date=? AND game_id=? AND team=?'
+    ).bind(ml.price, ml.edge ?? null, String(ml.tier), ml.winProb ?? null, date, r.id, ml.teamAbbr));
+  }
+  if (stmts.length) await db.batch(stmts);
+}
+
+// Grade past-day moneyline picks from final scores (schedule linescore). The
+// picked team wins the bet if it outscored its opponent. MLB has no ties, but
+// equal scores grade as push defensively.
+async function gradeMlPicks(env) {
+  const db = env.DB;
+  await ensureMlPickSchema(db);
+  const today = slateDate();
+  const rows = (await db.prepare('SELECT * FROM mlpicks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
+  if (!rows.length) return;
+  const byDate = {};
+  for (const r of rows) (byDate[r.date] = byDate[r.date] || []).push(r);
+  for (const d of Object.keys(byDate)) {
+    let games = [];
+    try {
+      const r = await fetch(`${STATS}/schedule?sportId=1&date=${d}&hydrate=linescore,team`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      games = (((await r.json()).dates || [])[0] || {}).games || [];
+    } catch (e) { continue; }
+    const scoreByGame = {};
+    for (const g of games) {
+      if (((g.status || {}).abstractGameState) !== 'Final') continue;
+      const ls = g.linescore || {};
+      const homeR = numOr((ls.teams && ls.teams.home && ls.teams.home.runs), g.teams.home.score);
+      const awayR = numOr((ls.teams && ls.teams.away && ls.teams.away.runs), g.teams.away.score);
+      if (homeR == null || awayR == null) continue;
+      scoreByGame['g' + g.gamePk] = { homeR, awayR };
+    }
+    const stmts = [];
+    for (const p of byDate[d]) {
+      const sc = scoreByGame[p.game_id];
+      if (!sc) continue;
+      const teamR = p.is_home ? sc.homeR : sc.awayR;
+      const oppR = p.is_home ? sc.awayR : sc.homeR;
+      const result = teamR === oppR ? 'push' : (teamR > oppR ? 'win' : 'loss');
+      stmts.push(db.prepare('UPDATE mlpicks SET result=?, team_score=?, opp_score=? WHERE date=? AND game_id=?')
+        .bind(result, teamR, oppR, p.date, p.game_id));
+    }
+    if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* skip */ } }
+  }
+}
+
+// Aggregate the graded moneyline picks into a record/units/ROI/CLV summary,
+// mirroring the props track record. Pass-tier picks are excluded from the
+// headline, same as the strikeout side.
+function buildMlRecord(rows) {
+  const played = rows.filter((r) => (r.result === 'win' || r.result === 'loss') && r.tier !== 'pass');
+  const byTier = { '1': { w: 0, l: 0, units: 0 }, '2': { w: 0, l: 0, units: 0 }, '3': { w: 0, l: 0, units: 0 } };
+  let w = 0, l = 0, units = 0, t1w = 0, t1l = 0, clvBeat = 0, clvN = 0;
+  for (const r of played) {
+    const win = r.result === 'win';
+    if (win) w++; else l++;
+    const u = profitUnits(r.result, r.close_price ?? r.entry_price);
+    units += u;
+    const bt = byTier[String(r.tier)];
+    if (bt) { if (win) bt.w++; else bt.l++; bt.units += u; }
+    if (String(r.tier) === '1') { if (win) t1w++; else t1l++; }
+    if (r.entry_price != null && r.close_price != null) {
+      const ie = amProb(r.entry_price), ic = amProb(r.close_price);
+      if (ie != null && ic != null) { clvN++; if (ic > ie) clvBeat++; } // our side shortened = market agreed
+    }
+  }
+  const n = w + l;
+  const tierBreakdown = ['1', '2', '3'].map((k) => {
+    const b = byTier[k]; const nn = b.w + b.l;
+    return nn ? { tier: k, record: `${b.w}–${b.l}`, n: nn, units: Math.round(b.units * 10) / 10, roi: round1(b.units / nn * 100) } : null;
+  }).filter(Boolean);
+  return {
+    tracked: n, record: `${w}–${l}`, winRate: n ? round1(w / n * 100) : null,
+    tier1: `${t1w}–${t1l}`, units: Math.round(units * 10) / 10, roi: n ? round1(units / n * 100) : null,
+    tierBreakdown, clvBeatRate: clvN ? round1(clvBeat / clvN * 100) : null, clvN,
+    pending: rows.filter((r) => r.result == null).length,
+  };
 }
 
 function pitcherKsFromBox(box) {
