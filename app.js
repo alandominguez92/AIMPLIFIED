@@ -978,9 +978,17 @@
             const booksStr = m && Array.isArray(m.books) && m.books.length
               ? m.books.map((b) => `${b.book} ${b.off && b.line != null ? b.line + ' ' : ''}${b.price > 0 ? '+' + b.price : b.price}${b.best ? ' ✓' : ''}`).join(' · ')
               : '';
+            // Consensus fair: median de-vigged P(over) across the pooled books.
+            // Only shown when >1 book actually agreed on the line (else it's just
+            // one book and there's nothing to "consensus"). MGM is reference-only.
+            const fairPct = m ? Math.round(m.fairOver * 1000) / 10 : null;
+            const consensusStr = m && Array.isArray(m.fairBooks) && m.fairBooks.length >= 2
+              ? `fair ${fairPct}% · ${m.fairBooks.map((b) => `${b.book} ${(b.over * 100).toFixed(1)}`).join(' · ')}`
+              : '';
             const marketHtml = m
               ? `<span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--text)">line ${m.line} · model ${m.modelOver}% over</span>
                  <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:${m.edge >= 1.5 ? 'var(--positive)' : 'var(--textDim)'}">${m.side} ${m.line} · +${m.edge}% edge</span>
+                 ${consensusStr ? `<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)" title="median de-vigged P(over) across the books that posted this line">${esc(consensusStr)}</span>` : ''}
                  ${booksStr ? `<span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--textDim)">${esc(booksStr)}</span>` : ''}`
               : `<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">no prop line</span>`;
             return `
@@ -993,7 +1001,7 @@
               ${marketHtml}
             </div>`;
           }).join('');
-          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Projected strikeouts — model vs. market</div>${rowsHtml}<div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: K/9 × expected innings × opponent K-rate × park × weather. Edge = model P(over) vs. the vig-free line.</div></div>`;
+          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Projected strikeouts — model vs. market</div>${rowsHtml}<div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: K/9 × expected innings × opponent K-rate × park × weather. Edge = model P(over) vs. the <b>fair line</b> — the median de-vigged P(over) across DK, FD &amp; MGM. MGM is a sharpness reference only; you still bet the best of DK/FD.</div></div>`;
         } else {
           detailHtml = `<div class="expanded-detail"><div class="expanded-title">Model projection pending</div><div style="color:var(--textDim);font-size:13px">Live game from tonight's slate — probable pitcher not posted yet.</div></div>`;
         }

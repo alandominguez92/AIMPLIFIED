@@ -22,6 +22,12 @@ const LINE_SHRINK = 0.30;  // fraction of the projection pulled toward the line
 // short display labels. Prices are pinned to these two only, and the better of
 // the two is highlighted so the board doubles as a line-shop.
 const BOOKS = { draftkings: 'DK', fanduel: 'FD' };
+// Extra soft books pulled ONLY to sharpen the strikeout fair line — never shown
+// in the Odds column and never bet (you only have DK/FD accounts). They already
+// ride along in the us-region prop response we pay for, so pooling them is free
+// quota. More de-vigged books -> a median fair that rejects one soft/stale line.
+const FAIR_EXTRA = { betmgm: 'MGM' };
+const FAIR_BOOKS = { ...BOOKS, ...FAIR_EXTRA };
 // Sharp reference book: Pinnacle's de-vigged line is the closest thing to a true
 // probability. We price value against it (fair line) but still bet DK/FD (the
 // books you can actually use). Pinnacle lives in the Odds API's `eu` region.
@@ -249,8 +255,8 @@ async function board(env, ctx) {
             if (!pr.ok) return;
             const pd = await pr.json();
             for (const bm of (pd.bookmakers || [])) {
-              const label = BOOKS[bm.key]; // 'DK' | 'FD'
-              if (!label) continue;        // only DraftKings + FanDuel
+              const label = FAIR_BOOKS[bm.key]; // 'DK' | 'FD' (bet) | 'MGM' (fair only)
+              if (!label) continue;
               const mk = (bm.markets || []).find((m) => m.key === 'pitcher_strikeouts');
               if (!mk) continue;
               for (const oc of (mk.outcomes || [])) {
@@ -1465,12 +1471,35 @@ function bestBookMarket(prop, probOver, opts) {
 
   const pRaw = probOver(refLine);
 
-  // Vig-free fair over% from a two-sided book at the reference line (prefer DK).
-  const atRef = [dk, fd].filter((b) => b && b.point === refLine);
-  const twoSided = atRef.find((b) => b.over != null && b.under != null);
-  let fairOver;
-  if (twoSided) { const io = amProb(twoSided.over), iu = amProb(twoSided.under); const v = io + iu; fairOver = v > 0 ? io / v : io; }
-  else { const one = atRef.find((b) => b.over != null || b.under != null); if (!one) return null; fairOver = one.over != null ? amProb(one.over) : 1 - amProb(one.under); }
+  // Vig-free fair over% at the reference line. De-vig a two-sided book by
+  // normalizing its over/under to sum to 1.
+  const devigTwo = (b) => {
+    if (!b || b.point !== refLine || b.over == null || b.under == null) return null;
+    const io = amProb(b.over), iu = amProb(b.under), v = io + iu;
+    return v > 0 ? io / v : io;
+  };
+
+  let fairOver, fairBooks = null;
+  if (opts && opts.fairConsensus) {
+    // Consensus fair: median de-vigged P(over) across the pooled books (the DK/FD
+    // you bet + MGM as a reference). The median rejects a single soft/stale line,
+    // so the edge measures the model against the market's agreement, not one book.
+    const pool = [['DK', dk], ['FD', fd], ['MGM', prop.MGM]]
+      .map(([book, b]) => ({ book, dv: devigTwo(b) }))
+      .filter((x) => x.dv != null);
+    if (pool.length) {
+      fairOver = median(pool.map((x) => x.dv));
+      fairBooks = pool.map((x) => ({ book: x.book, over: Math.round(x.dv * 1e4) / 1e4 }));
+    }
+  }
+  if (fairOver == null) {
+    // Single-book fair (prefer DK, then FD) — batters, and any line with no
+    // two-sided quote to de-vig. Preserves the original behavior exactly.
+    const atRef = [dk, fd].filter((b) => b && b.point === refLine);
+    const twoSided = atRef.find((b) => b.over != null && b.under != null);
+    if (twoSided) { const io = amProb(twoSided.over), iu = amProb(twoSided.under); const v = io + iu; fairOver = v > 0 ? io / v : io; }
+    else { const one = atRef.find((b) => b.over != null || b.under != null); if (!one) return null; fairOver = one.over != null ? amProb(one.over) : 1 - amProb(one.under); }
+  }
 
   // Regress the model toward the market (shrink<1 for an uncalibrated model).
   const pOver = fairOver + shrink * (pRaw - fairOver);
@@ -1501,6 +1530,7 @@ function bestBookMarket(prop, probOver, opts) {
     edge: edgePts,
     modelOver: round1(pOver * 100),
     fairOver: Math.round(fairOver * 1e4) / 1e4, // vig-free market P(over) — for CLV
+    fairBooks,          // [{ book, over }] de-vigged pool behind the fair (consensus) — null otherwise
     tier: edgePts >= tiers[0] ? 1 : edgePts >= tiers[1] ? 2 : edgePts >= tiers[2] ? 3 : 'pass',
     books,              // [{ book, price, line, off, best }]
   };
@@ -1512,7 +1542,7 @@ function priceStrikeouts(prop, projK) {
     const lam = (1 - LINE_SHRINK) * projK + LINE_SHRINK * L;
     const sigma = Math.sqrt(Math.max(lam, 1) * DISPERSION);
     return 1 - normCdf((L - lam) / sigma);
-  });
+  }, { fairConsensus: true });
 }
 
 // The batter model is a Poisson approximation and not yet calibrated (early
@@ -1543,6 +1573,14 @@ function poissonCdf(k, lambda) {
 
 // American-odds payout multiple (decimal profit per 1u). Higher = better price.
 function payoutMult(a) { return a > 0 ? a / 100 : 100 / (-a); }
+
+// Median of a numeric array (even length -> mean of the middle two). Used to
+// pool several books' de-vigged probabilities into one robust fair number.
+function median(xs) {
+  const a = [...xs].sort((p, q) => p - q); const n = a.length;
+  if (!n) return null;
+  return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
+}
 
 // Strikeout park factors (normalized ~1.00; >1 = more Ks). Approximate, stable
 // season-level values — thin-air Coors suppresses whiffs; pitcher parks lift
