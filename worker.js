@@ -1616,20 +1616,20 @@ function buildTrackRecord(rows) {
 // strip. buildTrackRecord returns aggregates; this returns the per-pick detail
 // for the single most recent date that has any graded pick (props + ML).
 function buildRecent(propRows, mlRows) {
-  const items = [];
+  const all = [];
+  const add = (o) => { if (o.result === 'win' || o.result === 'loss' || o.result === 'push') all.push(o); };
   for (const r of propRows) {
     if (r.tier === 'pass') continue;
-    if (r.result !== 'win' && r.result !== 'loss' && r.result !== 'push') continue;
     const actual = r.actual_k != null ? r.actual_k : (r.actual != null ? r.actual : null);
-    items.push({
+    add({
       date: r.date, name: r.pitcher || r.player || '', team: r.team || '',
       market: String(r.market || 'K'), side: r.side || null, line: r.line ?? null,
       price: r.price ?? null, tier: String(r.tier || ''), result: r.result, actual,
     });
   }
   for (const r of mlRows) {
-    if (r.result !== 'win' && r.result !== 'loss' && r.result !== 'push') continue;
-    items.push({
+    if (r.tier === 'pass') continue; // a Pass moneyline isn't a bet — never on the card
+    add({
       date: r.date, name: r.team || '', team: r.team || '', opp: r.opp || '',
       market: 'ML', side: null, line: null,
       price: r.entry_price != null ? r.entry_price : r.close_price,
@@ -1637,15 +1637,20 @@ function buildRecent(propRows, mlRows) {
       actual: (r.team_score != null && r.opp_score != null) ? `${r.team_score}–${r.opp_score}` : null,
     });
   }
-  if (!items.length) return null;
-  const maxDate = items.reduce((m, x) => (x.date > m ? x.date : m), items[0].date);
-  const picks = items.filter((x) => x.date === maxDate);
+  if (!all.length) return null;
+  const maxDate = all.reduce((m, x) => (x.date > m ? x.date : m), all[0].date);
+  const day = all.filter((x) => x.date === maxDate);
+  // Day record/units cover every graded play (Tier 1–3), matching the season
+  // methodology. The inline card, though, shows only recommended plays
+  // (Tier 1 + Tier 2, Tier 1 first); Tier 3 lives on the full track record.
   let w = 0, l = 0, units = 0;
-  for (const p of picks) {
+  for (const p of day) {
     if (p.result === 'win') w++; else if (p.result === 'loss') l++;
     if (p.result !== 'push' && p.price != null) units += profitUnits(p.result, p.price);
   }
-  return { date: maxDate, record: `${w}–${l}`, units: Math.round(units * 10) / 10, picks };
+  const rank = (t) => (t === '1' ? 0 : t === '2' ? 1 : 2);
+  const picks = day.filter((p) => p.tier === '1' || p.tier === '2').sort((a, b) => rank(a.tier) - rank(b.tier));
+  return { date: maxDate, record: `${w}–${l}`, units: Math.round(units * 10) / 10, total: day.length, picks };
 }
 
 // Price a strikeout projection against the DK/FD lines. Picks the side with a

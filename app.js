@@ -114,6 +114,7 @@
     injShowNoImpact: false,  // reveal the "no board impact" alerts
     injShowAllImpact: false, // reveal impact alerts beyond the first few
     injuriesFetchedAt: null, // ms timestamp of the last injuries fetch (for "updated Xm ago")
+    ycOpen: false,           // "Yesterday's Card" collapsed by default — keeps the board up top
     boardView: 'kprops', // 'kprops' | 'moneyline' | 'batter'
     slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
     stake: 1,   // units per bet
@@ -634,7 +635,12 @@
       .yc-units{font-family:ui-monospace,monospace;font-size:11.5px;font-weight:600;color:var(--textDim);}
       .yc-units.up{color:var(--win,#5BBF7A);}
       .yc-units.down{color:var(--danger);}
-      .yc-note{margin-left:auto;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--textDim);}
+      .yc-clv{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
+      .yc-clv b{color:var(--win,#5BBF7A);font-weight:600;}
+      .yc-collapse{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
+      .yc-collapse:hover{color:var(--text);border-color:var(--accent);}
+      .yc-scope{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--border);font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--textDim);background:color-mix(in srgb,var(--accent) 4%,transparent);}
+      .yc-scope b{color:var(--text);font-weight:700;}
       .yc-rows{display:grid;grid-template-columns:1fr 1fr;}
       .yc-row{display:flex;align-items:center;gap:10px;padding:10px 15px;border-top:1px solid var(--border);min-width:0;}
       .yc-rows .yc-row:nth-child(even){border-left:1px solid var(--border);}
@@ -656,8 +662,8 @@
       .yc-foot .up{color:var(--win,#5BBF7A);}
       .yc-foot a{color:var(--accent);text-decoration:none;margin-left:auto;}
       .yc-foot a:hover{text-decoration:underline;}
-      @media(max-width:720px){.yc-rows{grid-template-columns:1fr;}.yc-rows .yc-row:nth-child(even){border-left:none;}.yc-note{display:none;}}
-      @media(max-width:620px){.yc-row{flex-wrap:wrap;gap:5px 9px;}.yc-actual{flex-basis:100%;order:4;text-align:left;padding-left:30px;white-space:normal;}.yc-head{gap:8px 10px;}}`;
+      @media(max-width:720px){.yc-rows{grid-template-columns:1fr;}.yc-rows .yc-row:nth-child(even){border-left:none;}}
+      @media(max-width:620px){.yc-row{flex-wrap:wrap;gap:5px 9px;}.yc-actual{flex-basis:100%;order:4;text-align:left;padding-left:30px;white-space:normal;}.yc-head{gap:8px 10px;}.yc-collapse{margin-left:0;}}`;
     document.head.appendChild(s);
   }
 
@@ -675,6 +681,23 @@
     const rec = tr && tr.recent;
     if (!rec || !rec.picks || !rec.picks.length) { el.yesterdayCard.innerHTML = ''; return; }
     ensureYcStyle();
+
+    const open = state.ycOpen;
+    const upDown = rec.units > 0 ? ' up' : rec.units < 0 ? ' down' : '';
+    const uStr = (rec.units > 0 ? '+' : '') + rec.units + 'u';
+    const clvStr = tr.clv != null ? (tr.clv > 0 ? '+' : '') + tr.clv + '%' : null;
+
+    // Header is always shown — the one-line snapshot when collapsed.
+    const head = `<div class="yc-head">`
+      + `<span class="yc-kicker">Yesterday's Card</span>`
+      + `<span class="yc-date">${esc(ycDateLabel(rec.date))}</span>`
+      + `<span class="yc-rec${upDown}">${esc(rec.record)}</span>`
+      + `<span class="yc-units${upDown}">${uStr}</span>`
+      + (clvStr ? `<span class="yc-clv">CLV <b>${clvStr}</b></span>` : '')
+      + `<button class="yc-collapse" data-action="yc-toggle">${open ? 'Collapse ▴' : 'Expand ▾'}</button>`
+      + `</div>`;
+
+    if (!open) { el.yesterdayCard.innerHTML = `<div class="yc">${head}</div>`; return; }
 
     const U = { K: 'Ks', HR: 'HR', TB: 'TB', HRR: 'H+R+RBI' };
     const odds = (n) => (n == null ? '' : (n > 0 ? '+' + n : String(n)));
@@ -697,37 +720,28 @@
 
     const rows = rec.picks.map((p) => {
       const t1 = String(p.tier) === '1' ? ' t1' : '';
-      const tierLabel = p.tier === 'pass' ? 'Pass' : `Tier ${esc(p.tier)}`;
       return `<div class="yc-row">`
         + `<span class="yc-res ${rcls(p.result)}">${glyph(p.result)}</span>`
         + `<span class="yc-pick"><span class="yc-nm">${esc(p.name)}</span><span class="yc-bet">${betText(p)}</span></span>`
-        + `<span class="yc-tier${t1}">${tierLabel}</span>`
+        + `<span class="yc-tier${t1}">Tier ${esc(p.tier)}</span>`
         + `<span class="yc-actual">${actualText(p)}</span>`
         + `</div>`;
     }).join('');
 
-    const upDown = rec.units > 0 ? ' up' : rec.units < 0 ? ' down' : '';
-    const uStr = (rec.units > 0 ? '+' : '') + rec.units + 'u';
     const seasonUnits = tr.units != null ? (tr.units > 0 ? '+' : '') + tr.units + 'u' : '—';
-    const clvStr = tr.clv != null ? (tr.clv > 0 ? '+' : '') + tr.clv + '%' : null;
-
+    const more = (rec.total != null && rec.total > rec.picks.length)
+      ? `<a href="#record">See all ${rec.total} graded plays →</a>`
+      : `<a href="#record">Full track record →</a>`;
     const foot = `<div class="yc-foot">`
       + `<span>Season: <b>${esc(tr.record || '0–0')}</b> · ${seasonUnits} flat</span>`
       + (tr.tier1 ? `<span>Tier 1: <b>${esc(tr.tier1)}</b></span>` : '')
       + (clvStr ? `<span>Avg CLV: <b class="up">${clvStr}</b></span>` : '')
-      + `<a href="#record">Full track record →</a>`
+      + more
       + `</div>`;
 
-    el.yesterdayCard.innerHTML = `<div class="yc">`
-      + `<div class="yc-head">`
-      + `<span class="yc-kicker">Yesterday's Card</span>`
-      + `<span class="yc-date">${esc(ycDateLabel(rec.date))}</span>`
-      + `<span class="yc-rec${upDown}">${esc(rec.record)}</span>`
-      + `<span class="yc-units${upDown}">${uStr}</span>`
-      + `<span class="yc-note">every pick stays up · graded from the box score</span>`
-      + `</div>`
-      + `<div class="yc-rows">${rows}${foot}</div>`
-      + `</div>`;
+    const scope = `<div class="yc-scope">Showing <b>Tier 1 + Tier 2 plays</b> · every pick stays up · graded from the box score</div>`;
+
+    el.yesterdayCard.innerHTML = `<div class="yc">${head}${scope}<div class="yc-rows">${rows}${foot}</div></div>`;
   }
 
   // Mobile: a collapsed-by-default alert bar with a relevance filter. Rows whose
@@ -2172,6 +2186,7 @@
       case 'pitcher-card-click': onPitcherCardClick(Number(target.dataset.idx)); break;
       case 'injbar-toggle': state.injBarOpen = !state.injBarOpen; renderInjuryAlerts(); break;
       case 'alerts-toggle': state.alertsOpen = !state.alertsOpen; renderInjuryAlerts(); break;
+      case 'yc-toggle': state.ycOpen = !state.ycOpen; renderYesterdayCard(); break;
       case 'inj-shownoimpact': state.injShowNoImpact = true; renderInjuryAlerts(); break;
       case 'inj-showallimpact': state.injShowAllImpact = true; renderInjuryAlerts(); break;
       case 'jump-pick': {
