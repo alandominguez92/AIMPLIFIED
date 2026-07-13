@@ -9,10 +9,20 @@ main = "worker.js"
 directory = "."
 binding = "ASSETS"
 
-# Track record storage (Cloudflare D1). Create the database, paste its id below,
-# and redeploy — see DEPLOY.md. Until this is set up, env.DB is undefined and the
-# track-record endpoint returns empty (the site shows its placeholder record).
- [[d1_databases]]
- binding = "DB"
- database_name = "aimplified"
- database_id = "a894d9e5-698a-4d89-bfa7-8d9fbee523ed"
+# Closing-line capture. Every 5 minutes the Worker's scheduled() handler checks
+# whether a game is within ~7 min of first pitch and, if so, refreshes the board
+# so each pick's closing line is frozen for CLV. The paid Odds refresh only fires
+# in that pre-pitch window, so a normal slate costs a handful of extra calls.
+# Requires the D1 binding below to be active (otherwise it's a no-op).
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Track record storage (Cloudflare D1). With this binding active, env.DB is
+# defined, so the Worker logs each night's priced picks, grades them from the
+# boxscore the next morning, and freezes closing lines for CLV — all the
+# track-record/CLV code paths in worker.js light up. Schema auto-creates
+# (CREATE TABLE IF NOT EXISTS) on first request.
+[[d1_databases]]
+binding = "DB"
+database_name = "aimplified"
+database_id = "a894d9e5-698a-4d89-bfa7-8d9fbee523ed"
