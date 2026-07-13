@@ -110,6 +110,9 @@
     liveInjuries: null,
     injBarOpen: false,       // mobile injury bar collapsed by default
     injBarFilter: 'rel',     // 'rel' (in your picks) | 'all'
+    alertsOpen: true,        // desktop lineup-alerts bar expanded by default
+    injShowNoImpact: false,  // reveal the "no board impact" alerts
+    injuriesFetchedAt: null, // ms timestamp of the last injuries fetch (for "updated Xm ago")
     boardView: 'kprops', // 'kprops' | 'moneyline' | 'batter'
     slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
     stake: 1,   // units per bet
@@ -513,21 +516,99 @@
     return set;
   }
 
+  // Which of tonight's picks does this team touch? Returns the game + view + pick
+  // label so an alert can link straight to it. Honest: only reports a real pick
+  // (tier ≠ pass), never invents a numeric impact. Priority K-props → ML → RL.
+  function boardPickForTeam(teamAbbr) {
+    if (!teamAbbr) return null;
+    const games = boardIsLive() ? state.liveBoard : (LIVE_MODE ? [] : RAW_GAMES);
+    if (!Array.isArray(games)) return null;
+    for (const g of games) {
+      const parts = (g.matchup || '').split(' @ ');
+      if (!parts.includes(teamAbbr)) continue;
+      if (g.tier && g.tier !== 'pass' && g.pick && g.pick !== '—') return { id: g.id, view: 'kprops', pick: g.pick };
+      if (g.ml && typeof g.ml.tier === 'number') return { id: g.id, view: 'moneyline', pick: g.ml.pick };
+      if (g.rl && typeof g.rl.tier === 'number' && g.rl.modelAgrees) return { id: g.id, view: 'runline', pick: g.rl.pick };
+      return { id: g.id, view: 'kprops', pick: null }; // on the board, but no pick -> no impact
+    }
+    return null;
+  }
+
+  function ensureAlertStyle() {
+    if (document.getElementById('ab2-style')) return;
+    const s = document.createElement('style');
+    s.id = 'ab2-style';
+    s.textContent = `
+      .ab2{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);overflow:hidden;}
+      .ab2-head{display:flex;align-items:center;gap:11px;padding:13px 16px;background:var(--board,#10202F);flex-wrap:wrap;}
+      .ab2-dot{width:8px;height:8px;border-radius:99px;background:var(--danger);animation:ab2pulse 2s infinite;flex:none;}
+      @keyframes ab2pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--danger) 70%,transparent);}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+      .ab2-kicker{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--danger);font-weight:700;}
+      .ab2-badge{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--field,#0A1622);background:var(--danger);border-radius:99px;padding:3px 10px;}
+      .ab2-meta{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
+      .ab2-collapse{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
+      .ab2-collapse:hover{color:var(--text);border-color:var(--accent);}
+      .ab2-row{display:flex;align-items:flex-start;gap:13px;padding:13px 16px;border-top:1px solid var(--border);}
+      .ab2-tag{font-family:ui-monospace,monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;border-radius:5px;padding:3px 8px;white-space:nowrap;flex:none;margin-top:1px;}
+      .ab2-tag.hit{color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 50%,var(--border));background:color-mix(in srgb,var(--danger) 10%,transparent);}
+      .ab2-tag.soft{color:var(--warm);border:1px solid color-mix(in srgb,var(--warm) 50%,var(--border));background:color-mix(in srgb,var(--warm) 10%,transparent);}
+      .ab2-who{min-width:130px;flex:none;}
+      .ab2-nm{font-weight:700;font-size:14px;line-height:1.2;}
+      .ab2-tm{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);margin-top:2px;}
+      .ab2-impact{flex:1;min-width:180px;font-family:ui-monospace,monospace;font-size:12px;color:var(--textDim);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+      .ab2-impact b{color:var(--text);}
+      .ab2-jump{color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;background:none;border:none;font:inherit;padding:0;margin-left:auto;}
+      .ab2-jump:hover{color:var(--text);}
+      .ab2-more{width:100%;text-align:left;padding:12px 16px;font-family:ui-monospace,monospace;font-size:12px;color:var(--textDim);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
+      .ab2-more:hover{color:var(--text);}`;
+    document.head.appendChild(s);
+  }
+
   function renderInjuryAlerts() {
     // Real feed once loaded (even if empty); the sample banner only in the demo.
     const alerts = state.liveInjuries !== null ? state.liveInjuries : (LIVE_MODE ? [] : INJURY_ALERTS);
+    renderInjuryBar(alerts); // mobile bar (unchanged)
+    if (!el.injuryAlerts) return;
+    if (!alerts.length) { el.injuryAlerts.innerHTML = ''; return; }
+    ensureAlertStyle();
 
-    // Desktop keeps the flat two-column grid (unchanged).
-    el.injuryAlerts.innerHTML = alerts.map((a) => `
-      <div class="alert">
-        <span class="alert-dot"></span>
-        <b>ALERT</b>
-        <span class="alert-who">${esc(a.text)}</span>
-        <span class="alert-time">${esc(a.time)}</span>
-      </div>
-    `).join('');
+    // Split by real board exposure — impact rows lead, no-impact rows fold away.
+    const enriched = alerts.map((a) => ({ a, hit: boardPickForTeam(a.teamAbbr) }));
+    const impact = enriched.filter((e) => e.hit && e.hit.pick);
+    const noimp = enriched.filter((e) => !(e.hit && e.hit.pick));
 
-    renderInjuryBar(alerts);
+    const rowHtml = (e) => {
+      const { a, hit } = e;
+      const parts = (a.text || '').split(' · ');
+      const nm = parts[0] || a.text || '';
+      const tm = a.teamAbbr || parts[1] || '';
+      const isHit = !!(hit && hit.pick);
+      const tag = `<span class="ab2-tag ${isHit ? 'hit' : 'soft'}">${esc(a.time || 'IL')}</span>`;
+      const who = `<div class="ab2-who"><div class="ab2-nm">${esc(nm)}</div>${tm ? `<div class="ab2-tm">${esc(tm)}</div>` : ''}</div>`;
+      const impactHtml = isHit
+        ? `<div class="ab2-impact"><span>in your <b>${esc(a.game || 'board')}</b> pick · <b>${esc(hit.pick)}</b></span><button class="ab2-jump" data-action="jump-pick" data-view="${esc(hit.view)}" data-id="${esc(hit.id)}">View pick →</button></div>`
+        : `<div class="ab2-impact">${a.game ? `<span>${esc(a.game)} · </span>` : ''}<span>no pick on your board</span></div>`;
+      return `<div class="ab2-row">${tag}${who}${impactHtml}</div>`;
+    };
+
+    const ago = state.injuriesFetchedAt != null
+      ? Math.max(0, Math.round((Date.now() - state.injuriesFetchedAt) / 60000)) : null;
+    const agoStr = ago == null ? '' : ` · updated ${ago === 0 ? 'just now' : ago + 'm ago'}`;
+    const open = state.alertsOpen;
+    const badge = impact.length ? `<span class="ab2-badge">${impact.length} impact tonight</span>` : '';
+    const head = `<div class="ab2-head"><span class="ab2-dot"></span><span class="ab2-kicker">Lineup Alerts</span>${badge}<span class="ab2-meta">${alerts.length} total${agoStr}</span><button class="ab2-collapse" data-action="alerts-toggle">${open ? 'Collapse ▴' : 'Expand ▾'}</button></div>`;
+
+    let body = '';
+    if (open) {
+      if (impact.length) body += impact.map(rowHtml).join('');
+      else body += `<div class="ab2-row"><span class="ab2-tag soft">Clear</span><div class="ab2-impact">No injuries touch tonight's picks.</div></div>`;
+      if (noimp.length) {
+        body += state.injShowNoImpact
+          ? noimp.map(rowHtml).join('')
+          : `<button class="ab2-more" data-action="inj-shownoimpact">Show ${noimp.length} more alert${noimp.length > 1 ? 's' : ''} with no board impact →</button>`;
+      }
+    }
+    el.injuryAlerts.innerHTML = `<div class="ab2">${head}${body}</div>`;
   }
 
   // Mobile: a collapsed-by-default alert bar with a relevance filter. Rows whose
@@ -668,6 +749,8 @@
       const rows = await fetchJson('/api/injuries');
       if (Array.isArray(rows)) {
         state.liveInjuries = rows; // may be empty -> no alerts, which is honest
+        state.injuriesFetchedAt = Date.now();
+        state.injShowNoImpact = false; // fresh data -> re-collapse the no-impact list
         renderInjuryAlerts();
       }
     } catch (e) {
@@ -1967,6 +2050,20 @@
       case 'hitter-card-click': onHitterCardClick(Number(target.dataset.idx)); break;
       case 'pitcher-card-click': onPitcherCardClick(Number(target.dataset.idx)); break;
       case 'injbar-toggle': state.injBarOpen = !state.injBarOpen; renderInjuryAlerts(); break;
+      case 'alerts-toggle': state.alertsOpen = !state.alertsOpen; renderInjuryAlerts(); break;
+      case 'inj-shownoimpact': state.injShowNoImpact = true; renderInjuryAlerts(); break;
+      case 'jump-pick': {
+        if (e) e.stopPropagation();
+        const v = target.dataset.view, id = target.dataset.id;
+        if (v && v !== state.boardView) setView(v);
+        state.filter = 'all';
+        state.expandedId = id;
+        renderControls();
+        renderBoard();
+        const bw = document.getElementById('boardWrap');
+        if (bw) bw.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      }
       case 'injbar-filter':
         if (e) e.stopPropagation();
         state.injBarFilter = target.dataset.mode; renderInjuryAlerts(); break;
