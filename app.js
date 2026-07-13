@@ -540,7 +540,9 @@
     const s = document.createElement('style');
     s.id = 'ab2-style';
     s.textContent = `
+      #injuryAlerts{display:block;} /* the old container was a 2-col grid — go full width */
       .ab2{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);overflow:hidden;}
+      .ab2-rows{display:grid;grid-template-columns:1fr 1fr;}
       .ab2-head{display:flex;align-items:center;gap:11px;padding:13px 16px;background:var(--board,#10202F);flex-wrap:wrap;}
       .ab2-dot{width:8px;height:8px;border-radius:99px;background:var(--danger);animation:ab2pulse 2s infinite;flex:none;}
       @keyframes ab2pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--danger) 70%,transparent);}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
@@ -549,7 +551,8 @@
       .ab2-meta{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
       .ab2-collapse{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
       .ab2-collapse:hover{color:var(--text);border-color:var(--accent);}
-      .ab2-row{display:flex;align-items:center;gap:11px;padding:8px 14px;border-top:1px solid var(--border);}
+      .ab2-row{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--border);min-width:0;}
+      .ab2-rows .ab2-row:nth-child(even){border-left:1px solid var(--border);}
       .ab2-tag{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;flex:none;}
       .ab2-tag.hit{color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 50%,var(--border));background:color-mix(in srgb,var(--danger) 10%,transparent);}
       .ab2-tag.soft{color:var(--warm);border:1px solid color-mix(in srgb,var(--warm) 50%,var(--border));background:color-mix(in srgb,var(--warm) 10%,transparent);}
@@ -560,16 +563,17 @@
       .ab2-impact b{color:var(--text);font-weight:600;}
       .ab2-jump{flex:none;color:var(--accent);cursor:pointer;text-decoration:none;white-space:nowrap;background:none;border:none;font:inherit;font-size:11.5px;padding:0;}
       .ab2-jump:hover{text-decoration:underline;}
-      .ab2-more{width:100%;text-align:left;padding:9px 14px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
+      .ab2-more{grid-column:1/-1;text-align:left;padding:10px 15px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
       .ab2-more:hover{color:var(--text);}
-      @media(max-width:620px){.ab2-row{flex-wrap:wrap;gap:5px 9px;}.ab2-impact{flex-basis:100%;order:3;white-space:normal;}}`;
+      @media(max-width:720px){.ab2-rows{grid-template-columns:1fr;}.ab2-rows .ab2-row:nth-child(even){border-left:none;}}
+      @media(max-width:620px){.ab2-row{flex-wrap:wrap;gap:5px 9px;}.ab2-impact{flex-basis:100%;order:3;white-space:normal;}.ab2-head{gap:8px 10px;}.ab2-collapse{margin-left:0;}}`;
     document.head.appendChild(s);
   }
 
   function renderInjuryAlerts() {
     // Real feed once loaded (even if empty); the sample banner only in the demo.
     const alerts = state.liveInjuries !== null ? state.liveInjuries : (LIVE_MODE ? [] : INJURY_ALERTS);
-    renderInjuryBar(alerts); // mobile bar (unchanged)
+    if (el.injuryBar) el.injuryBar.innerHTML = ''; // the ab2 bar is responsive now — retire the separate mobile bar
     if (!el.injuryAlerts) return;
     if (!alerts.length) { el.injuryAlerts.innerHTML = ''; return; }
     ensureAlertStyle();
@@ -600,23 +604,17 @@
     const badge = impact.length ? `<span class="ab2-badge">${impact.length} impact tonight</span>` : '';
     const head = `<div class="ab2-head"><span class="ab2-dot"></span><span class="ab2-kicker">Lineup Alerts</span>${badge}<span class="ab2-meta">${alerts.length} total${agoStr}</span><button class="ab2-collapse" data-action="alerts-toggle">${open ? 'Collapse ▴' : 'Expand ▾'}</button></div>`;
 
-    const IMPACT_CAP = 4;
     let body = '';
     if (open) {
-      if (impact.length) {
-        const shown = state.injShowAllImpact ? impact : impact.slice(0, IMPACT_CAP);
-        body += shown.map(rowHtml).join('');
-        if (!state.injShowAllImpact && impact.length > IMPACT_CAP) {
-          body += `<button class="ab2-more" data-action="inj-showallimpact">Show ${impact.length - IMPACT_CAP} more impact →</button>`;
-        }
-      } else {
-        body += `<div class="ab2-row"><span class="ab2-tag soft">Clear</span><span class="ab2-impact">No injuries touch tonight's picks.</span></div>`;
-      }
+      let rows = '';
+      if (impact.length) rows += impact.map(rowHtml).join('');
+      else rows += `<div class="ab2-row" style="grid-column:1/-1"><span class="ab2-tag soft">Clear</span><span class="ab2-impact">No injuries touch tonight's picks.</span></div>`;
       if (noimp.length) {
-        body += state.injShowNoImpact
+        rows += state.injShowNoImpact
           ? noimp.map(rowHtml).join('')
           : `<button class="ab2-more" data-action="inj-shownoimpact">Show ${noimp.length} more with no board impact →</button>`;
       }
+      body = `<div class="ab2-rows">${rows}</div>`;
     }
     el.injuryAlerts.innerHTML = `<div class="ab2">${head}${body}</div>`;
   }
