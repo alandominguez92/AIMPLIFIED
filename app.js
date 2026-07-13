@@ -625,20 +625,20 @@
     s.textContent = `
       #yesterdayCard{display:block;margin:0 0 6px;}
       #yesterdayCard:empty{display:none;}
-      .yc{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);overflow:hidden;}
-      .yc-head{display:flex;align-items:center;gap:12px;padding:13px 16px;background:var(--board,#10202F);flex-wrap:wrap;}
-      .yc-kicker{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;}
-      .yc-date{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
-      .yc-rec{font-family:ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:99px;padding:3px 11px;color:var(--field,#0A1622);background:var(--textDim);}
-      .yc-rec.up{background:var(--win,#5BBF7A);}
-      .yc-rec.down{background:var(--danger);}
-      .yc-units{font-family:ui-monospace,monospace;font-size:11.5px;font-weight:600;color:var(--textDim);}
+      .yc{border:1px solid var(--border);border-radius:10px;background:var(--board3,#0C1A26);overflow:hidden;}
+      .yc-ribbon{display:flex;align-items:center;gap:11px;padding:12px 16px;flex-wrap:wrap;}
+      .yc-lead{font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--textDim);font-weight:700;}
+      .yc-rec{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:var(--text);}
+      .yc-units{font-family:ui-monospace,monospace;font-size:12px;font-weight:600;color:var(--textDim);}
       .yc-units.up{color:var(--win,#5BBF7A);}
       .yc-units.down{color:var(--danger);}
-      .yc-clv{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
+      .yc-sep{color:var(--border);}
+      .yc-clv{font-family:ui-monospace,monospace;font-size:12px;color:var(--textDim);}
       .yc-clv b{color:var(--win,#5BBF7A);font-weight:600;}
-      .yc-collapse{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
-      .yc-collapse:hover{color:var(--text);border-color:var(--accent);}
+      .yc-season{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);}
+      .yc-season b{color:var(--text);font-weight:600;}
+      .yc-view{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;white-space:nowrap;}
+      .yc-view:hover{text-decoration:underline;}
       .yc-scope{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--border);font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--textDim);background:color-mix(in srgb,var(--accent) 4%,transparent);}
       .yc-scope b{color:var(--text);font-weight:700;}
       .yc-rows{display:grid;grid-template-columns:1fr 1fr;}
@@ -663,7 +663,7 @@
       .yc-foot a{color:var(--accent);text-decoration:none;margin-left:auto;}
       .yc-foot a:hover{text-decoration:underline;}
       @media(max-width:720px){.yc-rows{grid-template-columns:1fr;}.yc-rows .yc-row:nth-child(even){border-left:none;}}
-      @media(max-width:620px){.yc-row{flex-wrap:wrap;gap:5px 9px;}.yc-actual{flex-basis:100%;order:4;text-align:left;padding-left:30px;white-space:normal;}.yc-head{gap:8px 10px;}.yc-collapse{margin-left:0;}}`;
+      @media(max-width:620px){.yc-row{flex-wrap:wrap;gap:5px 9px;}.yc-actual{flex-basis:100%;order:4;text-align:left;padding-left:30px;white-space:normal;}.yc-ribbon{gap:8px 10px;}.yc-season{flex-basis:100%;}.yc-view{margin-left:0;}}`;
     document.head.appendChild(s);
   }
 
@@ -687,17 +687,18 @@
     const uStr = (rec.units > 0 ? '+' : '') + rec.units + 'u';
     const clvStr = tr.clv != null ? (tr.clv > 0 ? '+' : '') + tr.clv + '%' : null;
 
-    // Header is always shown — the one-line snapshot when collapsed.
-    const head = `<div class="yc-head">`
-      + `<span class="yc-kicker">Yesterday's Card</span>`
-      + `<span class="yc-date">${esc(ycDateLabel(rec.date))}</span>`
-      + `<span class="yc-rec${upDown}">${esc(rec.record)}</span>`
+    // A lean one-line receipt. CLV and the season sample carry it — the daily
+    // W/L is one noisy data point, so it's shown honestly but not shouted.
+    const ribbon = `<div class="yc-ribbon">`
+      + `<span class="yc-lead">Yesterday · ${esc(ycDateLabel(rec.date))}</span>`
+      + `<span class="yc-rec">${esc(rec.record)}</span>`
       + `<span class="yc-units${upDown}">${uStr}</span>`
-      + (clvStr ? `<span class="yc-clv">CLV <b>${clvStr}</b></span>` : '')
-      + `<button class="yc-collapse" data-action="yc-toggle">${open ? 'Collapse ▴' : 'Expand ▾'}</button>`
+      + (clvStr ? `<span class="yc-sep">|</span><span class="yc-clv">CLV <b>${clvStr}</b></span>` : '')
+      + (tr.record ? `<span class="yc-sep">|</span><span class="yc-season">Season <b>${esc(tr.record)}</b> · every pick graded &amp; kept up</span>` : '')
+      + `<button class="yc-view" data-action="yc-toggle">${open ? 'Hide ▴' : 'View card →'}</button>`
       + `</div>`;
 
-    if (!open) { el.yesterdayCard.innerHTML = `<div class="yc">${head}</div>`; return; }
+    if (!open) { el.yesterdayCard.innerHTML = `<div class="yc">${ribbon}</div>`; return; }
 
     const U = { K: 'Ks', HR: 'HR', TB: 'TB', HRR: 'H+R+RBI' };
     const odds = (n) => (n == null ? '' : (n > 0 ? '+' + n : String(n)));
@@ -732,16 +733,17 @@
     const more = (rec.total != null && rec.total > rec.picks.length)
       ? `<a href="#record">See all ${rec.total} graded plays →</a>`
       : `<a href="#record">Full track record →</a>`;
+    // Season record + CLV already live in the ribbon — the foot adds only what
+    // the ribbon doesn't: the Tier 1 subset and season units.
     const foot = `<div class="yc-foot">`
-      + `<span>Season: <b>${esc(tr.record || '0–0')}</b> · ${seasonUnits} flat</span>`
       + (tr.tier1 ? `<span>Tier 1: <b>${esc(tr.tier1)}</b></span>` : '')
-      + (clvStr ? `<span>Avg CLV: <b class="up">${clvStr}</b></span>` : '')
+      + `<span>Season units: <b>${seasonUnits} flat</b></span>`
       + more
       + `</div>`;
 
     const scope = `<div class="yc-scope">Showing <b>Tier 1 + Tier 2 plays</b> · every pick stays up · graded from the box score</div>`;
 
-    el.yesterdayCard.innerHTML = `<div class="yc">${head}${scope}<div class="yc-rows">${rows}${foot}</div></div>`;
+    el.yesterdayCard.innerHTML = `<div class="yc">${ribbon}${scope}<div class="yc-rows">${rows}${foot}</div></div>`;
   }
 
   // Mobile: a collapsed-by-default alert bar with a relevance filter. Rows whose
