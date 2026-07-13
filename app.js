@@ -112,6 +112,7 @@
     injBarFilter: 'rel',     // 'rel' (in your picks) | 'all'
     alertsOpen: true,        // desktop lineup-alerts bar expanded by default
     injShowNoImpact: false,  // reveal the "no board impact" alerts
+    injShowAllImpact: false, // reveal impact alerts beyond the first few
     injuriesFetchedAt: null, // ms timestamp of the last injuries fetch (for "updated Xm ago")
     boardView: 'kprops', // 'kprops' | 'moneyline' | 'batter'
     slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
@@ -548,19 +549,20 @@
       .ab2-meta{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
       .ab2-collapse{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
       .ab2-collapse:hover{color:var(--text);border-color:var(--accent);}
-      .ab2-row{display:flex;align-items:flex-start;gap:13px;padding:13px 16px;border-top:1px solid var(--border);}
-      .ab2-tag{font-family:ui-monospace,monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;border-radius:5px;padding:3px 8px;white-space:nowrap;flex:none;margin-top:1px;}
+      .ab2-row{display:flex;align-items:center;gap:11px;padding:8px 14px;border-top:1px solid var(--border);}
+      .ab2-tag{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;flex:none;}
       .ab2-tag.hit{color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 50%,var(--border));background:color-mix(in srgb,var(--danger) 10%,transparent);}
       .ab2-tag.soft{color:var(--warm);border:1px solid color-mix(in srgb,var(--warm) 50%,var(--border));background:color-mix(in srgb,var(--warm) 10%,transparent);}
-      .ab2-who{min-width:130px;flex:none;}
-      .ab2-nm{font-weight:700;font-size:14px;line-height:1.2;}
-      .ab2-tm{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);margin-top:2px;}
-      .ab2-impact{flex:1;min-width:180px;font-family:ui-monospace,monospace;font-size:12px;color:var(--textDim);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
-      .ab2-impact b{color:var(--text);}
-      .ab2-jump{color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;background:none;border:none;font:inherit;padding:0;margin-left:auto;}
-      .ab2-jump:hover{color:var(--text);}
-      .ab2-more{width:100%;text-align:left;padding:12px 16px;font-family:ui-monospace,monospace;font-size:12px;color:var(--textDim);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
-      .ab2-more:hover{color:var(--text);}`;
+      .ab2-who{flex:none;display:flex;align-items:baseline;gap:6px;}
+      .ab2-nm{font-weight:700;font-size:13px;white-space:nowrap;}
+      .ab2-tm{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--textDim);}
+      .ab2-impact{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .ab2-impact b{color:var(--text);font-weight:600;}
+      .ab2-jump{flex:none;color:var(--accent);cursor:pointer;text-decoration:none;white-space:nowrap;background:none;border:none;font:inherit;font-size:11.5px;padding:0;}
+      .ab2-jump:hover{text-decoration:underline;}
+      .ab2-more{width:100%;text-align:left;padding:9px 14px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
+      .ab2-more:hover{color:var(--text);}
+      @media(max-width:620px){.ab2-row{flex-wrap:wrap;gap:5px 9px;}.ab2-impact{flex-basis:100%;order:3;white-space:normal;}}`;
     document.head.appendChild(s);
   }
 
@@ -584,10 +586,10 @@
       const tm = a.teamAbbr || parts[1] || '';
       const isHit = !!(hit && hit.pick);
       const tag = `<span class="ab2-tag ${isHit ? 'hit' : 'soft'}">${esc(a.time || 'IL')}</span>`;
-      const who = `<div class="ab2-who"><div class="ab2-nm">${esc(nm)}</div>${tm ? `<div class="ab2-tm">${esc(tm)}</div>` : ''}</div>`;
+      const who = `<span class="ab2-who"><span class="ab2-nm">${esc(nm)}</span>${tm ? `<span class="ab2-tm">${esc(tm)}</span>` : ''}</span>`;
       const impactHtml = isHit
-        ? `<div class="ab2-impact"><span>in your <b>${esc(a.game || 'board')}</b> pick · <b>${esc(hit.pick)}</b></span><button class="ab2-jump" data-action="jump-pick" data-view="${esc(hit.view)}" data-id="${esc(hit.id)}">View pick →</button></div>`
-        : `<div class="ab2-impact">${a.game ? `<span>${esc(a.game)} · </span>` : ''}<span>no pick on your board</span></div>`;
+        ? `<span class="ab2-impact"><b>${esc(a.game || 'board')}</b> · ${esc(hit.pick)}</span><button class="ab2-jump" data-action="jump-pick" data-view="${esc(hit.view)}" data-id="${esc(hit.id)}">View →</button>`
+        : `<span class="ab2-impact">${a.game ? esc(a.game) + ' · ' : ''}no pick on your board</span>`;
       return `<div class="ab2-row">${tag}${who}${impactHtml}</div>`;
     };
 
@@ -598,14 +600,22 @@
     const badge = impact.length ? `<span class="ab2-badge">${impact.length} impact tonight</span>` : '';
     const head = `<div class="ab2-head"><span class="ab2-dot"></span><span class="ab2-kicker">Lineup Alerts</span>${badge}<span class="ab2-meta">${alerts.length} total${agoStr}</span><button class="ab2-collapse" data-action="alerts-toggle">${open ? 'Collapse ▴' : 'Expand ▾'}</button></div>`;
 
+    const IMPACT_CAP = 4;
     let body = '';
     if (open) {
-      if (impact.length) body += impact.map(rowHtml).join('');
-      else body += `<div class="ab2-row"><span class="ab2-tag soft">Clear</span><div class="ab2-impact">No injuries touch tonight's picks.</div></div>`;
+      if (impact.length) {
+        const shown = state.injShowAllImpact ? impact : impact.slice(0, IMPACT_CAP);
+        body += shown.map(rowHtml).join('');
+        if (!state.injShowAllImpact && impact.length > IMPACT_CAP) {
+          body += `<button class="ab2-more" data-action="inj-showallimpact">Show ${impact.length - IMPACT_CAP} more impact →</button>`;
+        }
+      } else {
+        body += `<div class="ab2-row"><span class="ab2-tag soft">Clear</span><span class="ab2-impact">No injuries touch tonight's picks.</span></div>`;
+      }
       if (noimp.length) {
         body += state.injShowNoImpact
           ? noimp.map(rowHtml).join('')
-          : `<button class="ab2-more" data-action="inj-shownoimpact">Show ${noimp.length} more alert${noimp.length > 1 ? 's' : ''} with no board impact →</button>`;
+          : `<button class="ab2-more" data-action="inj-shownoimpact">Show ${noimp.length} more with no board impact →</button>`;
       }
     }
     el.injuryAlerts.innerHTML = `<div class="ab2">${head}${body}</div>`;
@@ -751,6 +761,7 @@
         state.liveInjuries = rows; // may be empty -> no alerts, which is honest
         state.injuriesFetchedAt = Date.now();
         state.injShowNoImpact = false; // fresh data -> re-collapse the no-impact list
+        state.injShowAllImpact = false;
         renderInjuryAlerts();
       }
     } catch (e) {
@@ -2052,6 +2063,7 @@
       case 'injbar-toggle': state.injBarOpen = !state.injBarOpen; renderInjuryAlerts(); break;
       case 'alerts-toggle': state.alertsOpen = !state.alertsOpen; renderInjuryAlerts(); break;
       case 'inj-shownoimpact': state.injShowNoImpact = true; renderInjuryAlerts(); break;
+      case 'inj-showallimpact': state.injShowAllImpact = true; renderInjuryAlerts(); break;
       case 'jump-pick': {
         if (e) e.stopPropagation();
         const v = target.dataset.view, id = target.dataset.id;
