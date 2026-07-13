@@ -222,16 +222,33 @@ async function attachSplits(rows, group) {
 // -------------------------------------------------------------------------
 async function board(env, ctx) {
   const season = new Date().getUTCFullYear();
-  const date = slateDate(); // the site's slate day, in Pacific time
+  let date = slateDate(); // the site's slate day, in Pacific time
 
-  let sched;
-  try {
-    const r = await fetch(`${STATS}/schedule?sportId=1&date=${date}&hydrate=probablePitcher,linescore,team`, { headers: { accept: 'application/json' } });
-    if (!r.ok) return cors(json([], 60));
-    sched = await r.json();
-  } catch (e) { return cors(json([], 60)); }
+  const fetchSlate = async (d) => {
+    try {
+      const r = await fetch(`${STATS}/schedule?sportId=1&date=${d}&hydrate=probablePitcher,linescore,team`, { headers: { accept: 'application/json' } });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) { return null; }
+  };
 
-  const games = (sched.dates && sched.dates[0] && sched.dates[0].games) || [];
+  let sched = await fetchSlate(date);
+  if (!sched) return cors(json([], 60));
+  let games = (sched.dates && sched.dates[0] && sched.dates[0].games) || [];
+
+  // Roll a day ahead into projections once tonight's slate is done — every game
+  // Final (or none today). Projections appear immediately from the probable
+  // pitchers; odds/edges fill in as books post — moneyline/run line the night
+  // before, props in the morning. Staying a day ahead is how you get on soft
+  // opening lines before the market sharpens them. (Paid prop calls are gated to
+  // games near first pitch below, so this doesn't burn quota overnight.)
+  const allFinal = games.length > 0 && games.every((g) => (g.status && g.status.abstractGameState) === 'Final');
+  if (!games.length || allFinal) {
+    const nextDate = slateDateOffset(1);
+    const next = await fetchSlate(nextDate);
+    const nextGames = next ? ((next.dates && next.dates[0] && next.dates[0].games) || []) : [];
+    if (nextGames.length) { date = nextDate; sched = next; games = nextGames; }
+  }
   if (!games.length) return cors(json([], 60));
 
   // Real strikeout prop lines (paid Odds API player props), keyed by pitcher
@@ -247,8 +264,16 @@ async function board(env, ctx) {
         // gone, so the per-event call just burns Odds API quota for nothing. This
         // trims calls exactly through the afternoon/evening as games go live.
         const now = Date.now();
+        // Props post the morning of game day, so a game more than ~12h out has no
+        // lines yet — skip it to avoid burning paid per-event calls overnight
+        // (matters now that the board rolls a day ahead into projections).
+        const PROP_LEAD_MS = 12 * 3600 * 1000;
         const upcoming = (Array.isArray(events) ? events : [])
-          .filter((ev) => !ev.commence_time || Date.parse(ev.commence_time) > now);
+          .filter((ev) => {
+            if (!ev.commence_time) return true;
+            const t = Date.parse(ev.commence_time);
+            return t > now && (t - now) <= PROP_LEAD_MS;
+          });
         await Promise.all(upcoming.map(async (ev) => {
           try {
             const pr = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=pitcher_strikeouts&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
