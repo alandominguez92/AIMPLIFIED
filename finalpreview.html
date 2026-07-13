@@ -1,0 +1,53 @@
+<meta charset="utf-8"><style>
+  :root{--field:#0A1622;--board:#10202F;--board3:#0C1A26;--border:#1D3345;--text:#F0EFEA;--textDim:#90A3B5;--accent:#E8B84B;--danger:#E2584B;--warm:#D18A47;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--field);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1010px;margin:0 auto;padding:20px;}
+  .lbl{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--textDim);margin:22px 0 10px;}
+
+  .ab2{border:1px solid var(--border);border-radius:12px;background:var(--board3);overflow:hidden;}
+  .ab2-head{display:flex;align-items:center;gap:11px;padding:13px 16px;background:var(--board);flex-wrap:wrap;}
+  .ab2-dot{width:8px;height:8px;border-radius:99px;background:var(--danger);flex:none;}
+  .ab2-kicker{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--danger);font-weight:700;}
+  .ab2-badge{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--field);background:var(--danger);border-radius:99px;padding:3px 10px;}
+  .ab2-meta{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
+  .ab2-stale.on{color:var(--warm);font-weight:600;}
+  .ab2-collapse{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
+  .ab2-rows{display:grid;grid-template-columns:1fr 1fr;}
+  .ab2-row{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--border);min-width:0;}
+  .ab2-row:nth-child(even){border-left:1px solid var(--border);}
+  .ab2-tag{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;flex:none;color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 50%,var(--border));background:color-mix(in srgb,var(--danger) 10%,transparent);}
+  .ab2-tag.soft{color:var(--warm);border-color:color-mix(in srgb,var(--warm) 50%,var(--border));background:color-mix(in srgb,var(--warm) 10%,transparent);}
+  .ab2-who{flex:none;display:flex;align-items:baseline;gap:6px;}
+  .ab2-nm{font-weight:700;font-size:13px;white-space:nowrap;}
+  .ab2-tm{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--textDim);}
+  .ab2-impact{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .ab2-impact b{color:var(--text);font-weight:600;}
+  .ab2-jump{flex:none;color:var(--accent);cursor:pointer;text-decoration:none;white-space:nowrap;background:none;border:none;font:inherit;font-size:11.5px;padding:0;}
+  .ab2-more{grid-column:1/-1;text-align:left;padding:10px 16px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
+
+  .boardhead{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:20px;text-transform:uppercase;letter-spacing:.02em;margin:26px 0 12px;}
+  .brd{border:1px solid var(--border);border-radius:10px;height:64px;background:var(--board3);}
+
+  @media(max-width:720px){.wrap{padding:14px;}.ab2-rows{grid-template-columns:1fr;}.ab2-row:nth-child(even){border-left:none;}}
+  @media(max-width:620px){.ab2-row{flex-wrap:wrap;gap:5px 9px;}.ab2-impact{flex-basis:100%;order:3;white-space:normal;}.ab2-head{gap:8px 10px;}.ab2-collapse{margin-left:0;}}
+</style>
+<div class="wrap">
+  <div class="lbl">Tonight — the alert bar exactly as it'll render (all fixes applied)</div>
+
+  <div class="ab2">
+    <div class="ab2-head"><span class="ab2-dot"></span><span class="ab2-kicker">Lineup Alerts</span><span class="ab2-badge">6 impact tonight</span><span class="ab2-meta">10 total · <span class="ab2-stale">updated 2m ago</span></span><button class="ab2-collapse">Collapse ▴</button></div>
+    <div class="ab2-rows">
+      <div class="ab2-row"><span class="ab2-tag">10-Day IL</span><span class="ab2-who"><span class="ab2-nm">Nick Kurtz</span><span class="ab2-tm">ATH</span></span><span class="ab2-impact"><b>ATH @ CWS</b> · J. Ginn 5.5 Ks</span><button class="ab2-jump">View →</button></div>
+      <div class="ab2-row"><span class="ab2-tag">7-Day IL</span><span class="ab2-who"><span class="ab2-nm">Julio Rodríguez</span><span class="ab2-tm">SEA</span></span><span class="ab2-impact"><b>SEA @ TB</b> · I. Seymour 8.4 Ks</span><button class="ab2-jump">View →</button></div>
+      <div class="ab2-row"><span class="ab2-tag">10-Day IL</span><span class="ab2-who"><span class="ab2-nm">Matt Chapman</span><span class="ab2-tm">SF</span></span><span class="ab2-impact"><b>COL @ SF</b> · T. McDonald 4.3 Ks</span><button class="ab2-jump">View →</button></div>
+      <div class="ab2-row"><span class="ab2-tag">10-Day IL</span><span class="ab2-who"><span class="ab2-nm">Byron Buxton</span><span class="ab2-tm">MIN</span></span><span class="ab2-impact"><b>LAA @ MIN</b> · T. Bradley 7.3 Ks</span><button class="ab2-jump">View →</button></div>
+      <div class="ab2-row"><span class="ab2-tag">10-Day IL</span><span class="ab2-who"><span class="ab2-nm">Marcus Semien</span><span class="ab2-tm">NYM</span></span><span class="ab2-impact"><b>BOS @ NYM</b> · P. Tolle 5.8 Ks</span><button class="ab2-jump">View →</button></div>
+      <div class="ab2-row"><span class="ab2-tag">10-Day IL</span><span class="ab2-who"><span class="ab2-nm">José Ramírez</span><span class="ab2-tm">CLE</span></span><span class="ab2-impact"><b>CLE @ MIA</b> · J. Cantillo 5.2 Ks</span><button class="ab2-jump">View →</button></div>
+      <button class="ab2-more">Show 4 more with no board impact →</button>
+    </div>
+  </div>
+
+  <div class="boardhead">Tonight's Board <span style="font-family:ui-monospace,monospace;font-size:12px;font-weight:400;color:var(--textDim)">· 15 games · tonight's slate</span></div>
+  <div class="brd"></div>
+</div>
