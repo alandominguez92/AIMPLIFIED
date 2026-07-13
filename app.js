@@ -218,6 +218,7 @@
     heroDuel: document.getElementById('heroDuel'),
     injuryAlerts: document.getElementById('injuryAlerts'),
     injuryBar: document.getElementById('injuryBar'),
+    yesterdayCard: document.getElementById('yesterdayCard'),
     liveNowSection: document.getElementById('liveNow'),
     liveNowGrid: document.getElementById('liveNowGrid'),
     liveNowNote: document.getElementById('liveNowNote'),
@@ -542,7 +543,7 @@
     s.textContent = `
       #injuryAlerts{display:block;} /* the old container was a 2-col grid — go full width */
       .ab2{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);overflow:hidden;}
-      .ab2-rows{display:grid;grid-template-columns:1fr 1fr;}
+      .ab2-rows{display:block;}
       .ab2-head{display:flex;align-items:center;gap:11px;padding:13px 16px;background:var(--board,#10202F);flex-wrap:wrap;}
       .ab2-dot{width:8px;height:8px;border-radius:99px;background:var(--danger);animation:ab2pulse 2s infinite;flex:none;}
       @keyframes ab2pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--danger) 70%,transparent);}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
@@ -551,22 +552,19 @@
       .ab2-meta{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
       .ab2-collapse{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
       .ab2-collapse:hover{color:var(--text);border-color:var(--accent);}
-      .ab2-row{display:flex;align-items:center;gap:10px;padding:9px 15px;border-top:1px solid var(--border);min-width:0;}
-      .ab2-rows .ab2-row:nth-child(even){border-left:1px solid var(--border);}
-      .ab2-tag{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;flex:none;}
+      .ab2-row{display:flex;align-items:flex-start;gap:11px;padding:11px 16px;border-top:1px solid var(--border);min-width:0;}
+      .ab2-row.impact{background:color-mix(in srgb,var(--danger) 5%,transparent);}
+      .ab2-tag{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:3px 7px;white-space:nowrap;flex:none;margin-top:1px;}
       .ab2-tag.hit{color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 50%,var(--border));background:color-mix(in srgb,var(--danger) 10%,transparent);}
       .ab2-tag.soft{color:var(--warm);border:1px solid color-mix(in srgb,var(--warm) 50%,var(--border));background:color-mix(in srgb,var(--warm) 10%,transparent);}
-      .ab2-who{flex:none;display:flex;align-items:baseline;gap:6px;}
-      .ab2-nm{font-weight:700;font-size:13px;white-space:nowrap;}
-      .ab2-tm{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--textDim);}
-      .ab2-impact{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-      .ab2-impact b{color:var(--text);font-weight:600;}
+      .ab2-txt{flex:1;min-width:0;font-size:12.5px;line-height:1.5;color:var(--text);overflow-wrap:anywhere;}
+      .ab2-hit{flex:none;display:flex;align-items:center;gap:9px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--warm);white-space:nowrap;margin-top:1px;}
+      .ab2-hit b{color:var(--text);font-weight:600;}
       .ab2-jump{flex:none;color:var(--accent);cursor:pointer;text-decoration:none;white-space:nowrap;background:none;border:none;font:inherit;font-size:11.5px;padding:0;}
       .ab2-jump:hover{text-decoration:underline;}
-      .ab2-more{grid-column:1/-1;text-align:left;padding:10px 15px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
+      .ab2-more{display:block;width:100%;text-align:left;padding:11px 16px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
       .ab2-more:hover{color:var(--text);}
-      @media(max-width:720px){.ab2-rows{grid-template-columns:1fr;}.ab2-rows .ab2-row:nth-child(even){border-left:none;}}
-      @media(max-width:620px){.ab2-row{flex-wrap:wrap;gap:5px 9px;}.ab2-impact{flex-basis:100%;order:3;white-space:normal;}.ab2-head{gap:8px 10px;}.ab2-collapse{margin-left:0;}}`;
+      @media(max-width:620px){.ab2-row{flex-wrap:wrap;gap:6px 9px;}.ab2-hit{flex-basis:100%;order:3;}.ab2-head{gap:8px 10px;}.ab2-collapse{margin-left:0;}}`;
     document.head.appendChild(s);
   }
 
@@ -585,16 +583,13 @@
 
     const rowHtml = (e) => {
       const { a, hit } = e;
-      const parts = (a.text || '').split(' · ');
-      const nm = parts[0] || a.text || '';
-      const tm = a.teamAbbr || parts[1] || '';
       const isHit = !!(hit && hit.pick);
       const tag = `<span class="ab2-tag ${isHit ? 'hit' : 'soft'}">${esc(a.time || 'IL')}</span>`;
-      const who = `<span class="ab2-who"><span class="ab2-nm">${esc(nm)}</span>${tm ? `<span class="ab2-tm">${esc(tm)}</span>` : ''}</span>`;
+      const txt = `<span class="ab2-txt">${esc(a.text || '')}</span>`;
       const impactHtml = isHit
-        ? `<span class="ab2-impact"><b>${esc(a.game || 'board')}</b> · ${esc(hit.pick)}</span><button class="ab2-jump" data-action="jump-pick" data-view="${esc(hit.view)}" data-id="${esc(hit.id)}">View →</button>`
-        : `<span class="ab2-impact">${a.game ? esc(a.game) + ' · ' : ''}no pick on your board</span>`;
-      return `<div class="ab2-row">${tag}${who}${impactHtml}</div>`;
+        ? `<span class="ab2-hit"><b>${esc(hit.pick)}</b><button class="ab2-jump" data-action="jump-pick" data-view="${esc(hit.view)}" data-id="${esc(hit.id)}">View →</button></span>`
+        : '';
+      return `<div class="ab2-row${isHit ? ' impact' : ''}">${tag}${txt}${impactHtml}</div>`;
     };
 
     const ago = state.injuriesFetchedAt != null
@@ -608,7 +603,7 @@
     if (open) {
       let rows = '';
       if (impact.length) rows += impact.map(rowHtml).join('');
-      else rows += `<div class="ab2-row" style="grid-column:1/-1"><span class="ab2-tag soft">Clear</span><span class="ab2-impact">No injuries touch tonight's picks.</span></div>`;
+      else rows += `<div class="ab2-row"><span class="ab2-tag soft">Clear</span><span class="ab2-txt">No injuries touch tonight's picks.</span></div>`;
       if (noimp.length) {
         rows += state.injShowNoImpact
           ? noimp.map(rowHtml).join('')
@@ -617,6 +612,122 @@
       body = `<div class="ab2-rows">${rows}</div>`;
     }
     el.injuryAlerts.innerHTML = `<div class="ab2">${head}${body}</div>`;
+  }
+
+  // "Yesterday's Card" — the most recent graded slate, pick by pick, with the
+  // real result from the box score. Wins and losses both stay up. Data comes
+  // from /api/track-record's `recent` field; renders nothing until picks grade.
+  function ensureYcStyle() {
+    if (document.getElementById('yc-style')) return;
+    const s = document.createElement('style');
+    s.id = 'yc-style';
+    s.textContent = `
+      #yesterdayCard{display:block;margin:0 0 6px;}
+      #yesterdayCard:empty{display:none;}
+      .yc{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);overflow:hidden;}
+      .yc-head{display:flex;align-items:center;gap:12px;padding:13px 16px;background:var(--board,#10202F);flex-wrap:wrap;}
+      .yc-kicker{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;}
+      .yc-date{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
+      .yc-rec{font-family:ui-monospace,monospace;font-size:11px;font-weight:700;letter-spacing:.04em;border-radius:99px;padding:3px 11px;color:var(--field,#0A1622);background:var(--textDim);}
+      .yc-rec.up{background:var(--win,#5BBF7A);}
+      .yc-rec.down{background:var(--danger);}
+      .yc-units{font-family:ui-monospace,monospace;font-size:11.5px;font-weight:600;color:var(--textDim);}
+      .yc-units.up{color:var(--win,#5BBF7A);}
+      .yc-units.down{color:var(--danger);}
+      .yc-note{margin-left:auto;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--textDim);}
+      .yc-rows{display:grid;grid-template-columns:1fr 1fr;}
+      .yc-row{display:flex;align-items:center;gap:10px;padding:10px 15px;border-top:1px solid var(--border);min-width:0;}
+      .yc-rows .yc-row:nth-child(even){border-left:1px solid var(--border);}
+      .yc-res{flex:none;width:20px;height:20px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;border:1px solid var(--border);color:var(--textDim);}
+      .yc-res.w{background:color-mix(in srgb,var(--win,#5BBF7A) 16%,transparent);color:var(--win,#5BBF7A);border-color:color-mix(in srgb,var(--win,#5BBF7A) 55%,var(--border));}
+      .yc-res.l{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger);border-color:color-mix(in srgb,var(--danger) 50%,var(--border));}
+      .yc-pick{flex:none;display:flex;align-items:baseline;gap:7px;min-width:0;}
+      .yc-nm{font-weight:700;font-size:13px;white-space:nowrap;}
+      .yc-bet{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);white-space:nowrap;}
+      .yc-bet b{color:var(--text);font-weight:600;}
+      .yc-actual{flex:1;min-width:0;text-align:right;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .yc-actual b{font-weight:700;font-size:13px;}
+      .yc-actual .aw{color:var(--win,#5BBF7A);}
+      .yc-actual .al{color:var(--danger);}
+      .yc-tier{flex:none;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;color:var(--textDim);border:1px solid var(--border);}
+      .yc-tier.t1{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:color-mix(in srgb,var(--accent) 8%,transparent);}
+      .yc-foot{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 16px;border-top:1px solid var(--border);font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);flex-wrap:wrap;}
+      .yc-foot b{color:var(--text);}
+      .yc-foot .up{color:var(--win,#5BBF7A);}
+      .yc-foot a{color:var(--accent);text-decoration:none;margin-left:auto;}
+      .yc-foot a:hover{text-decoration:underline;}
+      @media(max-width:720px){.yc-rows{grid-template-columns:1fr;}.yc-rows .yc-row:nth-child(even){border-left:none;}.yc-note{display:none;}}
+      @media(max-width:620px){.yc-row{flex-wrap:wrap;gap:5px 9px;}.yc-actual{flex-basis:100%;order:4;text-align:left;padding-left:30px;white-space:normal;}.yc-head{gap:8px 10px;}}`;
+    document.head.appendChild(s);
+  }
+
+  function ycDateLabel(d) {
+    try {
+      const [y, m, day] = String(d).split('-').map(Number);
+      return new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' })
+        .format(new Date(Date.UTC(y, m - 1, day, 12))).replace(',', '');
+    } catch (e) { return String(d || ''); }
+  }
+
+  function renderYesterdayCard() {
+    if (!el.yesterdayCard) return;
+    const tr = state.trackRecord;
+    const rec = tr && tr.recent;
+    if (!rec || !rec.picks || !rec.picks.length) { el.yesterdayCard.innerHTML = ''; return; }
+    ensureYcStyle();
+
+    const U = { K: 'Ks', HR: 'HR', TB: 'TB', HRR: 'H+R+RBI' };
+    const odds = (n) => (n == null ? '' : (n > 0 ? '+' + n : String(n)));
+    const betText = (p) => {
+      if (p.market === 'ML') return `<b>ML</b>${p.price != null ? ' ' + odds(p.price) : ''}`;
+      const s = p.side === 'Over' ? 'O' : p.side === 'Under' ? 'U' : '';
+      return `<b>${s} ${p.line}</b> ${U[p.market] || esc(p.market)}${p.price != null ? ' ' + odds(p.price) : ''}`;
+    };
+    const actualText = (p) => {
+      const cls = p.result === 'win' ? 'aw' : p.result === 'loss' ? 'al' : '';
+      if (p.market === 'ML') {
+        const verb = p.result === 'win' ? 'won' : p.result === 'loss' ? 'lost' : 'push';
+        return `${verb} <b class="${cls}">${p.actual != null ? esc(String(p.actual)) : ''}</b>${p.opp ? ' · vs ' + esc(p.opp) : ''}`;
+      }
+      if (p.actual == null) return p.result === 'push' ? 'push' : '';
+      return `<b class="${cls}">${esc(String(p.actual))}</b> ${U[p.market] || esc(p.market)} · line ${p.line}`;
+    };
+    const glyph = (r) => (r === 'win' ? '✓' : r === 'loss' ? '✗' : '–');
+    const rcls = (r) => (r === 'win' ? 'w' : r === 'loss' ? 'l' : 'p');
+
+    const rows = rec.picks.map((p) => {
+      const t1 = String(p.tier) === '1' ? ' t1' : '';
+      const tierLabel = p.tier === 'pass' ? 'Pass' : `Tier ${esc(p.tier)}`;
+      return `<div class="yc-row">`
+        + `<span class="yc-res ${rcls(p.result)}">${glyph(p.result)}</span>`
+        + `<span class="yc-pick"><span class="yc-nm">${esc(p.name)}</span><span class="yc-bet">${betText(p)}</span></span>`
+        + `<span class="yc-tier${t1}">${tierLabel}</span>`
+        + `<span class="yc-actual">${actualText(p)}</span>`
+        + `</div>`;
+    }).join('');
+
+    const upDown = rec.units > 0 ? ' up' : rec.units < 0 ? ' down' : '';
+    const uStr = (rec.units > 0 ? '+' : '') + rec.units + 'u';
+    const seasonUnits = tr.units != null ? (tr.units > 0 ? '+' : '') + tr.units + 'u' : '—';
+    const clvStr = tr.clv != null ? (tr.clv > 0 ? '+' : '') + tr.clv + '%' : null;
+
+    const foot = `<div class="yc-foot">`
+      + `<span>Season: <b>${esc(tr.record || '0–0')}</b> · ${seasonUnits} flat</span>`
+      + (tr.tier1 ? `<span>Tier 1: <b>${esc(tr.tier1)}</b></span>` : '')
+      + (clvStr ? `<span>Avg CLV: <b class="up">${clvStr}</b></span>` : '')
+      + `<a href="#record">Full track record →</a>`
+      + `</div>`;
+
+    el.yesterdayCard.innerHTML = `<div class="yc">`
+      + `<div class="yc-head">`
+      + `<span class="yc-kicker">Yesterday's Card</span>`
+      + `<span class="yc-date">${esc(ycDateLabel(rec.date))}</span>`
+      + `<span class="yc-rec${upDown}">${esc(rec.record)}</span>`
+      + `<span class="yc-units${upDown}">${uStr}</span>`
+      + `<span class="yc-note">every pick stays up · graded from the box score</span>`
+      + `</div>`
+      + `<div class="yc-rows">${rows}${foot}</div>`
+      + `</div>`;
   }
 
   // Mobile: a collapsed-by-default alert bar with a relevance filter. Rows whose
@@ -1670,6 +1781,7 @@
         renderRecord();
         renderCalibration();
         renderRoi();
+        renderYesterdayCard();
       }
     } catch (e) {
       console.warn('Track record refresh failed:', e.message);

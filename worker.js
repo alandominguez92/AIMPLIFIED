@@ -66,7 +66,47 @@ export default {
     }
     return resp;
   },
+
+  // Cron trigger (see wrangler.toml [triggers]). Freezes closing lines so CLV is
+  // measured against the real close, not whatever line was up the last time a
+  // viewer happened to load the site. See captureCloses.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(captureCloses(env, ctx));
+  },
 };
+
+// The close is the last line before first pitch — the number CLV is measured
+// against. Logging refreshes close_over/close_price every time board()/batters()
+// run, but that only happens on organic traffic, so a game that goes off while
+// no one is on the site keeps a stale close and its CLV is meaningless. This
+// cron fills that gap: a few minutes before each game we refresh both boards,
+// which re-logs the picks and stamps their close to that near-final line.
+//
+// To stay cheap, the paid Odds refresh fires only when a game is actually in the
+// pre-pitch window — on a normal slate that's a handful of starts, not all day.
+// A 5-minute cron with a 7-minute window guarantees every game gets at least one
+// in-window refresh (there's always a tick in the 5 minutes before first pitch).
+const CLOSE_WINDOW_MIN = 7;
+async function captureCloses(env, ctx) {
+  if (!env || !env.DB) return; // no track-record DB -> nothing to freeze
+  let sched;
+  try {
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return;
+    sched = await r.json();
+  } catch (e) { return; }
+  const games = (sched.dates && sched.dates[0] && sched.dates[0].games) || [];
+  const now = Date.now();
+  const windowMs = CLOSE_WINDOW_MIN * 60 * 1000;
+  const nearPitch = games.some((g) => {
+    const t = Date.parse(g.gameDate);
+    return t && t > now && (t - now) <= windowMs; // starts within the window
+  });
+  if (!nearPitch) return; // no close to capture this tick — skip the paid refresh
+  // Refresh both boards so strikeout, moneyline (board) and batter (batters)
+  // closes all re-log. Their own ctx.waitUntil writes ride on this same ctx.
+  try { await Promise.all([board(env, ctx), batters(env, ctx)]); } catch (e) { /* transient */ }
+}
 
 async function handleApi(p, env, ctx) {
   if (p === '/api/hitters') return hitters();
@@ -1094,10 +1134,13 @@ async function trackRecord(env) {
       ...(bres.results || []).map((r) => ({ ...r, actual_k: r.actual, market: String(r.market || '').toUpperCase() })),
     ];
     const out = buildTrackRecord(unified);
+    let mlRows = [];
     try {
       const mlres = await env.DB.prepare('SELECT * FROM mlpicks').all();
-      out.ml = buildMlRecord(mlres.results || []);
+      mlRows = mlres.results || [];
+      out.ml = buildMlRecord(mlRows);
     } catch (e) { /* ML record is additive — never break the props track record */ }
+    out.recent = buildRecent(unified, mlRows);
     return cors(json(out, 120));
   } catch (e) {
     return cors(json({ empty: true, logged: 0, error: String(e) }, 60));
@@ -1567,6 +1610,42 @@ function buildTrackRecord(rows) {
     clvLineMoved: lineMoved,
     calibration,
   };
+}
+
+// Most recent graded slate, as individual picks — feeds the "Yesterday's Card"
+// strip. buildTrackRecord returns aggregates; this returns the per-pick detail
+// for the single most recent date that has any graded pick (props + ML).
+function buildRecent(propRows, mlRows) {
+  const items = [];
+  for (const r of propRows) {
+    if (r.tier === 'pass') continue;
+    if (r.result !== 'win' && r.result !== 'loss' && r.result !== 'push') continue;
+    const actual = r.actual_k != null ? r.actual_k : (r.actual != null ? r.actual : null);
+    items.push({
+      date: r.date, name: r.pitcher || r.player || '', team: r.team || '',
+      market: String(r.market || 'K'), side: r.side || null, line: r.line ?? null,
+      price: r.price ?? null, tier: String(r.tier || ''), result: r.result, actual,
+    });
+  }
+  for (const r of mlRows) {
+    if (r.result !== 'win' && r.result !== 'loss' && r.result !== 'push') continue;
+    items.push({
+      date: r.date, name: r.team || '', team: r.team || '', opp: r.opp || '',
+      market: 'ML', side: null, line: null,
+      price: r.entry_price != null ? r.entry_price : r.close_price,
+      tier: String(r.tier || ''), result: r.result,
+      actual: (r.team_score != null && r.opp_score != null) ? `${r.team_score}–${r.opp_score}` : null,
+    });
+  }
+  if (!items.length) return null;
+  const maxDate = items.reduce((m, x) => (x.date > m ? x.date : m), items[0].date);
+  const picks = items.filter((x) => x.date === maxDate);
+  let w = 0, l = 0, units = 0;
+  for (const p of picks) {
+    if (p.result === 'win') w++; else if (p.result === 'loss') l++;
+    if (p.result !== 'push' && p.price != null) units += profitUnits(p.result, p.price);
+  }
+  return { date: maxDate, record: `${w}–${l}`, units: Math.round(units * 10) / 10, picks };
 }
 
 // Price a strikeout projection against the DK/FD lines. Picks the side with a
