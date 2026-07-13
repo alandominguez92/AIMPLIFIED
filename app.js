@@ -124,6 +124,7 @@
   const boardIsLive = () => !!(state.liveBoard && state.liveBoard.length);
   const isML = () => state.boardView === 'moneyline';
   const isBatter = () => state.boardView === 'batter';
+  const isRL = () => state.boardView === 'runline';
   const battersLive = () => !!(state.liveBatters && state.liveBatters.length);
   // Whether the active view's feed hasn't returned yet (vs. returned empty).
   const isFeedLoading = () => (isBatter() ? state.liveBatters : state.liveBoard) === null;
@@ -134,12 +135,14 @@
   };
   // A row's tier/edge for the active view. Batter + K-props both read g.tier/edge;
   // moneyline reads the nested ml object.
-  const activeTier = (g) => isML() ? (g.ml ? g.ml.tier : 'model') : g.tier;
-  const activeEdge = (g) => isML() ? (g.ml ? g.ml.edge : null) : g.edge;
+  const activeTier = (g) => isML() ? (g.ml ? g.ml.tier : 'model') : isRL() ? (g.rl ? g.rl.tier : 'pass') : g.tier;
+  const activeEdge = (g) => isML() ? (g.ml ? g.ml.edge : null) : isRL() ? (g.rl ? g.rl.edge : null) : g.edge;
   // "Modeled" = the active board carries real market tiers, so tier filters +
   // edge sort are meaningful.
   const boardHasLive = () => isBatter() ? battersLive() : boardIsLive();
-  const boardModeled = () => boardHasLive() && getGames().some((g) => typeof activeTier(g) === 'number');
+  const boardModeled = () => isRL()
+    ? boardIsLive() && getGames().some((g) => g.rl && g.rl.edge != null) // real Pinnacle run line -> show tier/Pass controls
+    : boardHasLive() && getGames().some((g) => typeof activeTier(g) === 'number');
 
   // How to reach the Odds API proxy. Empty => mock-only mode.
   //   "same-origin" (or "/") => Cloudflare Pages Functions at /api/* on this
@@ -675,7 +678,12 @@
   function getFilteredSortedGames() {
     // Only force time-sort on a live slate with no market tiers.
     const forceTime = boardIsLive() && !boardModeled();
-    let games = getGames().filter((g) => state.filter === 'all' ? true : String(activeTier(g)) === state.filter);
+    let games = getGames().filter((g) => {
+      const t = activeTier(g);
+      // Run Line: keep 'no play' cards out of All — they live under the Pass tab.
+      if (state.filter === 'all') return isRL() ? String(t) !== 'pass' : true;
+      return String(t) === state.filter;
+    });
     const q = state.searchQuery.trim().toLowerCase();
     if (q) {
       games = games.filter((g) => g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
@@ -781,10 +789,23 @@
   }
 
   function renderBoard() {
-    renderBoardHead();
     const games = getFilteredSortedGames();
     el.noResults.hidden = games.length !== 0;
     if (!games.length) el.noResults.textContent = emptyBoardMessage();
+
+    // Run Line renders as game cards, not table rows — hide the table head and
+    // the panel border so the cards stand free, then bail before the row map.
+    const boardWrap = document.getElementById('boardWrap');
+    if (isRL()) {
+      if (el.boardHead) el.boardHead.style.display = 'none';
+      if (boardWrap) { boardWrap.style.border = 'none'; boardWrap.style.background = 'none'; }
+      if (el.pinNote) el.pinNote.hidden = true;
+      el.boardRows.innerHTML = renderRunlineCards(games);
+      return;
+    }
+    if (el.boardHead) el.boardHead.style.display = '';
+    if (boardWrap) { boardWrap.style.border = ''; boardWrap.style.background = ''; }
+    renderBoardHead();
     if (el.pinNote) el.pinNote.hidden = !getGames().some((g) => Array.isArray(g.oddsBooks) && g.oddsBooks.length);
 
     el.boardRows.innerHTML = games.map((g) => {
@@ -1009,6 +1030,113 @@
 
       return rowHtml + detailHtml;
     }).join('');
+  }
+
+  // Run Line view — game cards. The value side (DK/FD price beats Pinnacle's
+  // de-vigged run line) is the Pick, and it only lights up when the win% model
+  // agrees the game breaks that way; otherwise the card sits under the Pass tab.
+  // Styles are injected once so style.css stays untouched.
+  function ensureRlStyle() {
+    if (document.getElementById('rl-style')) return;
+    const s = document.createElement('style');
+    s.id = 'rl-style';
+    s.textContent = `
+      .rl-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+      @media(max-width:680px){.rl-grid{grid-template-columns:1fr;}}
+      .rl-card{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);padding:16px 17px;}
+      .rl-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:3px;}
+      .rl-match{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:17px;letter-spacing:.01em;}
+      .rl-edge{font-family:ui-monospace,monospace;font-size:12px;color:var(--positive);}
+      .rl-edge.pass{color:var(--textDim);}
+      .rl-status{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);margin-bottom:13px;}
+      .rl-live{color:var(--danger);}
+      .rl-sides{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+      .rl-side{border:1px solid var(--border);border-radius:9px;padding:11px 13px;background:var(--board,#10202F);position:relative;}
+      .rl-lbl{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:15px;}
+      .rl-prc{font-family:ui-monospace,monospace;font-size:13px;color:var(--textDim);margin-top:2px;}
+      .rl-cov{font-family:ui-monospace,monospace;font-size:10px;color:var(--textDim);margin-top:5px;}
+      .rl-side.pick{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--board,#10202F));}
+      .rl-side.pick .rl-lbl{color:var(--accent);}
+      .rl-side.pick .rl-prc{color:var(--text);}
+      .rl-tag{position:absolute;top:-8px;right:10px;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#10202F;border-radius:99px;padding:1px 7px;font-weight:700;}
+      .rl-lean{display:flex;align-items:center;gap:7px;margin-top:12px;font-family:ui-monospace,monospace;font-size:11.5px;flex-wrap:wrap;}
+      .rl-ok{color:var(--positive);}
+      .rl-no{color:var(--danger);}
+      .rl-dim{color:var(--textDim);}
+      .rl-dim b{color:var(--text);}
+      .rl-nolabel{color:var(--danger)!important;}
+      .rl-stars{margin-left:auto;color:var(--accent);letter-spacing:1px;font-size:11px;white-space:nowrap;}
+      .rl-stars.pass{color:var(--textDim);letter-spacing:0;}`;
+    document.head.appendChild(s);
+  }
+
+  function renderRunlineCards(games) {
+    ensureRlStyle();
+    const money = (v) => v == null ? '—' : (v > 0 ? '+' + v : String(v));
+    return `<div class="rl-grid">${games.map((g) => {
+      const rl = g.rl || {};
+      const isPickCard = typeof rl.tier === 'number' && rl.modelAgrees;
+
+      // Two sides, favorite (−1.5) first.
+      const sideObj = (abbr, point, price, cover) => ({ abbr, point, price, cover, pick: isPickCard && abbr === rl.teamAbbr });
+      const sides = [
+        sideObj(rl.homeAbbr, rl.homePoint, rl.homePrice, rl.homeCoverPct),
+        sideObj(rl.awayAbbr, rl.awayPoint, rl.awayPrice, rl.awayCoverPct),
+      ].sort((a, b) => (a.point ?? 0) - (b.point ?? 0));
+      const sideBox = (s) => {
+        const ptStr = s.point == null ? '' : (s.point > 0 ? '+' : '') + s.point;
+        const cov = s.cover == null ? '' : `fair ${s.cover}%${s.pick ? ' ✓' : ''}`;
+        return `<div class="rl-side${s.pick ? ' pick' : ''}">${s.pick ? '<span class="rl-tag">Pick</span>' : ''}
+          <div class="rl-lbl">${esc(s.abbr || '—')} ${esc(ptStr)}</div>
+          <div class="rl-prc">${esc(money(s.price))}</div>
+          <div class="rl-cov">${esc(cov)}</div></div>`;
+      };
+
+      // Status / score line (matchup is "AWAY @ HOME", score is "away-home").
+      const parts = (g.matchup || ' @ ').split(' @ ');
+      const awayT = parts[0] || '', homeT = parts[1] || '';
+      let statusLine;
+      if ((g.status === 'Live' || g.status === 'Final') && g.score && g.score.includes('-')) {
+        const sc = g.score.split('-');
+        const tag = g.status === 'Live' ? '<span class="rl-live">● Live</span>' : 'Final';
+        statusLine = `${tag} · ${esc(awayT)} ${esc(sc[0])} – ${esc(homeT)} ${esc(sc[1])}`;
+      } else {
+        statusLine = `${esc(g.timeLabel || 'TBD')} · scheduled`;
+      }
+
+      let badge = '';
+      if (isPickCard && rl.edge != null) badge = `<span class="rl-edge">+${rl.edge}% edge</span>`;
+      else if (rl.edge != null && rl.edge > 0) badge = `<span class="rl-edge pass">+${rl.edge}% value</span>`;
+
+      // Model-lean line — the filter, shown explicitly.
+      const pickModelWin = (rl.teamAbbr && rl.teamAbbr === rl.modelFavAbbr)
+        ? rl.modelFavPct : (rl.modelFavPct != null ? 100 - rl.modelFavPct : null);
+      let lean, stars;
+      if (isPickCard) {
+        const backs = rl.side === 'fav' ? 'backs the −1.5' : 'backs the +1.5';
+        const verb = rl.side === 'fav'
+          ? `likes <b>${esc(rl.teamAbbr)}</b> to win (${pickModelWin}%)`
+          : `gives <b>${esc(rl.teamAbbr)}</b> a live ${pickModelWin}%`;
+        lean = `<span class="rl-ok">✓</span> <span class="rl-dim">model ${verb} — ${backs}</span>`;
+        stars = `<span class="rl-stars">${esc(TIER_LABEL[rl.tier] || '')}</span>`;
+      } else if (rl.edge != null && rl.edge > 0) {
+        const ptStr = rl.point != null ? (rl.point > 0 ? '+' : '') + rl.point : '';
+        lean = `<span class="rl-no">✕</span> <span class="rl-dim">value on <b>${esc(rl.teamAbbr || '')} ${esc(ptStr)}</b>, model has it ${pickModelWin}% — <b class="rl-nolabel">no play</b></span>`;
+        stars = `<span class="rl-stars pass">pass</span>`;
+      } else if (rl.fairSource !== 'pinnacle') {
+        lean = `<span class="rl-dim">no sharp run line posted yet</span>`;
+        stars = `<span class="rl-stars pass">—</span>`;
+      } else {
+        lean = `<span class="rl-dim">no value vs Pinnacle's fair</span>`;
+        stars = `<span class="rl-stars pass">pass</span>`;
+      }
+
+      return `<div class="rl-card">
+        <div class="rl-top"><span class="rl-match">${esc(g.matchup || '—')}</span>${badge}</div>
+        <div class="rl-status">${statusLine}</div>
+        <div class="rl-sides">${sides.map(sideBox).join('')}</div>
+        <div class="rl-lean">${lean}${stars}</div></div>`;
+    }).join('')}</div>`;
   }
 
   function renderComparePanel() {

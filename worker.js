@@ -353,16 +353,19 @@ async function board(env, ctx) {
     return (r.w + 10) / (r.w + r.l + 20); // shrink toward .500
   };
 
-  // Real moneylines — one call across US (DraftKings/FanDuel, the books we bet)
-  // and EU (Pinnacle, the sharp reference we price value against).
+  // Real moneylines + run lines — one call across US (DraftKings/FanDuel, the
+  // books we bet) and EU (Pinnacle, the sharp reference we price value against).
+  // Adding `spreads` (the run line) to the same call costs no extra quota.
   const mlByHome = {};   // DK/FD best price per side — what you'd actually bet
   const pinByHome = {};  // Pinnacle price per side — the sharp fair line
+  const rlByHome = {};   // DK/FD best run-line price+point per side
+  const pinRlByHome = {}; // Pinnacle run-line price+point per side (sharp fair)
   if (key) {
     try {
-      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h,spreads&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (r.ok) {
         const events = await r.json();
-        // Best price for a team name across a set of bookmakers.
+        // Best moneyline price for a team name across a set of bookmakers.
         const priceFrom = (books, name) => {
           let best = null;
           for (const b of books) {
@@ -372,6 +375,16 @@ async function board(env, ctx) {
           }
           return best;
         };
+        // Best run-line price for a team at the main ±1.5 line, with its point.
+        const spreadFrom = (books, name) => {
+          let best = null, point = null;
+          for (const b of books) {
+            const mk = (b.markets || []).find((m) => m.key === 'spreads');
+            const o = mk && (mk.outcomes || []).find((x) => x.name === name && Math.abs(x.point) === 1.5);
+            if (o && o.price != null) { point = o.point; if (best == null || payoutMult(o.price) > payoutMult(best)) best = o.price; }
+          }
+          return best == null ? null : { price: best, point };
+        };
         (Array.isArray(events) ? events : []).forEach((ev) => {
           const bms = ev.bookmakers || [];
           const dkfd = bms.filter((b) => BOOKS[b.key]);
@@ -379,11 +392,17 @@ async function board(env, ctx) {
           // Key by canonical abbreviation (same as the props matching) so an
           // Odds-vs-StatsAPI name difference (e.g. Athletics, AZ/ARI) can't miss.
           const k2 = keyAbbr(ev.home_team);
-          if (dkfd.length) mlByHome[k2] = { home: priceFrom(dkfd, ev.home_team), away: priceFrom(dkfd, ev.away_team) };
-          if (pin.length) pinByHome[k2] = { home: priceFrom(pin, ev.home_team), away: priceFrom(pin, ev.away_team) };
+          if (dkfd.length) {
+            mlByHome[k2] = { home: priceFrom(dkfd, ev.home_team), away: priceFrom(dkfd, ev.away_team) };
+            rlByHome[k2] = { home: spreadFrom(dkfd, ev.home_team), away: spreadFrom(dkfd, ev.away_team) };
+          }
+          if (pin.length) {
+            pinByHome[k2] = { home: priceFrom(pin, ev.home_team), away: priceFrom(pin, ev.away_team) };
+            pinRlByHome[k2] = { home: spreadFrom(pin, ev.home_team), away: spreadFrom(pin, ev.away_team) };
+          }
         });
       }
-    } catch (e) { /* no moneylines -> ml pick is model-only */ }
+    } catch (e) { /* no moneylines -> ml/rl pick is model-only */ }
   }
 
   // Last-known moneylines from D1 — fallback when the live h2h feed stops
@@ -460,6 +479,10 @@ async function board(env, ctx) {
     const ml = moneyline(g, home, away, teamWinP, pmap, effPair, pinByHome[hKey] || null);
     if (ml && !liveHasPrice && effPair) ml.lineStale = true; // shown from last-known line
 
+    // Run line: Pinnacle fair + the log5 model (via ml) as the lean filter.
+    const rl = runLine(home, away, rlByHome[hKey] || null, pinRlByHome[hKey] || null,
+      ml ? ml.homeModelProb / 100 : 0.5);
+
     return {
       id: 'g' + g.gamePk,
       matchup: `${teamAbbr(away.team)} @ ${teamAbbr(home.team)}`,
@@ -478,6 +501,7 @@ async function board(env, ctx) {
       interval: lead ? `${lead.lo} – ${lead.hi}` : (projLean ? `${projLean.lo} – ${projLean.hi}` : '—'),
       pitchers,
       ml,
+      rl,
     };
   }).sort((a, b) => a.timeMs - b.timeMs);
 
@@ -576,6 +600,78 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair) {
     homeAbbr: h.teamAbbr, awayAbbr: a.teamAbbr,
     homeWinProb: h.winProb, awayWinProb: a.winProb,        // fair probs
     homeModelProb: h.modelProb, awayModelProb: a.modelProb, // log5 model, for reference
+  };
+}
+
+// Run line (±1.5) for one game — same philosophy as the moneyline. Pinnacle's
+// de-vigged run line is the fair number; edge = how much the DK/FD price you'd
+// bet beats it. Layered on top: the log5 win model is a LEAN FILTER — a value
+// side is only surfaced as a pick when the model agrees the game breaks that
+// way (a confident favorite backs -1.5; a competitive dog backs +1.5).
+const RL_FAV_LEAN = 0.55; // model win% needed to back a -1.5 favorite
+const RL_DOG_LEAN = 0.42; // model win% needed to back a +1.5 dog (live dog)
+function runLine(home, away, rlPair, pinPair, modelHomeWin) {
+  const rl = rlPair || {}, pin = pinPair || {};
+  const hasPin = pin.home && pin.away && pin.home.price != null && pin.away.price != null;
+  // Need at least a run-line point to know who's favored.
+  const pointSrc = hasPin ? pin : rl;
+  if (!pointSrc.home || pointSrc.home.point == null) return null; // no run line posted
+
+  // Pinnacle de-vigged fair cover probability for the home side.
+  let fairHomeCover = null, fairSource = 'none';
+  if (hasPin) {
+    const iH = amProb(pin.home.price), iA = amProb(pin.away.price);
+    const v = iH + iA;
+    fairHomeCover = v > 0 ? iH / v : iH;
+    fairSource = 'pinnacle';
+  }
+
+  const sideFor = (side) => {
+    const teamObj = side === 'home' ? home.team : away.team;
+    const leg = side === 'home' ? rl.home : rl.away;
+    const point = leg && leg.point != null ? leg.point : null;
+    const pr = leg && leg.price != null ? leg.price : null;
+    const fair = fairHomeCover == null ? null : (side === 'home' ? fairHomeCover : 1 - fairHomeCover);
+    let edge = null;
+    if (fairSource === 'pinnacle' && pr != null) {
+      const imp = amProb(pr);
+      edge = imp == null ? null : round1((fair - imp) * 100); // DK/FD value vs sharp fair
+    }
+    return { side, teamAbbr: teamAbbr(teamObj), point, price: pr,
+             coverPct: fair == null ? null : Math.round(fair * 100), edge };
+  };
+  const h = sideFor('home'), a = sideFor('away');
+
+  // Value side = the larger DK/FD-vs-Pinnacle edge (needs both to be priced).
+  const chosen = (h.edge == null || a.edge == null) ? null : (h.edge >= a.edge ? h : a);
+
+  // Lean filter: only call it a pick when the model agrees with the value side.
+  const modelWin = { home: modelHomeWin, away: 1 - modelHomeWin };
+  let modelAgrees = false, tier = 'pass';
+  if (chosen && chosen.edge != null && chosen.point != null) {
+    const mw = chosen.side === 'home' ? modelWin.home : modelWin.away;
+    modelAgrees = chosen.point < 0 ? (mw >= RL_FAV_LEAN) : (mw >= RL_DOG_LEAN);
+    if (modelAgrees) { const e = chosen.edge; tier = e >= 4 ? 1 : e >= 2.5 ? 2 : e >= 1 ? 3 : 'pass'; }
+  }
+
+  const modelFavHome = modelWin.home >= modelWin.away;
+  return {
+    pick: chosen ? `${chosen.teamAbbr} ${chosen.point > 0 ? '+' : ''}${chosen.point}` : null,
+    teamAbbr: chosen ? chosen.teamAbbr : null,
+    side: chosen ? (chosen.point < 0 ? 'fav' : 'dog') : null,
+    point: chosen ? chosen.point : null,
+    price: chosen ? chosen.price : null,
+    edge: chosen ? chosen.edge : null,
+    tier,
+    modelAgrees,
+    fairSource,                                  // 'pinnacle' | 'none'
+    homeAbbr: h.teamAbbr, awayAbbr: a.teamAbbr,
+    homePoint: h.point, awayPoint: a.point,
+    homePrice: h.price, awayPrice: a.price,
+    homeCoverPct: h.coverPct, awayCoverPct: a.coverPct,
+    homeEdge: h.edge, awayEdge: a.edge,
+    modelFavAbbr: modelFavHome ? h.teamAbbr : a.teamAbbr,
+    modelFavPct: Math.round(Math.max(modelWin.home, modelWin.away) * 100),
   };
 }
 
