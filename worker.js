@@ -36,7 +36,7 @@ const REF_BOOK = 'pinnacle';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug',
+  '/api/ml-debug', '/api/track-debug',
 ]);
 
 export default {
@@ -117,6 +117,7 @@ async function handleApi(p, env, ctx) {
   if (p === '/api/injuries') return injuries();
   if (p === '/api/live-now') return liveNow(env);
   if (p === '/api/ml-debug') return mlDebug(env);
+  if (p === '/api/track-debug') return trackDebug(env);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -1900,6 +1901,57 @@ async function mlDebug(env) {
     matchedWithDkFd: out.matches.filter((m) => m.dkfd && m.dkfd.length).length,
     matchedWithPinnacle: out.matches.filter((m) => m.pinnacle).length,
   };
+  return cors(json(out, 10));
+}
+
+// Read-only pipeline health: is D1 bound, are picks logging for the current
+// slate, and are prior days grading? Purely diagnostic — no writes, no model
+// paths. GET /api/track-debug.
+async function trackDebug(env) {
+  const today = slateDate();
+  const out = { slateDate: today, db: !!(env && env.DB) };
+  if (!out.db) { out.note = 'env.DB is undefined — D1 binding not active; the site shows demo data.'; return cors(json(out, 10)); }
+  try {
+    await ensureSchema(env.DB);
+    await ensureBatterSchema(env.DB);
+    await ensureMlSchema(env.DB);
+    await ensureMlPickSchema(env.DB);
+
+    // Per-table counts by date (last 7 dates), plus graded/ungraded split.
+    const tables = { picks: 'picks', bpicks: 'bpicks', mlpicks: 'mlpicks' };
+    out.tables = {};
+    for (const [label, tbl] of Object.entries(tables)) {
+      const byDate = (await env.DB.prepare(
+        `SELECT date, COUNT(*) AS n,
+                SUM(CASE WHEN result IS NULL THEN 1 ELSE 0 END) AS ungraded,
+                SUM(CASE WHEN result IS NOT NULL THEN 1 ELSE 0 END) AS graded
+         FROM ${tbl} GROUP BY date ORDER BY date DESC LIMIT 7`
+      ).all()).results || [];
+      const total = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${tbl}`).first('n')) || 0;
+      out.tables[label] = { total, byDate };
+    }
+
+    // Freshest signal: what's logged for tonight, and is the newest date grading?
+    const loggedToday = (await env.DB.prepare('SELECT COUNT(*) AS n FROM picks WHERE date=?').bind(today).first('n')) || 0;
+    const bLoggedToday = (await env.DB.prepare('SELECT COUNT(*) AS n FROM bpicks WHERE date=?').bind(today).first('n')) || 0;
+    const sample = (await env.DB.prepare('SELECT pitcher, team, line, side, price, tier FROM picks WHERE date=? LIMIT 6').bind(today).all()).results || [];
+    out.tonight = { date: today, kPicks: loggedToday, batterPicks: bLoggedToday, sample };
+
+    // Plain-language health read so it's obvious at a glance.
+    const anyToday = loggedToday > 0 || bLoggedToday > 0;
+    const latestPickDate = (out.tables.picks.byDate[0] || {}).date || null;
+    out.health = {
+      loggingTonight: anyToday,
+      latestLoggedDate: latestPickDate,
+      verdict: anyToday
+        ? 'OK — picks are logging for tonight; check tomorrow that this date grades (ungraded → graded).'
+        : (out.tables.picks.total > 0
+            ? 'WARNING — history exists but nothing logged for tonight yet (expected before first pitch; recheck after lines post).'
+            : 'EMPTY — no picks logged at all. Any numbers on the site are demo/backfill, not the live pipeline.'),
+    };
+  } catch (e) {
+    out.error = String(e && e.message || e);
+  }
   return cors(json(out, 10));
 }
 
