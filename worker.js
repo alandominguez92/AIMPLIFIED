@@ -1868,17 +1868,24 @@ async function mlDebug(env) {
   const byKey = {};
   if (key) {
     try {
-      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      // Pull h2h (moneyline) AND spreads (the run line) so this endpoint can
+      // explain both an empty Moneyline board and an empty Run Line board.
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h,spreads&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       out.odds.status = r.status;
       const events = await r.json();
+      const hasMarket = (bk, k) => (bk.markets || []).some((m) => m.key === k);
       if (Array.isArray(events)) {
         out.odds.count = events.length;
         out.odds.events = events.map((ev) => {
+          const books = ev.bookmakers || [];
           const info = {
             home: ev.home_team, homeKey: keyAbbr(ev.home_team),
             commence: ev.commence_time,
-            dkfd: (ev.bookmakers || []).filter((b) => BOOKS[b.key]).map((b) => b.key),
-            pinnacle: (ev.bookmakers || []).some((b) => b.key === REF_BOOK),
+            dkfd: books.filter((b) => BOOKS[b.key]).map((b) => b.key),
+            pinnacle: books.some((b) => b.key === REF_BOOK),
+            // Run-line (spreads) coverage, separately from moneyline.
+            dkfdSpread: books.filter((b) => BOOKS[b.key] && hasMarket(b, 'spreads')).map((b) => b.key),
+            pinnacleSpread: books.some((b) => b.key === REF_BOOK && hasMarket(b, 'spreads')),
           };
           byKey[info.homeKey] = info;
           return info;
@@ -1892,14 +1899,25 @@ async function mlDebug(env) {
 
   out.matches = out.schedule.map((s) => {
     const m = byKey[s.homeKey];
-    return { matchup: s.matchup, homeKey: s.homeKey, oddsFound: !!m, dkfd: m ? m.dkfd : [], pinnacle: m ? m.pinnacle : false };
+    return {
+      matchup: s.matchup, homeKey: s.homeKey, oddsFound: !!m,
+      dkfd: m ? m.dkfd : [], pinnacle: m ? m.pinnacle : false,
+      dkfdSpread: m ? m.dkfdSpread : [], pinnacleSpread: m ? m.pinnacleSpread : false,
+    };
   });
+  const matchedWithPinnacleSpread = out.matches.filter((m) => m.pinnacleSpread).length;
   out.summary = {
     scheduleGames: out.schedule.length,
     oddsEvents: out.odds.count || 0,
     matched: out.matches.filter((m) => m.oddsFound).length,
     matchedWithDkFd: out.matches.filter((m) => m.dkfd && m.dkfd.length).length,
     matchedWithPinnacle: out.matches.filter((m) => m.pinnacle).length,
+    // Run line: a pick needs a DK/FD spread priced AND a Pinnacle spread to
+    // anchor fair value. If matchedWithDkFdSpread is 0, the Run Line board is
+    // empty because the book feed has no spreads yet — not a site bug.
+    matchedWithDkFdSpread: out.matches.filter((m) => m.dkfdSpread && m.dkfdSpread.length).length,
+    matchedWithPinnacleSpread,
+    runLineReady: matchedWithPinnacleSpread > 0,
   };
   return cors(json(out, 10));
 }
