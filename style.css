@@ -1,48 +1,58 @@
+/* Slate Ice — cool neutral slate; the data colors are the loudest thing on
+   the page. Color roles are fixed sitewide: --model (cyan) = model output,
+   --positive (green) = +EV/action/win, --danger = −EV/fade/loss,
+   --accent (gold) = tier/elite, --clv (violet) = closing-line value. */
 :root,
 [data-theme="dark"] {
-  --field:#0A1622;
-  --board:#10202F;
-  --board2:#16283A;
-  --board3:#0C1A26;
-  --border:#1D3345;
-  --text:#F0EFEA;
-  --textDim:#90A3B5;
+  --field:#0A0F14;
+  --board:#12191F;
+  --board2:#1E2933;
+  --board3:#10161C;
+  --card:#18222B;
+  --border:#28343F;
+  --text:#EEF3F7;
+  --textDim:#8FA0AE;
   --accent:#E8B84B;
-  --danger:#E2584B;
-  --warm:#D18A47;
-  --positive:#3FB6A3;
-  --ink:#0A1622;
-  --trackBg:#060D13;
-  --muted:#3A4A58;
-  --headerBg:rgba(10,10,10,.92);
-  --radialTint:rgba(232,184,75,.06);
-  --alertBg:rgba(226,88,75,.09);
-  --alertBorder:rgba(226,88,75,.35);
+  --danger:#EF6A5A;
+  --warm:#E0A34B;
+  --positive:#7BE0A6;
+  --model:#59C6EE;
+  --clv:#9D8CFF;
+  --ink:#0A0F14;
+  --trackBg:#070C11;
+  --muted:#3E4B58;
+  --headerBg:rgba(10,15,20,.92);
+  --radialTint:rgba(232,184,75,.05);
+  --alertBg:rgba(239,106,90,.09);
+  --alertBorder:rgba(239,106,90,.35);
   --selectedBg:rgba(232,184,75,.08);
   --selectedBgStrong:rgba(232,184,75,.12);
 }
 
 [data-theme="light"] {
-  --field:#FFFFFF;
-  --board:#F5F6F8;
-  --board2:#EAF1FC;
-  --board3:#F1F3F6;
-  --border:#E1E4EA;
-  --text:#1A2430;
-  --textDim:#66707D;
-  --accent:#2A6FDB;
-  --danger:#D14343;
-  --warm:#C97A2E;
-  --positive:#1F9E85;
+  --field:#EBEFF4;
+  --board:#FFFFFF;
+  --board2:#E7EDF4;
+  --board3:#F0F3F7;
+  --card:#FFFFFF;
+  --border:#D5DDE7;
+  --text:#16222E;
+  --textDim:#5C6B7A;
+  --accent:#A8720E;
+  --danger:#C0392B;
+  --warm:#B5651D;
+  --positive:#2E9E5B;
+  --model:#1178B0;
+  --clv:#6A4FC0;
   --ink:#FFFFFF;
-  --trackBg:#EDEFF3;
+  --trackBg:#E2E8EF;
   --muted:#C7CCD3;
   --headerBg:rgba(255,255,255,.92);
-  --radialTint:rgba(42,111,219,.05);
-  --alertBg:rgba(209,67,67,.07);
-  --alertBorder:rgba(209,67,67,.3);
-  --selectedBg:rgba(42,111,219,.08);
-  --selectedBgStrong:rgba(42,111,219,.12);
+  --radialTint:rgba(168,114,14,.05);
+  --alertBg:rgba(192,57,43,.07);
+  --alertBorder:rgba(192,57,43,.3);
+  --selectedBg:rgba(168,114,14,.09);
+  --selectedBgStrong:rgba(168,114,14,.14);
 }
 
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -119,7 +129,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .proj { margin-top:20px; }
 .proj .label { font-size:12px; color:var(--textDim); text-transform:uppercase; letter-spacing:.1em; }
 .label-short { display:none; } /* phone-only variant of the proj label */
-.proj .num { font-family:'IBM Plex Mono'; font-weight:600; font-size:38px; color:var(--accent); line-height:1.1; font-variant-numeric:tabular-nums; }
+.proj .num { font-family:'IBM Plex Mono'; font-weight:600; font-size:38px; color:var(--model); line-height:1.1; font-variant-numeric:tabular-nums; } /* model output is always cyan */
 .proj .ci { font-family:'IBM Plex Mono'; font-size:13px; color:var(--textDim); }
 
 .pct { margin-top:16px; }
@@ -320,7 +330,7 @@ section { padding:44px 0; }
 .compare-hint.visible { display:block; }
 
 /* ---------- board ---------- */
-.board { background:var(--board); border:1px solid var(--border); border-radius:8px; overflow:hidden; font-size:14px; }
+.board { background:var(--board); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:10px; overflow:hidden; font-size:14px; } /* gold rail = the board */
 .board-inner { min-width:0; }
 .board-cols { display:grid; grid-template-columns:26px 2fr 1.45fr 1.3fr .85fr .95fr .8fr 34px; }
 .board-head-row { display:grid; grid-template-columns:26px 2fr 1.45fr 1.3fr .85fr .95fr .8fr 34px; padding:12px 16px; border-bottom:1px solid var(--border); }
@@ -450,7 +460,7 @@ section { padding:44px 0; }
 .video-tag { position:absolute; top:12px; left:12px; font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.14em; color:var(--accent); }
 
 /* ---------- record + calibration ---------- */
-.record { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:24px; }
+.record { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-left:3px solid var(--clv); border-radius:10px; overflow:hidden; margin-bottom:24px; } /* violet rail = process/receipts */
 .record .cell { background:var(--board); padding:22px 24px; }
 .record .k { font-size:12px; color:var(--textDim); text-transform:uppercase; letter-spacing:.1em; }
 .record .v { font-family:'IBM Plex Mono'; font-weight:600; font-size:28px; margin-top:6px; color:var(--text); }
@@ -552,4 +562,31 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 }
 @media (max-width:480px) {
   .hitters-grid { grid-template-columns:1fr 1fr !important; }
+}
+
+/* ---------- Slate Ice system additions ---------- */
+
+/* Live Now — teal-railed panel; urgency zone. JS promotes it above the hero
+   while games are in progress. */
+#liveNow { background:var(--board); border:1px solid var(--border); border-left:3px solid var(--positive); border-radius:12px; padding:18px 18px 16px; margin-bottom:26px; }
+#liveNow .sec-head { margin-bottom:14px; }
+
+/* Track-record cards share the violet process rail with .record */
+#record > .card { border-left:3px solid var(--clv); }
+
+/* CLV is violet everywhere — the chip included */
+.clv-chip .dot { background:var(--clv); box-shadow:0 0 8px var(--clv); }
+.clv-chip b.clv-pos { color:var(--clv); }
+
+/* Sticky slate summary bar — tonight at a glance. Sticky on desktop only;
+   on phones it scrolls away so it never eats screen height. */
+.slate-summary { position:sticky; top:57px; z-index:9; background:var(--headerBg); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+.slate-summary .ss-in { max-width:1140px; margin:0 auto; padding:9px 32px; display:flex; gap:24px; align-items:center; flex-wrap:wrap; font-family:'IBM Plex Mono'; font-size:12px; }
+.slate-summary .k { color:var(--textDim); font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; }
+.slate-summary b { font-size:14.5px; font-weight:600; margin-left:6px; font-variant-numeric:tabular-nums; }
+.slate-summary .upd { margin-left:auto; color:var(--textDim); font-size:10.5px; }
+@media (max-width:720px) {
+  .slate-summary { position:static; }
+  .slate-summary .ss-in { padding:8px 18px; gap:16px; }
+  .slate-summary .upd { display:none; }
 }

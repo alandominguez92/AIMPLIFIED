@@ -220,6 +220,7 @@
     injuryAlerts: document.getElementById('injuryAlerts'),
     injuryBar: document.getElementById('injuryBar'),
     yesterdayCard: document.getElementById('yesterdayCard'),
+    slateSummary: document.getElementById('slateSummary'),
     liveNowSection: document.getElementById('liveNow'),
     liveNowGrid: document.getElementById('liveNowGrid'),
     liveNowNote: document.getElementById('liveNowNote'),
@@ -543,7 +544,7 @@
     s.id = 'ab2-style';
     s.textContent = `
       #injuryAlerts{display:block;} /* the old container was a 2-col grid — go full width */
-      .ab2{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);overflow:hidden;}
+      .ab2{border:1px solid var(--border);border-left:3px solid var(--danger);border-radius:12px;background:var(--board3,#0C1A26);overflow:hidden;}
       .ab2-rows{display:block;}
       .ab2-head{display:flex;align-items:center;gap:11px;padding:13px 16px;background:var(--board,#10202F);flex-wrap:wrap;}
       .ab2-dot{width:8px;height:8px;border-radius:99px;background:var(--danger);animation:ab2pulse 2s infinite;flex:none;}
@@ -630,11 +631,11 @@
       .yc-lead{font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--textDim);font-weight:700;}
       .yc-rec{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:var(--text);}
       .yc-units{font-family:ui-monospace,monospace;font-size:12px;font-weight:600;color:var(--textDim);}
-      .yc-units.up{color:var(--win,#5BBF7A);}
+      .yc-units.up{color:var(--positive);}
       .yc-units.down{color:var(--danger);}
       .yc-sep{color:var(--border);}
       .yc-clv{font-family:ui-monospace,monospace;font-size:12px;color:var(--textDim);}
-      .yc-clv b{color:var(--win,#5BBF7A);font-weight:600;}
+      .yc-clv b{color:var(--clv);font-weight:600;}
       .yc-season{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);}
       .yc-season b{color:var(--text);font-weight:600;}
       .yc-view{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;white-space:nowrap;}
@@ -645,7 +646,7 @@
       .yc-row{display:flex;align-items:center;gap:10px;padding:10px 15px;border-top:1px solid var(--border);min-width:0;}
       .yc-rows .yc-row:nth-child(even){border-left:1px solid var(--border);}
       .yc-res{flex:none;width:20px;height:20px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;border:1px solid var(--border);color:var(--textDim);}
-      .yc-res.w{background:color-mix(in srgb,var(--win,#5BBF7A) 16%,transparent);color:var(--win,#5BBF7A);border-color:color-mix(in srgb,var(--win,#5BBF7A) 55%,var(--border));}
+      .yc-res.w{background:color-mix(in srgb,var(--positive) 16%,transparent);color:var(--positive);border-color:color-mix(in srgb,var(--positive) 55%,var(--border));}
       .yc-res.l{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger);border-color:color-mix(in srgb,var(--danger) 50%,var(--border));}
       .yc-pick{flex:none;display:flex;align-items:baseline;gap:7px;min-width:0;}
       .yc-nm{font-weight:700;font-size:13px;white-space:nowrap;}
@@ -653,13 +654,13 @@
       .yc-bet b{color:var(--text);font-weight:600;}
       .yc-actual{flex:1;min-width:0;text-align:right;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       .yc-actual b{font-weight:700;font-size:13px;}
-      .yc-actual .aw{color:var(--win,#5BBF7A);}
+      .yc-actual .aw{color:var(--positive);}
       .yc-actual .al{color:var(--danger);}
       .yc-tier{flex:none;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;color:var(--textDim);border:1px solid var(--border);}
       .yc-tier.t1{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:color-mix(in srgb,var(--accent) 8%,transparent);}
       .yc-foot{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 16px;border-top:1px solid var(--border);font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);flex-wrap:wrap;}
       .yc-foot b{color:var(--text);}
-      .yc-foot .up{color:var(--win,#5BBF7A);}
+      .yc-foot .up{color:var(--positive);}
       .yc-foot a{color:var(--accent);text-decoration:none;margin-left:auto;}
       .yc-foot a:hover{text-decoration:underline;}
       @media(max-width:720px){.yc-rows{grid-template-columns:1fr;}.yc-rows .yc-row:nth-child(even){border-left:none;}}
@@ -812,6 +813,14 @@
     const has = Array.isArray(cards) && cards.length > 0;
     if (el.liveNowSection) el.liveNowSection.hidden = !has;
     if (el.navLive) el.navLive.hidden = !has;
+    // While games are live, urgency leads: Live Now moves above the hero.
+    // (Pre-game the hero leads; the section is hidden so no move happens.)
+    if (has && el.liveNowSection) {
+      const hero = document.querySelector('main .hero');
+      if (hero && hero.parentNode && hero.previousElementSibling !== el.liveNowSection) {
+        hero.parentNode.insertBefore(el.liveNowSection, hero);
+      }
+    }
     if (!has) { if (el.liveNowGrid) el.liveNowGrid.innerHTML = ''; return; }
     if (el.liveNowNote) el.liveNowNote.textContent = `${cards.length} in-progress · updating every pitch`;
     el.liveNowGrid.innerHTML = cards.map((c) => {
@@ -1007,8 +1016,33 @@
     return state.searchQuery.trim() ? 'No games match your search.' : 'No games match this filter.';
   }
 
+  // Sticky "tonight at a glance" bar under the header: plays (Tier 1–2),
+  // best edge, watching (model likes it, no line yet), slate size. Computed
+  // from the K-props base rows — the flagship market — and only in live mode.
+  function renderSlateSummary() {
+    if (!el.slateSummary) return;
+    const rows = boardIsLive() ? state.liveBoard : (LIVE_MODE ? null : RAW_GAMES);
+    if (!rows || !rows.length) { el.slateSummary.hidden = true; return; }
+    const t = (g) => String(g.tier);
+    // A play needs both a real tier and a real price; tiered rows with no
+    // line yet are "watching", never counted as plays.
+    const plays = rows.filter((g) => (t(g) === '1' || t(g) === '2') && g.odds != null);
+    const watching = rows.filter((g) => g.odds == null && t(g) !== 'pass');
+    const best = plays.reduce((m, g) => (g.edge != null && g.edge > m ? g.edge : m), -Infinity);
+    const bestStr = best > -Infinity ? '+' + best.toFixed(1) + '%' : '—';
+    el.slateSummary.innerHTML = `<div class="ss-in">`
+      + `<span><span class="k">Plays</span><b style="color:var(--positive)">${plays.length}</b></span>`
+      + `<span><span class="k">Best edge</span><b style="color:${best > -Infinity ? 'var(--positive)' : 'var(--textDim)'}">${bestStr}</b></span>`
+      + `<span><span class="k">Watching</span><b style="color:var(--model)">${watching.length}</b></span>`
+      + `<span><span class="k">Slate</span><b>${rows.length} game${rows.length === 1 ? '' : 's'}</b></span>`
+      + `<span class="upd">odds refresh every 5 min</span>`
+      + `</div>`;
+    el.slateSummary.hidden = false;
+  }
+
   function renderBoard() {
     const games = getFilteredSortedGames();
+    renderSlateSummary();
     el.noResults.hidden = games.length !== 0;
     if (!games.length) el.noResults.textContent = emptyBoardMessage();
 
@@ -1047,7 +1081,7 @@
       if (isML()) {
         pickCell = esc(ml.pick || '—');
         oddsCell = `<span class="odds-cell mono">${esc(money(ml.price))}</span>`;
-        detailCell = `<span class="interval-cell" style="color:var(--accent)">${ml.winProb != null ? ml.winProb + '%' : '—'}</span>`;
+        detailCell = `<span class="interval-cell" style="color:var(--model)">${ml.winProb != null ? ml.winProb + '%' : '—'}</span>`;
       } else {
         pickCell = esc(g.pick);
         oddsCell = oddsBooksCell(g, money);
@@ -1371,7 +1405,7 @@
       const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
       const edgeColor = !hasEdge ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
       const third = isML()
-        ? `<div><div class="stat-k">Win prob</div><div class="stat-v" style="color:var(--accent)">${ml.winProb != null ? ml.winProb + '%' : '—'}</div></div>`
+        ? `<div><div class="stat-k">Win prob</div><div class="stat-v" style="color:var(--model)">${ml.winProb != null ? ml.winProb + '%' : '—'}</div></div>`
         : `<div><div class="stat-k">Tier</div><div class="stat-v tier">${esc(TIER_LABEL[tierVal] || '—')}</div></div>`;
       return `
         <div class="compare-side">
