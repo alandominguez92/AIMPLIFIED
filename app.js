@@ -1318,7 +1318,7 @@
       .rl-side{border:1px solid var(--border);border-radius:9px;padding:11px 13px;background:var(--board,#10202F);position:relative;}
       .rl-lbl{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:15px;}
       .rl-prc{font-family:ui-monospace,monospace;font-size:13px;color:var(--textDim);margin-top:2px;}
-      .rl-cov{font-family:ui-monospace,monospace;font-size:10px;color:var(--textDim);margin-top:5px;}
+      .rl-cov{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);margin-top:5px;}
       .rl-side.pick{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--board,#10202F));}
       .rl-side.pick .rl-lbl{color:var(--accent);}
       .rl-side.pick .rl-prc{color:var(--text);}

@@ -38,10 +38,10 @@
   --border:#D5DDE7;
   --text:#16222E;
   --textDim:#5C6B7A;
-  --accent:#A8720E;
+  --accent:#97680C;  /* darkened for AA on white (was #A8720E, 4.1:1) */
   --danger:#C0392B;
   --warm:#B5651D;
-  --positive:#2E9E5B;
+  --positive:#197A42; /* darkened for AA on white (was #2E9E5B, 3.4:1 → 5.4:1) */
   --model:#1178B0;
   --clv:#6A4FC0;
   --ink:#FFFFFF;
@@ -57,6 +57,17 @@
 
 * { margin:0; padding:0; box-sizing:border-box; }
 html { scroll-behavior:smooth; scroll-padding-top:72px; } /* offset the sticky header on anchor jumps */
+
+/* Respect users who ask for less motion — neutralizes the live-dot pulse,
+   the alert-bar pulse, hover transitions, and smooth scroll. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:.001ms !important;
+    scroll-behavior:auto !important;
+  }
+}
 
 /* Honest empty/loading states (live mode never shows mock data) */
 .hero-empty { font-family:'IBM Plex Mono'; font-size:14px; color:var(--textDim); padding:20px 0 6px; max-width:560px; }
@@ -334,7 +345,7 @@ section { padding:44px 0; }
 .board-inner { min-width:0; }
 .board-cols { display:grid; grid-template-columns:26px 2fr 1.45fr 1.3fr .85fr .95fr .8fr 34px; }
 .board-head-row { display:grid; grid-template-columns:26px 2fr 1.45fr 1.3fr .85fr .95fr .8fr 34px; padding:12px 16px; border-bottom:1px solid var(--border); }
-.col-label { font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--textDim); font-weight:500; }
+.col-label { font-family:'IBM Plex Mono'; font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--textDim); font-weight:500; }
 .col-label.center { text-align:center; }
 
 .board-row { display:grid; grid-template-columns:26px 2fr 1.45fr 1.3fr .85fr .95fr .8fr 34px; padding:14px 16px; border-bottom:1px solid var(--border); align-items:center; cursor:pointer; background:transparent; }
@@ -523,13 +534,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .duel .team { font-size:10.5px; }
   .proj { margin-top:9px; display:flex; align-items:baseline; column-gap:6px; flex-wrap:wrap; }
   .proj .num { order:1; font-size:24px; line-height:1; }
-  .proj .label { order:2; font-size:9px; }
-  .proj .ci { order:3; flex-basis:100%; font-size:9.5px; margin-top:2px; }
+  .proj .label { order:2; font-size:10px; }
+  .proj .ci { order:3; flex-basis:100%; font-size:10.5px; margin-top:2px; }
   .label-long { display:none; }
   .label-short { display:inline; }
   .pct { margin-top:9px; }
   .pct .row { gap:6px; margin-top:6px; }
-  .pct .stat { width:52px; font-size:9px; white-space:nowrap; }
+  .pct .stat { width:54px; font-size:10px; white-space:nowrap; }
   .pct .badge { min-width:26px; height:18px; font-size:10.5px; padding:0 4px; }
   .pick-strip { padding:11px 14px; gap:8px 12px; }
   .winprob { padding:12px 14px 14px; }
@@ -582,9 +593,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    on phones it scrolls away so it never eats screen height. */
 .slate-summary { position:sticky; top:57px; z-index:9; background:var(--headerBg); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
 .slate-summary .ss-in { max-width:1140px; margin:0 auto; padding:9px 32px; display:flex; gap:24px; align-items:center; flex-wrap:wrap; font-family:'IBM Plex Mono'; font-size:12px; }
-.slate-summary .k { color:var(--textDim); font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; }
-.slate-summary b { font-size:14.5px; font-weight:600; margin-left:6px; font-variant-numeric:tabular-nums; }
-.slate-summary .upd { margin-left:auto; color:var(--textDim); font-size:10.5px; }
+.slate-summary .k { color:var(--textDim); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; }
+.slate-summary b { font-size:15px; font-weight:600; margin-left:6px; font-variant-numeric:tabular-nums; }
+.slate-summary .upd { margin-left:auto; color:var(--textDim); font-size:11px; }
 @media (max-width:720px) {
   .slate-summary { position:static; }
   .slate-summary .ss-in { padding:8px 18px; gap:16px; }
