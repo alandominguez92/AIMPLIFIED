@@ -14,19 +14,24 @@
   const RAW_GAMES = [
     { id: 'g1', matchup: 'DET @ LAD', subline: 'Skubal v. Yamamoto · 7:10 PT', time: 1, pick: 'Skubal O 6.5 Ks', odds: -115, edge: 5.8, interval: '5.6 – 9.1', tier: 1, weather: 'Out wind 6mph · Park +3% Ks', weatherTone: 'positive',
       stats: [ { label: 'CSW%', value: 94, tone: 'hot' }, { label: 'Whiff%', value: 91, tone: 'hot' }, { label: 'Opp Chase', value: 78, tone: 'warm' } ],
-      ml: { pick: 'LAD ML', teamAbbr: 'LAD', winProb: 71, price: -225, edge: 4.2, tier: 1, homeAbbr: 'LAD', awayAbbr: 'DET', homeWinProb: 71, awayWinProb: 29 } },
+      ml: { pick: 'LAD ML', teamAbbr: 'LAD', winProb: 71, price: -225, edge: 4.2, tier: 1, homeAbbr: 'LAD', awayAbbr: 'DET', homeWinProb: 71, awayWinProb: 29 },
+      rl: { pick: 'LAD -1.5', teamAbbr: 'LAD', side: 'fav', point: -1.5, price: -115, edge: 4.5, tier: 1, modelAgrees: true, fairSource: 'pinnacle', homeAbbr: 'LAD', awayAbbr: 'DET', homePoint: -1.5, awayPoint: 1.5, homePrice: -115, awayPrice: -105, homeCoverPct: 58, awayCoverPct: 42, homeEdge: 4.5, awayEdge: -2.0, modelFavAbbr: 'LAD', modelFavPct: 71 } },
     { id: 'g2', matchup: 'NYY @ HOU', subline: 'Cole v. Valdez · 5:10 PT', time: 3, pick: 'Valdez U 5.5 Ks', odds: 102, edge: 3.4, interval: '3.1 – 6.2', tier: 2, weather: 'Roof closed · Neutral park', weatherTone: 'textDim',
       stats: [ { label: 'CSW%', value: 82, tone: 'warm' }, { label: 'Whiff%', value: 77, tone: 'warm' }, { label: 'Opp Chase', value: 61, tone: 'warm' } ],
-      ml: { pick: 'HOU ML', teamAbbr: 'HOU', winProb: 64, price: -166, edge: 3.1, tier: 2, homeAbbr: 'HOU', awayAbbr: 'NYY', homeWinProb: 64, awayWinProb: 36 } },
+      ml: { pick: 'HOU ML', teamAbbr: 'HOU', winProb: 64, price: -166, edge: 3.1, tier: 2, homeAbbr: 'HOU', awayAbbr: 'NYY', homeWinProb: 64, awayWinProb: 36 },
+      rl: { pick: 'NYY +1.5', teamAbbr: 'NYY', side: 'dog', point: 1.5, price: -140, edge: 2.2, tier: 'pass', modelAgrees: false, fairSource: 'pinnacle', homeAbbr: 'HOU', awayAbbr: 'NYY', homePoint: -1.5, awayPoint: 1.5, homePrice: 120, awayPrice: -140, homeCoverPct: 55, awayCoverPct: 45, homeEdge: -1.0, awayEdge: 2.2, modelFavAbbr: 'HOU', modelFavPct: 64 } },
     { id: 'g3', matchup: 'BOS @ TOR', subline: 'Bello v. Gausman · 4:07 PT', time: 2, pick: 'Bello U 4.5 Ks', odds: -120, edge: 4.6, interval: '2.8 – 5.5', tier: 1, weather: 'Roof closed · Neutral park', weatherTone: 'textDim',
       stats: [ { label: 'CSW%', value: 88, tone: 'hot' }, { label: 'Whiff%', value: 85, tone: 'hot' }, { label: 'Opp Chase', value: 70, tone: 'warm' } ],
-      ml: { pick: 'TOR ML', teamAbbr: 'TOR', winProb: 55, price: -122, edge: 1.8, tier: 3, homeAbbr: 'TOR', awayAbbr: 'BOS', homeWinProb: 55, awayWinProb: 45 } },
+      ml: { pick: 'TOR ML', teamAbbr: 'TOR', winProb: 55, price: -122, edge: 1.8, tier: 3, homeAbbr: 'TOR', awayAbbr: 'BOS', homeWinProb: 55, awayWinProb: 45 },
+      rl: { pick: 'TOR -1.5', teamAbbr: 'TOR', side: 'fav', point: -1.5, price: 130, edge: 1.5, tier: 3, modelAgrees: true, fairSource: 'pinnacle', homeAbbr: 'TOR', awayAbbr: 'BOS', homePoint: -1.5, awayPoint: 1.5, homePrice: 130, awayPrice: -160, homeCoverPct: 44, awayCoverPct: 56, homeEdge: 1.5, awayEdge: -3.0, modelFavAbbr: 'TOR', modelFavPct: 55 } },
     { id: 'g4', matchup: 'ATL @ PHI', subline: 'Wheeler v. Sale · 4:05 PT', time: 2, pick: 'Wheeler O 7.5 Ks', odds: -108, edge: 2.1, interval: '5.9 – 9.4', tier: 2, weather: 'In wind 9mph · Park −2% Ks', weatherTone: 'warm',
       stats: [ { label: 'CSW%', value: 79, tone: 'warm' }, { label: 'Whiff%', value: 73, tone: 'warm' }, { label: 'Opp Chase', value: 55, tone: 'cool' } ],
-      ml: { pick: 'PHI ML', teamAbbr: 'PHI', winProb: 59, price: -135, edge: 2.4, tier: 3, homeAbbr: 'PHI', awayAbbr: 'ATL', homeWinProb: 59, awayWinProb: 41 } },
+      ml: { pick: 'PHI ML', teamAbbr: 'PHI', winProb: 59, price: -135, edge: 2.4, tier: 3, homeAbbr: 'PHI', awayAbbr: 'ATL', homeWinProb: 59, awayWinProb: 41 },
+      rl: { pick: null, teamAbbr: null, side: null, point: null, price: null, edge: null, tier: 'pass', modelAgrees: false, fairSource: 'pinnacle', homeAbbr: 'PHI', awayAbbr: 'ATL', homePoint: -1.5, awayPoint: 1.5, homePrice: -150, awayPrice: 130, homeCoverPct: 57, awayCoverPct: 43, homeEdge: -0.5, awayEdge: -1.2, modelFavAbbr: 'PHI', modelFavPct: 59 } },
     { id: 'g5', matchup: 'MIL @ CHC', subline: 'Peralta v. Imanaga · 5:20 PT', time: 4, pick: 'Peralta O 6.5 Ks', odds: -102, edge: 1.2, interval: '4.6 – 8.2', tier: 3, weather: 'Wrigley crosswind · High variance', weatherTone: 'warm',
       stats: [ { label: 'CSW%', value: 68, tone: 'warm' }, { label: 'Whiff%', value: 64, tone: 'warm' }, { label: 'Opp Chase', value: 50, tone: 'cool' } ],
-      ml: { pick: 'CHC ML', teamAbbr: 'CHC', winProb: 53, price: -110, edge: 0.9, tier: 'pass', homeAbbr: 'CHC', awayAbbr: 'MIL', homeWinProb: 53, awayWinProb: 47 } },
+      ml: { pick: 'CHC ML', teamAbbr: 'CHC', winProb: 53, price: -110, edge: 0.9, tier: 'pass', homeAbbr: 'CHC', awayAbbr: 'MIL', homeWinProb: 53, awayWinProb: 47 },
+      rl: { pick: null, teamAbbr: null, side: null, point: null, price: null, edge: null, tier: 'pass', modelAgrees: false, fairSource: 'none', homeAbbr: 'CHC', awayAbbr: 'MIL', homePoint: -1.5, awayPoint: 1.5, homePrice: -105, awayPrice: -115, homeCoverPct: null, awayCoverPct: null, homeEdge: null, awayEdge: null, modelFavAbbr: 'CHC', modelFavPct: 53 } },
     { id: 'g6', matchup: 'SD @ SF', subline: 'Cease v. Webb · 6:45 PT', time: 5, pick: 'No edge — pass', odds: null, edge: -0.6, interval: '4.4 – 8.0', tier: 'pass', weather: 'Marine layer · Park −4% Ks', weatherTone: 'positive',
       stats: [ { label: 'CSW%', value: 61, tone: 'cool' }, { label: 'Whiff%', value: 58, tone: 'cool' }, { label: 'Opp Chase', value: 44, tone: 'cool' } ],
       ml: { pick: 'SF ML', teamAbbr: 'SF', winProb: 54, price: null, edge: -0.4, tier: 'pass', homeAbbr: 'SF', awayAbbr: 'SD', homeWinProb: 54, awayWinProb: 46 } },
@@ -110,7 +115,7 @@
     liveInjuries: null,
     injBarOpen: false,       // mobile injury bar collapsed by default
     injBarFilter: 'rel',     // 'rel' (in your picks) | 'all'
-    alertsOpen: true,        // desktop lineup-alerts bar expanded by default
+    alertsOpen: false,       // lineup-alerts bar collapsed by default
     injShowNoImpact: false,  // reveal the "no board impact" alerts
     injShowAllImpact: false, // reveal impact alerts beyond the first few
     injuriesFetchedAt: null, // ms timestamp of the last injuries fetch (for "updated Xm ago")
@@ -907,10 +912,13 @@
     // Only force time-sort on a live slate with no market tiers.
     const forceTime = boardIsLive() && !boardModeled();
     let games = getGames().filter((g) => {
-      const t = activeTier(g);
-      // Run Line: keep 'no play' cards out of All — they live under the Pass tab.
-      if (state.filter === 'all') return isRL() ? String(t) !== 'pass' : true;
-      return String(t) === state.filter;
+      // Run Line only has content once a run line is posted — omit games without
+      // one (they'd render as blank cards). "All" then shows every posted run
+      // line, each card self-labeled pick / value / no-play; the tier and Pass
+      // tabs narrow from there. Other views are unaffected.
+      if (isRL() && g.rl == null) return false;
+      if (state.filter === 'all') return true;
+      return String(activeTier(g)) === state.filter;
     });
     const q = state.searchQuery.trim().toLowerCase();
     if (q) {
@@ -1013,7 +1021,10 @@
   function emptyBoardMessage() {
     if (isFeedLoading()) return `Loading tonight’s ${isBatter() ? 'batter props' : 'slate'}…`;
     if (LIVE_MODE && !boardHasLive()) return `No ${isBatter() ? 'batter props' : 'games'} on tonight’s board yet.`;
-    return state.searchQuery.trim() ? 'No games match your search.' : 'No games match this filter.';
+    if (state.searchQuery.trim()) return 'No games match your search.';
+    // Run Line depends on sportsbooks posting spreads — often later than K props.
+    if (isRL() && state.filter === 'all') return 'No run lines posted yet — spreads usually go up closer to first pitch. Check back soon.';
+    return 'No games match this filter.';
   }
 
   // Sticky "tonight at a glance" bar under the header: plays (Tier 1–2),
