@@ -1012,7 +1012,7 @@
   function renderBoardHead() {
     const cols = isML()
       ? ['', 'Matchup', 'Team to win', 'Moneyline', 'Edge', 'Win Prob', 'Tier', '']
-      : ['', 'Matchup', 'Pick', 'Odds · DK/FD', 'Edge', '80% Interval', 'Tier', ''];
+      : ['', 'Matchup', 'Pick', 'Price · DK/FD', 'Edge', '80% Interval', 'Tier', ''];
     el.boardHead.innerHTML = cols.map((c) => c ? `<span class="col-label">${c}</span>` : '<span></span>').join('');
   }
 
@@ -1707,6 +1707,7 @@
           <span class="slip-leg-title">${esc(leg.title)}</span>
           <span class="slip-leg-sub">${esc(leg.sub || '')}</span>
         </span>
+        ${typeof leg.edge === 'number' ? `<span class="slip-leg-edge ${leg.edge >= 0 ? 'pos' : 'neg'}">${leg.edge > 0 ? '+' : ''}${leg.edge}%</span>` : ''}
         <span class="slip-leg-odds mono">${esc(fmtAm(leg.odds))}</span>
         <button class="slip-remove" data-action="remove-leg" data-leg="${esc(leg.id)}" title="Remove" aria-label="Remove leg">✕</button>
       </div>`).join('');
@@ -1751,7 +1752,17 @@
         ${missing ? `<div class="slip-note">${missing} leg${missing === 1 ? '' : 's'} without a posted price ${missing === 1 ? 'is' : 'are'} excluded from the parlay.</div>` : ''}`;
     }
 
-    el.slip.innerHTML = `<div class="slip-legs">${legHtml}</div>${summaryHtml}`;
+    // Average edge across legs that carry one. Labeled "leg" edge — never
+    // "parlay" edge — with a caveat, so it can't read as the parlay's true edge.
+    const withEdge = legs.filter((l) => typeof l.edge === 'number');
+    const avgEdge = withEdge.length ? Math.round(withEdge.reduce((s, l) => s + l.edge, 0) / withEdge.length * 10) / 10 : null;
+    const avgHtml = avgEdge != null
+      ? `<div class="slip-avg">
+          <span class="slip-avg-k">Avg leg edge</span>
+          <span class="slip-avg-v ${avgEdge >= 0 ? 'pos' : 'neg'}">${avgEdge > 0 ? '+' : ''}${avgEdge}%</span>
+          <span class="slip-avg-note">Each leg is priced on its own — a parlay's true edge is lower after combined vig${withEdge.length > 1 ? ' and any correlation' : ''}.</span>
+        </div>` : '';
+    el.slip.innerHTML = `<div class="slip-legs">${legHtml}</div>${avgHtml}${summaryHtml}`;
 
     const stakeInput = document.getElementById('stakeInput');
     if (stakeInput) stakeInput.addEventListener('change', (e) => setStake(e.target.value));
@@ -1868,26 +1879,29 @@
     const w = Math.max(2, Math.min(98, fillPct));
     return `<div class="row"><span class="stat">${esc(label)}</span><div class="track"><div class="fill ${tone}" style="width:${w}%"></div></div><span class="badge ${tone}">${esc(String(badge))}</span></div>`;
   }
-  function heroSide(p) {
+  function heroSide(p, isLead) {
     const handLabel = p.hand === 'L' ? 'LHP' : p.hand === 'R' ? 'RHP' : '';
     const meta = [p.team, handLabel, p.era ? p.era + ' ERA' : ''].filter(Boolean).join(' · ');
     const bars = [];
     if (typeof p.k9 === 'number' && p.k9 > 0) {
-      const t = p.k9 >= 10 ? 'hot' : p.k9 >= 8 ? 'warm' : 'cool';   // elite / good / low
+      const t = p.k9 >= 10 ? 'elite' : p.k9 >= 8 ? 'good' : 'low';   // good-for-play heat
       bars.push(heroBar('K/9', p.k9.toFixed(1), (p.k9 - 5) / 8 * 100, t));
     }
     if (typeof p.oppKpct === 'number' && p.oppKpct > 0) {
-      const t = p.oppKpct >= 23 ? 'hot' : p.oppKpct >= 20 ? 'warm' : 'cool'; // whiffy / avg / contact
+      const t = p.oppKpct >= 23 ? 'elite' : p.oppKpct >= 20 ? 'good' : 'low'; // whiffy / avg / contact
       bars.push(heroBar('Opp K%', p.oppKpct, (p.oppKpct - 16) / 12 * 100, t));
     }
     if (p.market && p.market.modelOver != null) {
+      // Clear-line % = the model's chance the pitcher goes over (clears) his
+      // line. It's a model output, so it takes the model (cyan) color.
       const mo = p.market.modelOver;
-      const t = mo >= 55 ? 'hot' : mo >= 45 ? 'warm' : 'cool';   // over lean / neutral / under lean
-      bars.push(heroBar('Model O%', mo, mo, t));
+      bars.push(heroBar('Clear-line %', mo, mo, 'model'));
     }
     const lineTxt = p.market ? ` · Line: O/U ${p.market.line}` : '';
+    const badge = isLead ? '<span class="badge-edge">◆ Model edge</span>' : '';
     return `
       <div class="side">
+        ${badge}
         <div class="name">${esc(p.fullName || p.name)}</div>
         <div class="team">${esc(meta)}</div>
         <div class="proj">
@@ -1934,21 +1948,36 @@
 
     const priced = feature.projRows.filter((p) => p.market && p.market.price != null);
     const lead = priced.length ? priced.reduce((m, p) => (!m || p.market.edge > m.market.edge ? p : m), null) : null;
+    // Only assert a bet when the marquee duel actually contains a play — a real
+    // tier and a positive edge. A great matchup with no edge says so honestly.
+    const isPlay = !!(lead && lead.market.edge > 0 && ['1', '2', '3'].includes(String(lead.market.tier)));
 
-    let pickStrip, winprob = '';
-    if (lead) {
+    const impliedPct = (price) => {
+      const p = Number(price);
+      if (!isFinite(p) || p === 0) return null;
+      return Math.round((p > 0 ? 100 / (p + 100) : -p / (-p + 100)) * 100);
+    };
+
+    let pickStrip, whyLine = '', winprob = '';
+    if (isPlay) {
       const m = lead.market;
       const modelPct = m.side === 'Over' ? m.modelOver : Math.round((100 - m.modelOver) * 10) / 10;
       const kelly = kellyUnits(modelPct / 100, m.price);
       const kellyTxt = kelly > 0 ? ` · ${kelly}u Kelly` : '';
       const priceStr = m.price > 0 ? '+' + m.price : String(m.price);
       pickStrip = `
-        <div class="pick-strip">
+        <div class="pick-strip has-play">
           <span class="stars">${esc(TIER_LABEL[m.tier] || '—')}</span>
-          <span class="pick">${esc(lead.name)} <b>${m.side.toUpperCase()} ${m.line} Ks (${priceStr})</b></span>
+          <span class="pick">${esc(lead.name)} <b>${m.side.toUpperCase()} ${m.line} Ks</b> <span class="pick-odds">(${priceStr})</span></span>
           <span class="tier">Tier ${esc(String(m.tier))}${kellyTxt}</span>
-          <span class="edge">+${m.edge}% edge vs. line</span>
+          <span class="edge">+${m.edge}% edge</span>
+          <button class="hero-add" data-action="hero-add" data-id="${esc(feature.id)}">★ Add to slip</button>
         </div>`;
+      // Honest WHY: model's clear chance vs. the price's implied chance = the gap.
+      const imp = impliedPct(m.price);
+      const verb = m.side === 'Over' ? 'clear' : 'stay under';
+      const oppTxt = (typeof lead.oppKpct === 'number') ? ` — against a lineup striking out ${lead.oppKpct}% of the time` : '';
+      whyLine = `<div class="hero-why"><span class="wk">Why</span><span>The model gives ${esc(lead.name)} a <b>${modelPct}% chance to ${verb} ${m.line} Ks</b>${imp != null ? `; the ${priceStr} price implies just <b>${imp}%</b>` : ''}. That gap${oppTxt} is the edge.</span></div>`;
       winprob = `
         <div class="winprob">
           <div class="winprob-head"><span class="live-dot"></span><span class="winprob-label">Model win probability</span></div>
@@ -1959,11 +1988,23 @@
           </div>
         </div>`;
       renderWhyCard(lead, m, modelPct);
+    } else if (lead) {
+      // Priced, but no edge — the model agrees with the market here. Say so.
+      const m = lead.market;
+      const modelPct = m.side === 'Over' ? m.modelOver : Math.round((100 - m.modelOver) * 10) / 10;
+      const imp = impliedPct(m.price);
+      pickStrip = `
+        <div class="pick-strip nopl">
+          <span class="nopl-dot"></span>
+          <span class="pick">No edge in this duel — the model and the market <b>agree here</b>. A great watch, not a bet.</span>
+          <span class="nopl-go">Tonight's plays are on the board below ↓</span>
+        </div>`;
+      whyLine = `<div class="hero-why pass"><span class="wk">Why</span><span>The model lands close to the line and the price already reflects it — model <b>${modelPct}%</b>${imp != null ? ` vs. implied <b>${imp}%</b>` : ''}. No gap, no play. We only post edges.</span></div>`;
     } else {
-      pickStrip = `<div class="pick-strip"><span class="pick">No strikeout prop posted yet — projection only</span></div>`;
+      pickStrip = `<div class="pick-strip nopl"><span class="nopl-dot"></span><span class="pick">No strikeout props posted for this duel yet — projection only. Priced plays land on the board below when lines post.</span></div>`;
     }
 
-    el.heroDuel.innerHTML = heroSide(a) + heroSide(b) + pickStrip + winprob;
+    el.heroDuel.innerHTML = heroSide(a, isPlay && lead === a) + heroSide(b, isPlay && lead === b) + pickStrip + whyLine + winprob;
   }
 
   // Fill the "Why" card with the hero pick's real model numbers (no fabricated
@@ -2054,13 +2095,38 @@
   function buildLeg(g) {
     if (isML()) {
       const ml = g.ml || {};
-      return { id: legIdFor(g), board: 'ML', title: ml.pick || '—', sub: g.matchup, odds: typeof ml.price === 'number' ? ml.price : null, tier: ml.tier };
+      return { id: legIdFor(g), board: 'ML', title: ml.pick || '—', sub: g.matchup, odds: typeof ml.price === 'number' ? ml.price : null, tier: ml.tier, edge: typeof ml.edge === 'number' ? ml.edge : null };
     }
     if (isBatter()) {
       // g.matchup is the batter name; g.subline is "EVENT · TIME".
-      return { id: legIdFor(g), board: 'Batter', title: `${g.matchup} ${g.pick}`, sub: (g.subline || '').split(' · ')[0], odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier };
+      return { id: legIdFor(g), board: 'Batter', title: `${g.matchup} ${g.pick}`, sub: (g.subline || '').split(' · ')[0], odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null };
     }
-    return { id: legIdFor(g), board: 'K Prop', title: g.pick, sub: g.matchup, odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier };
+    return buildKPropLeg(g);
+  }
+  // K-prop leg from a raw game, independent of the active board view — so the
+  // hero's "Add to slip" adds exactly what the board's star would for that game.
+  function buildKPropLeg(g) {
+    return { id: 'kprops:' + g.id, board: 'K Prop', title: g.pick, sub: g.matchup, odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null };
+  }
+  function addHeroToSlip(id) {
+    const g = (state.liveBoard || []).find((x) => x.id === id);
+    if (!g) return;
+    const leg = buildKPropLeg(g);
+    if (state.slip[leg.id]) { toast('Already in your slip'); return; }
+    state.slip = { ...state.slip, [leg.id]: leg };
+    persistSlip();
+    renderControls(); renderBoard(); renderSlip();
+    toast(`★ Added ${leg.title} · ${Object.keys(state.slip).length} leg${Object.keys(state.slip).length === 1 ? '' : 's'}`);
+  }
+  // Minimal toast — one line, auto-dismisses; respects reduced-motion via CSS.
+  let toastTimer = null;
+  function toast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) { t = document.createElement('div'); t.id = 'toast'; t.className = 'toast'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
   }
   function persistSlip() {
     try { localStorage.setItem('aimplified_slip', JSON.stringify(state.slip)); } catch (e) {}
@@ -2227,6 +2293,7 @@
         onLeadingClick(target.dataset.id);
         break;
       case 'row-click': onRowClick(target.dataset.id); break;
+      case 'hero-add': if (e) e.stopPropagation(); addHeroToSlip(target.dataset.id); break;
       case 'remove-leg': if (e) e.stopPropagation(); removeLeg(target.dataset.leg); break;
       case 'clear-slip': clearSlip(); break;
       case 'hitter-card-click': onHitterCardClick(Number(target.dataset.idx)); break;

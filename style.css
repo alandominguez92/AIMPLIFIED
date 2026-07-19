@@ -133,6 +133,16 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .hero h1 .vs { color:var(--textDim); font-size:.55em; vertical-align:middle; margin:0 .2em; }
 .hero p.sub { color:var(--textDim); font-size:16px; max-width:560px; }
 
+/* Plain-language legend under the hero — teaches Edge/Tier/CLV in one glance */
+.hero-legend { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:26px; }
+.hl-card { border:1px solid var(--border); border-radius:10px; background:var(--board); padding:13px 15px; }
+.hl-k { font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.11em; text-transform:uppercase; font-weight:600; margin-bottom:5px; }
+.hl-k.hl-edge { color:var(--positive); }
+.hl-k.hl-tier { color:var(--accent); }
+.hl-k.hl-clv  { color:var(--clv); }
+.hl-d { font-size:12.5px; line-height:1.5; color:var(--textDim); }
+@media (max-width:720px) { .hero-legend { grid-template-columns:1fr; gap:8px; margin-top:18px; } }
+
 .duel { margin-top:32px; display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
 .duel .side { background:var(--board); padding:26px 28px; }
 .duel .name { font-family:'Barlow Condensed'; font-weight:600; font-size:26px; text-transform:uppercase; letter-spacing:.02em; }
@@ -601,3 +611,48 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .slate-summary .ss-in { padding:8px 18px; gap:16px; }
   .slate-summary .upd { display:none; }
 }
+
+/* ---------- Hero: legend done above; play/no-play strip, WHY, badge ---------- */
+/* good-for-play heat for the duel bars (scoped to .pct so global .badge is safe) */
+.pct .fill.elite { background:var(--accent); } .pct .badge.elite { background:var(--accent); color:var(--ink); }
+.pct .fill.good  { background:var(--warm); }   .pct .badge.good  { background:var(--warm); color:var(--ink); }
+.pct .fill.low   { background:var(--muted); }  .pct .badge.low   { background:var(--muted); color:var(--text); }
+.pct .fill.model { background:var(--model); }  .pct .badge.model { background:var(--model); color:var(--ink); }
+
+.side { position:relative; }
+.badge-edge { position:absolute; top:16px; right:18px; font-family:'IBM Plex Mono'; font-size:9px; letter-spacing:.06em; text-transform:uppercase; font-weight:700; color:var(--ink); background:var(--accent); border-radius:99px; padding:3px 9px; }
+
+/* Full-width duel rows must stretch across both grid columns — a flex child
+   otherwise collapses to its min-content (the stars) and overlaps the WHY row. */
+.pick-strip, .hero-why, .winprob { justify-self:stretch; width:100%; min-width:0; }
+.pick-strip.has-play { background:color-mix(in srgb, var(--positive) 8%, var(--board2)); }
+.pick-strip .pick b { color:var(--positive); }
+.pick-strip .pick-odds { color:var(--textDim); font-weight:400; }
+.pick-strip .tier { font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--textDim); }
+.pick-strip .edge { font-family:'IBM Plex Mono'; font-size:14px; font-weight:700; color:var(--positive); }
+.hero-add { margin-left:auto; font-family:'IBM Plex Mono'; font-size:12.5px; font-weight:700; color:var(--ink); background:var(--accent); border:none; border-radius:8px; padding:9px 15px; cursor:pointer; }
+.hero-add:hover { filter:brightness(1.08); }
+
+.pick-strip.nopl { background:var(--board2); color:var(--textDim); }
+.pick-strip.nopl .pick { color:var(--textDim); font-weight:500; }
+.pick-strip.nopl .pick b { color:var(--text); }
+.pick-strip.nopl .nopl-dot { width:8px; height:8px; border-radius:2px; background:var(--textDim); flex:none; }
+.pick-strip.nopl .nopl-go { margin-left:auto; font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--accent); white-space:nowrap; }
+
+.hero-why { grid-column:1 / -1; display:flex; gap:11px; padding:14px 28px; border-top:1px solid var(--border); font-size:14px; line-height:1.55; color:var(--text); }
+.hero-why .wk { font-family:'IBM Plex Mono'; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--model); font-weight:700; padding-top:3px; flex:none; }
+.hero-why.pass .wk { color:var(--textDim); }
+.hero-why b { font-weight:700; }
+
+/* ---------- Slip: per-leg edge + honest avg ---------- */
+.slip-leg-edge { font-family:'IBM Plex Mono'; font-size:12.5px; font-weight:700; }
+.slip-leg-edge.pos { color:var(--positive); } .slip-leg-edge.neg { color:var(--danger); }
+.slip-avg { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; padding:12px 2px 2px; }
+.slip-avg-k { font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); }
+.slip-avg-v { font-family:'IBM Plex Mono'; font-size:15px; font-weight:700; }
+.slip-avg-v.pos { color:var(--positive); } .slip-avg-v.neg { color:var(--danger); }
+.slip-avg-note { flex-basis:100%; font-family:'IBM Plex Mono'; font-size:10.5px; line-height:1.5; color:var(--textDim); }
+
+/* ---------- Toast ---------- */
+.toast { position:fixed; left:50%; bottom:26px; transform:translate(-50%,14px); opacity:0; pointer-events:none; background:var(--card); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:9px; padding:11px 16px; font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--text); box-shadow:0 8px 28px rgba(0,0,0,.45); z-index:60; transition:opacity .2s ease, transform .2s ease; max-width:calc(100vw - 32px); }
+.toast.show { opacity:1; transform:translate(-50%,0); }
