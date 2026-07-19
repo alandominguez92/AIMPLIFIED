@@ -120,12 +120,6 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .stab.active .mini { border-color:var(--accent); color:var(--accent); }
 
 /* ---------- ticker ---------- */
-.ticker { overflow-x:auto; white-space:nowrap; border-bottom:1px solid var(--border); padding:10px 0; margin-bottom:4px; }
-.tick-item { display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono'; font-size:12.5px; padding:0 18px; border-right:1px solid var(--border); }
-.tick-item .live-dot { width:6px; height:6px; border-radius:50%; background:var(--danger); display:inline-block; animation:aiPulse 1.6s ease-in-out infinite; }
-.tick-item .score { color:var(--textDim); }
-.tick-item .odds { color:var(--accent); }
-
 /* ---------- hero: Tonight's Ace Duel ---------- */
 .hero { padding:56px 0 40px; }
 .eyebrow { font-family:'IBM Plex Mono'; font-size:12px; letter-spacing:.18em; color:var(--accent); text-transform:uppercase; }
@@ -385,9 +379,16 @@ section { padding:44px 0; }
 .odds-books .bk.best .bk-chk { visibility:visible; }
 .board-row .edge-cell { font-family:'IBM Plex Mono'; }
 .board-row .interval-cell { color:var(--textDim); font-size:12.5px; font-family:'IBM Plex Mono'; }
-.board-row .tier-cell { letter-spacing:1px; font-size:14px; }
-.board-row .tier-cell.pass { color:var(--textDim); font-size:13px; letter-spacing:normal; }
+.board-row .tier-cell { line-height:1; }
 .board-row .chevron { color:var(--textDim); font-size:12px; text-align:center; }
+
+/* Tier heat chip — T1 brightest (strongest lean) → T3 muted → Pass outline.
+   Encodes our confidence ranking; readable at a glance, replaces the stars. */
+.tier-chip { display:inline-block; font-family:'IBM Plex Mono'; font-size:12px; font-weight:700; letter-spacing:.02em; border-radius:6px; padding:3px 9px; white-space:nowrap; }
+.tier-chip.t1 { background:var(--accent); color:var(--ink); }
+.tier-chip.t2 { background:var(--warm); color:var(--ink); }
+.tier-chip.t3 { background:var(--muted); color:var(--text); }
+.tier-chip.pass { background:none; color:var(--textDim); border:1px solid var(--border); }
 
 .expanded-detail { padding:18px 16px 22px 50px; border-bottom:1px solid var(--border); background:var(--board3); }
 .expanded-detail .expanded-title { font-family:'IBM Plex Mono'; font-size:12px; color:var(--textDim); text-transform:uppercase; letter-spacing:.08em; margin-bottom:12px; }

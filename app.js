@@ -39,7 +39,13 @@
 
   const TONE_COLOR = { hot: 'var(--danger)', warm: 'var(--warm)', cool: 'var(--positive)' };
   const clampPct = (v) => Math.max(0, Math.min(100, v)); // bar width, 0–100
-  const TIER_LABEL = { 1: '★★★★☆', 2: '★★★☆☆', 3: '★★☆☆☆', pass: 'Pass' };
+  // Tier shown as a compact letter+number heat chip (T1 brightest = strongest
+  // lean) instead of stars — far easier to read at a glance across the board.
+  function tierChip(tierVal) {
+    const v = String(tierVal);
+    const cls = v === '1' ? 't1' : v === '2' ? 't2' : v === '3' ? 't3' : 'pass';
+    return `<span class="tier-chip ${cls}">${cls === 'pass' ? 'Pass' : 'T' + v}</span>`;
+  }
 
   const INJURY_ALERTS = [
     { text: 'Yamamoto (LAD) removed from bullpen availability tonight — no impact on start.', time: '6:42 PM' },
@@ -284,6 +290,7 @@
   }
 
   function renderTicker() {
+    if (!el.ticker) return; // score ticker removed from the layout — no-op
     // Live feed from the Odds API proxy. The mock ticker is offline-demo only —
     // in live mode an empty feed leaves the ticker empty, never fabricated games.
     const items = state.liveTicker && state.liveTicker.length
@@ -1083,8 +1090,6 @@
       const edgeColor = !hasEdge ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
       const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
       const tierVal = activeTier(g);
-      const tierLabel = TIER_LABEL[tierVal] || '—';
-      const tierIsPlain = !TIER_LABEL[tierVal] || tierVal === 'pass';
 
       // The four view-specific cells (pick, odds, [edge — shared], detail).
       const money = (v) => v == null ? '—' : (v > 0 ? '+' + v : String(v));
@@ -1146,7 +1151,7 @@
           ${oddsCell}
           <span class="edge-cell" style="color:${edgeColor}">${esc(edgeLabel)}</span>
           ${detailCell}
-          <span class="tier-cell${tierIsPlain ? ' pass' : ''}" style="${tierIsPlain ? '' : 'color:var(--accent)'}">${esc(tierLabel)}</span>
+          <span class="tier-cell">${tierChip(tierVal)}</span>
           <span class="chevron">${isExpanded ? '▲' : '▼'}</span>
         </div>
       `;
@@ -1382,7 +1387,7 @@
           ? `likes <b>${esc(rl.teamAbbr)}</b> to win (${pickModelWin}%)`
           : `gives <b>${esc(rl.teamAbbr)}</b> a live ${pickModelWin}%`;
         lean = `<span class="rl-ok">✓</span> <span class="rl-dim">model ${verb} — ${backs}</span>`;
-        stars = `<span class="rl-stars">${esc(TIER_LABEL[rl.tier] || '')}</span>`;
+        stars = `<span class="rl-stars">${tierChip(rl.tier)}</span>`;
       } else if (rl.edge != null && rl.edge > 0) {
         const ptStr = rl.point != null ? (rl.point > 0 ? '+' : '') + rl.point : '';
         lean = `<span class="rl-no">✕</span> <span class="rl-dim">value on <b>${esc(rl.teamAbbr || '')} ${esc(ptStr)}</b>, model has it ${pickModelWin}% — <b class="rl-nolabel">no play</b></span>`;
@@ -1417,7 +1422,7 @@
       const edgeColor = !hasEdge ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
       const third = isML()
         ? `<div><div class="stat-k">Win prob</div><div class="stat-v" style="color:var(--model)">${ml.winProb != null ? ml.winProb + '%' : '—'}</div></div>`
-        : `<div><div class="stat-k">Tier</div><div class="stat-v tier">${esc(TIER_LABEL[tierVal] || '—')}</div></div>`;
+        : `<div><div class="stat-k">Tier</div><div class="stat-v tier">${tierChip(tierVal)}</div></div>`;
       return `
         <div class="compare-side">
           <div class="name">${esc(g.matchup)}</div>
@@ -1963,13 +1968,13 @@
       const m = lead.market;
       const modelPct = m.side === 'Over' ? m.modelOver : Math.round((100 - m.modelOver) * 10) / 10;
       const kelly = kellyUnits(modelPct / 100, m.price);
-      const kellyTxt = kelly > 0 ? ` · ${kelly}u Kelly` : '';
+      const kellyTxt = kelly > 0 ? `${kelly}u Kelly` : '';
       const priceStr = m.price > 0 ? '+' + m.price : String(m.price);
       pickStrip = `
         <div class="pick-strip has-play">
-          <span class="stars">${esc(TIER_LABEL[m.tier] || '—')}</span>
+          ${tierChip(m.tier)}
           <span class="pick">${esc(lead.name)} <b>${m.side.toUpperCase()} ${m.line} Ks</b> <span class="pick-odds">(${priceStr})</span></span>
-          <span class="tier">Tier ${esc(String(m.tier))}${kellyTxt}</span>
+          <span class="tier">${kellyTxt}</span>
           <span class="edge">+${m.edge}% edge</span>
           <button class="hero-add" data-action="hero-add" data-id="${esc(feature.id)}">★ Add to slip</button>
         </div>`;
