@@ -43,8 +43,18 @@
   // lean) instead of stars — far easier to read at a glance across the board.
   function tierChip(tierVal) {
     const v = String(tierVal);
-    const cls = v === '1' ? 't1' : v === '2' ? 't2' : v === '3' ? 't3' : 'pass';
-    return `<span class="tier-chip ${cls}">${cls === 'pass' ? 'Pass' : 'T' + v}</span>`;
+    if (v === '1' || v === '2' || v === '3') return `<span class="tier-chip t${v}">T${v}</span>`;
+    if (v === 'pass') return `<span class="tier-chip pass">Pass</span>`;
+    return `<span class="tier-dash">—</span>`; // 'model'/projection-only: no line to grade yet
+  }
+
+  // Honest reason a row has no price/edge, from the game's real status + time.
+  // A blank cell should say WHY it's blank, never look broken.
+  function projReason(g) {
+    if (g.status === 'Live') return 'in play · line closed';
+    if (g.status === 'Final') return 'final · line closed';
+    if (g.timeMs && g.timeMs - Date.now() > 12 * 3600 * 1000) return 'posts game-day AM';
+    return 'awaiting line';
   }
 
   const INJURY_ALERTS = [
@@ -1096,11 +1106,16 @@
       let pickCell, oddsCell, detailCell;
       if (isML()) {
         pickCell = esc(ml.pick || '—');
-        oddsCell = `<span class="odds-cell mono">${esc(money(ml.price))}</span>`;
+        oddsCell = ml.price != null
+          ? `<span class="odds-cell mono">${esc(money(ml.price))}</span>`
+          : `<span class="odds-blank">${esc(projReason(g))}</span>`;
         detailCell = `<span class="interval-cell" style="color:var(--model)">${ml.winProb != null ? ml.winProb + '%' : '—'}</span>`;
       } else {
         pickCell = esc(g.pick);
-        oddsCell = oddsBooksCell(g, money);
+        // Reason only when truly projection-only: no edge AND no price. An
+        // evaluated Pass (has an edge) still shows its price, never "awaiting line".
+        const priced = hasEdge || g.odds != null || (Array.isArray(g.oddsBooks) && g.oddsBooks.length);
+        oddsCell = priced ? oddsBooksCell(g, money) : `<span class="odds-blank">${esc(projReason(g))}</span>`;
         detailCell = `<span class="interval-cell">${esc(g.interval)}</span>`;
       }
 
