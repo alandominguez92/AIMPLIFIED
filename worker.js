@@ -1705,6 +1705,24 @@ function buildTrackRecord(rows) {
     ? { n: calN, predicted: round1(calPredSum / calN), actual: round1(calOvers / calN * 100) }
     : null;
 
+  // Per-tier calibration: the model's average predicted WIN probability for each
+  // tier vs the actual win rate — "our Tier-1 leans win at the rate we claim".
+  // Predicted win prob orients model P(over) to the side we actually bet.
+  const tierCal = { '1': { pred: 0, win: 0, n: 0 }, '2': { pred: 0, win: 0, n: 0 }, '3': { pred: 0, win: 0, n: 0 } };
+  for (const r of graded) {
+    if ((r.market || 'K') !== 'K' || r.model_over == null) continue;
+    const t = tierCal[String(r.tier)];
+    if (!t) continue;
+    t.pred += (r.side === 'Over' ? r.model_over : 100 - r.model_over);
+    t.win += (r.result === 'win' ? 1 : 0);
+    t.n++;
+  }
+  const calibrationByTier = Object.entries(tierCal)
+    .map(([tier, t]) => t.n >= 10
+      ? { tier, predicted: round1(t.pred / t.n), actual: round1(t.win / t.n * 100), n: t.n }
+      : null)
+    .filter(Boolean);
+
   return {
     empty: plays === 0,
     logged: rows.length,
@@ -1725,6 +1743,7 @@ function buildTrackRecord(rows) {
     clvLineMoved: lineMoved,
     calibration,
     calibrationSummary,
+    calibrationByTier,
   };
 }
 

@@ -269,6 +269,7 @@
     pitcherSplitRows: document.getElementById('pitcherSplitRows'),
     calibrationPoints: document.getElementById('calibrationPoints'),
     calibrationVerdict: document.getElementById('calibrationVerdict'),
+    calibrationTiers: document.getElementById('calibrationTiers'),
     trkNote: document.getElementById('trkNote'),
     trkLabel1: document.getElementById('trkLabel1'),
     trkVal1: document.getElementById('trkVal1'),
@@ -1672,6 +1673,20 @@
       } else {
         el.calibrationVerdict.hidden = true;
       }
+    }
+
+    // Per-tier: predicted win prob vs actual win rate, sharpest claim first (T1).
+    if (el.calibrationTiers) {
+      const byTier = (tr && tr.calibrationByTier) || [];
+      el.calibrationTiers.innerHTML = byTier.map((t) => {
+        const d = Math.round((t.actual - t.predicted) * 10) / 10;
+        const tone = Math.abs(d) <= 4 ? 'ok' : (d < 0 ? 'over' : 'under');
+        return `<div class="cal-tier">
+          ${tierChip(t.tier)}
+          <span class="cal-tier-nums">predicted <b>${t.predicted}%</b> → hit <b class="${tone}">${t.actual}%</b></span>
+          <span class="cal-tier-n">n=${t.n}</span>
+        </div>`;
+      }).join('');
     }
 
     if (!buckets.length) {

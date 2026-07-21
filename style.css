@@ -545,6 +545,13 @@ section { padding:44px 0; }
 .calibration-ylabel { position:absolute; top:0; bottom:0; left:-52px; display:flex; align-items:center; font-family:'IBM Plex Mono'; font-size:11px; color:var(--textDim); writing-mode:vertical-rl; transform:rotate(180deg); }
 .calibration-verdict { margin:52px auto 0; max-width:540px; text-align:center; font-size:13px; line-height:1.6; color:var(--textDim); }
 .calibration-verdict b { color:var(--text); font-weight:600; }
+/* Per-tier: predicted win% → actual win%, one item per tier. */
+.calibration-tiers { display:flex; flex-wrap:wrap; justify-content:center; gap:10px 20px; margin:14px auto 0; max-width:580px; }
+.cal-tier { display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono'; font-size:12px; color:var(--textDim); }
+.cal-tier-nums b { color:var(--text); font-weight:600; }
+.cal-tier-nums b.over { color:var(--warm); }
+.cal-tier-nums b.under { color:var(--positive); }
+.cal-tier-n { color:var(--muted); font-size:10.5px; }
 
 footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40px; color:var(--textDim); font-size:12.5px; line-height:1.7; }
 
