@@ -123,6 +123,7 @@ async function handleApi(p, env, ctx) {
   if (p === '/api/live-now') return liveNow(env);
   if (p === '/api/ml-debug') return mlDebug(env);
   if (p === '/api/track-debug') return trackDebug(env);
+  if (p === '/api/edge-debug') return edgeDebug(env);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -1968,6 +1969,62 @@ function normName(s) {
   let n = String(s).toLowerCase().replace(/[.'-]/g, '').trim();
   if (n.includes(',')) { const [a, b] = n.split(','); n = (b.trim() + ' ' + a.trim()).trim(); }
   return n.replace(/\s+/g, ' ');
+}
+
+// /api/edge-debug — the decisive read on whether the model has REAL edge or just
+// noise. CLV (how far the vig-free market moved toward our side) bucketed by the
+// model's claimed edge is the cleanest test: real edge -> bigger claimed edges
+// earn bigger CLV; noise -> CLV flat near zero regardless of claimed edge. Also
+// reports signed projection bias (root of any systematic over/under lean).
+async function edgeDebug(env) {
+  if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
+  try {
+    await ensureSchema(env.DB);
+    await ensureBatterSchema(env.DB);
+    const kres = await env.DB.prepare('SELECT * FROM picks').all();
+    const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
+    const rows = [
+      ...((kres.results || []).map((r) => ({ ...r, market: 'K' }))),
+      ...((bres.results || []).map((r) => ({ ...r, actual_k: r.actual, market: String(r.market || '').toUpperCase() }))),
+    ].filter((r) => r.result === 'win' || r.result === 'loss');
+
+    // CLV in probability points, only when the line didn't move (comparable).
+    const clvOf = (r) => {
+      if (r.close_over == null || r.entry_over == null) return null;
+      if (r.close_line != null && r.line != null && r.close_line !== r.line) return null;
+      return (r.side === 'Over' ? (r.close_over - r.entry_over) : (r.entry_over - r.close_over)) * 100;
+    };
+    const summarize = (arr) => {
+      const n = arr.length; if (!n) return { n: 0 };
+      let w = 0, u = 0, clvSum = 0, clvN = 0;
+      for (const r of arr) {
+        if (r.result === 'win') w++;
+        u += profitUnits(r.result, r.price);
+        const c = clvOf(r); if (c != null) { clvSum += c; clvN++; }
+      }
+      return { n, record: `${w}-${n - w}`, winRate: round1(w / n * 100), roi: round1(u / n * 100), avgCLV: clvN ? round1(clvSum / clvN) : null, clvN };
+    };
+
+    // Signed projection bias (K): +value => model projects too HIGH (over-lean root).
+    let biasSum = 0, biasN = 0;
+    for (const r of rows) if (r.market === 'K' && r.proj != null && r.actual_k != null) { biasSum += (r.proj - r.actual_k); biasN++; }
+
+    const BINS = [[0, 2], [2, 4], [4, 6], [6, 8], [8, 999]];
+    const byEdge = (subset) => BINS.map(([lo, hi]) => ({ edge: `${lo}-${hi === 999 ? '+' : hi}`, ...summarize(subset.filter((r) => r.edge != null && r.edge >= lo && r.edge < hi)) }));
+    const markets = [...new Set(rows.map((r) => r.market))];
+    const overUnder = {};
+    for (const m of markets) overUnder[m] = { Over: summarize(rows.filter((r) => r.market === m && r.side === 'Over')), Under: summarize(rows.filter((r) => r.market === m && r.side === 'Under')) };
+
+    return cors(json({
+      n: rows.length,
+      projBiasK: biasN ? round1(biasSum / biasN) : null,
+      overallCLV: summarize(rows).avgCLV,
+      edgeBuckets_all: byEdge(rows),
+      edgeBuckets_K: byEdge(rows.filter((r) => r.market === 'K')),
+      overUnderByMarket: overUnder,
+      read: 'avgCLV should RISE with the edge bucket if the edge is real; flat/near-0 means the claimed edges are noise. projBiasK>0 = projections run high.',
+    }, 30));
+  } catch (e) { return cors(json({ error: String(e && e.message || e) }, 30)); }
 }
 
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
