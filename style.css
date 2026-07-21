@@ -299,7 +299,7 @@ section { padding:44px 0; }
 .livecard-note { font-family:'IBM Plex Mono'; font-size:11.5px; color:var(--textDim); margin-top:8px; }
 
 /* ---------- board controls ---------- */
-.board-view { display:flex; gap:8px; margin-bottom:14px; }
+.board-view { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
 .pin-note { font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--textDim); margin-bottom:14px; }
 .pin-note b { color:var(--accent); font-weight:600; }
 .pin-note .pin-chk { color:var(--positive); }
@@ -546,7 +546,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* ---------- responsive ---------- */
 @media (max-width:760px) {
-  .record, .split { grid-template-columns:1fr !important; }
+  .split { grid-template-columns:1fr !important; }
+  /* Season stats as a 2×2 grid, not four full-width cards eating the screen. */
+  .record { grid-template-columns:repeat(2,1fr) !important; }
+  .record .cell { padding:14px 15px; }
+  .record .v { font-size:23px; margin-top:4px; }
   .hitters-grid { grid-template-columns:repeat(2,1fr) !important; }
   .nav-links { display:none !important; }
   .clv-chip { display:none !important; }
