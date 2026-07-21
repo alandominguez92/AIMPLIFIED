@@ -1678,19 +1678,32 @@ function buildTrackRecord(rows) {
   }
   const mae = maeN ? round1(maeSum / maeN) : null;
 
-  // Calibration: bucket graded picks by model P(over), compare to actual over-rate.
-  const buckets = {};
+  // Model calibration — strikeout model ONLY (the batter model is deliberately
+  // regressed to the market and not yet calibrated, so mixing it in would muddy
+  // this). Bucket graded K picks by the model's P(over); compare to the actual
+  // over-rate. Only buckets with enough samples plot, so a lucky n=2 can't
+  // masquerade as a data point.
+  const CAL_MIN_N = 5;
+  const calByBin = {};
+  let calPredSum = 0, calOvers = 0, calN = 0;
   for (const r of graded) {
-    if (r.model_over == null || r.actual_k == null) continue;
-    const b = Math.min(9, Math.max(0, Math.floor(r.model_over / 10)));
-    (buckets[b] = buckets[b] || []).push(r);
+    if ((r.market || 'K') !== 'K') continue;
+    if (r.model_over == null || r.actual_k == null || r.line == null) continue;
+    if (r.result === 'push') continue;
+    const bin = Math.min(9, Math.max(0, Math.floor(r.model_over / 10)));
+    (calByBin[bin] = calByBin[bin] || []).push(r);
+    calPredSum += r.model_over; if (r.actual_k > r.line) calOvers++; calN++;
   }
-  const calibration = Object.keys(buckets).map((b) => {
-    const arr = buckets[b];
+  const calibration = Object.values(calByBin).map((arr) => {
     const predicted = round1(arr.reduce((s, r) => s + r.model_over, 0) / arr.length);
     const overs = arr.filter((r) => r.actual_k > r.line).length;
     return { predicted, actual: round1(overs / arr.length * 100), n: arr.length };
-  }).sort((a, b) => a.predicted - b.predicted);
+  }).filter((x) => x.n >= CAL_MIN_N).sort((a, b) => a.predicted - b.predicted);
+  // Headline read: overall predicted vs actual over-rate across all graded K
+  // picks — needs a real sample before it means anything.
+  const calibrationSummary = calN >= 20
+    ? { n: calN, predicted: round1(calPredSum / calN), actual: round1(calOvers / calN * 100) }
+    : null;
 
   return {
     empty: plays === 0,
@@ -1711,6 +1724,7 @@ function buildTrackRecord(rows) {
     clvN,
     clvLineMoved: lineMoved,
     calibration,
+    calibrationSummary,
   };
 }
 

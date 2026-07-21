@@ -268,6 +268,7 @@
     pitcherComparePanel: document.getElementById('pitcherComparePanel'),
     pitcherSplitRows: document.getElementById('pitcherSplitRows'),
     calibrationPoints: document.getElementById('calibrationPoints'),
+    calibrationVerdict: document.getElementById('calibrationVerdict'),
     trkNote: document.getElementById('trkNote'),
     trkLabel1: document.getElementById('trkLabel1'),
     trkVal1: document.getElementById('trkVal1'),
@@ -1655,13 +1656,34 @@
     const tr = state.trackRecord;
     // Sample dots only in the offline demo; live shows real buckets or nothing.
     const buckets = (tr && tr.calibration && tr.calibration.length) ? tr.calibration : (LIVE_MODE ? [] : CALIBRATION_BUCKETS);
+
+    // Plain-language verdict from the overall predicted-vs-actual gap.
+    const sum = tr && tr.calibrationSummary;
+    if (el.calibrationVerdict) {
+      if (sum) {
+        const gap = Math.round((sum.actual - sum.predicted) * 10) / 10;
+        const read = Math.abs(gap) <= 3
+          ? 'the model is <b>well-calibrated</b>, tracking reality closely.'
+          : gap > 0
+            ? `picks hit <b>${Math.abs(gap)} pts more often</b> than predicted, so the model is running conservative.`
+            : `the model is <b>${Math.abs(gap)} pts optimistic</b>, so edges are overstated by about that much.`;
+        el.calibrationVerdict.innerHTML = `Across <b>${sum.n}</b> graded strikeout picks, the model predicted <b>${sum.predicted}%</b> to go over on average and <b>${sum.actual}%</b> actually did — ${read}`;
+        el.calibrationVerdict.hidden = false;
+      } else {
+        el.calibrationVerdict.hidden = true;
+      }
+    }
+
     if (!buckets.length) {
       el.calibrationPoints.innerHTML = LIVE_MODE ? '<div class="calibration-empty">Calibration plots here as tonight’s picks grade.</div>' : '';
       return;
     }
-    el.calibrationPoints.innerHTML = buckets.map((b) => `
-      <div class="calibration-dot" style="left:calc(${b.predicted}% - 6px);bottom:calc(${b.actual}% - 6px)" title="Predicted ${b.predicted}% · Actual ${b.actual}% (n=${b.n})"></div>
-    `).join('');
+    // Dot area scales with sample size, so trustworthy buckets read heavier.
+    el.calibrationPoints.innerHTML = buckets.map((b) => {
+      const size = Math.max(10, Math.min(22, 9 + b.n * 0.5));
+      const off = size / 2;
+      return `<div class="calibration-dot" style="width:${size}px;height:${size}px;left:calc(${b.predicted}% - ${off}px);bottom:calc(${b.actual}% - ${off}px)" title="Predicted ${b.predicted}% · Actual ${b.actual}% (n=${b.n})"></div>`;
+    }).join('');
   }
 
   function renderRecord() {
