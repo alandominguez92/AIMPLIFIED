@@ -474,6 +474,9 @@ async function board(env, ctx) {
   // Last-known moneylines from D1 — fallback when the live h2h feed stops
   // returning a price for a game (book pulled it pre-game, or it aged out).
   const savedLines = (env && env.DB) ? await loadMlLines(env.DB, date) : {};
+  // Last-known strikeout props from D1 — keeps the closing line on the board
+  // after the book pulls the market (see savePropLines).
+  const savedProps = (env && env.DB) ? await loadPropLines(env.DB, date) : {};
 
   const rows = games.map((g) => {
     const away = g.teams.away, home = g.teams.home;
@@ -495,8 +498,15 @@ async function board(env, ctx) {
       const sd = Math.sqrt(Math.max(projK, 1) * DISPERSION);
 
       // Market: price the projection against the DK/FD strikeout lines, taking
-      // the better of the two prices for the chosen side.
-      const market = priceStrikeouts(propByName[normName(pp.fullName)], projK);
+      // the better of the two prices for the chosen side. When the live prop is
+      // gone (book pulled it), fall back to the persisted closing line and mark
+      // the market closed — shown, but no longer bettable.
+      const nm = normName(pp.fullName);
+      const liveProp = propByName[nm];
+      const liveHasProp = liveProp && Object.keys(liveProp).length;
+      const propRec = liveHasProp ? liveProp : savedProps[nm];
+      const market = priceStrikeouts(propRec, projK);
+      if (market && !liveHasProp) market.closed = true;
 
       return {
         id: pp.id,
@@ -561,9 +571,10 @@ async function board(env, ctx) {
         ? `${lead.name} ${lead.market.side === 'Over' ? 'O' : 'U'} ${lead.market.line} Ks`
         : (projLean ? `${projLean.name} proj ${projLean.proj} Ks` : '—'),
       odds: lead ? lead.market.price : null,
-      oddsBooks: lead ? lead.market.books : null,
+      oddsBooks: lead && !lead.market.closed ? lead.market.books : null,
       edge: lead ? lead.market.edge : null,
       tier: lead ? lead.market.tier : 'model',
+      closed: lead ? !!lead.market.closed : false, // priced from a persisted closing line — not bettable
       interval: lead ? `${lead.lo} – ${lead.hi}` : (projLean ? `${projLean.lo} – ${projLean.hi}` : '—'),
       pitchers,
       ml,
@@ -577,6 +588,13 @@ async function board(env, ctx) {
     if (ctx && ctx.waitUntil) ctx.waitUntil(write);
     const writeMl = logMlPicks(env.DB, rows, date).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(writeMl);
+
+    // Snapshot tonight's live strikeout props so the closing line survives the
+    // book pulling the market (only entries we fetched live this window).
+    if (Object.keys(propByName).length) {
+      const wp = savePropLines(env.DB, date, propByName).catch(() => {});
+      if (ctx && ctx.waitUntil) ctx.waitUntil(wp);
+    }
 
     // Persist tonight's live moneylines so they survive the book pulling the
     // market — captured every window while a price is still offered.
@@ -1213,6 +1231,39 @@ async function saveMlLines(db, date, pairs) {
     const stmts = pairs.map((p) => db.prepare(
       'INSERT OR REPLACE INTO ml_lines (date, game_id, home_price, away_price, updated_at) VALUES (?,?,?,?,?)'
     ).bind(date, p.gameId, p.home ?? null, p.away ?? null, now));
+    if (stmts.length) await db.batch(stmts);
+  } catch (e) { /* persistence is best-effort; never break the board */ }
+}
+
+// Strikeout-prop lines persist just like moneylines: each window while a book
+// still offers the pre-game prop we snapshot it (keyed by pitcher). Once the
+// game starts and the book pulls the market, the snapshot lets the board keep
+// showing the CLOSING line + edge (marked closed, not bettable) instead of
+// going blank. Stored as the raw book-price object so it reprices identically.
+async function ensurePropSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS prop_lines (
+    date TEXT, name TEXT, data TEXT, updated_at INTEGER,
+    PRIMARY KEY (date, name)
+  )`).run();
+}
+async function loadPropLines(db, date) {
+  try {
+    await ensurePropSchema(db);
+    const rows = (await db.prepare('SELECT name, data FROM prop_lines WHERE date=?').bind(date).all()).results || [];
+    const map = {};
+    for (const r of rows) { try { map[r.name] = JSON.parse(r.data); } catch (e) { /* skip bad row */ } }
+    return map;
+  } catch (e) { return {}; } // best-effort — never block the board
+}
+async function savePropLines(db, date, propByName) {
+  try {
+    await ensurePropSchema(db);
+    const now = Date.now();
+    const stmts = Object.entries(propByName)
+      .filter(([, rec]) => rec && Object.keys(rec).length)
+      .map(([name, rec]) => db.prepare(
+        'INSERT OR REPLACE INTO prop_lines (date, name, data, updated_at) VALUES (?,?,?,?)'
+      ).bind(date, name, JSON.stringify(rec), now));
     if (stmts.length) await db.batch(stmts);
   } catch (e) { /* persistence is best-effort; never break the board */ }
 }

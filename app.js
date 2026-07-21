@@ -1052,9 +1052,9 @@
     const rows = boardIsLive() ? state.liveBoard : (LIVE_MODE ? null : RAW_GAMES);
     if (!rows || !rows.length) { el.slateSummary.hidden = true; return; }
     const t = (g) => String(g.tier);
-    // A play needs both a real tier and a real price; tiered rows with no
-    // line yet are "watching", never counted as plays.
-    const plays = rows.filter((g) => (t(g) === '1' || t(g) === '2') && g.odds != null);
+    // A play needs a real tier and a live price; tiered rows with no line yet
+    // are "watching", and a closed (persisted) line is no longer a live play.
+    const plays = rows.filter((g) => (t(g) === '1' || t(g) === '2') && g.odds != null && !g.closed);
     const watching = rows.filter((g) => g.odds == null && t(g) !== 'pass');
     const best = plays.reduce((m, g) => (g.edge != null && g.edge > m ? g.edge : m), -Infinity);
     const bestStr = best > -Infinity ? '+' + best.toFixed(1) + '%' : '—';
@@ -1115,7 +1115,10 @@
         // Reason only when truly projection-only: no edge AND no price. An
         // evaluated Pass (has an edge) still shows its price, never "awaiting line".
         const priced = hasEdge || g.odds != null || (Array.isArray(g.oddsBooks) && g.oddsBooks.length);
-        oddsCell = priced ? oddsBooksCell(g, money) : `<span class="odds-blank">${esc(projReason(g))}</span>`;
+        oddsCell = g.closed
+          // Persisted closing line — show the final price, marked closed (not bettable).
+          ? `<span class="odds-cell mono closed">${esc(money(g.odds))}<span class="closed-tag">closed</span></span>`
+          : (priced ? oddsBooksCell(g, money) : `<span class="odds-blank">${esc(projReason(g))}</span>`);
         detailCell = `<span class="interval-cell">${esc(g.interval)}</span>`;
       }
 
@@ -1986,12 +1989,14 @@
       const kellyTxt = kelly > 0 ? `${kelly}u Kelly` : '';
       const priceStr = m.price > 0 ? '+' + m.price : String(m.price);
       pickStrip = `
-        <div class="pick-strip has-play">
+        <div class="pick-strip has-play${m.closed ? ' closed' : ''}">
           ${tierChip(m.tier)}
           <span class="pick">${esc(lead.name)} <b>${m.side.toUpperCase()} ${m.line} Ks</b> <span class="pick-odds">(${priceStr})</span></span>
-          <span class="tier">${kellyTxt}</span>
-          <span class="edge">+${m.edge}% edge</span>
-          <button class="hero-add" data-action="hero-add" data-id="${esc(feature.id)}">★ Add to slip</button>
+          <span class="tier">${m.closed ? '' : kellyTxt}</span>
+          <span class="edge">+${m.edge}% ${m.closed ? 'closing edge' : 'edge'}</span>
+          ${m.closed
+            ? `<span class="hero-closed">closed · not bettable</span>`
+            : `<button class="hero-add" data-action="hero-add" data-id="${esc(feature.id)}">★ Add to slip</button>`}
         </div>`;
       // Honest WHY: model's clear chance vs. the price's implied chance = the gap.
       const imp = impliedPct(m.price);
@@ -2131,6 +2136,7 @@
   function addHeroToSlip(id) {
     const g = (state.liveBoard || []).find((x) => x.id === id);
     if (!g) return;
+    if (g.closed) { toast('Line closed — no longer bettable'); return; }
     const leg = buildKPropLeg(g);
     if (state.slip[leg.id]) { toast('Already in your slip'); return; }
     state.slip = { ...state.slip, [leg.id]: leg };
@@ -2155,6 +2161,12 @@
     const g = getGames().find((x) => x.id === id);
     if (!g) return;
     const leg = buildLeg(g);
+    const adding = !state.slip[leg.id];
+    // A closed K-prop line is shown for reference only — block adding it (but
+    // still allow removing one added earlier while the line was live).
+    if (adding && g.closed && !isML() && !isBatter() && !isRL()) {
+      toast('Line closed — no longer bettable'); return;
+    }
     const next = { ...state.slip };
     if (next[leg.id]) delete next[leg.id];
     else next[leg.id] = leg;
