@@ -13,10 +13,15 @@ const STATS = 'https://statsapi.mlb.com/api/v1';
 // confident and edges too large. Use an overdispersed spread, and regress the
 // projection modestly toward the (sharp) market line to temper model error.
 const DISPERSION = 1.55;   // Var(K) / mean at the game level
-// Burn-in period (Jul 7 - ~Aug 4, 2026): shrink raised 0.20 -> 0.30 while the
-// graded-pick sample accrues; plan is to drop to 0.24 after, unless the CLV
-// beat rate / Brier on real picks argues otherwise.
-const LINE_SHRINK = 0.30;  // fraction of the projection pulled toward the line
+// Calibration audit (214 graded K picks): aggregate is well-calibrated
+// (predicted 63.1% over, actual 61.4%) but Tier 1 overstates — predicted 69.4%,
+// hit 62.1% (~7pt gap). Classic optimizer's curse: the biggest model-vs-market
+// edges are the most inflated. So instead of the planned drop to 0.24, raise
+// shrink 0.30 -> 0.37 — it pulls the projection toward the sharp line by a fixed
+// fraction, so the P(over) reduction scales with the projection-line gap and
+// lands hardest on T1 while barely touching the calibrated lower tiers. Interim
+// half-step; refit precisely from the per-decile curve as more picks grade.
+const LINE_SHRINK = 0.37;  // fraction of the projection pulled toward the line
 
 // The books we price against (the user's accounts). Odds API bookmaker keys ->
 // short display labels. Prices are pinned to these two only, and the better of
