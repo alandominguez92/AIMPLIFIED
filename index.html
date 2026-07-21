@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A1622'/%3E%3Ctext x='16' y='23' font-family='Barlow Condensed,Arial,sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='%23F0EFEA'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23E8B84B'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=slate10">
+<link rel="stylesheet" href="style.css?v=slate11">
 </head>
 <body>
 
@@ -44,6 +44,9 @@
     <div class="eyebrow" id="heroEyebrow">Tonight's Ace Duel · Fri Jul 3 · 7:10 PM PT</div>
     <h1 id="heroTitle">Skubal <span class="vs">vs</span> Yamamoto</h1>
     <p class="sub">Model projection with calibrated intervals — not a hot take. Every number below is benchmarked against the line, win or lose.</p>
+
+    <!-- Credibility receipt — live-bound to the real graded record; hidden until enough picks grade -->
+    <div class="proof-strip" id="proofStrip" hidden></div>
 
     <!-- Plain-language on-ramp: what Edge / Tier / CLV mean, for newcomers -->
     <div class="hero-legend">
@@ -188,6 +191,49 @@
   <!-- YESTERDAY'S CARD — a receipt, below the action -->
   <div id="yesterdayCard"></div>
 
+  <!-- PUBLIC RECORD -->
+  <section id="record">
+    <div class="sec-head"><h2>Public Track Record</h2><span class="count" id="trkNote">tracking begins with tonight’s slate · wins and losses both stay up</span></div>
+    <div class="record">
+      <div class="cell"><div class="k" id="trkLabel1">Win Rate</div><div class="v" id="trkVal1">—</div></div>
+      <div class="cell"><div class="k">Tracked Bets</div><div class="v" id="trkVal2">—</div></div>
+      <div class="cell"><div class="k">Tier 1 Record</div><div class="v" id="trkVal3">—</div></div>
+      <div class="cell"><div class="k">Units (flat)</div><div class="v" id="trkVal4">—</div></div>
+    </div>
+
+    <div class="card" id="roiCard" hidden>
+      <h3>ROI, CLV &amp; Model Accuracy</h3>
+      <p class="calibration-sub">CLV is how far the vig-free market moved toward each pick between when it logged and when the game started — the truest measure of a good bet. ROI is return on 1u-flat stakes (1u = 1% of bankroll); projection error is the average miss between projected and actual strikeouts.</p>
+      <div class="roi-stats" id="roiStats"></div>
+      <p class="roi-clv-note" id="roiClvNote" hidden></p>
+      <div class="roi-chart">
+        <div class="roi-chart-title">Cumulative units</div>
+        <svg id="roiChart" viewBox="0 0 320 96" preserveAspectRatio="none" role="img" aria-label="Cumulative units over time"></svg>
+        <div class="roi-chart-cap" id="roiChartCap"></div>
+      </div>
+      <div class="roi-tables" id="roiTables"></div>
+    </div>
+
+    <div class="card">
+      <h3>Model Calibration — Predicted vs. Actual</h3>
+      <p class="calibration-sub">Each point is a bucket of past picks grouped by predicted probability. On the diagonal = well-calibrated.</p>
+      <div class="calibration">
+        <div class="calibration-axes"></div>
+        <div class="calibration-diagonal"></div>
+        <div id="calibrationPoints"></div>
+        <span class="calibration-tick x0">0</span>
+        <span class="calibration-tick x50">50%</span>
+        <span class="calibration-tick x100">100%</span>
+        <span class="calibration-tick y50">50%</span>
+        <span class="calibration-tick y100">100%</span>
+        <span class="calibration-xlabel">Predicted probability →</span>
+        <span class="calibration-ylabel">Actual hit rate →</span>
+      </div>
+      <p class="calibration-verdict" id="calibrationVerdict" hidden></p>
+      <div class="calibration-tiers" id="calibrationTiers"></div>
+    </div>
+  </section>
+
   <!-- HOTTEST HITTERS -->
   <section>
     <div class="sec-head">
@@ -244,48 +290,6 @@
     </div>
   </section>
 
-  <!-- PUBLIC RECORD -->
-  <section id="record">
-    <div class="sec-head"><h2>Public Track Record</h2><span class="count" id="trkNote">tracking begins with tonight’s slate · wins and losses both stay up</span></div>
-    <div class="record">
-      <div class="cell"><div class="k" id="trkLabel1">Win Rate</div><div class="v" id="trkVal1">—</div></div>
-      <div class="cell"><div class="k">Tracked Bets</div><div class="v" id="trkVal2">—</div></div>
-      <div class="cell"><div class="k">Tier 1 Record</div><div class="v" id="trkVal3">—</div></div>
-      <div class="cell"><div class="k">Units (flat)</div><div class="v" id="trkVal4">—</div></div>
-    </div>
-
-    <div class="card" id="roiCard" hidden>
-      <h3>ROI, CLV &amp; Model Accuracy</h3>
-      <p class="calibration-sub">CLV is how far the vig-free market moved toward each pick between when it logged and when the game started — the truest measure of a good bet. ROI is return on 1u-flat stakes (1u = 1% of bankroll); projection error is the average miss between projected and actual strikeouts.</p>
-      <div class="roi-stats" id="roiStats"></div>
-      <p class="roi-clv-note" id="roiClvNote" hidden></p>
-      <div class="roi-chart">
-        <div class="roi-chart-title">Cumulative units</div>
-        <svg id="roiChart" viewBox="0 0 320 96" preserveAspectRatio="none" role="img" aria-label="Cumulative units over time"></svg>
-        <div class="roi-chart-cap" id="roiChartCap"></div>
-      </div>
-      <div class="roi-tables" id="roiTables"></div>
-    </div>
-
-    <div class="card">
-      <h3>Model Calibration — Predicted vs. Actual</h3>
-      <p class="calibration-sub">Each point is a bucket of past picks grouped by predicted probability. On the diagonal = well-calibrated.</p>
-      <div class="calibration">
-        <div class="calibration-axes"></div>
-        <div class="calibration-diagonal"></div>
-        <div id="calibrationPoints"></div>
-        <span class="calibration-tick x0">0</span>
-        <span class="calibration-tick x50">50%</span>
-        <span class="calibration-tick x100">100%</span>
-        <span class="calibration-tick y50">50%</span>
-        <span class="calibration-tick y100">100%</span>
-        <span class="calibration-xlabel">Predicted probability →</span>
-        <span class="calibration-ylabel">Actual hit rate →</span>
-      </div>
-      <p class="calibration-verdict" id="calibrationVerdict" hidden></p>
-      <div class="calibration-tiers" id="calibrationTiers"></div>
-    </div>
-  </section>
 
   <footer>
     Aimplified is a sports analytics and entertainment product. Nothing here is gambling advice. Projections are model outputs with stated uncertainty — respect the intervals. 21+ where applicable. If you or someone you know has a gambling problem, call 1-800-GAMBLER.
@@ -301,6 +305,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=slate10"></script>
+<script src="app.js?v=slate11"></script>
 </body>
 </html>

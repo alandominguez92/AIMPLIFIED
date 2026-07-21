@@ -127,6 +127,19 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .hero h1 .vs { color:var(--textDim); font-size:.55em; vertical-align:middle; margin:0 .2em; }
 .hero p.sub { color:var(--textDim); font-size:16px; max-width:560px; }
 
+/* Credibility receipt near the hero — violet rail rhymes with the Track Record.
+   Quiet, one line, real numbers; links down to the full proof. */
+.proof-strip { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:22px; background:var(--board); border:1px solid var(--border); border-left:3px solid var(--clv); border-radius:10px; padding:12px 18px; }
+.proof-strip .ps-chk { display:inline-flex; align-items:center; gap:7px; font-family:'IBM Plex Mono'; font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--positive); }
+.proof-strip .ps-dot { width:8px; height:8px; border-radius:50%; background:var(--positive); }
+.proof-strip .ps-it { font-family:'IBM Plex Mono'; font-size:13px; color:var(--textDim); }
+.proof-strip .ps-it b { color:var(--text); font-weight:600; }
+.proof-strip .ps-clv { color:var(--clv); font-weight:600; }
+.proof-strip .ps-sep { color:var(--border); }
+.proof-strip .ps-lnk { margin-left:auto; font-family:'IBM Plex Mono'; font-size:12.5px; font-weight:700; color:var(--accent); white-space:nowrap; text-decoration:none; }
+.proof-strip .ps-lnk:hover { text-decoration:underline; }
+@media (max-width:720px) { .proof-strip { gap:8px 12px; } .proof-strip .ps-lnk { margin-left:0; } }
+
 /* Plain-language legend under the hero — teaches Edge/Tier/CLV in one glance */
 .hero-legend { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:26px; }
 .hl-card { border:1px solid var(--border); border-radius:10px; background:var(--board); padding:13px 15px; }

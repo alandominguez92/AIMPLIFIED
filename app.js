@@ -270,6 +270,7 @@
     calibrationPoints: document.getElementById('calibrationPoints'),
     calibrationVerdict: document.getElementById('calibrationVerdict'),
     calibrationTiers: document.getElementById('calibrationTiers'),
+    proofStrip: document.getElementById('proofStrip'),
     trkNote: document.getElementById('trkNote'),
     trkLabel1: document.getElementById('trkLabel1'),
     trkVal1: document.getElementById('trkVal1'),
@@ -1701,6 +1702,27 @@
     }).join('');
   }
 
+  // Credibility receipt near the hero: real graded numbers, only once there's a
+  // real sample. The "calibrated" badge is earned from the actual aggregate gap,
+  // never asserted — the strip must never out-run the proof it links to.
+  function renderProofStrip() {
+    const strip = el.proofStrip;
+    if (!strip) return;
+    const tr = state.trackRecord;
+    if (!LIVE_MODE || !tr || !tr.tracked || tr.tracked < 20) { strip.hidden = true; return; }
+    const cs = tr.calibrationSummary;
+    const calibrated = !!(cs && Math.abs(cs.actual - cs.predicted) <= 3);
+    const pieces = [];
+    if (calibrated) pieces.push('<span class="ps-chk"><span class="ps-dot"></span>Model calibrated</span>');
+    pieces.push(`<span class="ps-it"><b>${tr.tracked}</b> graded picks</span>`);
+    if (tr.winRate != null) pieces.push(`<span class="ps-it"><b>${tr.winRate}%</b> win</span>`);
+    if (typeof tr.units === 'number') pieces.push(`<span class="ps-it"><b>${tr.units > 0 ? '+' : ''}${tr.units}u</b> flat</span>`);
+    if (tr.clv != null && tr.clvN > 0) pieces.push(`<span class="ps-it ps-clv">${tr.clv > 0 ? '+' : ''}${tr.clv}% CLV</span>`);
+    strip.innerHTML = pieces.join('<span class="ps-sep">·</span>')
+      + '<a class="ps-lnk" href="#record">See the receipts ↓</a>';
+    strip.hidden = false;
+  }
+
   function renderRecord() {
     const tr = state.trackRecord;
     if (!tr) return;
@@ -1919,6 +1941,7 @@
       const tr = await fetchJson('/api/track-record');
       if (tr && typeof tr === 'object') {
         state.trackRecord = tr;
+        renderProofStrip();
         renderRecord();
         renderCalibration();
         renderRoi();
