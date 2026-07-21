@@ -41,7 +41,7 @@ const REF_BOOK = 'pinnacle';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug',
 ]);
 
 export default {
