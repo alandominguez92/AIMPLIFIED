@@ -37,7 +37,7 @@
   --card:#FFFFFF;
   --border:#D5DDE7;
   --text:#16222E;
-  --textDim:#5C6B7A;
+  --textDim:#48535F;  /* darkened for readability: 5.5:1 → 7.8:1 on white (was #5C6B7A) */
   --accent:#97680C;  /* darkened for AA on white (was #A8720E, 4.1:1) */
   --danger:#C0392B;
   --warm:#B5651D;
@@ -551,7 +551,7 @@ section { padding:44px 0; }
 .cal-tier-nums b { color:var(--text); font-weight:600; }
 .cal-tier-nums b.over { color:var(--warm); }
 .cal-tier-nums b.under { color:var(--positive); }
-.cal-tier-n { color:var(--muted); font-size:10.5px; }
+.cal-tier-n { color:var(--textDim); font-size:10.5px; } /* --muted is near-invisible on white */
 
 footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40px; color:var(--textDim); font-size:12.5px; line-height:1.7; }
 
