@@ -135,7 +135,16 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .hl-k.hl-tier { color:var(--accent); }
 .hl-k.hl-clv  { color:var(--clv); }
 .hl-d { font-size:12.5px; line-height:1.5; color:var(--textDim); }
-@media (max-width:720px) { .hero-legend { grid-template-columns:1fr; gap:8px; margin-top:18px; } }
+/* Mobile: collapse the three explainer cards into one compact box of tight
+   rows (term + inline description) — keeps the newcomer aid visible without
+   eating a third of the screen (was 3 stacked full-height cards). */
+@media (max-width:720px) {
+  .hero-legend { display:block; grid-template-columns:none; gap:0; margin-top:16px; border:1px solid var(--border); border-radius:10px; background:var(--board); overflow:hidden; }
+  .hl-card { border:none; border-radius:0; background:none; padding:8px 13px; display:flex; gap:10px; border-top:1px solid var(--border); }
+  .hl-card:first-child { border-top:none; }
+  .hl-k { margin-bottom:0; flex:none; width:36px; padding-top:1px; font-size:10.5px; letter-spacing:.06em; }
+  .hl-d { font-size:11.5px; line-height:1.4; }
+}
 
 .duel { margin-top:32px; display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
 .duel .side { background:var(--board); padding:26px 28px; }
