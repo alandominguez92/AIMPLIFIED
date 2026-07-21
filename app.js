@@ -1040,7 +1040,13 @@
     if (LIVE_MODE && !boardHasLive()) return `No ${isBatter() ? 'batter props' : 'games'} on tonight’s board yet.`;
     if (state.searchQuery.trim()) return 'No games match your search.';
     // Run Line depends on sportsbooks posting spreads — often later than K props.
-    if (isRL() && state.filter === 'all') return 'No run lines posted yet — spreads usually go up closer to first pitch. Check back soon.';
+    if (isRL() && state.filter === 'all') {
+      const rows = boardIsLive() ? (state.liveBoard || []) : [];
+      const allStarted = rows.length && rows.every((g) => g.status === 'Live' || g.status === 'Final');
+      return allStarted
+        ? 'Run line market closed — tonight’s games are underway. Spreads return before first pitch tomorrow.'
+        : 'No run lines posted yet — spreads usually go up closer to first pitch. Check back soon.';
+    }
     return 'No games match this filter.';
   }
 
@@ -1331,7 +1337,10 @@
       .rl-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
       @media(max-width:680px){.rl-grid{grid-template-columns:1fr;}}
       .rl-card{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);padding:16px 17px;}
-      .rl-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:3px;}
+      .rl-card.closed{opacity:.72;}
+      .rl-card.closed .rl-side{background:var(--board2);}
+      .rl-closed{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--textDim);border:1px solid var(--border);border-radius:4px;padding:1px 6px;}
+      .rl-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:3px;flex-wrap:wrap;}
       .rl-match{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:17px;letter-spacing:.01em;}
       .rl-edge{font-family:ui-monospace,monospace;font-size:12px;color:var(--positive);}
       .rl-edge.pass{color:var(--textDim);}
@@ -1418,8 +1427,8 @@
         stars = `<span class="rl-stars pass">pass</span>`;
       }
 
-      return `<div class="rl-card">
-        <div class="rl-top"><span class="rl-match">${esc(g.matchup || '—')}</span>${badge}</div>
+      return `<div class="rl-card${rl.closed ? ' closed' : ''}">
+        <div class="rl-top"><span class="rl-match">${esc(g.matchup || '—')}</span>${badge}${rl.closed ? '<span class="rl-closed">closed</span>' : ''}</div>
         <div class="rl-status">${statusLine}</div>
         <div class="rl-sides">${sides.map(sideBox).join('')}</div>
         <div class="rl-lean">${lean}${stars}</div></div>`;

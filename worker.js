@@ -477,6 +477,8 @@ async function board(env, ctx) {
   // Last-known strikeout props from D1 — keeps the closing line on the board
   // after the book pulls the market (see savePropLines).
   const savedProps = (env && env.DB) ? await loadPropLines(env.DB, date) : {};
+  // Last-known run lines (spread pairs) from D1 — same fallback for the run line.
+  const savedRl = (env && env.DB) ? await loadRlLines(env.DB, date) : {};
 
   const rows = games.map((g) => {
     const away = g.teams.away, home = g.teams.home;
@@ -556,8 +558,13 @@ async function board(env, ctx) {
     if (ml && !liveHasPrice && effPair) ml.lineStale = true; // shown from last-known line
 
     // Run line: Pinnacle fair + the log5 model (via ml) as the lean filter.
-    const rl = runLine(home, away, rlByHome[hKey] || null, pinRlByHome[hKey] || null,
-      ml ? ml.homeModelProb / 100 : 0.5);
+    // Falls back to the persisted closing spread when the live market is gone.
+    const rlModelWin = ml ? ml.homeModelProb / 100 : 0.5;
+    let rl = runLine(home, away, rlByHome[hKey] || null, pinRlByHome[hKey] || null, rlModelWin);
+    if (!rl) {
+      const s = savedRl[gid];
+      if (s) { rl = runLine(home, away, s.rl || null, s.pin || null, rlModelWin); if (rl) rl.closed = true; }
+    }
 
     return {
       id: 'g' + g.gamePk,
@@ -606,6 +613,20 @@ async function board(env, ctx) {
     if (livePairs.length) {
       const wl = saveMlLines(env.DB, date, livePairs).catch(() => {});
       if (ctx && ctx.waitUntil) ctx.waitUntil(wl);
+    }
+
+    // Persist tonight's live run lines (spread pairs) the same way — only games
+    // that actually have a spread point posted this window.
+    const hasPoint = (p) => p && ((p.home && p.home.point != null) || (p.away && p.away.point != null));
+    const rlPairs = games.map((g) => {
+      const hk = keyAbbr(g.teams.home.team && g.teams.home.team.name);
+      const rlp = rlByHome[hk] || null, pinp = pinRlByHome[hk] || null;
+      return (hasPoint(rlp) || hasPoint(pinp))
+        ? { gameId: 'g' + g.gamePk, data: JSON.stringify({ rl: rlp, pin: pinp }) } : null;
+    }).filter(Boolean);
+    if (rlPairs.length) {
+      const wr = saveRlLines(env.DB, date, rlPairs).catch(() => {});
+      if (ctx && ctx.waitUntil) ctx.waitUntil(wr);
     }
   }
 
@@ -1264,6 +1285,35 @@ async function savePropLines(db, date, propByName) {
       .map(([name, rec]) => db.prepare(
         'INSERT OR REPLACE INTO prop_lines (date, name, data, updated_at) VALUES (?,?,?,?)'
       ).bind(date, name, JSON.stringify(rec), now));
+    if (stmts.length) await db.batch(stmts);
+  } catch (e) { /* persistence is best-effort; never break the board */ }
+}
+
+// Run lines (spreads) persist the same way — snapshot the DK/FD + Pinnacle
+// spread pairs per game while offered, so the closing run line survives the
+// book pulling the spread market once the game starts (shown closed, not bettable).
+async function ensureRlSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS rl_lines (
+    date TEXT, game_id TEXT, data TEXT, updated_at INTEGER,
+    PRIMARY KEY (date, game_id)
+  )`).run();
+}
+async function loadRlLines(db, date) {
+  try {
+    await ensureRlSchema(db);
+    const rows = (await db.prepare('SELECT game_id, data FROM rl_lines WHERE date=?').bind(date).all()).results || [];
+    const map = {};
+    for (const r of rows) { try { map[r.game_id] = JSON.parse(r.data); } catch (e) { /* skip bad row */ } }
+    return map;
+  } catch (e) { return {}; } // best-effort — never block the board
+}
+async function saveRlLines(db, date, pairs) {
+  try {
+    await ensureRlSchema(db);
+    const now = Date.now();
+    const stmts = pairs.map((p) => db.prepare(
+      'INSERT OR REPLACE INTO rl_lines (date, game_id, data, updated_at) VALUES (?,?,?,?)'
+    ).bind(date, p.gameId, p.data, now));
     if (stmts.length) await db.batch(stmts);
   } catch (e) { /* persistence is best-effort; never break the board */ }
 }
