@@ -41,7 +41,7 @@ const REF_BOOK = 'pinnacle';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
 ]);
 
 export default {
@@ -124,6 +124,7 @@ async function handleApi(p, env, ctx) {
   if (p === '/api/ml-debug') return mlDebug(env);
   if (p === '/api/track-debug') return trackDebug(env);
   if (p === '/api/edge-debug') return edgeDebug(env);
+  if (p === '/api/batter-debug') return batterDebug(env);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -2023,6 +2024,72 @@ async function edgeDebug(env) {
       edgeBuckets_K: byEdge(rows.filter((r) => r.market === 'K')),
       overUnderByMarket: overUnder,
       read: 'avgCLV should RISE with the edge bucket if the edge is real; flat/near-0 means the claimed edges are noise. projBiasK>0 = projections run high.',
+    }, 30));
+  } catch (e) { return cors(json({ error: String(e && e.message || e) }, 30)); }
+}
+
+// /api/batter-debug — pressure-tests the one signal edge-debug surfaced: batter
+// counting-stat UNDERS are profitable. Real edge survives slicing; a fluke
+// doesn't. By month = is it stable or one hot stretch? By price = do we win at
+// prices that actually pay, or only expensive -150 unders? By market = which
+// props carry it. Cumulative = the trajectory.
+async function batterDebug(env) {
+  if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
+  try {
+    await ensureBatterSchema(env.DB);
+    const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
+    const graded = (bres.results || []).filter((r) => r.result === 'win' || r.result === 'loss');
+    const unders = graded.filter((r) => r.side === 'Under');
+    const overs = graded.filter((r) => r.side === 'Over');
+
+    const clvOf = (r) => {
+      if (r.close_over == null || r.entry_over == null) return null;
+      if (r.close_line != null && r.line != null && r.close_line !== r.line) return null;
+      return (r.side === 'Over' ? (r.close_over - r.entry_over) : (r.entry_over - r.close_over)) * 100;
+    };
+    const summarize = (arr) => {
+      const n = arr.length; if (!n) return { n: 0 };
+      let w = 0, u = 0, clvSum = 0, clvN = 0;
+      for (const r of arr) { if (r.result === 'win') w++; u += profitUnits(r.result, r.price); const c = clvOf(r); if (c != null) { clvSum += c; clvN++; } }
+      return { n, record: `${w}-${n - w}`, winRate: round1(w / n * 100), roi: round1(u / n * 100), units: round1(u), avgCLV: clvN ? round1(clvSum / clvN) : null };
+    };
+    const groupBy = (arr, keyFn) => {
+      const m = {};
+      for (const r of arr) { const k = keyFn(r); if (k == null || k === '') continue; (m[k] = m[k] || []).push(r); }
+      return m;
+    };
+
+    const monthMap = groupBy(unders, (r) => String(r.date || '').slice(0, 7));
+    const byMonth = Object.keys(monthMap).sort().map((k) => ({ month: k, ...summarize(monthMap[k]) }));
+
+    const priceLabel = (p) => {
+      if (p == null) return null;
+      if (p <= -140) return '<= -140';
+      if (p <= -115) return '-139..-115';
+      if (p <= 105) return '-114..+105';
+      if (p <= 140) return '+106..+140';
+      return '+141+';
+    };
+    const priceMap = groupBy(unders, (r) => priceLabel(r.price));
+    const priceOrder = ['<= -140', '-139..-115', '-114..+105', '+106..+140', '+141+'];
+    const byPrice = priceOrder.filter((k) => priceMap[k]).map((k) => ({ price: k, ...summarize(priceMap[k]) }));
+
+    const marketMap = groupBy(unders, (r) => String(r.market || '').toUpperCase());
+    const byMarket = Object.keys(marketMap).map((k) => ({ market: k, ...summarize(marketMap[k]) })).sort((a, b) => b.n - a.n);
+
+    const sorted = [...unders].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    let cum = 0; const cumByDate = {};
+    for (const r of sorted) { cum += profitUnits(r.result, r.price); cumByDate[r.date] = round1(cum); }
+    const cumulative = Object.keys(cumByDate).sort().map((d) => ({ date: d, units: cumByDate[d] }));
+
+    return cors(json({
+      underTotal: summarize(unders),
+      overTotal: summarize(overs),
+      byMonth,
+      byPrice,
+      byMarket,
+      cumulative,
+      read: 'Real if byMonth stays +ROI across most months AND byPrice holds at fair/plus prices (not only <=-140). Spikes confined to one month or one price bucket = fragile/artifact.',
     }, 30));
   } catch (e) { return cors(json({ error: String(e && e.message || e) }, 30)); }
 }
