@@ -2212,6 +2212,26 @@ async function trackDebug(env) {
       out.tables[label] = { total, byDate };
     }
 
+    // Closing-line persistence snapshots (prop_lines, rl_lines) — browser-checkable
+    // so persistence can be confirmed without the D1 query tools.
+    try {
+      await ensurePropSchema(env.DB);
+      await ensureRlSchema(env.DB);
+      const persist = {};
+      for (const tbl of ['prop_lines', 'rl_lines']) {
+        const total = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${tbl}`).first('n')) || 0;
+        const byDate = (await env.DB.prepare(`SELECT date, COUNT(*) AS n, MAX(updated_at) AS updated FROM ${tbl} GROUP BY date ORDER BY date DESC LIMIT 5`).all()).results || [];
+        persist[tbl] = { total, byDate };
+      }
+      out.persistence = persist;
+      const pn = persist.prop_lines.total, rn = persist.rl_lines.total;
+      out.persistenceVerdict = (pn > 0 && rn > 0)
+        ? 'OK — both prop_lines and rl_lines have snapshots; closing lines persist.'
+        : (pn === 0 && rn === 0)
+          ? 'EMPTY — neither table has rows yet (expected until a pre-game window runs after deploy).'
+          : `PARTIAL — prop_lines=${pn}, rl_lines=${rn} (the empty one had no qualifying pre-game snapshot).`;
+    } catch (e) { out.persistenceError = String(e && e.message || e); }
+
     // Freshest signal: what's logged for tonight, and is the newest date grading?
     const loggedToday = (await env.DB.prepare('SELECT COUNT(*) AS n FROM picks WHERE date=?').bind(today).first('n')) || 0;
     const bLoggedToday = (await env.DB.prepare('SELECT COUNT(*) AS n FROM bpicks WHERE date=?').bind(today).first('n')) || 0;
