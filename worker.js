@@ -916,9 +916,9 @@ async function batters(env, ctx) {
     pool.iso.push(iso); pool.slg.push(toNum(st.slg)); pool.contact.push(1 - kpct); pool.disc.push(bbpct);
 
     const lambda = {
-      hr: (hr / pa) * expPA,
-      tb: (tb / pa) * expPA,
-      hrr: slot ? ((hits + runs + rbi) / pa) * expPA : (hits + runs + rbi) / gp,
+      hr: (hr / pa) * expPA * BATTER_PROJ_CAL,
+      tb: (tb / pa) * expPA * BATTER_PROJ_CAL,
+      hrr: (slot ? ((hits + runs + rbi) / pa) * expPA : (hits + runs + rbi) / gp) * BATTER_PROJ_CAL,
     };
     const markets = {};
     for (const spec of BATTER_MARKETS) {
@@ -1898,6 +1898,15 @@ function priceStrikeouts(prop, projK) {
 // batter picks honest — most land Tier 2/3/pass, not a board full of Tier 1.
 const BATTER_SHRINK = 0.25;      // keep ~25% of the raw model-vs-market gap
 const BATTER_TIERS = [8, 5, 3];  // T1/T2/T3 edge cutoffs (vs 5/3/1.5 for Ks)
+// Projection calibration. The graded record showed the counting-stat projection
+// runs ~16-17% HIGH — HRR projected 1.9 vs 1.6 actual, TB 1.8 vs 1.5 (n=1382).
+// That over-projection manufactured the losing OVER picks (overs 44% / -15.8%
+// ROI) while the rare unders won (69% / +18.5%). Multiply lambda down to align
+// projection with reality: this stops the fake over-edges and lets the model
+// correctly find UNDER value where the market shades overs up. Applied at ~85%
+// of the measured bias (one month of data) — re-measure via /api/batter-debug
+// and tighten toward the full 0.84 as more months grade.
+const BATTER_PROJ_CAL = 0.86;
 
 // Expected plate appearances by batting-order slot (league-typical: leadoff
 // ~4.65, dropping ~0.11 per slot to ~3.77 in the 9-hole). Used once tonight's
