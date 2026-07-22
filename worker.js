@@ -931,12 +931,16 @@ async function batters(env, ctx) {
   const pr = (arr, v) => arr.length ? Math.round(arr.filter((x) => x <= v).length / arr.length * 100) : 0;
   const tone = (v) => v >= 66 ? 'cool' : v >= 33 ? 'warm' : 'hot';
 
-  const rows = draft.map((b) => {
+  const all = draft.map((b) => {
     const priced = BATTER_MARKETS
       .map((spec) => ({ spec, m: b.markets[spec.metric] }))
       .filter((x) => x.m && x.m.price != null);
-    // Headline = the market with the biggest edge.
-    const lead = priced.reduce((best, x) => (!best || x.m.edge > best.m.edge ? x : best), null);
+    // The PLAYS are batter unders — the one side the graded record shows a real
+    // edge (public over-bias inflates batter lines). Headline = the best priced
+    // UNDER; a batter with no under lean is analysis, not a play, and doesn't
+    // make the board. All priced markets (both sides) still log for research.
+    const unders = priced.filter((x) => x.m.side === 'Under');
+    const lead = unders.reduce((best, x) => (!best || x.m.edge > best.m.edge ? x : best), null);
     const expFor = (metric) => round2(b.lambda[metric]);
     const power = pr(pool.iso, b.iso), slug = pr(pool.slg, b.slg);
     const contact = pr(pool.contact, 1 - b.kpct), disc = pr(pool.disc, b.bbpct);
@@ -958,6 +962,13 @@ async function batters(env, ctx) {
       edge: lead ? lead.m.edge : null,
       tier: lead ? lead.m.tier : 'pass',
       interval: lead ? `proj ${expFor(lead.spec.metric)} ${lead.spec.label}` : '—',
+      // Fields for the fade display: the model-vs-line scale and hit probability.
+      side: lead ? lead.m.side : null,
+      line: lead ? lead.m.line : null,
+      projVal: lead ? expFor(lead.spec.metric) : null,
+      marketLabel: lead ? lead.spec.label : null,
+      modelOver: lead ? lead.m.modelOver : null,
+      hasPriced: priced.length > 0,
       // Per-market detail for the expanded row (also carries what logging needs).
       batterMarkets: BATTER_MARKETS.map((spec) => {
         const m = b.markets[spec.metric];
@@ -971,13 +982,17 @@ async function batters(env, ctx) {
         { label: 'Discipline', value: disc, tone: tone(disc) },
       ],
     };
-  }).filter((r) => r.odds != null)
+  });
+
+  // Board rows = under leans only. Logging stays whole-model (every priced
+  // market, both sides) so the research record keeps measuring what we DON'T post.
+  const rows = all.filter((r) => r.odds != null)
     .sort((a, b) => (b.edge || 0) - (a.edge || 0))
     .slice(0, 40);
+  const logRows = all.filter((r) => r.hasPriced).slice(0, 60);
 
-  // Log tonight's priced batter picks to the track record (idempotent).
   if (env && env.DB) {
-    const write = logBatterPicks(env.DB, rows, slateDate()).catch(() => {});
+    const write = logBatterPicks(env.DB, logRows, slateDate()).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(write); else await write;
   }
 
@@ -1712,6 +1727,22 @@ function buildTrackRecord(rows) {
     ? { n: calN, predicted: round1(calPredSum / calN), actual: round1(calOvers / calN * 100) }
     : null;
 
+  // Batter UNDERS — the posted product since the pivot. Hit rate is the number
+  // that transfers to any platform; units/ROI are flat-stake sportsbook basis.
+  let buW = 0, buL = 0, buU = 0;
+  for (const r of graded) {
+    if ((r.market || 'K') === 'K' || r.side !== 'Under') continue;
+    if (r.result === 'win') buW++; else buL++;
+    buU += profitUnits(r.result, r.price);
+  }
+  const buN = buW + buL;
+  const batterUnders = buN > 0 ? {
+    n: buN, record: `${buW}–${buL}`,
+    winRate: round1(buW / buN * 100),
+    roi: round1(buU / buN * 100),
+    units: Math.round(buU * 10) / 10,
+  } : null;
+
   // Per-tier calibration: the model's average predicted WIN probability for each
   // tier vs the actual win rate — "our Tier-1 leans win at the rate we claim".
   // Predicted win prob orients model P(over) to the side we actually bet.
@@ -1751,6 +1782,7 @@ function buildTrackRecord(rows) {
     calibration,
     calibrationSummary,
     calibrationByTier,
+    batterUnders,
   };
 }
 
@@ -1762,6 +1794,10 @@ function buildRecent(propRows, mlRows) {
   const add = (o) => { if (o.result === 'win' || o.result === 'loss' || o.result === 'push') all.push(o); };
   for (const r of propRows) {
     if (r.tier === 'pass') continue;
+    // Yesterday's card mirrors what we POST as plays: batter unders only.
+    // K picks and batter overs keep logging/grading for research, but they're
+    // analysis now — not posted bets — so they don't appear on the card.
+    if ((r.market || 'K') === 'K' || r.side !== 'Under') continue;
     const actual = r.actual_k != null ? r.actual_k : (r.actual != null ? r.actual : null);
     add({
       date: r.date, name: r.pitcher || r.player || '', team: r.team || '',
@@ -1769,16 +1805,9 @@ function buildRecent(propRows, mlRows) {
       price: r.price ?? null, tier: String(r.tier || ''), result: r.result, actual,
     });
   }
-  for (const r of mlRows) {
-    if (r.tier === 'pass') continue; // a Pass moneyline isn't a bet — never on the card
-    add({
-      date: r.date, name: r.team || '', team: r.team || '', opp: r.opp || '',
-      market: 'ML', side: null, line: null,
-      price: r.entry_price != null ? r.entry_price : r.close_price,
-      tier: String(r.tier || ''), result: r.result,
-      actual: (r.team_score != null && r.opp_score != null) ? `${r.team_score}–${r.opp_score}` : null,
-    });
-  }
+  // Moneyline is context post-pivot — it keeps grading for research but never
+  // appears on the card. (mlRows intentionally unused here.)
+  void mlRows;
   if (!all.length) return null;
   const maxDate = all.reduce((m, x) => (x.date > m ? x.date : m), all[0].date);
   const day = all.filter((x) => x.date === maxDate);

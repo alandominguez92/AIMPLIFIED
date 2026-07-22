@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A1622'/%3E%3Ctext x='16' y='23' font-family='Barlow Condensed,Arial,sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='%23F0EFEA'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23E8B84B'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=slate11">
+<link rel="stylesheet" href="style.css?v=slate12">
 </head>
 <body>
 
@@ -41,9 +41,9 @@
 
   <!-- HERO -->
   <div class="hero">
-    <div class="eyebrow" id="heroEyebrow">Tonight's Ace Duel · Fri Jul 3 · 7:10 PM PT</div>
-    <h1 id="heroTitle">Skubal <span class="vs">vs</span> Yamamoto</h1>
-    <p class="sub">Model projection with calibrated intervals — not a hot take. Every number below is benchmarked against the line, win or lose.</p>
+    <div class="eyebrow" id="heroEyebrow">Tonight's Sharpest Fade · Fri Jul 3 · 7:10 PM PT</div>
+    <h1 id="heroTitle">José Ramírez <span class="vs">·</span> Total Bases</h1>
+    <p class="sub">The public bets overs. We fade them. Batter props are the one market where casual money is reliably wrong — books shade the over up, and the <b>under is the value</b>. Every play below is priced against that.</p>
 
     <!-- Credibility receipt — live-bound to the real graded record; hidden until enough picks grade -->
     <div class="proof-strip" id="proofStrip" hidden></div>
@@ -65,47 +65,37 @@
     </div>
 
     <div class="duel" id="heroDuel">
-      <div class="side">
-        <div class="name">Tarik Skubal</div>
-        <div class="team">DET · LHP · 2.61 xERA</div>
-        <div class="proj">
-          <div class="label"><span class="label-long">Projected strikeouts</span><span class="label-short">Proj Ks</span></div>
-          <div class="num">7.4</div>
-          <div class="ci">80% interval: 5.6 – 9.1 · Line: O/U 6.5</div>
+      <div class="fade-card">
+        <div class="fc-top">
+          <div>
+            <div class="fc-pick">UNDER 2.5 Total Bases <span class="fc-odds">(+105)</span></div>
+            <div class="fc-meta">CLE · 3B · MIL @ CLE · 4:10 PT · tonight's largest model-vs-line gap</div>
+          </div>
+          <span class="fc-tier">T1 · 2.1u</span>
         </div>
-        <div class="pct">
-          <div class="row"><span class="stat">CSW%</span><div class="track"><div class="fill hot" style="width:94%"></div></div><span class="badge hot">94</span></div>
-          <div class="row"><span class="stat">Whiff%</span><div class="track"><div class="fill hot" style="width:91%"></div></div><span class="badge hot">91</span></div>
-          <div class="row"><span class="stat">Opp Chase</span><div class="track"><div class="fill warm" style="width:78%"></div></div><span class="badge warm">78</span></div>
+        <div class="fc-scale-wrap">
+          <div class="fc-scale-label"><span>Where the model lands vs. the market line</span><span>Total bases</span></div>
+          <div class="fc-tagrow">
+            <span class="fc-model" style="left:35%">▼ Model 1.4</span>
+            <span class="fc-linetag" style="left:62.5%">▼ Line 2.5</span>
+          </div>
+          <div class="fc-track">
+            <div class="fc-under-zone" style="width:62.5%"></div>
+            <span class="fc-under-tag">◄ Value: Under</span>
+            <span class="fc-over-tag" style="left:74%">Over — public side</span>
+            <span class="fc-gap" style="left:35%;width:27.5%"></span>
+            <span class="fc-dot" style="left:35%"></span>
+          </div>
+          <div class="fc-axis"><span>0</span><span>1</span><span>2</span><span>3</span><span>4</span></div>
         </div>
-      </div>
-      <div class="side">
-        <div class="name">Yoshinobu Yamamoto</div>
-        <div class="team">LAD · RHP · 3.08 xERA</div>
-        <div class="proj">
-          <div class="label"><span class="label-long">Projected strikeouts</span><span class="label-short">Proj Ks</span></div>
-          <div class="num">6.1</div>
-          <div class="ci">80% interval: 4.3 – 7.8 · Line: O/U 6.5</div>
+        <div class="pick-strip has-play">
+          <span class="tier-chip t1">T1</span>
+          <span class="pick">Ramírez <b>UNDER 2.5 Total Bases</b> <span class="pick-odds">(+105)</span></span>
+          <span class="tier">2.1u Kelly</span>
+          <span class="edge">+11.4% edge</span>
         </div>
-        <div class="pct">
-          <div class="row"><span class="stat">CSW%</span><div class="track"><div class="fill warm" style="width:81%"></div></div><span class="badge warm">81</span></div>
-          <div class="row"><span class="stat">Whiff%</span><div class="track"><div class="fill warm" style="width:74%"></div></div><span class="badge warm">74</span></div>
-          <div class="row"><span class="stat">Opp Chase</span><div class="track"><div class="fill cool" style="width:38%"></div></div><span class="badge cool">38</span></div>
-        </div>
-      </div>
-      <div class="pick-strip">
-        <span class="stars">★★★★☆</span>
-        <span class="pick">Skubal <b>OVER 6.5 Ks (−115)</b></span>
-        <span class="tier">Tier 1 · 1.2u Kelly</span>
-        <span class="edge">+5.8% edge vs. close</span>
-      </div>
-      <div class="winprob">
-        <div class="winprob-head"><span class="live-dot"></span><span class="winprob-label">Live model win probability</span></div>
-        <div class="winprob-row">
-          <span class="winprob-team">Skubal O 6.5</span>
-          <div class="track big"><div class="fill accent-fill" id="winProbFill"></div></div>
-          <span class="winprob-pct" id="winProbPct"></span>
-        </div>
+        <div class="hero-why"><span class="wk">Why</span><span>Casual money pounds the over on a name like Ramírez, so the book sets this line high. The model projects <b>1.4 total bases</b> — a full base under the 2.5 line. That cushion is the edge.</span></div>
+        <div class="hero-note">Fair-value read priced on DK/FD lines. Availability and exact lines vary by book/app — confirm the Under is offered before placing.</div>
       </div>
     </div>
   </div>
@@ -134,10 +124,17 @@
     </div>
 
     <div class="board-view">
-      <button class="viewtab" data-action="set-view" data-view="kprops">K Props</button>
-      <button class="viewtab" data-action="set-view" data-view="moneyline">Moneyline</button>
-      <button class="viewtab" data-action="set-view" data-view="batter">Batter Props</button>
-      <button class="viewtab" data-action="set-view" data-view="runline">Run Line</button>
+      <button class="viewtab" data-action="set-view" data-view="batter">Under Plays</button>
+      <button class="viewtab" data-action="set-view" data-view="kprops">K Props<span class="vt-tag">projections</span></button>
+      <button class="viewtab" data-action="set-view" data-view="moneyline">Moneyline<span class="vt-tag">context</span></button>
+      <button class="viewtab" data-action="set-view" data-view="runline">Run Line<span class="vt-tag">context</span></button>
+    </div>
+    <p class="tabnote">Plays = <b>batter unders only</b> — the one market our graded record shows a real edge. Everything else is analysis, not bets. Lines vary by book/app — confirm the Under is offered before placing.</p>
+
+    <!-- Honest context banner for the K Props tab (toggled by app.js) -->
+    <div class="ctx-banner" id="kCtxBanner" hidden>
+      <span class="ctx-banner-tag">Projections · not plays</span>
+      <span>Our graded record found <b>no betting edge in strikeout props</b> — the market prices them efficiently. The projections stay because they're honest analysis, but we don't post K bets we wouldn't make ourselves.</span>
     </div>
 
     <p class="pin-note" id="pinNote" hidden>Prices pinned to <b>DraftKings</b> + <b>FanDuel</b> · best of the two highlighted <span class="pin-chk">✓</span></p>
@@ -305,6 +302,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=slate11"></script>
+<script src="app.js?v=slate12"></script>
 </body>
 </html>
