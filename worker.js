@@ -2082,9 +2082,22 @@ async function batterDebug(env) {
     for (const r of sorted) { cum += profitUnits(r.result, r.price); cumByDate[r.date] = round1(cum); }
     const cumulative = Object.keys(cumByDate).sort().map((d) => ({ date: d, units: cumByDate[d] }));
 
+    // Signed projection bias per batter market (ALL graded picks, both sides):
+    // +avgProjMinusActual = model projects too HIGH -> the correction magnitude
+    // to subtract from the projection so overs stop being manufactured.
+    const biasMap = groupBy(graded.filter((r) => r.proj != null && r.actual != null), (r) => String(r.market || '').toUpperCase());
+    const projBiasByMarket = Object.keys(biasMap).map((m) => {
+      const arr = biasMap[m];
+      const avg = arr.reduce((s, r) => s + (r.proj - r.actual), 0) / arr.length;
+      const avgProj = arr.reduce((s, r) => s + r.proj, 0) / arr.length;
+      const avgActual = arr.reduce((s, r) => s + r.actual, 0) / arr.length;
+      return { market: m, n: arr.length, avgProj: round1(avgProj), avgActual: round1(avgActual), avgProjMinusActual: round1(avg) };
+    }).sort((a, b) => b.n - a.n);
+
     return cors(json({
       underTotal: summarize(unders),
       overTotal: summarize(overs),
+      projBiasByMarket,
       byMonth,
       byPrice,
       byMarket,
