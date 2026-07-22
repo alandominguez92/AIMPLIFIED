@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A1622'/%3E%3Ctext x='16' y='23' font-family='Barlow Condensed,Arial,sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='%23F0EFEA'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23E8B84B'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=slate13">
+<link rel="stylesheet" href="style.css?v=slate14">
 </head>
 <body>
 
@@ -124,8 +124,8 @@
     </div>
 
     <div class="board-view">
-      <button class="viewtab" data-action="set-view" data-view="batter">Under Plays</button>
-      <button class="viewtab" data-action="set-view" data-view="kprops">K Props<span class="vt-tag">projections</span></button>
+      <button class="viewtab" data-action="set-view" data-view="batter">Under Plays<span class="vt-tag is-play">the play</span></button>
+      <button class="viewtab" data-action="set-view" data-view="kprops">K Props<span class="vt-tag">projection</span></button>
       <button class="viewtab" data-action="set-view" data-view="moneyline">Moneyline<span class="vt-tag">context</span></button>
       <button class="viewtab" data-action="set-view" data-view="runline">Run Line<span class="vt-tag">context</span></button>
     </div>
@@ -303,6 +303,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=slate13"></script>
+<script src="app.js?v=slate14"></script>
 </body>
 </html>

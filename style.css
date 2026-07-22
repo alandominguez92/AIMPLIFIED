@@ -56,6 +56,9 @@
 }
 
 * { margin:0; padding:0; box-sizing:border-box; }
+/* hidden must always win — author display rules (flex/grid) otherwise defeat the
+   UA [hidden]{display:none}, leaving toggled elements visible when hidden=true. */
+[hidden] { display:none !important; }
 html { scroll-behavior:smooth; scroll-padding-top:72px; } /* offset the sticky header on anchor jumps */
 
 /* Respect users who ask for less motion — neutralizes the live-dot pulse,
@@ -338,7 +341,9 @@ section { padding:44px 0; }
 .livecard-note { font-family:'IBM Plex Mono'; font-size:11.5px; color:var(--textDim); margin-top:8px; }
 
 /* ---------- board controls ---------- */
-.board-view { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+/* Four equal-width segments so the row reads symmetric — the lone play tab and
+   the three context tabs share the same footprint, distinguished by color/tag. */
+.board-view { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:10px; }
 .pin-note { font-family:'IBM Plex Mono'; font-size:12.5px; color:var(--textDim); margin-bottom:14px; }
 .pin-note b { color:var(--accent); font-weight:600; }
 .pin-note .pin-chk { color:var(--positive); }
@@ -382,17 +387,19 @@ section { padding:44px 0; }
 .slip-metric-v.g { color:var(--positive); }
 .slip-metric-sub { font-family:'IBM Plex Mono'; font-size:11.5px; color:var(--textDim); margin-top:3px; }
 .slip-note { padding:12px 18px; font-family:'IBM Plex Mono'; font-size:12px; color:var(--textDim); }
-.viewtab { display:inline-flex; align-items:center; gap:8px; font-family:'Barlow Condensed'; font-weight:600; font-size:15px; letter-spacing:.06em; text-transform:uppercase; border-radius:6px; padding:8px 16px; cursor:pointer; border:1px solid var(--border); background:none; color:var(--textDim); }
+.viewtab { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:56px; font-family:'Barlow Condensed'; font-weight:600; font-size:16px; letter-spacing:.06em; text-transform:uppercase; border-radius:8px; padding:9px 8px; cursor:pointer; border:1px solid var(--border); background:none; color:var(--textDim); text-align:center; transition:border-color .15s ease, color .15s ease, background .15s ease; }
+.viewtab:hover { border-color:var(--textDim); color:var(--text); }
 .viewtab.active { border-color:var(--accent); background:var(--accent); color:var(--ink); }
-/* Truth labels on non-play tabs: analysis, not bets */
-.vt-tag { font-family:'IBM Plex Mono'; font-size:9px; letter-spacing:.05em; color:var(--textDim); border:1px solid var(--border); border-radius:4px; padding:1px 6px; text-transform:none; }
-.viewtab.active .vt-tag { color:var(--ink); border-color:color-mix(in srgb, var(--ink) 30%, transparent); }
-.tabnote { font-family:'IBM Plex Mono'; font-size:11px; line-height:1.55; color:var(--textDim); margin:2px 0 14px; }
+/* Sub-label under each tab: the play tab is marked, the rest read as analysis. */
+.vt-tag { font-family:'IBM Plex Mono'; font-size:9px; font-weight:500; letter-spacing:.09em; color:var(--textDim); text-transform:uppercase; }
+.vt-tag.is-play { color:var(--positive); }
+.viewtab.active .vt-tag { color:color-mix(in srgb, var(--ink) 78%, transparent); }
+.tabnote { font-family:'IBM Plex Mono'; font-size:11px; line-height:1.5; color:var(--textDim); margin:0 0 14px; }
 .tabnote b { color:var(--positive); font-weight:600; }
-/* K-tab honesty banner */
-.ctx-banner { display:flex; gap:11px; align-items:flex-start; background:var(--board); border:1px solid var(--border); border-left:3px solid var(--model); border-radius:10px; padding:14px 17px; margin-bottom:14px; font-size:13px; line-height:1.55; color:var(--textDim); }
+/* K-tab honesty banner — compact; only rendered on the K Props view */
+.ctx-banner { display:flex; gap:10px; align-items:flex-start; background:var(--board); border:1px solid var(--border); border-left:3px solid var(--model); border-radius:9px; padding:10px 14px; margin-bottom:14px; font-size:12.5px; line-height:1.5; color:var(--textDim); }
 .ctx-banner b { color:var(--text); }
-.ctx-banner-tag { font-family:'IBM Plex Mono'; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:700; color:var(--model); border:1px solid color-mix(in srgb, var(--model) 45%, transparent); border-radius:4px; padding:2px 7px; flex:none; margin-top:1px; white-space:nowrap; }
+.ctx-banner-tag { font-family:'IBM Plex Mono'; font-size:9px; letter-spacing:.07em; text-transform:uppercase; font-weight:700; color:var(--model); border:1px solid color-mix(in srgb, var(--model) 45%, transparent); border-radius:4px; padding:2px 6px; flex:none; margin-top:1px; white-space:nowrap; }
 /* "analysis" chip replaces tier chips on context views */
 .ctx-chip { display:inline-block; font-family:'IBM Plex Mono'; font-size:10.5px; letter-spacing:.04em; color:var(--textDim); border:1px solid var(--border); border-radius:6px; padding:3px 8px; }
 /* Mini model-vs-line scale inside under-play rows */
@@ -619,6 +626,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* ---------- responsive ---------- */
 @media (max-width:760px) {
   .split { grid-template-columns:1fr !important; }
+  /* Board tabs: 2×2 so all four stay symmetric on phones, not a ragged wrap. */
+  .board-view { grid-template-columns:repeat(2,1fr); }
   /* Season stats as a 2×2 grid, not four full-width cards eating the screen. */
   .record { grid-template-columns:repeat(2,1fr) !important; }
   .record .cell { padding:14px 15px; }
