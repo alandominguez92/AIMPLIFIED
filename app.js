@@ -274,10 +274,14 @@
     kCtxBanner: document.getElementById('kCtxBanner'),
     trkNote: document.getElementById('trkNote'),
     trkLabel1: document.getElementById('trkLabel1'),
+    trkLabel2: document.getElementById('trkLabel2'),
+    trkLabel3: document.getElementById('trkLabel3'),
+    trkLabel4: document.getElementById('trkLabel4'),
     trkVal1: document.getElementById('trkVal1'),
     trkVal2: document.getElementById('trkVal2'),
     trkVal3: document.getElementById('trkVal3'),
     trkVal4: document.getElementById('trkVal4'),
+    trkAggregate: document.getElementById('trkAggregate'),
     clvChipText: document.getElementById('clvChipText'),
     whyTitle: document.getElementById('whyTitle'),
     whyBody: document.getElementById('whyBody'),
@@ -1776,27 +1780,66 @@
     strip.hidden = false;
   }
 
+  // Full-model aggregate, phrased as honest disclosure — never the headline.
+  // These are every graded output including the K/ML/RL context we DON'T post as
+  // plays, so the winning batter-under slice can't read as cherry-picked.
+  function aggregateDisclosure(tr) {
+    if (!tr || tr.empty || !tr.tracked) return '';
+    const bits = [`${tr.tracked} graded`];
+    if (tr.winRate != null) bits.push(`${tr.winRate}% win`);
+    if (typeof tr.units === 'number') bits.push(`${tr.units > 0 ? '+' : ''}${tr.units}u flat`);
+    if (tr.clv != null) bits.push(`${tr.clv > 0 ? '+' : ''}${tr.clv}% CLV`);
+    return `<b>Full model log</b>, including the K / moneyline / run-line context we grade but don’t post as plays: ${bits.join(' · ')}. `
+      + `We show the whole thing so the batter-under record above can’t read as cherry-picked — it’s the one market with a proven edge, not the only one we track.`;
+  }
+
   function renderRecord() {
     const tr = state.trackRecord;
     if (!tr) return;
-    if (!tr.empty) {
-      // Real graded results are in — swap the tiles to live numbers.
+    const bu = tr.batterUnders;
+    // Headline the tiles on batter unders — the posted product — whenever we have
+    // a graded under sample. The full aggregate drops to a labeled note below.
+    if (bu && bu.n > 0) {
+      el.trkLabel1.textContent = 'Under hit rate';
+      el.trkVal1.textContent = (bu.winRate != null ? bu.winRate : 0) + '%';
+      el.trkLabel2.textContent = 'Under plays';
+      el.trkVal2.textContent = String(bu.n);
+      el.trkLabel3.textContent = 'Record';
+      el.trkVal3.textContent = bu.record;
+      el.trkLabel4.textContent = 'Units (flat)';
+      el.trkVal4.textContent = (bu.units > 0 ? '+' : '') + bu.units + 'u';
+      el.trkNote.textContent = `${bu.n} graded batter unders · hit rate is the number that transfers to any platform`;
+      if (el.trkAggregate) {
+        el.trkAggregate.innerHTML = aggregateDisclosure(tr);
+        el.trkAggregate.hidden = !el.trkAggregate.innerHTML;
+      }
+    } else if (!tr.empty) {
+      // No graded unders yet, but the model has a graded log — show it honestly,
+      // still framed as the full model rather than a posted-play record.
       el.trkLabel1.textContent = 'Win Rate';
       el.trkVal1.textContent = (tr.winRate != null ? tr.winRate : 0) + '%';
+      el.trkLabel2.textContent = 'Tracked (all model)';
       el.trkVal2.textContent = String(tr.tracked);
+      el.trkLabel3.textContent = 'Tier 1 Record';
       el.trkVal3.textContent = tr.tier1;
+      el.trkLabel4.textContent = 'Units (flat)';
       el.trkVal4.textContent = (tr.units > 0 ? '+' : '') + tr.units + 'u';
-      el.trkNote.textContent = `${tr.tracked} graded picks · updated as games finalize`;
+      el.trkNote.textContent = `${tr.tracked} graded model outputs · batter-under plays grade in as they finalize`;
+      if (el.trkAggregate) { el.trkAggregate.hidden = true; el.trkAggregate.innerHTML = ''; }
     } else {
       // No graded results yet — never show placeholder numbers as if they were real.
-      el.trkLabel1.textContent = 'Win Rate';
+      el.trkLabel1.textContent = 'Under hit rate';
       el.trkVal1.textContent = '—';
+      el.trkLabel2.textContent = 'Under plays';
       el.trkVal2.textContent = tr.logged > 0 ? String(tr.logged) : '—';
+      el.trkLabel3.textContent = 'Record';
       el.trkVal3.textContent = '—';
+      el.trkLabel4.textContent = 'Units (flat)';
       el.trkVal4.textContent = '—';
       el.trkNote.textContent = tr.logged > 0
         ? `${tr.logged} picks logged · grading as tonight's games finalize`
         : 'Tracking begins with tonight’s slate · wins and losses both stay up';
+      if (el.trkAggregate) { el.trkAggregate.hidden = true; el.trkAggregate.innerHTML = ''; }
     }
     renderClvChip();
   }
@@ -1807,7 +1850,14 @@
     if (!el.clvChipText) return;
     if (!LIVE_MODE) { el.clvChipText.textContent = 'Model preview'; return; }
     const tr = state.trackRecord;
-    if (tr && tr.clvN > 0 && tr.clv != null) {
+    const bu = tr && tr.batterUnders;
+    // Lead with the batter-under proof — it's the posted product and the one
+    // number with a real edge. Full-model CLV (~0%) would undercut it up here.
+    if (bu && bu.n > 0) {
+      const cls = bu.units >= 0 ? 'clv-pos' : 'clv-neg';
+      const u = (bu.units > 0 ? '+' : '') + bu.units + 'u';
+      el.clvChipText.innerHTML = `BATTER UNDERS <b class="${cls}">${esc(u)}</b> · ${bu.winRate}% · ${bu.n} graded`;
+    } else if (tr && tr.clvN > 0 && tr.clv != null) {
       // Real closing-line value — the truest credibility metric.
       const cls = tr.clv >= 0 ? 'clv-pos' : 'clv-neg';
       const v = (tr.clv > 0 ? '+' : '') + tr.clv + '%';

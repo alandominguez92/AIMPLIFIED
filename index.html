@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A1622'/%3E%3Ctext x='16' y='23' font-family='Barlow Condensed,Arial,sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='%23F0EFEA'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23E8B84B'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=slate12">
+<link rel="stylesheet" href="style.css?v=slate13">
 </head>
 <body>
 
@@ -193,10 +193,11 @@
     <div class="sec-head"><h2>Public Track Record</h2><span class="count" id="trkNote">tracking begins with tonight’s slate · wins and losses both stay up</span></div>
     <div class="record">
       <div class="cell"><div class="k" id="trkLabel1">Win Rate</div><div class="v" id="trkVal1">—</div></div>
-      <div class="cell"><div class="k">Tracked Bets</div><div class="v" id="trkVal2">—</div></div>
-      <div class="cell"><div class="k">Tier 1 Record</div><div class="v" id="trkVal3">—</div></div>
-      <div class="cell"><div class="k">Units (flat)</div><div class="v" id="trkVal4">—</div></div>
+      <div class="cell"><div class="k" id="trkLabel2">Tracked Bets</div><div class="v" id="trkVal2">—</div></div>
+      <div class="cell"><div class="k" id="trkLabel3">Tier 1 Record</div><div class="v" id="trkVal3">—</div></div>
+      <div class="cell"><div class="k" id="trkLabel4">Units (flat)</div><div class="v" id="trkVal4">—</div></div>
     </div>
+    <p class="trk-aggregate" id="trkAggregate" hidden></p>
 
     <div class="card" id="roiCard" hidden>
       <h3>ROI, CLV &amp; Model Accuracy</h3>
@@ -302,6 +303,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=slate12"></script>
+<script src="app.js?v=slate13"></script>
 </body>
 </html>

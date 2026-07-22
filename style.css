@@ -562,6 +562,10 @@ section { padding:44px 0; }
 .record .v { font-family:'IBM Plex Mono'; font-weight:600; font-size:28px; margin-top:6px; color:var(--text); }
 .record .v.g { color:var(--positive); }
 .record .v.a { color:var(--accent); }
+/* Full-model aggregate: a footnote-weight disclosure so the winning batter-under
+   headline can't read as cherry-picked. Muted, never competing with the tiles. */
+.trk-aggregate { margin:-8px 0 24px; padding:12px 15px; font-size:12.5px; line-height:1.55; color:var(--textDim); background:var(--board); border:1px solid var(--border); border-left:3px solid var(--clv); border-radius:8px; }
+.trk-aggregate b { color:var(--text); font-weight:600; }
 
 /* ROI & Model Accuracy card */
 .roi-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin:4px 0 8px; }
