@@ -2558,8 +2558,12 @@
     // Board carries the model + real prop lines (credits) — poll every 5 min.
     refreshBoard();
     setInterval(refreshBoard, 300000);
-    // Batter props are a second per-event props call — only poll while that tab
-    // is open, to protect the Odds API quota.
+    // Under Plays is the landing board, so its feed must load on boot — without
+    // this the hero + default board sat on "Loading…" until the first interval
+    // tick (up to 5 min). The edge cache still shares one upstream burst per TTL
+    // across viewers, so this doesn't multiply the Odds-API spend. Ongoing polls
+    // stay gated to when the tab is actually open.
+    refreshBatters();
     setInterval(() => { if (isBatter()) refreshBatters(); }, 300000);
     // Track record grades finished games on read — refresh every 10 min.
     refreshTrackRecord();
