@@ -1729,8 +1729,11 @@ function buildTrackRecord(rows) {
 
   // Batter UNDERS — the posted product since the pivot. Hit rate is the number
   // that transfers to any platform; units/ROI are flat-stake sportsbook basis.
+  // Same tier='pass' exclusion as every other breakdown above: a pass means the
+  // model found no edge, so it was never a play and can't count toward the record.
   let buW = 0, buL = 0, buU = 0;
   for (const r of graded) {
+    if (r.tier === 'pass') continue;
     if ((r.market || 'K') === 'K' || r.side !== 'Under') continue;
     if (r.result === 'win') buW++; else buL++;
     buU += profitUnits(r.result, r.price);
@@ -2132,15 +2135,46 @@ async function batterDebug(env) {
       return { market: m, n: arr.length, avgProj: round1(avgProj), avgActual: round1(avgActual), avgProjMinusActual: round1(avg) };
     }).sort((a, b) => b.n - a.n);
 
+    // Market × side — the direct directional test: for each batter market, how
+    // does the Over do vs the Under? This is what decides whether an over could
+    // EVER be considered, or whether the edge is under-only per market.
+    const msMap = groupBy(graded, (r) => {
+      const m = String(r.market || '').toUpperCase();
+      if (!m || m === 'K' || !r.side) return null;
+      return `${m}|${r.side}`;
+    });
+    const byMarketSide = Object.keys(msMap).map((k) => {
+      const [market, side] = k.split('|');
+      return { market, side, ...summarize(msMap[k]) };
+    }).sort((a, b) => a.market.localeCompare(b.market) || a.side.localeCompare(b.side));
+
+    // Market × side × LINE — the PrizePicks question. PP restricts unders at the
+    // low lines (TB 1.5, HRR 1.5); this splits every bucket by exact line so we
+    // can see (a) whether the under edge survives at the higher lines PP DOES
+    // offer, and (b) whether any forced-over line is somehow +EV. n<5 buckets are
+    // kept but flagged thin — a 4-1 line is not a finding.
+    const mslMap = groupBy(graded, (r) => {
+      const m = String(r.market || '').toUpperCase();
+      if (!m || m === 'K' || !r.side || r.line == null) return null;
+      return `${m}|${r.side}|${r.line}`;
+    });
+    const byMarketSideLine = Object.keys(mslMap).map((k) => {
+      const [market, side, line] = k.split('|');
+      const s = summarize(mslMap[k]);
+      return { market, side, line: Number(line), thin: s.n < 5, ...s };
+    }).sort((a, b) => a.market.localeCompare(b.market) || a.side.localeCompare(b.side) || a.line - b.line);
+
     return cors(json({
       underTotal: summarize(unders),
       overTotal: summarize(overs),
+      byMarketSide,
+      byMarketSideLine,
       projBiasByMarket,
       byMonth,
       byPrice,
       byMarket,
       cumulative,
-      read: 'Real if byMonth stays +ROI across most months AND byPrice holds at fair/plus prices (not only <=-140). Spikes confined to one month or one price bucket = fragile/artifact.',
+      read: 'PrizePicks read: in byMarketSideLine, find each market\'s UNDER rows at the lines PP actually offers (usually 2.5+; PP hides TB/HRR 1.5 unders). If those higher-line unders still show +ROI at fair/plus prices, that is the PP-playable product — no overs needed. Only consider an OVER if its row shows +ROI across a non-thin sample (n>=5) AND positive avgCLV; a lone +ROI over on a thin bucket is noise, and remember a sharp book offering only the over is evidence that over is the -EV side.',
     }, 30));
   } catch (e) { return cors(json({ error: String(e && e.message || e) }, 30)); }
 }
