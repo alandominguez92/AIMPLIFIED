@@ -1962,7 +1962,7 @@
     if (stakeInput) stakeInput.addEventListener('change', (e) => setStake(e.target.value));
   }
 
-  // ROI, cumulative-units chart, per-tier / per-side breakdowns, projection MAE.
+  // ROI, cumulative-units chart, per-tier / per-side / per-market breakdowns.
   // Hidden until real graded picks exist; degrades field-by-field if any are absent.
   function renderRoi() {
     const tr = state.trackRecord;
@@ -1974,11 +1974,12 @@
     const roiTxt = tr.roi == null ? '—' : sign(tr.roi, '%');
     const uTxt = tr.units == null ? '—' : sign(tr.units, 'u');
     const clvTxt = tr.clv == null ? '—' : sign(tr.clv, '%');
+    // Four tiles keep the grid symmetric (2×2 mobile, 4-up desktop). Strikeout
+    // MAE lives with the K breakdown below — it's context, not the product.
     const stats = [
       { k: 'CLV vs close', v: clvTxt, tone: tr.clv == null ? '' : (tr.clv >= 0 ? 'g' : 'r') },
       { k: 'ROI', v: roiTxt, tone: tr.roi == null ? '' : (tr.roi >= 0 ? 'g' : 'r') },
       { k: 'Units (flat)', v: uTxt, tone: tr.units == null ? '' : (tr.units >= 0 ? 'g' : 'r') },
-      { k: 'Proj. error (MAE)', v: tr.mae == null ? '—' : '±' + tr.mae + ' K', tone: '' },
       { k: 'Graded plays', v: String(tr.tracked), tone: '' },
     ];
     el.roiStats.innerHTML = stats.map((s) => `
