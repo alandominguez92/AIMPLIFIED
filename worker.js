@@ -799,6 +799,62 @@ const BATTER_MARKETS = [
   { key: 'batter_hits_runs_rbis', label: 'H+R+RBI', metric: 'hrr' },
 ];
 
+// ---- Opponent-context tunables for the batter projection ----
+// Everything here defaults to NEUTRAL (×1.0) when data is missing, so a failed
+// feed leaves the projection exactly at its season-rate baseline — this can only
+// add signal, never break the working under edge. Kept moderate + regressed on
+// purpose: an aggressive matchup swing could move projections off the edge.
+const PLATOON_WEIGHT = 0.5;    // regress the vs-hand adjustment halfway to neutral
+const PARK_WEIGHT = 0.7;       // apply published park factors at 70% strength
+const MIN_SPLIT_PA = 40;       // below this the vs-hand sample is too thin to trust
+const ADJ_LO = 0.75, ADJ_HI = 1.30; // no combined matchup multiplier past this band
+
+// Published, stable single-park HR / total-base tendencies, keyed by StatsAPI
+// venue name. Unlisted (or renamed/relocated) parks fall through to neutral 1.0,
+// which is the safe default — a name miss just means no park adjustment.
+const PARK_FACTORS = {
+  'Coors Field': { hr: 1.28, tb: 1.18 },
+  'Great American Ball Park': { hr: 1.22, tb: 1.08 },
+  'Yankee Stadium': { hr: 1.18, tb: 1.06 },
+  'Citizens Bank Park': { hr: 1.14, tb: 1.05 },
+  'Fenway Park': { hr: 1.02, tb: 1.10 },
+  'Wrigley Field': { hr: 1.05, tb: 1.03 },
+  'Dodger Stadium': { hr: 1.06, tb: 1.01 },
+  'Globe Life Field': { hr: 1.05, tb: 1.03 },
+  'Chase Field': { hr: 1.03, tb: 1.04 },
+  'Truist Park': { hr: 1.03, tb: 1.02 },
+  'Nationals Park': { hr: 1.02, tb: 1.02 },
+  'Rogers Centre': { hr: 1.04, tb: 1.03 },
+  'Angel Stadium': { hr: 1.02, tb: 1.00 },
+  'Busch Stadium': { hr: 0.96, tb: 0.99 },
+  'Progressive Field': { hr: 0.97, tb: 0.99 },
+  'Target Field': { hr: 0.98, tb: 1.00 },
+  'Guaranteed Rate Field': { hr: 1.06, tb: 1.02 },
+  'Rate Field': { hr: 1.06, tb: 1.02 },
+  'Minute Maid Park': { hr: 1.02, tb: 1.02 },
+  'Daikin Park': { hr: 1.02, tb: 1.02 },
+  'PNC Park': { hr: 0.92, tb: 0.98 },
+  'Kauffman Stadium': { hr: 0.90, tb: 1.02 },
+  'Comerica Park': { hr: 0.91, tb: 0.99 },
+  'loanDepot park': { hr: 0.90, tb: 0.95 },
+  'T-Mobile Park': { hr: 0.91, tb: 0.94 },
+  'Oracle Park': { hr: 0.84, tb: 1.00 },
+  'Petco Park': { hr: 0.93, tb: 0.96 },
+  'Oriole Park at Camden Yards': { hr: 0.95, tb: 0.99 },
+  'Citi Field': { hr: 0.97, tb: 0.99 },
+  'American Family Field': { hr: 1.03, tb: 1.01 },
+  'Sutter Health Park': { hr: 1.05, tb: 1.05 },
+  'George M. Steinbrenner Field': { hr: 1.10, tb: 1.05 },
+};
+// Park multiplier for a metric, compressed by PARK_WEIGHT. hrr rides a dampened
+// total-base factor (hits/runs/rbi are less park-driven than raw HR/TB).
+function parkFactor(venue, metric) {
+  const f = venue && PARK_FACTORS[venue];
+  if (!f) return 1;
+  const raw = metric === 'hr' ? f.hr : metric === 'tb' ? f.tb : (1 + 0.6 * (f.tb - 1));
+  return 1 + PARK_WEIGHT * (raw - 1);
+}
+
 async function batters(env, ctx) {
   const season = new Date().getUTCFullYear();
   const key = env && env.ODDS_API_KEY;
@@ -820,8 +876,13 @@ async function batters(env, ctx) {
   const schedByMatchup = {};
   const lineupSlotById = {};        // playerId -> batting slot 1-9
   const lineupPostedTeamIds = new Set(); // teams whose lineup is posted
+  const oppPPIdByTeamId = {};       // teamId -> the OPPONENT's probable pitcher id
+  const parkByTeamId = {};          // teamId -> tonight's venue name (for park factor)
+  const ppIds = new Set();          // probable-pitcher ids to resolve throwing hand
   try {
-    const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}&hydrate=team,lineups`, { headers: { accept: 'application/json' } });
+    // Adds probablePitcher (opposing arm) + venue (park factor) to the same
+    // schedule call — no extra request, and both feed the batter projection.
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}&hydrate=team,lineups,probablePitcher,venue`, { headers: { accept: 'application/json' } });
     if (r.ok) {
       const sd = await r.json();
       (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
@@ -836,9 +897,37 @@ async function batters(env, ctx) {
           lineupPostedTeamIds.add(team.id);
           arr.forEach((p, i) => { if (p && p.id) lineupSlotById[p.id] = i + 1; });
         });
+        // Each team's batters face the OTHER team's probable pitcher; both share
+        // the venue. Missing pitcher/venue just leaves that team at neutral.
+        const venueName = (g.venue && g.venue.name) || null;
+        const awayTeam = g.teams.away.team, homeTeam = g.teams.home.team;
+        const awayPP = g.teams.away.probablePitcher, homePP = g.teams.home.probablePitcher;
+        if (awayTeam && awayTeam.id) { parkByTeamId[awayTeam.id] = venueName; if (homePP && homePP.id) oppPPIdByTeamId[awayTeam.id] = homePP.id; }
+        if (homeTeam && homeTeam.id) { parkByTeamId[homeTeam.id] = venueName; if (awayPP && awayPP.id) oppPPIdByTeamId[homeTeam.id] = awayPP.id; }
+        if (awayPP && awayPP.id) ppIds.add(awayPP.id);
+        if (homePP && homePP.id) ppIds.add(homePP.id);
       });
     }
   } catch (e) { /* no gamePk mapping -> batter picks just won't be logged */ }
+
+  // Resolve each probable pitcher's throwing hand (one light StatsAPI call; the
+  // basic person record carries pitchHand). teamId -> 'L' | 'R' of the arm its
+  // batters face tonight. Any failure leaves oppHandByTeamId empty -> neutral.
+  const oppHandByTeamId = {};
+  if (ppIds.size) {
+    try {
+      const r = await fetch(`${STATS}/people?personIds=${[...ppIds].join(',')}`, { headers: { accept: 'application/json' } });
+      if (r.ok) {
+        const d = await r.json();
+        const handById = {};
+        (d.people || []).forEach((pl) => { handById[pl.id] = (pl.pitchHand && pl.pitchHand.code) || null; });
+        for (const teamId of Object.keys(oppPPIdByTeamId)) {
+          const h = handById[oppPPIdByTeamId[teamId]];
+          if (h === 'L' || h === 'R') oppHandByTeamId[teamId] = h;
+        }
+      }
+    } catch (e) { /* no hands -> platoon stays neutral */ }
+  }
 
   const marketKeys = BATTER_MARKETS.map((m) => m.key).join(',');
   const byName = {}; // normName -> { name, matchup, timeMs, timeLabel, props:{metric:{DK,FD}} }
@@ -890,6 +979,33 @@ async function batters(env, ctx) {
     }
   } catch (e) { /* projections fall back to rate-only where possible */ }
 
+  // 2b) Platoon splits: each batter's TB / HR / (H+R+RBI) per PA vs LHP and vs
+  // RHP, so tonight's projection can lean on how he hits the hand he's facing.
+  // One bulk statSplits call (chunked for URL length); any miss -> no platoon
+  // adjustment for that batter, i.e. neutral. splitByPlayerId[id] = { L, R }
+  // where each side is { pa, hr, tb, hrr } season totals for that split.
+  const splitByPlayerId = {};
+  const batterIds = [...new Set(Object.values(statByName).map((x) => x.id).filter(Boolean))];
+  const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
+  await Promise.all(chunk(batterIds, 100).map(async (ids) => {
+    try {
+      const r = await fetch(`${STATS}/people?personIds=${ids.join(',')}&hydrate=stats(group=[hitting],type=[statSplits],sitCodes=[vl,vr],season=${season})`, { headers: { accept: 'application/json' } });
+      if (!r.ok) return;
+      const d = await r.json();
+      (d.people || []).forEach((pl) => {
+        const m = {};
+        (((pl.stats || [])[0] || {}).splits || []).forEach((sp) => {
+          const code = sp.split && sp.split.code;
+          const st = sp.stat || {};
+          if (code !== 'vl' && code !== 'vr') return;
+          const pa = toNum(st.plateAppearances);
+          m[code === 'vl' ? 'L' : 'R'] = { pa, hr: toNum(st.homeRuns), tb: toNum(st.totalBases), hrr: toNum(st.hits) + toNum(st.runs) + toNum(st.rbi) };
+        });
+        if (m.L || m.R) splitByPlayerId[pl.id] = m;
+      });
+    } catch (e) { /* this chunk stays neutral */ }
+  }));
+
   // 3) Build priced rows; collect pool arrays for percentile bars.
   const pool = { iso: [], slg: [], contact: [], disc: [] };
   const draft = [];
@@ -915,16 +1031,37 @@ async function batters(env, ctx) {
     const bbpct = pa > 0 ? toNum(st.baseOnBalls) / pa : 0;
     pool.iso.push(iso); pool.slg.push(toNum(st.slg)); pool.contact.push(1 - kpct); pool.disc.push(bbpct);
 
+    const baseRate = { hr: hr / pa, tb: tb / pa, hrr: (hits + runs + rbi) / pa };
+
+    // Opponent context. facingHand = the arm this batter's lineup faces tonight;
+    // split = his per-PA production vs that hand; venue drives the park factor.
+    // Each multiplier is regressed and the product clamped, so a thin split or an
+    // extreme park can't yank the projection — and any missing piece = ×1.0.
+    const facingHand = oppHandByTeamId[match.teamId] || null;
+    const split = splitByPlayerId[match.id] || null;
+    const venue = parkByTeamId[match.teamId] || null;
+    const platoonMult = (metric) => {
+      if (!facingHand || !split) return 1;
+      const s = facingHand === 'L' ? split.L : split.R;
+      if (!s || !(s.pa >= MIN_SPLIT_PA) || !(baseRate[metric] > 0)) return 1;
+      const ratio = (s[metric] / s.pa) / baseRate[metric];
+      return 1 + PLATOON_WEIGHT * (ratio - 1);
+    };
+    const adj = {};
+    for (const m of ['hr', 'tb', 'hrr']) {
+      adj[m] = clamp(platoonMult(m) * parkFactor(venue, m), ADJ_LO, ADJ_HI);
+    }
+
     const lambda = {
-      hr: (hr / pa) * expPA * BATTER_PROJ_CAL,
-      tb: (tb / pa) * expPA * BATTER_PROJ_CAL,
-      hrr: (slot ? ((hits + runs + rbi) / pa) * expPA : (hits + runs + rbi) / gp) * BATTER_PROJ_CAL,
+      hr: baseRate.hr * expPA * BATTER_PROJ_CAL * adj.hr,
+      tb: baseRate.tb * expPA * BATTER_PROJ_CAL * adj.tb,
+      hrr: (slot ? baseRate.hrr * expPA : (hits + runs + rbi) / gp) * BATTER_PROJ_CAL * adj.hrr,
     };
     const markets = {};
     for (const spec of BATTER_MARKETS) {
       markets[spec.metric] = priceBatterProp(rec.props[spec.metric], lambda[spec.metric]);
     }
-    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot });
+    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, facingHand, venue, adj });
   }
   if (!draft.length) return cors(json([], 300));
 
@@ -956,6 +1093,12 @@ async function batters(env, ctx) {
       timeMs: b.rec.timeMs,
       timeLabel: b.rec.timeLabel,
       lineupSlot: b.slot || null,
+      // Matchup context that shaped the projection — surfaced so the reasoning
+      // stays visible. facingHand = opposing arm, park = venue, adj = the applied
+      // platoon×park multiplier per metric (1.0 = no adjustment / data missing).
+      facingHand: b.facingHand || null,
+      park: b.venue || null,
+      adj: b.adj || null,
       pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : '—',
       odds: lead ? lead.m.price : null,
       oddsBooks: lead ? lead.m.books : null,
