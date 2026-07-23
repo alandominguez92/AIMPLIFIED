@@ -622,6 +622,9 @@ section { padding:44px 0; }
 .cal-tier-n { color:var(--textDim); font-size:10.5px; } /* --muted is near-invisible on white */
 
 footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40px; color:var(--textDim); font-size:12.5px; line-height:1.7; }
+.foot-links { display:flex; flex-wrap:wrap; gap:8px 22px; margin-top:16px; }
+.foot-links a { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12px; letter-spacing:.03em; color:var(--textDim); text-decoration:none; border-bottom:1px solid transparent; }
+.foot-links a:hover { color:var(--text); border-bottom-color:var(--accent); }
 
 /* ---------- responsive ---------- */
 @media (max-width:760px) {

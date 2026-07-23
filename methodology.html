@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Methodology — Aimplified</title>
+<meta name="description" content="How Aimplified builds its MLB batter projections, finds edges, grades every pick in public, and measures closing-line value.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A1622'/%3E%3Ctext x='16' y='23' font-family='Barlow Condensed,Arial,sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='%23F0EFEA'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23E8B84B'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=slate18">
+<style>
+  .docwrap { max-width:1100px; margin:0 auto; padding:0 24px; }
+  .docnav { display:flex; align-items:center; justify-content:space-between; padding:22px 0; border-bottom:1px solid var(--border); }
+  .docnav .brand { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:700; font-size:24px; letter-spacing:.03em; color:var(--text); text-decoration:none; }
+  .docnav .brand .d { color:var(--accent); }
+  .docnav .back { font-family:'IBM Plex Mono',ui-monospace,monospace; font-size:12.5px; color:var(--textDim); text-decoration:none; }
+  .docnav .back:hover { color:var(--accent); }
+  .doc { max-width:720px; margin:0 auto; padding:44px 0 60px; }
+  .doc .eyebrow { font-family:'IBM Plex Mono',ui-monospace,monospace; font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent); }
+  .doc h1 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:700; font-size:clamp(36px,6vw,52px); line-height:1; text-transform:uppercase; letter-spacing:.01em; margin:12px 0 8px; }
+  .doc .lede { font-size:17px; line-height:1.6; color:var(--textDim); max-width:640px; margin-bottom:8px; }
+  .doc h2 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:700; font-size:26px; text-transform:uppercase; letter-spacing:.03em; margin:38px 0 12px; padding-top:22px; border-top:1px solid var(--border); }
+  .doc p { font-size:15.5px; line-height:1.7; color:var(--text); margin-bottom:14px; }
+  .doc p.muted { color:var(--textDim); }
+  .doc b { font-weight:600; }
+  .doc .g { color:var(--positive); font-weight:600; }
+  .doc .c { color:var(--model); font-weight:600; }
+  .doc ul { margin:0 0 16px 2px; padding:0; list-style:none; }
+  .doc li { position:relative; padding-left:20px; font-size:15.5px; line-height:1.65; color:var(--text); margin-bottom:9px; }
+  .doc li::before { content:'—'; position:absolute; left:0; color:var(--accent); }
+  .doc .note { background:var(--board); border:1px solid var(--border); border-left:3px solid var(--model); border-radius:9px; padding:15px 18px; margin:18px 0; font-size:14px; line-height:1.6; color:var(--textDim); }
+  .doc .note b { color:var(--text); }
+  .doc code { font-family:'IBM Plex Mono',ui-monospace,monospace; font-size:13px; background:var(--board); border:1px solid var(--border); border-radius:4px; padding:2px 6px; color:var(--text); }
+  .doc .formula { font-family:'IBM Plex Mono',ui-monospace,monospace; font-size:13.5px; line-height:1.6; background:var(--board3); border:1px solid var(--border); border-radius:8px; padding:14px 16px; color:var(--textDim); margin:6px 0 16px; overflow-x:auto; }
+</style>
+</head>
+<body>
+<div class="docwrap">
+  <nav class="docnav">
+    <a class="brand" href="/">AIMPLIFIED<span class="d">.</span></a>
+    <a class="back" href="/">← Tonight's slate</a>
+  </nav>
+
+  <article class="doc">
+    <div class="eyebrow">Methodology</div>
+    <h1>How the model works</h1>
+    <p class="lede">No black box, no hype. Here's exactly how a projection is built, why a pick makes the board, how every result is graded in public, and how we measure whether the edge is real.</p>
+
+    <h2>The thesis</h2>
+    <p>Casual money loves the <b>over</b>. People bet the hitters they've heard of to do something — get a hit, drive in a run, go deep — so sportsbooks and pick'em apps shade those lines <i>up</i> to match the demand. That makes the <span class="g">under</span> the side with value on batter counting-stat props.</p>
+    <p>Aimplified is built around that one edge: <b>fade the public over on batter props.</b> Everything on the board is priced against a real market line, and the plays we post are the unders where our projection sits far enough below the line to matter.</p>
+
+    <h2>Building a projection</h2>
+    <p>For each hitter we start from his season rate for the stat — total bases, or hits+runs+RBI, per plate appearance — and project tonight's workload:</p>
+    <ul>
+      <li><b>Confirmed lineups.</b> Once a manager posts the card, a hitter who isn't in it is dropped, and we project his plate appearances from his actual <b>batting-order slot</b> (a leadoff man sees nearly a full PA more than the 9-hole).</li>
+      <li><b>The matchup.</b> The projection adjusts for the <span class="c">handedness</span> of the pitcher he's facing (how he hits lefties vs. righties) and the <span class="c">ballpark</span> (Coors inflates, Petco suppresses). These are applied conservatively — a small sample or an extreme park can't swing a projection wildly.</li>
+      <li><b>A probability, not a point.</b> We spread the projection into a full distribution (Poisson) to get the model's true chance of going over or under the posted line — not just a single guess.</li>
+    </ul>
+    <div class="note">The batter model is deliberately <b>regressed toward the market</b>. We keep only a fraction of the gap between our raw projection and the sharp line, because an uncalibrated model that trusts itself too much manufactures fake edges. We'd rather understate an edge than invent one.</div>
+
+    <h2>Edge and tiers</h2>
+    <p>“Edge” is the gap between our fair probability and the market's vig-free probability at the same line, in percentage points. Positive means value on the board. A pick is tiered <b>T1 / T2 / T3</b> by how large that edge is; anything below the bar is a <b>Pass</b> — the model found nothing, so it isn't a play and never counts toward the record.</p>
+    <div class="formula">edge = | our P(under) − market's fair P(under) |  ×  100</div>
+
+    <h2>How we grade — in public</h2>
+    <p>Every priced pick is logged before first pitch and graded the next morning straight from the official MLB box score. <b>Wins and losses both stay up.</b> There is no hiding a cold week, no quietly deleting a bad night. The public record is the product — a picks site you can't audit is just a guy with opinions.</p>
+    <p class="muted">The headline record you see is <b>batter unders only</b> — the one market our graded results show a real edge. Strikeout, moneyline, and run-line projections stay on the site as context, but we don't post them as plays, and the full model log (including those) is shown underneath the headline so nothing reads as cherry-picked.</p>
+
+    <h2>CLV — the number that actually matters</h2>
+    <p>Closing-line value measures how far the sharp market moved <i>toward</i> our pick between when we posted it and when the game started. It's the truest test of a good bet: if the market keeps moving your way, you were early on real value — regardless of whether that night won or lost. We track it honestly, and we won't claim an edge is proven until CLV backs it up over a real sample.</p>
+
+    <h2>Honest limits</h2>
+    <ul>
+      <li><b>Small samples lie.</b> A few weeks of results — or a single hot tier — isn't proof. We say so, and we don't scale on a hunch.</li>
+      <li><b>Past results don't predict the future.</b> A model that worked is not a promise it keeps working.</li>
+      <li><b>Availability varies.</b> Lines and which sides are offered differ by book and app. PrizePicks in particular restricts unders on some low lines — always confirm the under is actually offered before you place it.</li>
+      <li><b>ROI is a flat-stake, sportsbook basis.</b> Hit rate is the number that carries across platforms; unit returns assume 1u-flat sportsbook pricing, not pick'em payouts.</li>
+    </ul>
+
+    <div class="note">Aimplified is a sports analytics and entertainment product. Nothing here is gambling advice. Projections are model outputs with stated uncertainty. 21+ where applicable. If you or someone you know has a gambling problem, call <b>1-800-GAMBLER</b>. See our <a href="/legal.html" style="color:var(--accent)">Terms &amp; Disclaimer</a>.</div>
+  </article>
+</div>
+</body>
+</html>
