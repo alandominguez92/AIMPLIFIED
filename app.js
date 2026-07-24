@@ -2235,7 +2235,7 @@
         <div class="fc-scale-wrap">
           <div class="fc-scale-label"><span>Where the model lands vs. the market line</span><span>${esc(propLabel)}</span></div>
           <div class="fc-tagrow">
-            <span class="fc-model" style="left:${mp}%">▼ Model ${f.projVal}</span>
+            <span class="fc-model" style="left:${mp}%">Model ${f.projVal} ▼</span>
             <span class="fc-linetag" style="left:${lp}%">▼ Line ${esc(String(f.line))}</span>
           </div>
           <div class="fc-track">
