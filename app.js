@@ -1118,6 +1118,32 @@
   // the park/hand DIRECTION (↓/↑), never the adjustment's unproven magnitude,
   // until platoon+park finishes validating.
   const LABEL_METRIC = { HR: 'hr', TB: 'tb', 'H+R+RBI': 'hrr' };
+
+  // MLB club colors for the team badge — [background, readable text]. Keyed by
+  // the abbreviations the feed emits, plus StatsAPI variants (AZ, CHW, OAK, …).
+  // Any team not listed falls back to the neutral gold badge, so it never breaks.
+  // Dark-primary clubs use a bright secondary as the text so they stay legible.
+  const TEAM_COLORS = {
+    ARI: ['#A71930', '#E3D4AD'], AZ: ['#A71930', '#E3D4AD'],
+    ATL: ['#CE1141', '#ffffff'], BAL: ['#DF4601', '#111111'],
+    BOS: ['#BD3039', '#ffffff'], CHC: ['#0E3386', '#ffffff'],
+    CWS: ['#27251F', '#ffffff'], CHW: ['#27251F', '#ffffff'],
+    CIN: ['#C6011F', '#ffffff'], CLE: ['#E31937', '#ffffff'],
+    COL: ['#333366', '#C4CED4'], DET: ['#0C2340', '#FA4616'],
+    HOU: ['#002D62', '#EB6E1F'], KC: ['#004687', '#ffffff'], KCR: ['#004687', '#ffffff'],
+    LAA: ['#BA0021', '#ffffff'], LAD: ['#005A9C', '#ffffff'],
+    MIA: ['#00A3E0', '#111111'], MIL: ['#12284B', '#FFC52F'],
+    MIN: ['#002B5C', '#ffffff'], NYM: ['#002D72', '#FF5910'],
+    NYY: ['#0C2340', '#ffffff'], ATH: ['#003831', '#EFB21E'], OAK: ['#003831', '#EFB21E'],
+    PHI: ['#E81828', '#ffffff'], PIT: ['#27251F', '#FDB827'],
+    SD: ['#2F241D', '#FFC425'], SDP: ['#2F241D', '#FFC425'],
+    SF: ['#FD5A1E', '#111111'], SFG: ['#FD5A1E', '#111111'],
+    SEA: ['#0C2C56', '#C4CED4'], STL: ['#C41E3A', '#FEDB00'],
+    TB: ['#092C5C', '#8FBCE6'], TBR: ['#092C5C', '#8FBCE6'],
+    TEX: ['#003278', '#ffffff'], TOR: ['#134A8E', '#ffffff'],
+    WSH: ['#AB0003', '#ffffff'], WSN: ['#AB0003', '#ffffff'],
+  };
+
   function whyUnderCue(g) {
     const cushion = Math.round((g.line - g.projVal) * 100) / 100;
     const cushTxt = cushion > 0
@@ -1253,7 +1279,13 @@
         // he plays for. Badge it so you can tell at a glance which side he's on
         // without knowing the player. (Other views reuse this branch without a
         // per-player team, so the badge only shows when g.team is present.)
-        const teamBadge = (isBatter() && g.team) ? ` <span class="team-badge">${esc(g.team)}</span>` : '';
+        let teamBadge = '';
+        if (isBatter() && g.team) {
+          const tc = TEAM_COLORS[g.team];
+          teamBadge = tc
+            ? ` <span class="team-badge tc" style="background:${tc[0]};color:${tc[1]}">${esc(g.team)}</span>`
+            : ` <span class="team-badge">${esc(g.team)}</span>`;
+        }
         matchupCell = `<div>
             <b>${esc(g.matchup)}</b>${teamBadge}
             <span class="matchup-sub">${esc(g.subline)}</span>

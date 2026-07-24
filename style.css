@@ -444,6 +444,9 @@ section { padding:44px 0; }
 .board-row .matchup-sub { color:var(--textDim); font-size:12.5px; display:block; margin-top:2px; }
 /* Which club the player is on — a badge so you don't have to know the player. */
 .team-badge { display:inline-block; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent); border:1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius:4px; padding:2px 6px; vertical-align:middle; position:relative; top:-1px; }
+/* Team-colored variant: inline style sets the club's fill + readable text; the
+   border is neutralized to a hairline so every club reads as a clean pill. */
+.team-badge.tc { font-weight:800; border-color:rgba(255,255,255,.14); }
 /* K-props pitcher-led matchup headline */
 .board-row .mp-duel { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:700; font-size:18px; letter-spacing:.01em; line-height:1.1; }
 .board-row .mp-name { color:var(--text); }
