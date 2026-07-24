@@ -347,7 +347,7 @@ section { padding:44px 0; }
 /* ---------- board controls ---------- */
 /* Four equal-width segments so the row reads symmetric — the lone play tab and
    the three context tabs share the same footprint, distinguished by color/tag. */
-.board-view { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:10px; }
+.board-view { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
 .pin-note { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12.5px; color:var(--textDim); margin-bottom:14px; }
 .pin-note b { color:var(--accent); font-weight:600; }
 .pin-note .pin-chk { color:var(--positive); }
@@ -451,6 +451,9 @@ section { padding:44px 0; }
 /* Team-colored variant: inline style sets the club's fill + readable text; the
    border is neutralized to a hairline so every club reads as a clean pill. */
 .team-badge.tc { font-weight:800; border-color:rgba(255,255,255,.14); }
+/* Same-game correlation: a heads-up tag + faint row tint grouping the cluster. */
+.corr-tag { display:inline-block; margin-left:8px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--warm); background:color-mix(in srgb, var(--warm) 12%, transparent); border:1px solid color-mix(in srgb, var(--warm) 30%, transparent); border-radius:4px; padding:2px 7px; white-space:nowrap; vertical-align:middle; }
+.board-row.corr { background:linear-gradient(90deg, color-mix(in srgb, var(--warm) 5%, transparent), transparent 60%); }
 /* K-props pitcher-led matchup headline */
 .board-row .mp-duel { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:700; font-size:18px; letter-spacing:.01em; line-height:1.1; }
 .board-row .mp-name { color:var(--text); }
@@ -647,8 +650,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* ---------- responsive ---------- */
 @media (max-width:760px) {
   .split { grid-template-columns:1fr !important; }
-  /* Board tabs: 2×2 so all four stay symmetric on phones, not a ragged wrap. */
-  .board-view { grid-template-columns:repeat(2,1fr); }
+  /* Board tabs: three across on phones — short enough to stay in one clean row. */
+  .board-view { grid-template-columns:repeat(3,1fr); gap:6px; }
+  .board-view .viewtab { font-size:14px; padding:9px 4px; }
   /* Season stats as a 2×2 grid, not four full-width cards eating the screen. */
   .record { grid-template-columns:repeat(2,1fr) !important; }
   .record .cell { padding:14px 15px; }

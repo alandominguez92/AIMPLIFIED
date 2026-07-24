@@ -566,7 +566,6 @@
       if (!parts.includes(teamAbbr)) continue;
       if (g.tier && g.tier !== 'pass' && g.pick && g.pick !== '—') return { id: g.id, view: 'kprops', pick: g.pick };
       if (g.ml && typeof g.ml.tier === 'number') return { id: g.id, view: 'moneyline', pick: g.ml.pick };
-      if (g.rl && typeof g.rl.tier === 'number' && g.rl.modelAgrees) return { id: g.id, view: 'runline', pick: g.rl.pick };
       return { id: g.id, view: 'kprops', pick: null }; // on the board, but no pick -> no impact
     }
     return null;
@@ -1169,6 +1168,11 @@
 
   function renderBoard() {
     const games = getFilteredSortedGames();
+    // Same-game correlation: count how many board picks share each game so we can
+    // warn when multiple unders ride the same matchup (they hit/miss together).
+    // Batter board only — keyed by gamePk, which every batter row carries.
+    const gameCounts = {};
+    if (isBatter()) games.forEach((g) => { if (g.gamePk != null) gameCounts[g.gamePk] = (gameCounts[g.gamePk] || 0) + 1; });
     renderSlateSummary();
     el.noResults.hidden = games.length !== 0;
     if (!games.length) el.noResults.textContent = emptyBoardMessage();
@@ -1202,6 +1206,9 @@
       const edgeColor = (!hasEdge || !isBatter()) ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
       const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
       const tierVal = activeTier(g);
+      // How many board picks share this pick's game (batter view) — drives the
+      // same-game correlation flag + a faint row tint that groups the cluster.
+      const corrN = isBatter() && g.gamePk != null ? (gameCounts[g.gamePk] || 0) : 0;
 
       // The four view-specific cells (pick, odds, [edge — shared], detail).
       const money = (v) => v == null ? '—' : (v > 0 ? '+' + v : String(v));
@@ -1256,6 +1263,7 @@
       const rowClasses = ['board-row'];
       if (isSelected) rowClasses.push('selected');
       else if (isExpanded) rowClasses.push('expanded');
+      if (corrN >= 2) rowClasses.push('corr');
 
       const rowA11y = state.compareMode
         ? `role="button" tabindex="0" aria-pressed="${isSelected}" aria-label="Compare ${esc(g.matchup)}"`
@@ -1292,9 +1300,10 @@
             ? ` <span class="team-badge tc" style="background:${tc[0]};color:${tc[1]}">${esc(g.team)}</span>`
             : ` <span class="team-badge">${esc(g.team)}</span>`;
         }
+        const corrTag = corrN >= 2 ? ` <span class="corr-tag" title="Correlated: these unders share one game and tend to hit or miss together">⚠ ${corrN} in this game</span>` : '';
         matchupCell = `<div>
             <b>${esc(g.matchup)}</b>${teamBadge}
-            <span class="matchup-sub">${esc(g.subline)}</span>
+            <span class="matchup-sub">${esc(g.subline)}${corrTag}</span>
             ${weatherHtml}
           </div>`;
       }
