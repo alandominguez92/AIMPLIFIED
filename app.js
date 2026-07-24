@@ -976,9 +976,12 @@
 
     // Hide tier/edge controls only on a live slate with no market tiers.
     const hideModelControls = live && !modeled;
+    // Tier filters grade PLAYS, and only the batter board posts plays — so hide
+    // them on the context views (a "Tier 1 moneyline" is not a recommendation).
+    const hideTiers = hideModelControls || !isBatter();
     document.querySelectorAll('.filter-btn').forEach((btn) => {
       const isTierBtn = btn.dataset.filter !== 'all';
-      btn.style.display = hideModelControls && isTierBtn ? 'none' : '';
+      btn.style.display = hideTiers && isTierBtn ? 'none' : '';
       btn.classList.toggle('active', btn.dataset.filter === state.filter);
     });
     const sortBtn = document.querySelector('[data-action="toggle-sort"]');
@@ -1042,7 +1045,7 @@
     const cols = isBatter()
       ? ['', 'Batter', 'The fade · model vs line', 'Price · DK/FD', 'Edge', 'Model P(under)', 'Tier', '']
       : isML()
-        ? ['', 'Matchup', 'Team to win', 'Moneyline', 'Edge', 'Win Prob', '', '']
+        ? ['', 'Matchup', 'Team to win', 'Moneyline', 'Line value', 'Win Prob', '', '']
         : ['', 'Matchup', 'Model lean', 'Price · DK/FD', 'Edge', '80% Interval', '', ''];
     el.boardHead.innerHTML = cols.map((c) => c ? `<span class="col-label">${c}</span>` : '<span></span>').join('');
   }
@@ -1193,7 +1196,10 @@
 
       const edgeVal = activeEdge(g);
       const hasEdge = edgeVal != null;
-      const edgeColor = !hasEdge ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
+      // Green/red edge is a PLAY signal — reserve it for the batter board. On the
+      // context views (ML/K/RL) the edge is information, not a recommendation, so
+      // it renders neutral: a losing moneyline can't masquerade as green "value".
+      const edgeColor = (!hasEdge || !isBatter()) ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
       const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
       const tierVal = activeTier(g);
 
@@ -2322,10 +2328,22 @@
     renderComparePanel();
   }
 
-  // Show the honest "projections, not plays" banner only on the K Props tab, and
-  // hide the play controls (sort/compare) on context views where nothing's a bet.
+  // Honest "context, not plays" banner on the de-listed markets (K props and
+  // moneyline). The batter board is the only one that posts plays; these show the
+  // model's read so nothing's hidden, but the graded record has no edge to bet.
+  const CTX_BANNERS = {
+    kprops: ['Projections · not plays', 'Our graded record found <b>no betting edge in strikeout props</b> — the market prices them efficiently. The projections stay because they’re honest analysis, but we don’t post K bets we wouldn’t make ourselves.'],
+    moneyline: ['Context · not plays', 'Our graded record shows <b>no reliable edge in moneylines</b> — a heavy favorite can show a number and still be a bad bet. Win probability is shown as context (model vs. the market), not posted as a play.'],
+  };
   function renderViewChrome() {
-    if (el.kCtxBanner) el.kCtxBanner.hidden = state.boardView !== 'kprops';
+    if (!el.kCtxBanner) return;
+    const b = CTX_BANNERS[state.boardView];
+    if (b) {
+      el.kCtxBanner.innerHTML = `<span class="ctx-banner-tag">${b[0]}</span><span>${b[1]}</span>`;
+      el.kCtxBanner.hidden = false;
+    } else {
+      el.kCtxBanner.hidden = true;
+    }
   }
 
   function toggleSort() {
