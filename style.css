@@ -409,6 +409,15 @@ section { padding:44px 0; }
 .bmini .gp { position:absolute; top:50%; height:1.5px; background:repeating-linear-gradient(90deg, var(--positive) 0 4px, transparent 4px 7px); transform:translateY(-50%); }
 .bcushion { display:block; margin-top:5px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; color:var(--textDim); }
 .bcushion b { color:var(--model); font-weight:600; }
+/* "Why Under" cue: cushion (the model's reason) + factual matchup (hand · park). */
+.bwhy { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; margin-top:6px; max-width:340px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; line-height:1.35; color:var(--textDim); }
+.bw-cush b { color:var(--text); font-weight:600; }
+.bw-cush b.u { color:var(--positive); }
+.bw-fac b { color:var(--text); font-weight:600; }
+.bw-park { color:var(--textDim); }
+.bw-sep { color:var(--border); }
+.bw-dn { color:var(--positive); font-weight:700; }
+.bw-up { color:var(--textDim); font-weight:700; }
 .board-search { margin-bottom:12px; }
 .board-search input { width:260px; max-width:100%; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:13px; color:var(--text); background:var(--board); border:1px solid var(--border); border-radius:5px; padding:8px 12px; outline:none; }
 .board-controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }

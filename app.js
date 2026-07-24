@@ -1111,6 +1111,33 @@
     el.slateSummary.hidden = false;
   }
 
+  // The "Why Under" cue under each pick: the model's cushion (its real reason to
+  // fade) plus the factual matchup — who he faces and the park. Everything after
+  // the cushion is optional and simply omitted when absent, so a pick with no
+  // posted pitcher/park shows just the cushion — never a broken half-cue. We show
+  // the park/hand DIRECTION (↓/↑), never the adjustment's unproven magnitude,
+  // until platoon+park finishes validating.
+  const LABEL_METRIC = { HR: 'hr', TB: 'tb', 'H+R+RBI': 'hrr' };
+  function whyUnderCue(g) {
+    const cushion = Math.round((g.line - g.projVal) * 100) / 100;
+    const cushTxt = cushion > 0
+      ? `model <b>${g.projVal}</b> · <b class="u">${cushion} under</b> the ${g.line} line${cushion < 0.4 ? ' — thin' : ''}`
+      : `model <b>${g.projVal}</b> · right at the ${g.line} line`;
+    const parts = [`<span class="bw-cush">${cushTxt}</span>`];
+    const hand = g.facingHand === 'L' ? 'LHP' : g.facingHand === 'R' ? 'RHP' : null;
+    if (hand) parts.push(`<span class="bw-fac">vs <b>${hand}</b></span>`);
+    if (g.park) {
+      const metric = LABEL_METRIC[g.marketLabel];
+      const a = g.adj && metric ? g.adj[metric] : null;
+      let arrow = '';
+      if (a != null && a < 0.98) arrow = ` <span class="bw-dn">↓</span>`;
+      else if (a != null && a > 1.02) arrow = ` <span class="bw-up">↑</span>`;
+      const short = String(g.park).replace(/ (Park|Stadium|Field|Ballpark)$/i, '');
+      parts.push(`<span class="bw-park">${esc(short)}${arrow}</span>`);
+    }
+    return `<span class="bwhy">${parts.join('<span class="bw-sep">·</span>')}</span>`;
+  }
+
   function renderBoard() {
     const games = getFilteredSortedGames();
     renderSlateSummary();
@@ -1160,12 +1187,11 @@
           const axisMax = g.line <= 1 ? 2 : Math.max(4, Math.ceil(g.line + 1.5));
           const pct = (v) => Math.max(3, Math.min(97, v / axisMax * 100));
           const lp = pct(g.line), mp = pct(g.projVal);
-          const cushion = Math.round((g.line - g.projVal) * 100) / 100;
           pickCell = `<span class="fade-pick" style="color:var(--positive);font-weight:600">${esc(g.pick)}</span>`
             + `<span class="bmini"><span class="uz" style="width:${lp}%"></span>`
             + (mp < lp ? `<span class="gp" style="left:${mp}%;width:${lp - mp}%"></span>` : '')
             + `<span class="dot" style="left:${mp}%"></span></span>`
-            + `<span class="bcushion">model <b>${g.projVal}</b> · cushion ${cushion}${cushion < 0.4 ? ' — thin' : ''}</span>`;
+            + whyUnderCue(g);
         }
         const priced = hasEdge || g.odds != null || (Array.isArray(g.oddsBooks) && g.oddsBooks.length);
         oddsCell = g.closed
