@@ -1249,8 +1249,13 @@
             ${weatherHtml}
           </div>`;
       } else {
+        // On the batter board g.matchup is the player's name; g.team is the club
+        // he plays for. Badge it so you can tell at a glance which side he's on
+        // without knowing the player. (Other views reuse this branch without a
+        // per-player team, so the badge only shows when g.team is present.)
+        const teamBadge = (isBatter() && g.team) ? ` <span class="team-badge">${esc(g.team)}</span>` : '';
         matchupCell = `<div>
-            <b>${esc(g.matchup)}</b>
+            <b>${esc(g.matchup)}</b>${teamBadge}
             <span class="matchup-sub">${esc(g.subline)}</span>
             ${weatherHtml}
           </div>`;
