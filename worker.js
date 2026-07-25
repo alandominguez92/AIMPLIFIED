@@ -828,7 +828,15 @@ const BATTER_MARKETS = [
 const PLATOON_WEIGHT = 0.5;    // regress the vs-hand adjustment halfway to neutral
 const PARK_WEIGHT = 0.7;       // apply published park factors at 70% strength
 const MIN_SPLIT_PA = 40;       // below this the vs-hand sample is too thin to trust
-const ADJ_LO = 0.75, ADJ_HI = 1.30; // no combined matchup multiplier past this band
+// Opposing starter quality. A starter's season line is a far larger sample than
+// a platoon split, so it earns more trust — but the batter only faces him for
+// roughly two thirds of tonight's PA and the bullpen covers the rest, which
+// dilutes the effect back down. 0.7 confidence x ~0.65 of PA lands near 0.45.
+const PITCHER_WEIGHT = 0.45;
+const MIN_PITCHER_BF = 100;    // below this the season line is noise -> neutral
+// Widened from 0.75/1.30: with a third genuine factor in the product the old
+// band would bind on ordinary matchups and quietly discard real signal.
+const ADJ_LO = 0.70, ADJ_HI = 1.35; // no combined matchup multiplier past this band
 
 // Published, stable single-park HR / total-base tendencies, keyed by StatsAPI
 // venue name. Unlisted (or renamed/relocated) parks fall through to neutral 1.0,
@@ -898,6 +906,7 @@ async function batters(env, ctx) {
   const lineupSlotById = {};        // playerId -> batting slot 1-9
   const lineupPostedTeamIds = new Set(); // teams whose lineup is posted
   const oppPPIdByTeamId = {};       // teamId -> the OPPONENT's probable pitcher id
+  const oppPPNameByTeamId = {};     // teamId -> that pitcher's name (display/debug)
   const parkByTeamId = {};          // teamId -> tonight's venue name (for park factor)
   const ppIds = new Set();          // probable-pitcher ids to resolve throwing hand
   try {
@@ -923,8 +932,8 @@ async function batters(env, ctx) {
         const venueName = (g.venue && g.venue.name) || null;
         const awayTeam = g.teams.away.team, homeTeam = g.teams.home.team;
         const awayPP = g.teams.away.probablePitcher, homePP = g.teams.home.probablePitcher;
-        if (awayTeam && awayTeam.id) { parkByTeamId[awayTeam.id] = venueName; if (homePP && homePP.id) oppPPIdByTeamId[awayTeam.id] = homePP.id; }
-        if (homeTeam && homeTeam.id) { parkByTeamId[homeTeam.id] = venueName; if (awayPP && awayPP.id) oppPPIdByTeamId[homeTeam.id] = awayPP.id; }
+        if (awayTeam && awayTeam.id) { parkByTeamId[awayTeam.id] = venueName; if (homePP && homePP.id) { oppPPIdByTeamId[awayTeam.id] = homePP.id; oppPPNameByTeamId[awayTeam.id] = homePP.fullName || null; } }
+        if (homeTeam && homeTeam.id) { parkByTeamId[homeTeam.id] = venueName; if (awayPP && awayPP.id) { oppPPIdByTeamId[homeTeam.id] = awayPP.id; oppPPNameByTeamId[homeTeam.id] = awayPP.fullName || null; } }
         if (awayPP && awayPP.id) ppIds.add(awayPP.id);
         if (homePP && homePP.id) ppIds.add(homePP.id);
       });
@@ -934,20 +943,56 @@ async function batters(env, ctx) {
   // Resolve each probable pitcher's throwing hand (one light StatsAPI call; the
   // basic person record carries pitchHand). teamId -> 'L' | 'R' of the arm its
   // batters face tonight. Any failure leaves oppHandByTeamId empty -> neutral.
+  // The same call also hydrates his season pitching line, so we keep WHO he is
+  // rather than only which arm he throws with. Facing an ace instead of a
+  // replacement arm moves a batter's expectation more than platoon and park
+  // combined, and the request was already being paid for.
   const oppHandByTeamId = {};
+  const oppPitcherByTeamId = {};    // teamId -> { bf, hr, tb, hrr } allowed, season totals
   if (ppIds.size) {
     try {
-      const r = await fetch(`${STATS}/people?personIds=${[...ppIds].join(',')}`, { headers: { accept: 'application/json' } });
+      const r = await fetch(`${STATS}/people?personIds=${[...ppIds].join(',')}&hydrate=stats(group=[pitching],type=[season],season=${season})`, { headers: { accept: 'application/json' } });
       if (r.ok) {
         const d = await r.json();
-        const handById = {};
-        (d.people || []).forEach((pl) => { handById[pl.id] = (pl.pitchHand && pl.pitchHand.code) || null; });
+        const handById = {}, lineById = {};
+        (d.people || []).forEach((pl) => {
+          handById[pl.id] = (pl.pitchHand && pl.pitchHand.code) || null;
+          // Sum every season split, not just the first: a pitcher traded
+          // mid-year comes back as one split per team, and taking [0] would
+          // model him off a fraction of his work.
+          const sp = (((pl.stats || [])[0] || {}).splits) || [];
+          if (!sp.length) return;
+          let bf = 0, h = 0, hr = 0, d2 = 0, t3 = 0, runs = 0, tbOk = true;
+          for (const s of sp) {
+            const st = s.stat || {};
+            bf += toNum(st.battersFaced); h += toNum(st.hits); hr += toNum(st.homeRuns);
+            runs += toNum(st.runs); d2 += toNum(st.doubles); t3 += toNum(st.triples);
+            if (st.doubles == null || st.triples == null) tbOk = false;
+          }
+          if (!(bf > 0)) return;
+          lineById[pl.id] = {
+            bf,
+            hr,
+            // Total bases allowed, built the same way the batter side counts
+            // them. If doubles/triples are absent from the split the sum would
+            // silently degrade to singles+HR and understate TB, so tbOk gates it
+            // to null (neutral) rather than a wrong number.
+            tb: tbOk ? h + d2 + 2 * t3 + 3 * hr : null,
+            // H+R+RBI has no clean pitching analogue (RBI is not charged to a
+            // pitcher), but runs allowed tracks RBI allowed closely league-wide,
+            // so H+R is used on BOTH sides of the ratio and the omitted RBI term
+            // largely cancels.
+            hrr: h + runs,
+          };
+        });
         for (const teamId of Object.keys(oppPPIdByTeamId)) {
-          const h = handById[oppPPIdByTeamId[teamId]];
-          if (h === 'L' || h === 'R') oppHandByTeamId[teamId] = h;
+          const pid = oppPPIdByTeamId[teamId];
+          const hd = handById[pid];
+          if (hd === 'L' || hd === 'R') oppHandByTeamId[teamId] = hd;
+          if (lineById[pid]) oppPitcherByTeamId[teamId] = lineById[pid];
         }
       }
-    } catch (e) { /* no hands -> platoon stays neutral */ }
+    } catch (e) { /* no hands/quality -> both stay neutral */ }
   }
 
   const marketKeys = BATTER_MARKETS.map((m) => m.key).join(',');
@@ -1030,6 +1075,24 @@ async function batters(env, ctx) {
     } catch (e) { /* this chunk stays neutral */ }
   }));
 
+  // 2c) League baseline, aggregated from the same hitting pool we already
+  // fetched. What every batter collectively does per PA IS what every pitcher
+  // collectively allows per batter faced, so this is the correct denominator for
+  // a pitcher's rates — and it self-calibrates each season instead of drifting
+  // against a hardcoded constant. H+R is used (not H+R+RBI) to match the pitcher
+  // side, where RBI isn't charged.
+  const lg = { pa: 0, hr: 0, tb: 0, hrr: 0 };
+  for (const k of Object.keys(statByName)) {
+    const s = statByName[k].st || {};
+    lg.pa += toNum(s.plateAppearances);
+    lg.hr += toNum(s.homeRuns);
+    lg.tb += toNum(s.totalBases);
+    lg.hrr += toNum(s.hits) + toNum(s.runs);
+  }
+  const lgRate = lg.pa > 0
+    ? { hr: lg.hr / lg.pa, tb: lg.tb / lg.pa, hrr: lg.hrr / lg.pa }
+    : null;
+
   // 3) Build priced rows; collect pool arrays for percentile bars.
   const pool = { iso: [], slg: [], contact: [], disc: [] };
   const draft = [];
@@ -1071,9 +1134,21 @@ async function batters(env, ctx) {
       const ratio = (s[metric] / s.pa) / baseRate[metric];
       return 1 + PLATOON_WEIGHT * (ratio - 1);
     };
+    // Opposing starter quality: his rate allowed per batter faced against the
+    // league rate per PA. Same regressed-multiplier shape as platoon and park,
+    // so a missing or thin pitching line is simply x1.0.
+    const oppP = oppPitcherByTeamId[match.teamId] || null;
+    const pitcherMult = (metric) => {
+      if (!oppP || !lgRate || !(oppP.bf >= MIN_PITCHER_BF)) return 1;
+      const allowed = oppP[metric];
+      if (allowed == null || !(lgRate[metric] > 0)) return 1;
+      const ratio = (allowed / oppP.bf) / lgRate[metric];
+      if (!(ratio > 0) || !isFinite(ratio)) return 1;
+      return 1 + PITCHER_WEIGHT * (ratio - 1);
+    };
     const adj = {};
     for (const m of ['hr', 'tb', 'hrr']) {
-      adj[m] = clamp(platoonMult(m) * parkFactor(venue, m), ADJ_LO, ADJ_HI);
+      adj[m] = clamp(platoonMult(m) * parkFactor(venue, m) * pitcherMult(m), ADJ_LO, ADJ_HI);
     }
 
     const lambda = {
@@ -1085,7 +1160,10 @@ async function batters(env, ctx) {
     for (const spec of BATTER_MARKETS) {
       markets[spec.metric] = priceBatterProp(rec.props[spec.metric], lambda[spec.metric]);
     }
-    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, facingHand, venue, adj });
+    // oppPFac = the pitcher-only multiplier per metric, kept separate from the
+    // combined `adj` so a projection can be traced back to which factor moved it.
+    const oppPFac = oppP ? { hr: round2(pitcherMult('hr')), tb: round2(pitcherMult('tb')), hrr: round2(pitcherMult('hrr')) } : null;
+    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, facingHand, venue, adj, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
   }
   if (!draft.length) return cors(json([], 300));
 
@@ -1123,6 +1201,8 @@ async function batters(env, ctx) {
       facingHand: b.facingHand || null,
       park: b.venue || null,
       adj: b.adj || null,
+      oppPitcher: b.oppPName || null,   // tonight's opposing starter
+      oppPitcherAdj: b.oppPFac || null, // his contribution alone, per metric
       pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : '—',
       odds: lead ? lead.m.price : null,
       oddsBooks: lead ? lead.m.books : null,
