@@ -42,6 +42,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
+  '/api/fair-probe',
 ]);
 
 export default {
@@ -125,6 +126,7 @@ async function handleApi(p, env, ctx) {
   if (p === '/api/track-debug') return trackDebug(env);
   if (p === '/api/edge-debug') return edgeDebug(env);
   if (p === '/api/batter-debug') return batterDebug(env);
+  if (p === '/api/fair-probe') return fairProbe(env);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -2320,6 +2322,89 @@ async function batterDebug(env) {
       read: 'PrizePicks read: in byMarketSideLine, find each market\'s UNDER rows at the lines PP actually offers (usually 2.5+; PP hides TB/HRR 1.5 unders). If those higher-line unders still show +ROI at fair/plus prices, that is the PP-playable product — no overs needed. Only consider an OVER if its row shows +ROI across a non-thin sample (n>=5) AND positive avgCLV; a lone +ROI over on a thin bucket is noise, and remember a sharp book offering only the over is evidence that over is the -EV side.',
     }, 30));
   } catch (e) { return cors(json({ error: String(e && e.message || e) }, 30)); }
+}
+
+// /api/fair-probe — READ-ONLY viability check for a real fair-value source.
+//
+// Today the batter edge is computed against DK/FD's own de-vigged line and then
+// bet at DK/FD — the fair source and the execution venue are the same book, so
+// the "edge" measures model-vs-DK disagreement, not value. That circularity is
+// the most likely reason season CLV sits at ~0 despite large posted edges.
+//
+// This asks the only question that decides whether the fix is possible: do the
+// SHARP books actually post our batter markets? It changes nothing — no model,
+// no selection, no logging — and uses the `bookmakers` param (which overrides
+// `regions`), so <=10 books bills as one region equivalent: markets x 1.
+const PROBE_FAIR_BOOKS = ['pinnacle', 'novig', 'prophetx', 'lowvig'];
+const PROBE_EXEC_BOOKS = ['draftkings', 'fanduel'];
+async function fairProbe(env) {
+  const key = env && env.ODDS_API_KEY;
+  if (!key) return cors(json({ error: 'ODDS_API_KEY not configured' }, 30));
+  const allBooks = [...PROBE_FAIR_BOOKS, ...PROBE_EXEC_BOOKS];
+  const markets = BATTER_MARKETS.map((m) => m.key);
+  const out = {
+    question: 'Do sharp books post our batter markets? If yes, a non-circular fair line is possible.',
+    booksRequested: allBooks,
+    regionEquivalents: Math.ceil(allBooks.length / 10),
+    estimatedCredits: markets.length * Math.ceil(allBooks.length / 10),
+  };
+  try {
+    // The events list is free (no markets requested) — pick one upcoming game.
+    const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+    const events = await evR.json();
+    const now = Date.now();
+    const ev = (Array.isArray(events) ? events : []).find((e) => !e.commence_time || Date.parse(e.commence_time) > now);
+    if (!ev) return cors(json({ ...out, error: 'no upcoming event to probe' }, 30));
+    out.probedEvent = `${ev.away_team} @ ${ev.home_team}`;
+
+    const url = `${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${allBooks.join(',')}`
+      + `&markets=${markets.join(',')}&oddsFormat=american&dateFormat=iso`;
+    const r = await fetch(url, { headers: { accept: 'application/json' } });
+    out.httpStatus = r.status;
+    out.creditsUsed = r.headers.get('x-requests-last') || null;
+    out.creditsRemaining = r.headers.get('x-requests-remaining') || null;
+    if (!r.ok) { out.body = (await r.text()).slice(0, 300); return cors(json(out, 30)); }
+    const d = await r.json();
+
+    // For each book x market: did it post, and is it two-sided (de-viggable)?
+    // A one-sided quote cannot be de-vigged, so it is useless as a fair source.
+    const byBook = {};
+    for (const bm of (d.bookmakers || [])) {
+      const entry = { markets: {} };
+      for (const mk of (bm.markets || [])) {
+        const players = {};
+        for (const oc of (mk.outcomes || [])) {
+          const nm = oc.description || oc.name;
+          const p = players[nm] || (players[nm] = {});
+          if (oc.name === 'Over') p.over = oc.price; else if (oc.name === 'Under') p.under = oc.price;
+          if (oc.point != null) p.point = oc.point;
+        }
+        const list = Object.values(players);
+        const twoSided = list.filter((p) => p.over != null && p.under != null);
+        // Overround on a two-sided quote — the vig this book charges. Exchanges
+        // should come in near 1.00; a retail book nearer 1.05-1.09.
+        const sums = twoSided.map((p) => amProb(p.over) + amProb(p.under)).filter((x) => isFinite(x));
+        entry.markets[mk.key] = {
+          players: list.length,
+          twoSided: twoSided.length,
+          medianBooksum: sums.length ? Math.round(median(sums) * 1e4) / 1e4 : null,
+        };
+      }
+      byBook[bm.key] = entry;
+    }
+    out.byBook = byBook;
+    // A sharp book only counts if it posts a TWO-SIDED quote — a one-sided price
+    // cannot be de-vigged, so it can't produce a fair line no matter who posts it.
+    const deviggable = (b) => byBook[b] && Object.values(byBook[b].markets).some((m) => m.twoSided > 0);
+    out.sharpBooksReturning = PROBE_FAIR_BOOKS.filter(deviggable);
+    out.sharpBooksOneSidedOnly = PROBE_FAIR_BOOKS.filter((b) => byBook[b] && !deviggable(b));
+    out.verdict = out.sharpBooksReturning.length
+      ? `VIABLE — ${out.sharpBooksReturning.join(', ')} post batter markets. A non-circular fair line is possible: de-vig the sharp book for fair, price the DK/FD number against it.`
+      : 'NOT VIABLE as-is — no sharp book returned these markets. The fair line would need another source (e.g. a consensus of soft books excluding the one you bet), or the edge stays circular.';
+    return cors(json(out, 30));
+  } catch (e) {
+    return cors(json({ ...out, error: String(e && e.message || e) }, 30));
+  }
 }
 
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
