@@ -1042,7 +1042,10 @@
 
   function renderBoardHead() {
     const cols = isBatter()
-      ? ['', 'Batter', 'The fade · model vs line', 'Price · DK/FD', 'Edge', 'Model P(under)', 'Tier', '']
+      // "Edge · vs sharp fair" matters: the prices are DK/FD, but the edge is
+      // measured against the sharp books, not against the book you bet at.
+      // Without the qualifier the number reads as edge-over-DraftKings.
+      ? ['', 'Batter', 'The fade · model vs line', 'Price · DK/FD', 'Edge · vs sharp fair', 'Model P(under)', 'Tier', '']
       : isML()
         ? ['', 'Matchup', 'Team to win', 'Moneyline', 'Line value', 'Win Prob', '', '']
         : ['', 'Matchup', 'Model lean', 'Price · DK/FD', 'Edge', '80% Interval', '', ''];
@@ -1146,6 +1149,20 @@
     WSH: ['#AB0003', '#ffffff'], WSN: ['#AB0003', '#ffffff'],
   };
 
+  // Which tier of book produced the fair line this edge was measured against.
+  // Shown on BOTH outcomes on purpose: "sharp" means an independent sharp
+  // consensus priced it, "mkt" means no sharp book quoted this exact number and
+  // it fell back to the book we bet at — the weaker, self-referential case. A
+  // badge that only appeared on the good case would be marketing, not data.
+  function fairSrcTag(g) {
+    if (!isBatter() || !g.fairSrc) return '';
+    const sharp = g.fairSrc === 'sharp';
+    const title = sharp
+      ? 'Fair line from the sharp books (Shin de-vigged median) — independent of DK/FD'
+      : 'No sharp book quoted this line; fair fell back to the book being bet';
+    return `<span class="fsrc${sharp ? ' sharp' : ''}" title="${esc(title)}">${sharp ? 'sharp' : 'mkt'}</span>`;
+  }
+
   function whyUnderCue(g) {
     const cushion = Math.round((g.line - g.projVal) * 100) / 100;
     const cushTxt = cushion > 0
@@ -1153,7 +1170,19 @@
       : `model <b>${g.projVal}</b> · right at the ${g.line} line`;
     const parts = [`<span class="bw-cush">${cushTxt}</span>`];
     const hand = g.facingHand === 'L' ? 'LHP' : g.facingHand === 'R' ? 'RHP' : null;
-    if (hand) parts.push(`<span class="bw-fac">vs <b>${hand}</b></span>`);
+    // Name the arm, not just the hand. The opposing starter now moves the
+    // projection more than platoon or park, so showing who he is (and an arrow
+    // when his own factor moved this metric) makes the adjustment legible.
+    if (hand || g.oppPitcher) {
+      const metric = LABEL_METRIC[g.marketLabel];
+      const pa = g.oppPitcherAdj && metric ? g.oppPitcherAdj[metric] : null;
+      let arrow = '';
+      if (pa != null && pa < 0.98) arrow = ` <span class="bw-dn">↓</span>`;
+      else if (pa != null && pa > 1.02) arrow = ` <span class="bw-up">↑</span>`;
+      const last = g.oppPitcher ? String(g.oppPitcher).split(' ').slice(-1)[0] : null;
+      const who = [hand, last].filter(Boolean).join(' ');
+      parts.push(`<span class="bw-fac">vs <b>${esc(who)}</b>${arrow}</span>`);
+    }
     if (g.park) {
       const metric = LABEL_METRIC[g.marketLabel];
       const a = g.adj && metric ? g.adj[metric] : null;
@@ -1314,7 +1343,7 @@
           ${matchupCell}
           <span>${pickCell}</span>
           ${oddsCell}
-          <span class="edge-cell" style="color:${edgeColor}">${esc(edgeLabel)}</span>
+          <span class="edge-cell" style="color:${edgeColor}">${esc(edgeLabel)}${fairSrcTag(g)}</span>
           ${detailCell}
           <span class="tier-cell">${isPlayView ? tierChip(tierVal) : '<span class="ctx-chip">analysis</span>'}</span>
           <span class="chevron">${isExpanded ? '▲' : '▼'}</span>
@@ -1344,7 +1373,7 @@
         detailHtml = `<div class="expanded-detail">
           <div class="expanded-title">Batter props — model vs. market</div>${bm}
           <div class="expanded-title" style="margin-top:16px">Season percentiles (vs. priced pool)</div>${statsHtml}
-          <div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: season rate × expected PAs, priced Poisson, then regressed toward the market while the batter model builds a track record — so edges stay conservative until results justify more.</div>
+          <div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: season rate × expected PAs, adjusted for the <b>opposing starter</b>, the <b>hand</b> he throws and the <b>ballpark</b>, then spread with Poisson. Edge = model P(under) vs. the <b>fair line</b> — the Shin de-vigged median across the sharp books (Pinnacle, novig, ProphetX), never the book you bet at. The model is regressed toward that fair line while it builds a track record, so edges stay conservative until results justify more.</div>
         </div>`;
       } else if (isExpanded && isML()) {
         if (g.ml) {
