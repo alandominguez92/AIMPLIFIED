@@ -52,6 +52,10 @@ const SHARP_BOOKS = { pinnacle: 'PIN', novig: 'NOVIG', prophetx: 'PX', lowvig: '
 // replaces, so the sharp fair line is quota-neutral.
 const PROP_BOOKS = { ...BOOKS, ...FAIR_EXTRA, ...SHARP_BOOKS };
 const SHARP_LABELS = Object.values(SHARP_BOOKS);
+// Max de-vigged disagreement tolerated between exactly two sharp books before
+// their midpoint stops being a fair line and becomes a guess. Live pairs agree
+// to well under 0.026; the one pathological row seen so far was 0.112 apart.
+const SHARP_MAX_SPREAD = 0.05;
 // Bumped whenever the pricing regime changes, and stamped on every logged row so
 // eras stay separable in analysis. 'dk-fair' = edge measured against DraftKings
 // (circular); 'sharp-shin' = edge vs the Shin-de-vigged sharp pool.
@@ -2132,9 +2136,24 @@ function bestBookMarket(prop, probOver, opts) {
       })() }))
       .filter((x) => x.dv != null);
     if (pool.length) {
-      fairOver = median(pool.map((x) => x.dv));
+      const dvs = pool.map((x) => x.dv);
+      // The median rejects one stale book only when there are three to choose
+      // between. At exactly two the median IS their midpoint, so a broken quote
+      // drags the fair half its error and nothing catches it — a live TB row had
+      // NOVIG at .3849 against PX at .4967 and priced the midpoint. Normal
+      // two-book agreement runs under ~0.026, so a spread past SHARP_MAX_SPREAD
+      // means one of them is wrong and we cannot tell which. Those fall through
+      // to the execution fair, tagged 'sharp-split' rather than 'sharp' so the
+      // weaker pricing stays visible in fairSourceMix instead of hiding.
+      const spread = Math.max(...dvs) - Math.min(...dvs);
+      const split = pool.length === 2 && spread > SHARP_MAX_SPREAD;
       fairBooks = pool.map((x) => ({ book: x.book, over: Math.round(x.dv * 1e4) / 1e4 }));
-      fairSrc = 'sharp';
+      if (split) {
+        fairSrc = 'sharp-split';   // fair resolved below; books kept for diagnosis
+      } else {
+        fairOver = median(dvs);
+        fairSrc = 'sharp';
+      }
     }
   }
   if (fairOver == null && opts && opts.fairConsensus) {
@@ -2155,8 +2174,12 @@ function bestBookMarket(prop, probOver, opts) {
     // two-sided quote to de-vig. Preserves the original behavior exactly.
     const atRef = [dk, fd].filter((b) => b && b.point === refLine);
     const twoSided = atRef.find((b) => b.over != null && b.under != null);
-    if (twoSided) { const io = amProb(twoSided.over), iu = amProb(twoSided.under); const v = io + iu; fairOver = v > 0 ? io / v : io; fairSrc = 'exec'; }
-    else { const one = atRef.find((b) => b.over != null || b.under != null); if (!one) return null; fairOver = one.over != null ? amProb(one.over) : 1 - amProb(one.under); fairSrc = 'exec-1s'; }
+    // A 'sharp-split' tag set above survives: the reason this row landed on the
+    // execution fair is that the sharp books contradicted each other, which is a
+    // different (and more interesting) case than no sharp book quoting at all.
+    const keep = fairSrc === 'sharp-split';
+    if (twoSided) { const io = amProb(twoSided.over), iu = amProb(twoSided.under); const v = io + iu; fairOver = v > 0 ? io / v : io; if (!keep) fairSrc = 'exec'; }
+    else { const one = atRef.find((b) => b.over != null || b.under != null); if (!one) return null; fairOver = one.over != null ? amProb(one.over) : 1 - amProb(one.under); if (!keep) fairSrc = 'exec-1s'; }
   }
 
   // Regress the model toward the market (shrink<1 for an uncalibrated model).
