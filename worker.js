@@ -38,6 +38,25 @@ const FAIR_BOOKS = { ...BOOKS, ...FAIR_EXTRA };
 // books you can actually use). Pinnacle lives in the Odds API's `eu` region.
 const REF_BOOK = 'pinnacle';
 
+// Sharp fair sources for BATTER props. These are never bet (no accounts) and
+// never shown in the Odds column — they exist only to produce a fair line that
+// is independent of the book we execute at. Pricing a DK bet against a DK-derived
+// fair is circular: the "edge" is just model-minus-DK, so it can't predict where
+// DK is going to move. Splitting the two is what makes CLV meaningful.
+// Coverage is market-dependent (probe 07-25: Pinnacle 17 TB / 0 H+R+RBI, novig
+// strong on both), so the pool is pooled-by-median rather than a single book.
+const SHARP_BOOKS = { pinnacle: 'PIN', novig: 'NOVIG', prophetx: 'PX', lowvig: 'LV' };
+// Every book we parse out of the batter-prop response: execution venues (bet),
+// MGM (soft reference), and the sharp pool (fair only). Requesting these by key
+// costs ceil(n/10) region-equivalents = 1, identical to the `regions=us` call it
+// replaces, so the sharp fair line is quota-neutral.
+const PROP_BOOKS = { ...BOOKS, ...FAIR_EXTRA, ...SHARP_BOOKS };
+const SHARP_LABELS = Object.values(SHARP_BOOKS);
+// Bumped whenever the pricing regime changes, and stamped on every logged row so
+// eras stay separable in analysis. 'dk-fair' = edge measured against DraftKings
+// (circular); 'sharp-shin' = edge vs the Shin-de-vigged sharp pool.
+const BATTER_MODEL_VER = 'sharp-shin';
+
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
@@ -939,7 +958,10 @@ async function batters(env, ctx) {
   const upcomingB = events.filter((ev) => !ev.commence_time || Date.parse(ev.commence_time) > nowB);
   await Promise.all(upcomingB.map(async (ev) => {
     try {
-      const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      // Explicit bookmaker list rather than `regions=us`: it pulls the sharp fair
+      // sources (which sit outside the us region) at the same 1 region-equivalent
+      // price, since Odds API bills ceil(books/10) and we ask for 7.
+      const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (!r.ok) return;
       const d = await r.json();
       const awayAb = keyAbbr(ev.away_team);
@@ -947,7 +969,7 @@ async function batters(env, ctx) {
       const matchup = `${awayAb} @ ${homeAb}`;
       const sched = schedByMatchup[`${awayAb}@${homeAb}`] || null;
       for (const bm of (d.bookmakers || [])) {
-        const label = BOOKS[bm.key];
+        const label = PROP_BOOKS[bm.key]; // DK/FD = bet, MGM + sharps = fair only
         if (!label) continue;
         for (const spec of BATTER_MARKETS) {
           const mk = (bm.markets || []).find((m) => m.key === spec.key);
@@ -1113,11 +1135,12 @@ async function batters(env, ctx) {
       projVal: lead ? expFor(lead.spec.metric) : null,
       marketLabel: lead ? lead.spec.label : null,
       modelOver: lead ? lead.m.modelOver : null,
+      fairSrc: lead ? lead.m.fairSrc : null,
       hasPriced: priced.length > 0,
       // Per-market detail for the expanded row (also carries what logging needs).
       batterMarkets: BATTER_MARKETS.map((spec) => {
         const m = b.markets[spec.metric];
-        return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
+        return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, fairSrc: m.fairSrc, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
       }),
       // Real percentile bars from the priced pool.
       stats: [
@@ -1376,6 +1399,10 @@ async function ensureBatterSchema(db) {
     PRIMARY KEY (date, game_id, player_id, market)
   )`).run();
   await addColumns(db, 'bpicks', CLV_COLUMNS);
+  // Era tags. Rows written before the sharp-fair cutover keep NULL here, so the
+  // old (DraftKings-derived, circular) edge sample stays intact and separable
+  // instead of being silently blended with the new one.
+  await addColumns(db, 'bpicks', [['fair_src', 'TEXT'], ['model_ver', 'TEXT']]);
 }
 
 // Moneyline last-known lines. Unlike strikeout picks, the moneyline is never
@@ -1507,9 +1534,9 @@ async function logBatterPicks(db, rows, date) {
       if (m.none || m.price == null) continue;
       const gid = 'g' + r.gamePk;
       stmts.push(db.prepare(
-        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null));
+        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over,fair_src,model_ver)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null, m.fairSrc ?? null, BATTER_MODEL_VER));
       // Continuous close capture: latest line/price always; the vig-free over%
       // only when the line still matches entry (so a late line move never
       // clobbers the last comparable close).
@@ -2003,8 +2030,27 @@ function bestBookMarket(prop, probOver, opts) {
     return v > 0 ? io / v : io;
   };
 
-  let fairOver, fairBooks = null;
-  if (opts && opts.fairConsensus) {
+  let fairOver, fairBooks = null, fairSrc = null;
+  if (opts && opts.fairPool) {
+    // Independent fair line: de-vig the SHARP books only, then take the median
+    // across whichever of them quoted this exact line two-sided. Because none of
+    // these books is where the bet lands, the resulting edge is a real
+    // disagreement between our model and sharp money — not an artifact of
+    // measuring DraftKings against itself.
+    const pool = opts.fairPool
+      .map((book) => ({ book, dv: (() => {
+        const b = prop[book];
+        if (!b || b.point !== refLine || b.over == null || b.under == null) return null;
+        return shinDevig(b.over, b.under);
+      })() }))
+      .filter((x) => x.dv != null);
+    if (pool.length) {
+      fairOver = median(pool.map((x) => x.dv));
+      fairBooks = pool.map((x) => ({ book: x.book, over: Math.round(x.dv * 1e4) / 1e4 }));
+      fairSrc = 'sharp';
+    }
+  }
+  if (fairOver == null && opts && opts.fairConsensus) {
     // Consensus fair: median de-vigged P(over) across the pooled books (the DK/FD
     // you bet + MGM as a reference). The median rejects a single soft/stale line,
     // so the edge measures the model against the market's agreement, not one book.
@@ -2014,6 +2060,7 @@ function bestBookMarket(prop, probOver, opts) {
     if (pool.length) {
       fairOver = median(pool.map((x) => x.dv));
       fairBooks = pool.map((x) => ({ book: x.book, over: Math.round(x.dv * 1e4) / 1e4 }));
+      fairSrc = 'consensus';
     }
   }
   if (fairOver == null) {
@@ -2021,8 +2068,8 @@ function bestBookMarket(prop, probOver, opts) {
     // two-sided quote to de-vig. Preserves the original behavior exactly.
     const atRef = [dk, fd].filter((b) => b && b.point === refLine);
     const twoSided = atRef.find((b) => b.over != null && b.under != null);
-    if (twoSided) { const io = amProb(twoSided.over), iu = amProb(twoSided.under); const v = io + iu; fairOver = v > 0 ? io / v : io; }
-    else { const one = atRef.find((b) => b.over != null || b.under != null); if (!one) return null; fairOver = one.over != null ? amProb(one.over) : 1 - amProb(one.under); }
+    if (twoSided) { const io = amProb(twoSided.over), iu = amProb(twoSided.under); const v = io + iu; fairOver = v > 0 ? io / v : io; fairSrc = 'exec'; }
+    else { const one = atRef.find((b) => b.over != null || b.under != null); if (!one) return null; fairOver = one.over != null ? amProb(one.over) : 1 - amProb(one.under); fairSrc = 'exec-1s'; }
   }
 
   // Regress the model toward the market (shrink<1 for an uncalibrated model).
@@ -2054,6 +2101,7 @@ function bestBookMarket(prop, probOver, opts) {
     edge: edgePts,
     modelOver: round1(pOver * 100),
     fairOver: Math.round(fairOver * 1e4) / 1e4, // vig-free market P(over) — for CLV
+    fairSrc,            // 'sharp' | 'consensus' | 'exec' | 'exec-1s' — which tier produced the fair
     fairBooks,          // [{ book, over }] de-vigged pool behind the fair (consensus) — null otherwise
     tier: edgePts >= tiers[0] ? 1 : edgePts >= tiers[1] ? 2 : edgePts >= tiers[2] ? 3 : 'pass',
     books,              // [{ book, price, line, off, best }]
@@ -2093,7 +2141,9 @@ const SLOT_PA = [4.65, 4.54, 4.43, 4.32, 4.21, 4.10, 3.99, 3.88, 3.77];
 // Batter counting-stat prop (HR / total bases / H+R+RBI): Poisson around the
 // per-game expectation, then regressed toward the market (see BATTER_SHRINK).
 function priceBatterProp(prop, lambda) {
-  return bestBookMarket(prop, (L) => 1 - poissonCdf(Math.floor(L), lambda), { shrink: BATTER_SHRINK, tiers: BATTER_TIERS });
+  return bestBookMarket(prop, (L) => 1 - poissonCdf(Math.floor(L), lambda), {
+    shrink: BATTER_SHRINK, tiers: BATTER_TIERS, fairPool: SHARP_LABELS,
+  });
 }
 
 // Poisson CDF P(X <= k) for mean lambda.
@@ -2106,6 +2156,38 @@ function poissonCdf(k, lambda) {
 
 // American-odds payout multiple (decimal profit per 1u). Higher = better price.
 function payoutMult(a) { return a > 0 ? a / 100 : 100 / (-a); }
+
+// Shin de-vig for a two-way market. Multiplicative de-vig (over/(over+under))
+// assumes the book's margin is spread proportionally, which systematically
+// over-states the favourite. Shin instead models the margin as the book
+// protecting itself against a proportion z of informed money, which pulls the
+// longshot down and the favourite up — the correction is largest exactly where
+// batter props live (heavy-favourite unders at -300 and worse).
+//
+// p_i = [sqrt(z^2 + 4(1-z)*pi_i^2/B) - z] / (2(1-z)),  chosen so sum(p_i) = 1.
+// Solved by bisection on z (monotone in z over [0, 0.5)); ~40 iterations is
+// exact to well past the precision anything downstream cares about.
+// Returns P(over), or null if the quote isn't two-sided.
+function shinDevig(overOdds, underOdds) {
+  const io = amProb(overOdds), iu = amProb(underOdds);
+  if (io == null || iu == null || !(io > 0) || !(iu > 0)) return null;
+  const B = io + iu;
+  // No overround (or a crossed/arbed quote) — nothing to strip, just normalize.
+  if (!(B > 1)) return io / B;
+  const p = (z) => {
+    const f = (pi) => (Math.sqrt(z * z + 4 * (1 - z) * pi * pi / B) - z) / (2 * (1 - z));
+    return [f(io), f(iu)];
+  };
+  let lo = 0, hi = 0.5;
+  for (let i = 0; i < 40; i++) {
+    const z = (lo + hi) / 2;
+    const [a, b] = p(z);
+    if (a + b > 1) lo = z; else hi = z;
+  }
+  const [a, b] = p((lo + hi) / 2);
+  const s = a + b;
+  return s > 0 ? a / s : io / B;
+}
 
 // Median of a numeric array (even length -> mean of the middle two). Used to
 // pool several books' de-vigged probabilities into one robust fair number.
@@ -2280,6 +2362,18 @@ async function batterDebug(env) {
       return { market: m, n: arr.length, avgProj: round1(avgProj), avgActual: round1(avgActual), avgProjMinusActual: round1(avg) };
     }).sort((a, b) => b.n - a.n);
 
+    // Era split. Rows logged before the sharp-fair cutover carry model_ver NULL
+    // and priced their edge against DraftKings — the same book the bet lands at,
+    // so the "edge" was self-referential and CLV had nothing to converge on.
+    // Comparing the two eras (especially avgCLV) is the whole point of tagging.
+    const eraMap = groupBy(unders, (r) => r.model_ver || 'dk-fair');
+    const byModelVer = Object.keys(eraMap).map((k) => ({ modelVer: k, ...summarize(eraMap[k]) })).sort((a, b) => b.n - a.n);
+    // Which fair tier actually produced each pick's line. If 'sharp' is a small
+    // share, the sharp books simply aren't quoting our lines and the refactor is
+    // only partly live — read this before reading any CLV number below.
+    const srcMap = groupBy((bres.results || []).filter((r) => r.side === 'Under'), (r) => r.fair_src || 'untagged');
+    const fairSourceMix = Object.keys(srcMap).map((k) => ({ fairSrc: k, n: srcMap[k].length })).sort((a, b) => b.n - a.n);
+
     // Market × side — the direct directional test: for each batter market, how
     // does the Over do vs the Under? This is what decides whether an over could
     // EVER be considered, or whether the edge is under-only per market.
@@ -2315,6 +2409,8 @@ async function batterDebug(env) {
       byMarketSide,
       byMarketSideLine,
       projBiasByMarket,
+      byModelVer,
+      fairSourceMix,
       byMonth,
       byPrice,
       byMarket,
