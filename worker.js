@@ -2543,11 +2543,13 @@ async function batterDebug(env) {
       return { market, side, ...summarize(msMap[k]) };
     }).sort((a, b) => a.market.localeCompare(b.market) || a.side.localeCompare(b.side));
 
-    // Market × side × LINE — the PrizePicks question. PP restricts unders at the
-    // low lines (TB 1.5, HRR 1.5); this splits every bucket by exact line so we
-    // can see (a) whether the under edge survives at the higher lines PP DOES
-    // offer, and (b) whether any forced-over line is somehow +EV. n<5 buckets are
-    // kept but flagged thin — a 4-1 line is not a finding.
+    // Market × side × LINE. Splitting by the exact number is what revealed the
+    // edge is not spread across a market but concentrated in one line: HRR
+    // Under 1.5 carries it, while HRR Under 2.5 has significantly negative CLV.
+    // That distinction is invisible at the market level, which is why this
+    // stays. It also settled whether the edge survived at the higher lines
+    // pick'em apps offer — it does not, so that question is closed.
+    // n<5 buckets are kept but flagged thin: a 4-1 line is not a finding.
     const mslMap = groupBy(graded, (r) => {
       const m = String(r.market || '').toUpperCase();
       if (!m || m === 'K' || !r.side || r.line == null) return null;
@@ -2573,7 +2575,7 @@ async function batterDebug(env) {
       byMarket,
       cumulative,
       readSig: 'Significance: sig.roiP is the two-tailed p for ROI != 0, sig.clvP the same for CLV. Treat p>=0.05 as "no established effect" no matter how large the ROI looks. These p-values assume independent picks; picks on the same slate are correlated (shared games, shared weather, shared lineups), so the true p is LARGER than reported — read a marginal 0.04 as not significant. avgClvEv is the mean EV% per unit at the closing fair price: unlike avgCLV it accounts for the price paid, so a positive avgCLV with a negative avgClvEv means the line moved our way but we still took a number worse than the close. avgClvEv is the one to trust when they disagree.',
-      read: 'PrizePicks read: in byMarketSideLine, find each market\'s UNDER rows at the lines PP actually offers (usually 2.5+; PP hides TB/HRR 1.5 unders). If those higher-line unders still show +ROI at fair/plus prices, that is the PP-playable product — no overs needed. Only consider an OVER if its row shows +ROI across a non-thin sample (n>=5) AND positive avgCLV; a lone +ROI over on a thin bucket is noise, and remember a sharp book offering only the over is evidence that over is the -EV side.',
+      read: 'Read p-values before ROI. The graded edge sits in ONE cell: HRR Under 1.5 (n=293, +15.8% ROI, roiP 0.0016, clvP 0.0001) — the only slice where ROI and CLV are both significant. TB Under looks like half the product and does NOT clear the bar (roiP 0.070), so do not treat it as established. Do not chase higher lines to widen availability: HRR Under 2.5 shows roiP 0.64 AND significantly NEGATIVE CLV (clvP 0.027), i.e. the market moves against those picks — that is evidence against a higher-line product, not a gap to exploit. Overs are negative in every non-thin bucket and carry no CLV signal (clvP 0.384); a sharp book quoting only the over is further evidence that side is -EV. Ignore every thin:true row. On avgClvEv: for model_ver dk-fair it measures THE BOOK\'S HOLD, not our edge — fair and price both came from DraftKings, so EV at that fair is mechanically 1/overround - 1 (the observed -6.2% implies a 6.6% hold, which is just DK\'s margin). It only carries information on sharp-shin rows, where the price is DK/FD but the closing fair comes from books we never bet. Judge the refactor there, and nowhere else.',
     }, 30));
   } catch (e) { return cors(json({ error: String(e && e.message || e) }, 30)); }
 }
