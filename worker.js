@@ -1140,7 +1140,7 @@ async function batters(env, ctx) {
       // Per-market detail for the expanded row (also carries what logging needs).
       batterMarkets: BATTER_MARKETS.map((spec) => {
         const m = b.markets[spec.metric];
-        return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, fairSrc: m.fairSrc, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
+        return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, fairSrc: m.fairSrc, fairBooks: m.fairBooks, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
       }),
       // Real percentile bars from the priced pool.
       stats: [
@@ -1403,6 +1403,13 @@ async function ensureBatterSchema(db) {
   // old (DraftKings-derived, circular) edge sample stays intact and separable
   // instead of being silently blended with the new one.
   await addColumns(db, 'bpicks', [['fair_src', 'TEXT'], ['model_ver', 'TEXT']]);
+  // Per-book de-vigged P(over) behind the pooled fair, as JSON at entry time.
+  // The pooled median is what we price against, but it hides which book said
+  // what — and "is ProphetX actually a sharp source?" is only answerable by
+  // scoring each book's entry number against where the market closed
+  // (close_over). Write-once: a column we skip today is a question we cannot
+  // ask of tonight's rows later.
+  await addColumns(db, 'bpicks', [['fair_books', 'TEXT']]);
 }
 
 // Moneyline last-known lines. Unlike strikeout picks, the moneyline is never
@@ -1534,9 +1541,9 @@ async function logBatterPicks(db, rows, date) {
       if (m.none || m.price == null) continue;
       const gid = 'g' + r.gamePk;
       stmts.push(db.prepare(
-        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over,fair_src,model_ver)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null, m.fairSrc ?? null, BATTER_MODEL_VER));
+        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over,fair_src,model_ver,fair_books)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null, m.fairSrc ?? null, BATTER_MODEL_VER, m.fairBooks ? JSON.stringify(m.fairBooks) : null));
       // Continuous close capture: latest line/price always; the vig-free over%
       // only when the line still matches entry (so a late line move never
       // clobbers the last comparable close).
@@ -2374,6 +2381,27 @@ async function batterDebug(env) {
     const srcMap = groupBy((bres.results || []).filter((r) => r.side === 'Under'), (r) => r.fair_src || 'untagged');
     const fairSourceMix = Object.keys(srcMap).map((k) => ({ fairSrc: k, n: srcMap[k].length })).sort((a, b) => b.n - a.n);
 
+    // Per-book credibility. A book earns its place in the sharp pool by posting
+    // a number that lands near where the market actually closed, so score each
+    // book's entry fair against close_over on the same line. Lower avgMissPts =
+    // that book was already saying at post time what the market agreed on later.
+    // This is the evidence for keeping or dropping a source (e.g. ProphetX,
+    // which the 07-25 probe showed carrying a retail-sized 8.5% overround).
+    const bookErr = {};
+    for (const r of (bres.results || [])) {
+      if (!r.fair_books || r.close_over == null) continue;
+      if (r.close_line != null && r.line != null && r.close_line !== r.line) continue;
+      let pool; try { pool = JSON.parse(r.fair_books); } catch (e) { continue; }
+      for (const { book, over } of (pool || [])) {
+        if (over == null) continue;
+        const e = bookErr[book] || (bookErr[book] = { n: 0, sum: 0 });
+        e.n++; e.sum += Math.abs(over - r.close_over) * 100;
+      }
+    }
+    const sharpBookAccuracy = Object.keys(bookErr)
+      .map((b) => ({ book: b, n: bookErr[b].n, avgMissPts: round1(bookErr[b].sum / bookErr[b].n), thin: bookErr[b].n < 30 }))
+      .sort((a, b) => a.avgMissPts - b.avgMissPts);
+
     // Market × side — the direct directional test: for each batter market, how
     // does the Over do vs the Under? This is what decides whether an over could
     // EVER be considered, or whether the edge is under-only per market.
@@ -2411,6 +2439,7 @@ async function batterDebug(env) {
       projBiasByMarket,
       byModelVer,
       fairSourceMix,
+      sharpBookAccuracy,
       byMonth,
       byPrice,
       byMarket,
