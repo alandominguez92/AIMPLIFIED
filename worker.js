@@ -2402,11 +2402,59 @@ async function batterDebug(env) {
       if (r.close_line != null && r.line != null && r.close_line !== r.line) return null;
       return (r.side === 'Over' ? (r.close_over - r.entry_over) : (r.entry_over - r.close_over)) * 100;
     };
+    // EV of the price we actually took, evaluated at the closing fair
+    // probability. clvOf says the line moved our way; this says whether the
+    // NUMBER we got was +EV against where the market settled. The two disagree
+    // on heavy favourites, where a 0.2pt probability move is worth almost
+    // nothing at -250 — which is exactly the shape of a batter under.
+    const clvEvOf = (r) => {
+      if (r.close_over == null || r.price == null || !r.side) return null;
+      if (r.close_line != null && r.line != null && r.close_line !== r.line) return null;
+      const pClose = r.side === 'Over' ? r.close_over : 1 - r.close_over;
+      if (!(pClose > 0) || !(pClose < 1)) return null;
+      return (pClose * (payoutMult(r.price) + 1) - 1) * 100;
+    };
+    // Significance. A mean with no error bar can't be read: +13.6% ROI over 516
+    // picks and +13.6% over 20 are different claims, and avgCLV near zero could
+    // be a true zero or an underpowered real effect. t = mean / (sd/sqrt(n)),
+    // two-tailed p via the normal approximation (fine at these sample sizes).
+    const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
+    const sdev = (xs) => {
+      if (xs.length < 2) return null;
+      const m = mean(xs);
+      return Math.sqrt(xs.reduce((s, x) => s + (x - m) * (x - m), 0) / (xs.length - 1));
+    };
+    const tStat = (xs) => {
+      if (!xs || xs.length < 2) return null;
+      const s = sdev(xs);
+      return (s != null && s > 0) ? mean(xs) / (s / Math.sqrt(xs.length)) : null;
+    };
+    const pTwo = (t) => (t == null || !isFinite(t)) ? null : Math.round(2 * (1 - normCdf(Math.abs(t))) * 1e4) / 1e4;
+    const r2 = (v) => v == null || !isFinite(v) ? null : Math.round(v * 100) / 100;
+
     const summarize = (arr) => {
       const n = arr.length; if (!n) return { n: 0 };
-      let w = 0, u = 0, clvSum = 0, clvN = 0;
-      for (const r of arr) { if (r.result === 'win') w++; u += profitUnits(r.result, r.price); const c = clvOf(r); if (c != null) { clvSum += c; clvN++; } }
-      return { n, record: `${w}-${n - w}`, winRate: round1(w / n * 100), roi: round1(u / n * 100), units: round1(u), avgCLV: clvN ? round1(clvSum / clvN) : null };
+      let w = 0;
+      const profits = [], clvs = [], evs = [];
+      for (const r of arr) {
+        if (r.result === 'win') w++;
+        profits.push(profitUnits(r.result, r.price));
+        const c = clvOf(r); if (c != null) clvs.push(c);
+        const e = clvEvOf(r); if (e != null) evs.push(e);
+      }
+      const u = profits.reduce((s, x) => s + x, 0);
+      const tRoi = tStat(profits), tClv = tStat(clvs);
+      return {
+        n, record: `${w}-${n - w}`, winRate: round1(w / n * 100), roi: round1(u / n * 100), units: round1(u),
+        avgCLV: clvs.length ? round1(mean(clvs)) : null,
+        // Mean EV% per unit staked, priced at the close. Negative = the number
+        // we took was worse than the closing fair, however the line moved.
+        avgClvEv: evs.length ? round1(mean(evs)) : null,
+        sig: {
+          roiT: r2(tRoi), roiP: pTwo(tRoi),
+          clvN: clvs.length, clvT: r2(tClv), clvP: pTwo(tClv),
+        },
+      };
     };
     const groupBy = (arr, keyFn) => {
       const m = {};
@@ -2524,6 +2572,7 @@ async function batterDebug(env) {
       byPrice,
       byMarket,
       cumulative,
+      readSig: 'Significance: sig.roiP is the two-tailed p for ROI != 0, sig.clvP the same for CLV. Treat p>=0.05 as "no established effect" no matter how large the ROI looks. These p-values assume independent picks; picks on the same slate are correlated (shared games, shared weather, shared lineups), so the true p is LARGER than reported — read a marginal 0.04 as not significant. avgClvEv is the mean EV% per unit at the closing fair price: unlike avgCLV it accounts for the price paid, so a positive avgCLV with a negative avgClvEv means the line moved our way but we still took a number worse than the close. avgClvEv is the one to trust when they disagree.',
       read: 'PrizePicks read: in byMarketSideLine, find each market\'s UNDER rows at the lines PP actually offers (usually 2.5+; PP hides TB/HRR 1.5 unders). If those higher-line unders still show +ROI at fair/plus prices, that is the PP-playable product — no overs needed. Only consider an OVER if its row shows +ROI across a non-thin sample (n>=5) AND positive avgCLV; a lone +ROI over on a thin bucket is noise, and remember a sharp book offering only the over is evidence that over is the -EV side.',
     }, 30));
   } catch (e) { return cors(json({ error: String(e && e.message || e) }, 30)); }
