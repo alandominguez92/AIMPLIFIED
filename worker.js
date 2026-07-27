@@ -455,6 +455,7 @@ async function board(env, ctx) {
   // books we bet) and EU (Pinnacle, the sharp reference we price value against).
   // Adding `spreads` (the run line) to the same call costs no extra quota.
   const mlByHome = {};   // DK/FD best price per side — what you'd actually bet
+  const mlBookPairs = {}; // per-book {book,home,away} — real quotes, for de-vigging
   const pinByHome = {};  // Pinnacle price per side — the sharp fair line
   const rlByHome = {};   // DK/FD best run-line price+point per side
   const pinRlByHome = {}; // Pinnacle run-line price+point per side (sharp fair)
@@ -464,6 +465,15 @@ async function board(env, ctx) {
       if (r.ok) {
         const events = await r.json();
         // Best moneyline price for a team name across a set of bookmakers.
+        // One book's own two sides — the only pair that was ever really offered,
+        // and so the only one with a meaningful overround to strip.
+        const pairFrom = (b, homeName, awayName) => {
+          const mk = (b.markets || []).find((m) => m.key === 'h2h');
+          if (!mk) return null;
+          const h = (mk.outcomes || []).find((x) => x.name === homeName);
+          const a = (mk.outcomes || []).find((x) => x.name === awayName);
+          return (h && a && h.price != null && a.price != null) ? { home: h.price, away: a.price } : null;
+        };
         const priceFrom = (books, name) => {
           let best = null;
           for (const b of books) {
@@ -492,6 +502,16 @@ async function board(env, ctx) {
           const k2 = keyAbbr(ev.home_team);
           if (dkfd.length) {
             mlByHome[k2] = { home: priceFrom(dkfd, ev.home_team), away: priceFrom(dkfd, ev.away_team) };
+            // Per-book two-sided pairs, kept alongside the best-of. The best-of
+            // pair is the right EXECUTION price (take the best number on the
+            // side you bet) but it is not a market: pairing the most generous
+            // home price from one book with the most generous away price from
+            // another describes a quote nobody posted, and its overround is
+            // compressed by the shopping itself. De-vigging that yields a fair
+            // line built from two tails rather than either book's centre.
+            mlBookPairs[k2] = dkfd
+              .map((b) => ({ book: BOOKS[b.key], ...(pairFrom(b, ev.home_team, ev.away_team) || {}) }))
+              .filter((p) => p.home != null && p.away != null);
             rlByHome[k2] = { home: spreadFrom(dkfd, ev.home_team), away: spreadFrom(dkfd, ev.away_team) };
           }
           if (pin.length) {
@@ -586,7 +606,7 @@ async function board(env, ctx) {
     const livePair = mlByHome[hKey];
     const liveHasPrice = livePair && (livePair.home != null || livePair.away != null);
     const effPair = liveHasPrice ? livePair : (savedLines[gid] || null);
-    const ml = moneyline(g, home, away, teamWinP, pmap, effPair, pinByHome[hKey] || null);
+    const ml = moneyline(g, home, away, teamWinP, pmap, effPair, pinByHome[hKey] || null, mlBookPairs[hKey] || null);
     if (ml && !liveHasPrice && effPair) ml.lineStale = true; // shown from last-known line
 
     // Run line: Pinnacle fair + the log5 model (via ml) as the lean filter.
@@ -669,7 +689,7 @@ async function board(env, ctx) {
 // sharpest read available); edge = how much the DK/FD price you'd actually bet
 // beats that fair number. If Pinnacle is missing we fall back to DK/FD-de-vig vs
 // our log5 model, and if there's no market at all, to the model favorite.
-function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair) {
+function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair, bookPairs) {
   // log5 team model (kept as a fallback fair line and a reference number).
   const pH = teamWinP(home.team && home.team.id);
   const pA = teamWinP(away.team && away.team.id);
@@ -700,9 +720,20 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair) {
     const v = iH + iA;
     return v > 0 ? iH / v : iH;
   };
-  const pinFairH = devigHome(pinPair);   // sharp fair (preferred)
+  const pinFairH = devigHome(pinPair);   // sharp fair (preferred) — one book's pair
   const pinMultH = devigHomeMult(pinPair); // same pair, old method — comparison only
-  const dkFairH = devigHome(oddsPair);   // soft-book fair (fallback)
+  // Fallback fair when Pinnacle is missing: de-vig EACH soft book's own two
+  // sides, then take the median. Never the best-of pair, which mixes one book's
+  // most generous home price with another's most generous away price and so has
+  // an overround produced by shopping rather than by any book's opinion.
+  const softFair = (() => {
+    const dvs = (bookPairs || [])
+      .map((p) => shinDevig(p.home, p.away))
+      .filter((v) => v != null && isFinite(v));
+    return dvs.length ? median(dvs) : null;
+  })();
+  // Last resort only: no per-book pair survived, so fall back to the best-of.
+  const dkFairH = softFair != null ? softFair : devigHome(oddsPair);
   let fairH, fairSource;
   if (pinFairH != null) { fairH = pinFairH; fairSource = 'pinnacle'; }
   else if (dkFairH != null) { fairH = dkFairH; fairSource = 'dkfd'; }
