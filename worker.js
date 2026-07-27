@@ -682,8 +682,18 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair) {
   homeWin = clamp(homeWin, 0.05, 0.95);
   const model = { home: homeWin, away: 1 - homeWin };
 
-  // De-vig a two-way price pair into a fair P(home).
+  // De-vig a two-way price pair into a fair P(home), using Shin rather than
+  // proportional normalisation. Moneylines carry far heavier favourites than
+  // props, and that is exactly where splitting the margin proportionally goes
+  // wrong: it under-states the favourite by ~0.7pt at -320 and ~0.9pt at -450,
+  // against a T3 threshold of 1.0. Every favourite was being priced too cheap.
   const devigHome = (pair) => {
+    if (!pair) return null;
+    return shinDevig(pair.home, pair.away);
+  };
+  // The old proportional number, kept alongside so the choice of method can be
+  // settled by which one lands closer to the close rather than by theory.
+  const devigHomeMult = (pair) => {
     if (!pair) return null;
     const iH = amProb(pair.home), iA = amProb(pair.away);
     if (iH == null || iA == null) return null;
@@ -691,6 +701,7 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair) {
     return v > 0 ? iH / v : iH;
   };
   const pinFairH = devigHome(pinPair);   // sharp fair (preferred)
+  const pinMultH = devigHomeMult(pinPair); // same pair, old method — comparison only
   const dkFairH = devigHome(oddsPair);   // soft-book fair (fallback)
   let fairH, fairSource;
   if (pinFairH != null) { fairH = pinFairH; fairSource = 'pinnacle'; }
@@ -734,6 +745,9 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair) {
     edge: e,
     tier,
     fairSource,                // 'pinnacle' | 'dkfd' | 'model'
+    // Shin vs proportional on the same sharp pair, in points. Lets the de-vig
+    // method be judged empirically instead of assumed.
+    devigDeltaPts: (pinFairH != null && pinMultH != null) ? round1((pinFairH - pinMultH) * 100) : null,
     homeAbbr: h.teamAbbr, awayAbbr: a.teamAbbr,
     homeWinProb: h.winProb, awayWinProb: a.winProb,        // fair probs
     homeModelProb: h.modelProb, awayModelProb: a.modelProb, // log5 model, for reference
@@ -1847,21 +1861,48 @@ async function gradeMlPicks(env) {
 // Aggregate the graded moneyline picks into a record/units/ROI/CLV summary,
 // mirroring the props track record. Pass-tier picks are excluded from the
 // headline, same as the strikeout side.
+// Small stats helpers for the ML record. Kept module-level (not inside
+// buildMlRecord) so the batter-debug versions stay independent of this one.
+function mlMean(xs) { return xs.reduce((s, x) => s + x, 0) / xs.length; }
+function mlT(xs) {
+  if (!xs || xs.length < 2) return null;
+  const m = mlMean(xs);
+  const sd = Math.sqrt(xs.reduce((s, x) => s + (x - m) * (x - m), 0) / (xs.length - 1));
+  // Guard on an epsilon, not on >0: a slice where every value is identical
+  // leaves float dust instead of a clean zero, which would divide out to a
+  // t-statistic in the billions and read as overwhelming significance.
+  return sd > 1e-9 ? m / (sd / Math.sqrt(xs.length)) : null;
+}
+function mlP(t) { return (t == null || !isFinite(t)) ? null : Math.round(2 * (1 - normCdf(Math.abs(t))) * 1e4) / 1e4; }
+function mlR2(v) { return (v == null || !isFinite(v)) ? null : Math.round(v * 100) / 100; }
+
 function buildMlRecord(rows) {
   const played = rows.filter((r) => (r.result === 'win' || r.result === 'loss') && r.tier !== 'pass');
   const byTier = { '1': { w: 0, l: 0, units: 0 }, '2': { w: 0, l: 0, units: 0 }, '3': { w: 0, l: 0, units: 0 } };
   let w = 0, l = 0, units = 0, t1w = 0, t1l = 0, clvBeat = 0, clvN = 0;
+  const profits = [], clvPts = [];
   for (const r of played) {
     const win = r.result === 'win';
     if (win) w++; else l++;
-    const u = profitUnits(r.result, r.close_price ?? r.entry_price);
+    // Graded at ENTRY price — the number actually available when the pick
+    // posted. Grading at close_price scores a bet nobody could have placed, and
+    // shifts ROI by exactly the line movement CLV is separately measuring.
+    const u = profitUnits(r.result, r.entry_price ?? r.close_price);
     units += u;
+    profits.push(u);
     const bt = byTier[String(r.tier)];
     if (bt) { if (win) bt.w++; else bt.l++; bt.units += u; }
     if (String(r.tier) === '1') { if (win) t1w++; else t1l++; }
     if (r.entry_price != null && r.close_price != null) {
       const ie = amProb(r.entry_price), ic = amProb(r.close_price);
-      if (ie != null && ic != null) { clvN++; if (ic > ie) clvBeat++; } // our side shortened = market agreed
+      if (ie != null && ic != null) {
+        clvN++;
+        if (ic > ie) clvBeat++;   // our side shortened = market agreed
+        // Magnitude, not just a beat rate: a 60% beat rate on half-point moves
+        // is worth less than 52% on large ones. Both prices carry the book's
+        // vig, so the difference is a fair proxy for the move itself.
+        clvPts.push((ic - ie) * 100);
+      }
     }
   }
   const n = w + l;
@@ -1873,6 +1914,11 @@ function buildMlRecord(rows) {
     tracked: n, record: `${w}–${l}`, winRate: n ? round1(w / n * 100) : null,
     tier1: `${t1w}–${t1l}`, units: Math.round(units * 10) / 10, roi: n ? round1(units / n * 100) : null,
     tierBreakdown, clvBeatRate: clvN ? round1(clvBeat / clvN * 100) : null, clvN,
+    // Magnitude + error bars. On a market this efficient a beat rate near 50%
+    // and avgCLV near 0 is the expected null result, and p >= 0.05 means exactly
+    // that — no established effect, regardless of how the ROI reads.
+    avgCLVpts: clvPts.length ? round1(mlMean(clvPts)) : null,
+    sig: { roiT: mlR2(mlT(profits)), roiP: mlP(mlT(profits)), clvT: mlR2(mlT(clvPts)), clvP: mlP(mlT(clvPts)) },
     pending: rows.filter((r) => r.result == null).length,
   };
 }
@@ -2468,7 +2514,9 @@ async function batterDebug(env) {
     const tStat = (xs) => {
       if (!xs || xs.length < 2) return null;
       const s = sdev(xs);
-      return (s != null && s > 0) ? mean(xs) / (s / Math.sqrt(xs.length)) : null;
+      // Epsilon, not >0: an all-identical slice leaves float dust rather than a
+      // clean zero and would divide out to a spuriously enormous t.
+      return (s != null && s > 1e-9) ? mean(xs) / (s / Math.sqrt(xs.length)) : null;
     };
     const pTwo = (t) => (t == null || !isFinite(t)) ? null : Math.round(2 * (1 - normCdf(Math.abs(t))) * 1e4) / 1e4;
     const r2 = (v) => v == null || !isFinite(v) ? null : Math.round(v * 100) / 100;
