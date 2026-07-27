@@ -1494,6 +1494,13 @@ async function ensureBatterSchema(db) {
   // (close_over). Write-once: a column we skip today is a question we cannot
   // ask of tonight's rows later.
   await addColumns(db, 'bpicks', [['fair_books', 'TEXT']]);
+  // Which tier produced the CLOSING fair, recorded separately from the entry
+  // tier. Sharp books post late and pull early, so a row can enter priced
+  // against a sharp consensus and close priced against DraftKings. Subtracting
+  // one from the other is not line movement — it is the standing gap between
+  // two books, and DK shades toward the public over, so the error has a
+  // direction. CLV is only computed when both ends came from the same tier.
+  await addColumns(db, 'bpicks', [['close_src', 'TEXT']]);
 }
 
 // Moneyline last-known lines. Unlike strikeout picks, the moneyline is never
@@ -1634,8 +1641,10 @@ async function logBatterPicks(db, rows, date) {
       stmts.push(db.prepare('UPDATE bpicks SET close_line=?, close_price=? WHERE date=? AND game_id=? AND player_id=? AND market=?')
         .bind(m.line, m.price, date, gid, r.playerId, m.metric));
       if (m.fairOver != null) {
-        stmts.push(db.prepare('UPDATE bpicks SET close_over=? WHERE date=? AND game_id=? AND player_id=? AND market=? AND line=?')
-          .bind(m.fairOver, date, gid, r.playerId, m.metric, m.line));
+        // Stamp the tier alongside the number so a sharp-entry/DK-close pair can
+        // be detected later instead of silently reading as line movement.
+        stmts.push(db.prepare('UPDATE bpicks SET close_over=?, close_src=? WHERE date=? AND game_id=? AND player_id=? AND market=? AND line=?')
+          .bind(m.fairOver, m.fairSrc ?? null, date, gid, r.playerId, m.metric, m.line));
       }
     }
   }
@@ -2420,9 +2429,17 @@ async function batterDebug(env) {
     const unders = graded.filter((r) => r.side === 'Under');
     const overs = graded.filter((r) => r.side === 'Over');
 
+    // True when entry and close were priced off the same book tier.
+    // close_src only exists on rows logged after that column was added, so an
+    // absent value means "cannot verify" rather than "mismatched" — those rows
+    // are still counted, because dropping them would silently delete every
+    // sharp-era pick logged before the guard shipped. entryVsCloseTier reports
+    // the unverified share separately so it never passes as confirmed.
+    const sameTier = (r) => !r.close_src || (r.fair_src || null) === r.close_src;
     const clvOf = (r) => {
       if (r.close_over == null || r.entry_over == null) return null;
       if (r.close_line != null && r.line != null && r.close_line !== r.line) return null;
+      if (!sameTier(r)) return null; // sharp-in / DK-out is a book gap, not movement
       return (r.side === 'Over' ? (r.close_over - r.entry_over) : (r.entry_over - r.close_over)) * 100;
     };
     // EV of the price we actually took, evaluated at the closing fair
@@ -2433,6 +2450,7 @@ async function batterDebug(env) {
     const clvEvOf = (r) => {
       if (r.close_over == null || r.price == null || !r.side) return null;
       if (r.close_line != null && r.line != null && r.close_line !== r.line) return null;
+      if (!sameTier(r)) return null; // closing fair must come from the entry tier
       const pClose = r.side === 'Over' ? r.close_over : 1 - r.close_over;
       if (!(pClose > 0) || !(pClose < 1)) return null;
       return (pClose * (payoutMult(r.price) + 1) - 1) * 100;
@@ -2532,6 +2550,28 @@ async function batterDebug(env) {
     const srcMap = groupBy((bres.results || []).filter((r) => r.side === 'Under'), (r) => r.fair_src || 'untagged');
     const fairSourceMix = Object.keys(srcMap).map((k) => ({ fairSrc: k, n: srcMap[k].length })).sort((a, b) => b.n - a.n);
 
+    // How often a row entered on one book tier and closed on another. Those are
+    // dropped from CLV (the difference would be a book gap, not movement), so
+    // this is the count of picks CLV can no longer see. A large share here means
+    // the sharp books are pulling before first pitch and the CLV sample is being
+    // silently thinned — read it before trusting any clvP below.
+    const tierMix = {};
+    for (const r of (bres.results || [])) {
+      if (r.close_over == null || r.entry_over == null) continue;
+      const k = `${r.fair_src || 'untagged'} -> ${r.close_src || 'untagged'}`;
+      tierMix[k] = (tierMix[k] || 0) + 1;
+    }
+    const entryVsCloseTier = Object.keys(tierMix)
+      .map((k) => {
+        const [from, to] = k.split(' -> ');
+        // Three states, not two: confirmed same tier, confirmed different (these
+        // are dropped from CLV), and unverified — logged before close_src
+        // existed, so counted but not proven comparable.
+        const unverified = to === 'untagged' && from !== 'untagged';
+        return { path: k, n: tierMix[k], matched: !unverified && from === to, unverified };
+      })
+      .sort((a, b) => b.n - a.n);
+
     // Per-book credibility. A book earns its place in the sharp pool by posting
     // a number that lands near where the market actually closed, so score each
     // book's entry fair against close_over on the same line. Lower avgMissPts =
@@ -2592,6 +2632,7 @@ async function batterDebug(env) {
       projBiasByMarket,
       byModelVer,
       fairSourceMix,
+      entryVsCloseTier,
       sharpBookAccuracy,
       byMonth,
       byPrice,
