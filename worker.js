@@ -59,7 +59,12 @@ const SHARP_MAX_SPREAD = 0.05;
 // Bumped whenever the pricing regime changes, and stamped on every logged row so
 // eras stay separable in analysis. 'dk-fair' = edge measured against DraftKings
 // (circular); 'sharp-shin' = edge vs the Shin-de-vigged sharp pool.
-const BATTER_MODEL_VER = 'sharp-shin';
+// Bumped when the negative binomial replaced Poisson. The pricing side did not
+// change, but the projection distribution did, so rows either side of that
+// switch are not the same experiment — leaving both as 'sharp-shin' would have
+// blended a 3-slate Poisson sample into the negative-binomial one and made the
+// sharp-fair verdict unattributable to either change.
+const BATTER_MODEL_VER = 'sharp-shin-nb';
 // Same idea for the strikeout board, which moved from a DK/FD/MGM consensus fair
 // (circular — two of the three are the books we bet) to the sharp pool with that
 // consensus demoted to a middle fallback rung.
@@ -1223,12 +1228,12 @@ async function batters(env, ctx) {
     };
     const markets = {};
     for (const spec of BATTER_MARKETS) {
-      markets[spec.metric] = priceBatterProp(rec.props[spec.metric], lambda[spec.metric]);
+      markets[spec.metric] = priceBatterProp(rec.props[spec.metric], lambda[spec.metric], spec.metric);
     }
     // oppPFac = the pitcher-only multiplier per metric, kept separate from the
     // combined `adj` so a projection can be traced back to which factor moved it.
     const oppPFac = oppP ? { hr: round2(pitcherMult('hr')), tb: round2(pitcherMult('tb')), hrr: round2(pitcherMult('hrr')) } : null;
-    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, facingHand, venue, adj, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
+    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, facingHand, venue, adj, seasonPA: pa, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
   }
   if (!draft.length) return cors(json([], 300));
 
@@ -1266,6 +1271,11 @@ async function batters(env, ctx) {
       facingHand: b.facingHand || null,
       park: b.venue || null,
       adj: b.adj || null,
+      // Season PA behind the rate that produced this projection. Logged so
+      // the pa>=30 admission threshold can be tested against outcomes rather
+      // than argued about: a 30-PA rate is mostly noise, but whether that
+      // noise costs anything is measurable once the column exists.
+      seasonPA: b.seasonPA || null,
       oppPitcher: b.oppPName || null,   // tonight's opposing starter
       oppPitcherAdj: b.oppPFac || null, // his contribution alone, per metric
       pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : '—',
@@ -1567,7 +1577,7 @@ async function ensureBatterSchema(db) {
   // one from the other is not line movement — it is the standing gap between
   // two books, and DK shades toward the public over, so the error has a
   // direction. CLV is only computed when both ends came from the same tier.
-  await addColumns(db, 'bpicks', [['close_src', 'TEXT']]);
+  await addColumns(db, 'bpicks', [['close_src', 'TEXT'], ['season_pa', 'INTEGER']]);
 }
 
 // Moneyline last-known lines. Unlike strikeout picks, the moneyline is never
@@ -1699,9 +1709,9 @@ async function logBatterPicks(db, rows, date) {
       if (m.none || m.price == null) continue;
       const gid = 'g' + r.gamePk;
       stmts.push(db.prepare(
-        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over,fair_src,model_ver,fair_books)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null, m.fairSrc ?? null, BATTER_MODEL_VER, m.fairBooks ? JSON.stringify(m.fairBooks) : null));
+        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over,fair_src,model_ver,fair_books,season_pa)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null, m.fairSrc ?? null, BATTER_MODEL_VER, m.fairBooks ? JSON.stringify(m.fairBooks) : null, r.seasonPA ?? null));
       // Continuous close capture: latest line/price always; the vig-free over%
       // only when the line still matches entry (so a late line move never
       // clobbers the last comparable close).
@@ -2368,6 +2378,14 @@ const BATTER_TIERS = [8, 5, 3];  // T1/T2/T3 edge cutoffs (vs 5/3/1.5 for Ks)
 // of the measured bias (one month of data) — re-measure via /api/batter-debug
 // and tighten toward the full 0.84 as more months grade.
 const BATTER_PROJ_CAL = 0.86;
+// Variance-to-mean ratio per market, measured from this system's own graded
+// outcomes (see negBinomCdf). Home runs stay on Poisson: no graded HR sample
+// exists to fit, and at a per-game lambda near 0.15 the Poisson, binomial and
+// negative-binomial answers agree to well inside a tenth of a point, so there is
+// nothing to gain and a free parameter to get wrong.
+//
+// Re-fit these as the sample grows — they are measurements, not constants.
+const BATTER_DISPERSION = { tb: 2.41, hrr: 2.37, hr: 1 };
 
 // Expected plate appearances by batting-order slot (league-typical: leadoff
 // ~4.65, dropping ~0.11 per slot to ~3.77 in the 9-hole). Used once tonight's
@@ -2376,10 +2394,42 @@ const SLOT_PA = [4.65, 4.54, 4.43, 4.32, 4.21, 4.10, 3.99, 3.88, 3.77];
 
 // Batter counting-stat prop (HR / total bases / H+R+RBI): Poisson around the
 // per-game expectation, then regressed toward the market (see BATTER_SHRINK).
-function priceBatterProp(prop, lambda) {
-  return bestBookMarket(prop, (L) => 1 - poissonCdf(Math.floor(L), lambda), {
+function priceBatterProp(prop, lambda, metric) {
+  const phi = BATTER_DISPERSION[metric];
+  return bestBookMarket(prop, (L) => 1 - negBinomCdf(Math.floor(L), lambda, phi), {
     shrink: BATTER_SHRINK, tiers: BATTER_TIERS, fairPool: SHARP_LABELS,
   });
+}
+
+// Negative-binomial CDF P(X <= k) for mean `mean` and variance-to-mean ratio
+// `phi`, parameterised so r = mean / (phi - 1).
+//
+// Poisson forces variance == mean. Batter counting stats are not remotely that
+// tight: 1,949 graded H+R+RBI outcomes measure variance/mean at 2.37 and 923
+// total-bases outcomes at 2.41, because one hit delivers 1-4 bases at once
+// rather than arriving as independent unit events. The cost of assuming
+// otherwise is concentrated exactly where the lines sit — Poisson put P(0) 17-18
+// points too low and P(over 1.5) 7-8 points too HIGH, which is what manufactured
+// 1,583 over-leans against 516 unders and left projBiasByMarket at +0.2.
+//
+// Pooling batters of differing lambda inflates variance by itself, so this was
+// checked: lambda across batters has sd ~0.3, accounting for ~0.06 of the 1.4
+// excess. The dispersion is within-batter, not a mixture artefact.
+//
+// Computed by the standard recurrence, so r need not be an integer:
+//   P(0)   = (r/(r+m))^r
+//   P(k)   = P(k-1) * (r+k-1)/k * m/(r+m)
+function negBinomCdf(k, mean, phi) {
+  if (!(mean > 0)) return 1;
+  if (!(phi > 1)) return poissonCdf(k, mean);   // no overdispersion -> Poisson
+  const r = mean / (phi - 1);
+  const q = mean / (r + mean);
+  let term = Math.pow(r / (r + mean), r), sum = term;
+  for (let i = 1; i <= k; i++) {
+    term *= (r + i - 1) / i * q;
+    sum += term;
+  }
+  return Math.min(1, sum);
 }
 
 // Poisson CDF P(X <= k) for mean lambda.
@@ -2640,6 +2690,23 @@ async function batterDebug(env) {
     const marketMap = groupBy(unders, (r) => String(r.market || '').toUpperCase());
     const byMarket = Object.keys(marketMap).map((k) => ({ market: k, ...summarize(marketMap[k]) })).sort((a, b) => b.n - a.n);
 
+    // Strikeouts live in `picks`, a different table and a different experiment.
+    // Reported here beside the batter numbers but never merged into them, so a
+    // sharp-shin verdict is never one market carrying another.
+    let kBlock = { note: 'pitcher strikeouts — separate experiment, never blended with batter rows' };
+    try {
+      await ensureSchema(env.DB);
+      const kres = await env.DB.prepare('SELECT * FROM picks').all();
+      const kGraded = (kres.results || []).filter((r) => r.result === 'win' || r.result === 'loss');
+      const kMap = groupBy(kGraded, (r) => `${r.model_ver || 'consensus-era'}|${r.side || '?'}`);
+      kBlock.byModelVerSide = Object.keys(kMap).map((k) => {
+        const [modelVer, side] = k.split('|');
+        return { modelVer, side, ...summarize(kMap[k]) };
+      }).sort((a, b) => b.n - a.n);
+      const kSrc = groupBy(kres.results || [], (r) => r.fair_src || 'untagged');
+      kBlock.fairSourceMix = Object.keys(kSrc).map((k) => ({ fairSrc: k, n: kSrc[k].length })).sort((a, b) => b.n - a.n);
+    } catch (e) { kBlock.error = String(e && e.message || e); }
+
     const sorted = [...unders].sort((a, b) => String(a.date).localeCompare(String(b.date)));
     let cum = 0; const cumByDate = {};
     for (const r of sorted) { cum += profitUnits(r.result, r.price); cumByDate[r.date] = round1(cum); }
@@ -2657,12 +2724,47 @@ async function batterDebug(env) {
       return { market: m, n: arr.length, avgProj: round1(avgProj), avgActual: round1(avgActual), avgProjMinusActual: round1(avg) };
     }).sort((a, b) => b.n - a.n);
 
+    // Same bias, sliced by week, so a shift can be seen rather than inferred
+    // from a single moving average. The negative-binomial switch should pull
+    // avgProjMinusActual toward 0; if it does not, the residual is in lambda
+    // itself and BATTER_PROJ_CAL is the next thing to re-derive.
+    const isoWeek = (d) => {
+      const t = new Date(String(d) + 'T00:00:00Z');
+      if (isNaN(t)) return null;
+      const day = (t.getUTCDay() + 6) % 7;            // Mon=0
+      t.setUTCDate(t.getUTCDate() - day + 3);          // nearest Thursday
+      const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+      const fday = (firstThu.getUTCDay() + 6) % 7;
+      firstThu.setUTCDate(firstThu.getUTCDate() - fday + 3);
+      return `${t.getUTCFullYear()}-W${String(1 + Math.round((t - firstThu) / 604800000)).padStart(2, '0')}`;
+    };
+    const bwMap = groupBy(graded.filter((r) => r.proj != null && r.actual != null),
+      (r) => { const w = isoWeek(r.date); return w ? `${String(r.market || '?').toUpperCase()}|${w}` : null; });
+    const projBiasByWeek = Object.keys(bwMap).map((k) => {
+      const [market, week] = k.split('|');
+      const arr = bwMap[k];
+      return {
+        market, week, n: arr.length,
+        avgProj: round1(arr.reduce((s, r) => s + r.proj, 0) / arr.length),
+        avgActual: round1(arr.reduce((s, r) => s + r.actual, 0) / arr.length),
+        avgProjMinusActual: round1(arr.reduce((s, r) => s + (r.proj - r.actual), 0) / arr.length),
+      };
+    }).sort((a, b) => a.market.localeCompare(b.market) || a.week.localeCompare(b.week));
+
     // Era split. Rows logged before the sharp-fair cutover carry model_ver NULL
     // and priced their edge against DraftKings — the same book the bet lands at,
     // so the "edge" was self-referential and CLV had nothing to converge on.
     // Comparing the two eras (especially avgCLV) is the whole point of tagging.
     const eraMap = groupBy(unders, (r) => r.model_ver || 'dk-fair');
     const byModelVer = Object.keys(eraMap).map((k) => ({ modelVer: k, ...summarize(eraMap[k]) })).sort((a, b) => b.n - a.n);
+    // Era x MARKET. TB and H+R+RBI are separate experiments with separate
+    // distributions and separate sharp coverage, so a single blended sharp-shin
+    // verdict can hide one carrying the other.
+    const emMap = groupBy(unders, (r) => `${r.model_ver || 'dk-fair'}|${String(r.market || '?').toUpperCase()}`);
+    const byModelVerMarket = Object.keys(emMap).map((k) => {
+      const [modelVer, market] = k.split('|');
+      return { modelVer, market, ...summarize(emMap[k]) };
+    }).sort((a, b) => a.modelVer.localeCompare(b.modelVer) || b.n - a.n);
     // Which fair tier actually produced each pick's line. If 'sharp' is a small
     // share, the sharp books simply aren't quoting our lines and the refactor is
     // only partly live — read this before reading any CLV number below.
@@ -2749,7 +2851,10 @@ async function batterDebug(env) {
       byMarketSide,
       byMarketSideLine,
       projBiasByMarket,
+      projBiasByWeek,
       byModelVer,
+      byModelVerMarket,
+      strikeouts: kBlock,
       fairSourceMix,
       entryVsCloseTier,
       sharpBookAccuracy,
