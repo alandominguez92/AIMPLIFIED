@@ -119,7 +119,19 @@ export default {
 // pre-pitch window — on a normal slate that's a handful of starts, not all day.
 // A 5-minute cron with a 7-minute window guarantees every game gets at least one
 // in-window refresh (there's always a tick in the 5 minutes before first pitch).
-const CLOSE_WINDOW_MIN = 7;
+//
+// Widened to 15 so each game gets ~3 in-window refreshes instead of ~1. On its
+// own that changes nothing — this window only decides WHEN a refresh fires, and
+// the close write always overwrote, so the last tick before first pitch won
+// regardless. The extra passes only help because the close write now refuses to
+// downgrade (see logBatterPicks): a sharp-sourced close captured at 15 minutes
+// survives a 5-minute refresh that can only see the execution book. Sharp books
+// pull early, which is what put 13.5% of rows on a different tier at close than
+// at entry.
+//
+// Costs ~2-3x the close-capture refreshes. Each fires board() + batters(), and
+// batters() is the expensive call, so watch quota before widening further.
+const CLOSE_WINDOW_MIN = 15;
 async function captureCloses(env, ctx) {
   if (!env || !env.DB) return; // no track-record DB -> nothing to freeze
   let sched;
@@ -1698,8 +1710,18 @@ async function logBatterPicks(db, rows, date) {
       if (m.fairOver != null) {
         // Stamp the tier alongside the number so a sharp-entry/DK-close pair can
         // be detected later instead of silently reading as line movement.
-        stmts.push(db.prepare('UPDATE bpicks SET close_over=?, close_src=? WHERE date=? AND game_id=? AND player_id=? AND market=? AND line=?')
-          .bind(m.fairOver, m.fairSrc ?? null, date, gid, r.playerId, m.metric, m.line));
+        //
+        // Never downgrade: once a close is stored whose tier MATCHES entry, only
+        // another matching capture may replace it. A later refresh that can only
+        // see the execution book would otherwise wipe a good sharp close and put
+        // the row out of CLV reach — the earlier number is slightly less final
+        // but comparable, which beats a fresher number that has to be discarded.
+        // A stored close that already mismatches is replaceable by anything.
+        stmts.push(db.prepare(
+          `UPDATE bpicks SET close_over=?, close_src=?
+           WHERE date=? AND game_id=? AND player_id=? AND market=? AND line=?
+             AND (close_src IS NULL OR close_src <> COALESCE(fair_src,'') OR ? = COALESCE(fair_src,''))`
+        ).bind(m.fairOver, m.fairSrc ?? null, date, gid, r.playerId, m.metric, m.line, m.fairSrc ?? ''));
       }
     }
   }
@@ -1785,9 +1807,14 @@ async function logPicks(db, rows, date) {
       if (m.fairOver != null) {
         // close_src stamped with the number, so a fair that entered on the sharp
         // pool and closed on consensus is detectable rather than reading as line
-        // movement — the same trap already closed on bpicks.
-        stmts.push(db.prepare('UPDATE picks SET close_over=?, close_src=? WHERE date=? AND game_id=? AND pitcher_id=? AND line=?')
-          .bind(m.fairOver, m.fairSrc ?? null, date, r.id, p.id, m.line));
+        // movement — the same trap already closed on bpicks, and the same
+        // no-downgrade rule so a late execution-only refresh cannot wipe a
+        // sharp close captured earlier in the window.
+        stmts.push(db.prepare(
+          `UPDATE picks SET close_over=?, close_src=?
+           WHERE date=? AND game_id=? AND pitcher_id=? AND line=?
+             AND (close_src IS NULL OR close_src <> COALESCE(fair_src,'') OR ? = COALESCE(fair_src,''))`
+        ).bind(m.fairOver, m.fairSrc ?? null, date, r.id, p.id, m.line, m.fairSrc ?? ''));
       }
     }
   }
