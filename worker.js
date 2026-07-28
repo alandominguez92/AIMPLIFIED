@@ -60,6 +60,10 @@ const SHARP_MAX_SPREAD = 0.05;
 // eras stay separable in analysis. 'dk-fair' = edge measured against DraftKings
 // (circular); 'sharp-shin' = edge vs the Shin-de-vigged sharp pool.
 const BATTER_MODEL_VER = 'sharp-shin';
+// Same idea for the strikeout board, which moved from a DK/FD/MGM consensus fair
+// (circular — two of the three are the books we bet) to the sharp pool with that
+// consensus demoted to a middle fallback rung.
+const K_MODEL_VER = 'k-sharp-shin';
 
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
@@ -149,7 +153,7 @@ async function handleApi(p, env, ctx) {
   if (p === '/api/track-debug') return trackDebug(env);
   if (p === '/api/edge-debug') return edgeDebug(env);
   if (p === '/api/batter-debug') return batterDebug(env);
-  if (p === '/api/fair-probe') return fairProbe(env);
+  if (p === '/api/fair-probe') return fairProbe(env, url);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -349,11 +353,11 @@ async function board(env, ctx) {
           });
         await Promise.all(upcoming.map(async (ev) => {
           try {
-            const pr = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&regions=us&markets=pitcher_strikeouts&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+            const pr = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=pitcher_strikeouts&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
             if (!pr.ok) return;
             const pd = await pr.json();
             for (const bm of (pd.bookmakers || [])) {
-              const label = FAIR_BOOKS[bm.key]; // 'DK' | 'FD' (bet) | 'MGM' (fair only)
+              const label = PROP_BOOKS[bm.key]; // DK/FD (bet) + MGM and the sharp pool (fair only)
               if (!label) continue;
               const mk = (bm.markets || []).find((m) => m.key === 'pitcher_strikeouts');
               if (!mk) continue;
@@ -1515,6 +1519,12 @@ async function ensureSchema(db) {
     PRIMARY KEY (date, game_id, pitcher_id)
   )`).run();
   await addColumns(db, 'picks', CLV_COLUMNS);
+  // Which tier produced the fair line, and the pricing era. Without these the
+  // strikeout board cannot be asked how often each fallback rung fires, which is
+  // the whole basis for deciding whether the consensus rung can later be
+  // dropped. Rows written before the sharp pool shipped keep NULL and stay
+  // separable from it, exactly as on bpicks.
+  await addColumns(db, 'picks', [['fair_src', 'TEXT'], ['model_ver', 'TEXT'], ['close_src', 'TEXT']]);
 }
 
 // Batter picks live in their own table (a player carries up to 3 markets per
@@ -1766,15 +1776,18 @@ async function logPicks(db, rows, date) {
       if (!p.market || p.market.price == null || p.id == null) continue;
       const m = p.market;
       stmts.push(db.prepare(
-        `INSERT OR IGNORE INTO picks (date,game_id,pitcher_id,pitcher,team,line,side,price,proj,model_over,edge,tier,entry_over)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(date, r.id, p.id, p.name, p.team, m.line, m.side, m.price, p.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null));
+        `INSERT OR IGNORE INTO picks (date,game_id,pitcher_id,pitcher,team,line,side,price,proj,model_over,edge,tier,entry_over,fair_src,model_ver)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, r.id, p.id, p.name, p.team, m.line, m.side, m.price, p.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null, m.fairSrc ?? null, K_MODEL_VER));
       // Continuous close capture (see logBatterPicks for the rationale).
       stmts.push(db.prepare('UPDATE picks SET close_line=?, close_price=? WHERE date=? AND game_id=? AND pitcher_id=?')
         .bind(m.line, m.price, date, r.id, p.id));
       if (m.fairOver != null) {
-        stmts.push(db.prepare('UPDATE picks SET close_over=? WHERE date=? AND game_id=? AND pitcher_id=? AND line=?')
-          .bind(m.fairOver, date, r.id, p.id, m.line));
+        // close_src stamped with the number, so a fair that entered on the sharp
+        // pool and closed on consensus is detectable rather than reading as line
+        // movement — the same trap already closed on bpicks.
+        stmts.push(db.prepare('UPDATE picks SET close_over=?, close_src=? WHERE date=? AND game_id=? AND pitcher_id=? AND line=?')
+          .bind(m.fairOver, m.fairSrc ?? null, date, r.id, p.id, m.line));
       }
     }
   }
@@ -2310,7 +2323,7 @@ function priceStrikeouts(prop, projK) {
     const lam = (1 - LINE_SHRINK) * projK + LINE_SHRINK * L;
     const sigma = Math.sqrt(Math.max(lam, 1) * DISPERSION);
     return 1 - normCdf((L - lam) / sigma);
-  }, { fairConsensus: true });
+  }, { fairPool: SHARP_LABELS, fairConsensus: true });
 }
 
 // The batter model is a Poisson approximation and not yet calibrated (early
@@ -2736,13 +2749,21 @@ async function batterDebug(env) {
 // `regions`), so <=10 books bills as one region equivalent: markets x 1.
 const PROBE_FAIR_BOOKS = ['pinnacle', 'novig', 'prophetx', 'lowvig'];
 const PROBE_EXEC_BOOKS = ['draftkings', 'fanduel'];
-async function fairProbe(env) {
+async function fairProbe(env, reqUrl) {
   const key = env && env.ODDS_API_KEY;
   if (!key) return cors(json({ error: 'ODDS_API_KEY not configured' }, 30));
   const allBooks = [...PROBE_FAIR_BOOKS, ...PROBE_EXEC_BOOKS];
-  const markets = BATTER_MARKETS.map((m) => m.key);
+  // ?market=pitcher_strikeouts probes the K board instead of the batter board.
+  // Coverage is per-market — Pinnacle posts total bases but not H+R+RBI — so a
+  // batter-market result says nothing about strikeouts and has to be asked for
+  // separately. Comma-separated values are accepted; default stays the batter set.
+  const qMarket = reqUrl && reqUrl.searchParams ? reqUrl.searchParams.get('market') : null;
+  const markets = qMarket
+    ? qMarket.split(',').map((s) => s.trim()).filter(Boolean)
+    : BATTER_MARKETS.map((m) => m.key);
   const out = {
-    question: 'Do sharp books post our batter markets? If yes, a non-circular fair line is possible.',
+    question: `Do sharp books post ${markets.join(', ')}? If yes, a non-circular fair line is possible.`,
+    marketsProbed: markets,
     booksRequested: allBooks,
     regionEquivalents: Math.ceil(allBooks.length / 10),
     estimatedCredits: markets.length * Math.ceil(allBooks.length / 10),
@@ -2752,44 +2773,74 @@ async function fairProbe(env) {
     const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
     const events = await evR.json();
     const now = Date.now();
-    const ev = (Array.isArray(events) ? events : []).find((e) => !e.commence_time || Date.parse(e.commence_time) > now);
-    if (!ev) return cors(json({ ...out, error: 'no upcoming event to probe' }, 30));
+    // ?games=N samples N upcoming games instead of one. Coverage varies by game
+    // — a sharp book may quote a marquee matchup and skip a weekday afternoon —
+    // so a single event can badly misrepresent a slate. Cost scales linearly:
+    // markets x regionEquivalents PER GAME. Capped at 8 so a typo cannot burn
+    // the quota.
+    const qGames = reqUrl && reqUrl.searchParams ? parseInt(reqUrl.searchParams.get('games') || '1', 10) : 1;
+    const nGames = Math.max(1, Math.min(8, isFinite(qGames) ? qGames : 1));
+    const upcoming = (Array.isArray(events) ? events : [])
+      .filter((e) => !e.commence_time || Date.parse(e.commence_time) > now)
+      .slice(0, nGames);
+    if (!upcoming.length) return cors(json({ ...out, error: 'no upcoming event to probe' }, 30));
+    out.gamesProbed = upcoming.length;
+    out.estimatedCredits = markets.length * Math.ceil(allBooks.length / 10) * upcoming.length;
+    out.probedEvents = upcoming.map((e) => `${e.away_team} @ ${e.home_team}`);
+    const ev = upcoming[0];
     out.probedEvent = `${ev.away_team} @ ${ev.home_team}`;
 
-    const url = `${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${allBooks.join(',')}`
-      + `&markets=${markets.join(',')}&oddsFormat=american&dateFormat=iso`;
-    const r = await fetch(url, { headers: { accept: 'application/json' } });
-    out.httpStatus = r.status;
-    out.creditsUsed = r.headers.get('x-requests-last') || null;
-    out.creditsRemaining = r.headers.get('x-requests-remaining') || null;
-    if (!r.ok) { out.body = (await r.text()).slice(0, 300); return cors(json(out, 30)); }
-    const d = await r.json();
+    // Accumulate across every probed game so coverage reflects the slate rather
+    // than one matchup. acc[book][market] = { players, twoSided, games, sums[] }.
+    const acc = {};
+    for (const e of upcoming) {
+      const url = `${ODDS}/events/${e.id}/odds?apiKey=${key}&bookmakers=${allBooks.join(',')}`
+        + `&markets=${markets.join(',')}&oddsFormat=american&dateFormat=iso`;
+      const r = await fetch(url, { headers: { accept: 'application/json' } });
+      out.httpStatus = r.status;
+      out.creditsUsed = r.headers.get('x-requests-last') || out.creditsUsed || null;
+      out.creditsRemaining = r.headers.get('x-requests-remaining') || null;
+      if (!r.ok) { out.body = (await r.text()).slice(0, 300); continue; }
+      const d = await r.json();
+      for (const bm of (d.bookmakers || [])) {
+        const bAcc = acc[bm.key] || (acc[bm.key] = {});
+        for (const mk of (bm.markets || [])) {
+          const players = {};
+          for (const oc of (mk.outcomes || [])) {
+            const nm = oc.description || oc.name;
+            const p = players[nm] || (players[nm] = {});
+            if (oc.name === 'Over') p.over = oc.price; else if (oc.name === 'Under') p.under = oc.price;
+            if (oc.point != null) p.point = oc.point;
+          }
+          const list = Object.values(players);
+          const twoSided = list.filter((p) => p.over != null && p.under != null);
+          // Overround on a two-sided quote — the vig this book charges. An
+          // exchange is often assumed to sit near 1.00; ProphetX measured 1.085
+          // on batter props, so this is worth reading rather than assuming.
+          const sums = twoSided.map((p) => amProb(p.over) + amProb(p.under)).filter((x) => isFinite(x));
+          const m = bAcc[mk.key] || (bAcc[mk.key] = { players: 0, twoSided: 0, games: 0, sums: [] });
+          m.players += list.length; m.twoSided += twoSided.length; m.games += 1;
+          for (const s of sums) m.sums.push(s);
+        }
+      }
+    }
 
     // For each book x market: did it post, and is it two-sided (de-viggable)?
     // A one-sided quote cannot be de-vigged, so it is useless as a fair source.
     const byBook = {};
-    for (const bm of (d.bookmakers || [])) {
+    for (const book of Object.keys(acc)) {
       const entry = { markets: {} };
-      for (const mk of (bm.markets || [])) {
-        const players = {};
-        for (const oc of (mk.outcomes || [])) {
-          const nm = oc.description || oc.name;
-          const p = players[nm] || (players[nm] = {});
-          if (oc.name === 'Over') p.over = oc.price; else if (oc.name === 'Under') p.under = oc.price;
-          if (oc.point != null) p.point = oc.point;
-        }
-        const list = Object.values(players);
-        const twoSided = list.filter((p) => p.over != null && p.under != null);
-        // Overround on a two-sided quote — the vig this book charges. Exchanges
-        // should come in near 1.00; a retail book nearer 1.05-1.09.
-        const sums = twoSided.map((p) => amProb(p.over) + amProb(p.under)).filter((x) => isFinite(x));
-        entry.markets[mk.key] = {
-          players: list.length,
-          twoSided: twoSided.length,
-          medianBooksum: sums.length ? Math.round(median(sums) * 1e4) / 1e4 : null,
+      for (const mkKey of Object.keys(acc[book])) {
+        const m = acc[book][mkKey];
+        entry.markets[mkKey] = {
+          players: m.players,
+          twoSided: m.twoSided,
+          gamesQuoted: m.games,
+          gamesProbed: upcoming.length,
+          medianBooksum: m.sums.length ? Math.round(median(m.sums) * 1e4) / 1e4 : null,
         };
       }
-      byBook[bm.key] = entry;
+      byBook[book] = entry;
     }
     out.byBook = byBook;
     // A sharp book only counts if it posts a TWO-SIDED quote — a one-sided price
@@ -2798,8 +2849,8 @@ async function fairProbe(env) {
     out.sharpBooksReturning = PROBE_FAIR_BOOKS.filter(deviggable);
     out.sharpBooksOneSidedOnly = PROBE_FAIR_BOOKS.filter((b) => byBook[b] && !deviggable(b));
     out.verdict = out.sharpBooksReturning.length
-      ? `VIABLE — ${out.sharpBooksReturning.join(', ')} post batter markets. A non-circular fair line is possible: de-vig the sharp book for fair, price the DK/FD number against it.`
-      : 'NOT VIABLE as-is — no sharp book returned these markets. The fair line would need another source (e.g. a consensus of soft books excluding the one you bet), or the edge stays circular.';
+      ? `VIABLE — ${out.sharpBooksReturning.join(', ')} post ${markets.join(', ')} two-sided. A non-circular fair line is possible: de-vig the sharp book for fair, price the DK/FD number against it. Check gamesQuoted vs gamesProbed per book before relying on it — a book that quoted 1 of 6 games is not a fair source for the slate.`
+      : `NOT VIABLE as-is — no sharp book returned ${markets.join(', ')} two-sided. The fair line would need another source (e.g. a consensus of soft books excluding the one you bet), or the edge stays circular.`;
     return cors(json(out, 30));
   } catch (e) {
     return cors(json({ ...out, error: String(e && e.message || e) }, 30));
