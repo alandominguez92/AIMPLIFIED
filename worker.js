@@ -69,6 +69,11 @@ const BATTER_MODEL_VER = 'sharp-shin-nb';
 // (circular — two of the three are the books we bet) to the sharp pool with that
 // consensus demoted to a middle fallback rung.
 const K_MODEL_VER = 'k-sharp-shin';
+// Moneyline pricing era. 'ml-shin' covers Shin de-vig on the sharp pair,
+// grading at entry price rather than close, and de-vigging each book's own
+// two sides instead of the best-of pair. fair_source is logged alongside so
+// a Pinnacle-priced pick is distinguishable from a soft-book fallback.
+const ML_MODEL_VER = 'ml-shin';
 
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
@@ -1604,6 +1609,13 @@ async function ensureMlPickSchema(db) {
     result TEXT, team_score INTEGER, opp_score INTEGER,
     PRIMARY KEY (date, game_id)
   )`).run();
+  // Pricing era, forward-only. The moneyline picked up Shin de-vig, entry-price
+  // grading and the per-book fair in one day with no way to tell which moved a
+  // number afterwards — every other table had this and mlpicks did not.
+  // Deliberately NOT backfilled: rows written before this column cannot be known
+  // to have been priced any particular way, and guessing would be worse than the
+  // NULL that honestly says "before attribution existed".
+  await addColumns(db, 'mlpicks', [['model_ver', 'TEXT'], ['fair_source', 'TEXT']]);
 }
 async function loadMlLines(db, date) {
   try {
@@ -1886,9 +1898,9 @@ async function logMlPicks(db, rows, date) {
     const isHome = ml.teamAbbr === ml.homeAbbr ? 1 : 0;
     const opp = isHome ? ml.awayAbbr : ml.homeAbbr;
     stmts.push(db.prepare(
-      `INSERT OR IGNORE INTO mlpicks (date,game_id,team,opp,is_home,tier,win_prob,edge,entry_price,close_price)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
-    ).bind(date, r.id, ml.teamAbbr, opp || '', isHome, String(ml.tier), ml.winProb ?? null, ml.edge ?? null, ml.price, ml.price));
+      `INSERT OR IGNORE INTO mlpicks (date,game_id,team,opp,is_home,tier,win_prob,edge,entry_price,close_price,model_ver,fair_source)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(date, r.id, ml.teamAbbr, opp || '', isHome, String(ml.tier), ml.winProb ?? null, ml.edge ?? null, ml.price, ml.price, ML_MODEL_VER, ml.fairSource ?? null));
     // Refresh close only while the logged side is still the model's pick, so a
     // mid-day side flip can't overwrite our entry side's closing price.
     stmts.push(db.prepare(
@@ -1995,6 +2007,23 @@ function buildMlRecord(rows) {
     tracked: n, record: `${w}–${l}`, winRate: n ? round1(w / n * 100) : null,
     tier1: `${t1w}–${t1l}`, units: Math.round(units * 10) / 10, roi: n ? round1(units / n * 100) : null,
     tierBreakdown, clvBeatRate: clvN ? round1(clvBeat / clvN * 100) : null, clvN,
+    // Era + fair source split. Rows before attribution existed carry NULL and
+    // group as '(untagged)' rather than being folded into the current era.
+    byModelVer: (() => {
+      const m = {};
+      for (const r of played) { const k = r.model_ver || '(untagged)'; (m[k] = m[k] || []).push(r); }
+      return Object.keys(m).map((k) => {
+        const arr = m[k];
+        let w = 0, u = 0;
+        for (const r of arr) { if (r.result === 'win') w++; u += profitUnits(r.result, r.entry_price ?? r.close_price); }
+        return { modelVer: k, n: arr.length, record: `${w}-${arr.length - w}`, roi: round1(u / arr.length * 100), units: Math.round(u * 10) / 10 };
+      }).sort((a, b) => b.n - a.n);
+    })(),
+    fairSourceMix: (() => {
+      const m = {};
+      for (const r of rows) { const k = r.fair_source || '(untagged)'; m[k] = (m[k] || 0) + 1; }
+      return Object.keys(m).map((k) => ({ fairSource: k, n: m[k] })).sort((a, b) => b.n - a.n);
+    })(),
     // Magnitude + error bars. On a market this efficient a beat rate near 50%
     // and avgCLV near 0 is the expected null result, and p >= 0.05 means exactly
     // that — no established effect, regardless of how the ROI reads.
