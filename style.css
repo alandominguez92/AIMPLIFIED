@@ -128,7 +128,11 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .eyebrow { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12px; letter-spacing:.18em; color:var(--accent); text-transform:uppercase; }
 .hero h1 { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-weight:700; font-size:clamp(42px,6vw,72px); line-height:.98; letter-spacing:.01em; margin:14px 0 10px; text-transform:uppercase; }
 .hero h1 .vs { color:var(--textDim); font-size:.55em; vertical-align:middle; margin:0 .2em; }
-.hero p.sub { color:var(--textDim); font-size:16px; max-width:560px; }
+/* Explicit line-height: body sets none, so this inherited the browser default
+   `normal` (~1.2 for Barlow). Tight enough that descenders in 'value' and
+   'public' collided with the line beneath once the mobile rule dropped the
+   size to 12.5px. */
+.hero p.sub { color:var(--textDim); font-size:16px; line-height:1.55; max-width:560px; }
 
 /* Credibility receipt near the hero — violet rail rhymes with the Track Record.
    Quiet, one line, real numbers; links down to the full proof. */
@@ -671,7 +675,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   /* Hero: keep the duel head-to-head on phones — compact type instead of
      stacking, so one matchup stays under a screen. */
   .hero { padding:24px 0 20px; }
-  .hero p.sub { font-size:12.5px; }
+  .hero p.sub { font-size:12.5px; line-height:1.6; }
   .duel { margin-top:14px; }
   .duel .side { padding:13px 13px 14px; }
   .duel .name { font-size:17px; line-height:1.05; }
