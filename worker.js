@@ -97,11 +97,15 @@ export default {
     // Side effects (D1 logging, self-grading) run only on a miss, i.e. once per
     // window, which is the cadence we want anyway.
     const cache = caches.default;
-    const cacheKey = new Request(url.origin + p); // ignore any query string
+    // Query string is dropped so every viewer shares one cached response per
+    // path — except fair-probe, whose ?market= and ?games= change what is
+    // actually being asked. Stripping them there would serve a batter-market
+    // result to a strikeout probe and silently answer the wrong question.
+    const cacheKey = new Request(url.origin + p + (p === '/api/fair-probe' ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
 
-    const resp = await handleApi(p, env, ctx);
+    const resp = await handleApi(p, env, ctx, url);
     // Only cache real successes — never an error (so a transient failure can't
     // stick). Empty [] uses a short TTL in its handler, so it self-heals fast.
     if (resp && resp.status === 200 && ctx && ctx.waitUntil) {
@@ -163,7 +167,10 @@ async function captureCloses(env, ctx) {
   try { await Promise.all([board(env, ctx), batters(env, ctx)]); } catch (e) { /* transient */ }
 }
 
-async function handleApi(p, env, ctx) {
+// `url` is threaded through because /api/fair-probe reads ?market= and ?games=
+// from the query string. The edge cache above keys on path alone for every
+// other route; fair-probe is the one exception and includes its query.
+async function handleApi(p, env, ctx, url) {
   if (p === '/api/hitters') return hitters();
   if (p === '/api/pitchers') return pitchers();
   if (p === '/api/board') return board(env, ctx);
