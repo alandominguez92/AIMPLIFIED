@@ -1053,10 +1053,21 @@
   }
 
   // Honest empty-state copy for the board — distinguishes "still loading",
-  // "genuinely no games tonight", and "filter/search hid everything".
+  // "no two-way lines posted yet", "genuinely no games tonight", and
+  // "filter/search hid everything".
   function emptyBoardMessage() {
     if (isFeedLoading()) return `Loading tonight’s ${isBatter() ? 'batter props' : 'slate'}…`;
-    if (LIVE_MODE && !boardHasLive()) return `No ${isBatter() ? 'batter props' : 'games'} on tonight’s board yet.`;
+    // Batters get their own line because "no props" reads as broken when a book
+    // visibly HAS batter markets up. What is missing is the two-way Over/Under
+    // line; books post the milestone board ("2+ Total Bases") first and those
+    // quote only the over, which cannot be de-vigged and cannot be bet on the
+    // side we play. We never request the milestone keys, so this describes what
+    // books usually do rather than claiming to have checked what is up now.
+    if (LIVE_MODE && !boardHasLive()) {
+      return isBatter()
+        ? 'No two-way batter lines posted yet — books put the milestone markets (“2+ Total Bases”) up first, and those quote only the over. Pricing a fair number needs both sides. Check back closer to first pitch.'
+        : 'No games on tonight’s board yet.';
+    }
     if (state.searchQuery.trim()) return 'No games match your search.';
     // Run Line depends on sportsbooks posting spreads — often later than K props.
     if (isRL() && state.filter === 'all') {
@@ -2223,13 +2234,22 @@
     // Half-Kelly, 1u = 1% of bankroll, capped at 2.5u (edges are still being calibrated).
     return Math.min(2.5, Math.round(f * 0.5 * 100 * 10) / 10);
   }
-  // Honest hero placeholder for the fade hero.
+  // Honest hero placeholder for the fade hero. Three states, not two: 'nolines'
+  // means nothing was priced because the two-way lines are not up, which is very
+  // different from 'none' — evaluated the slate and nothing cleared the bar.
+  // Saying "no under clears our threshold" when we never had a line to measure
+  // claims work we did not do, and "the projections are on the board below"
+  // points at an empty board.
   function renderHeroPlaceholder(kind) {
-    el.heroEyebrow.textContent = kind === 'loading' ? 'Loading tonight’s fades…' : 'Tonight’s Fades';
-    el.heroTitle.innerHTML = kind === 'loading' ? 'Tonight’s Slate' : 'No Fade Meets the Bar Tonight';
+    el.heroEyebrow.textContent = kind === 'loading' ? 'Loading tonight’s fades…'
+      : kind === 'nolines' ? 'Lines Pending' : 'Tonight’s Fades';
+    el.heroTitle.innerHTML = kind === 'loading' ? 'Tonight’s Slate'
+      : kind === 'nolines' ? 'Waiting on Tonight’s Lines' : 'No Fade Meets the Bar Tonight';
     el.heroDuel.innerHTML = `<div class="hero-empty">${
       kind === 'loading'
         ? 'Pulling tonight’s batter props, model projections, and DK/FD lines…'
+        : kind === 'nolines'
+        ? 'Books haven’t posted two-way batter lines yet. The milestone markets (“2+ Total Bases”) usually go up first, but those quote only the over — we need both sides to strip the vig and find a fair number. Nothing to price until then.'
         : 'No batter under clears our edge threshold tonight — so we post nothing. The projections are on the board below; we only lead with a fade when the gap is real.'
     }</div>`;
   }
@@ -2240,6 +2260,9 @@
     if (!LIVE_MODE) return; // offline demo keeps the static sample fade hero
     const batters = state.liveBatters;
     if (batters === null) { renderHeroPlaceholder('loading'); return; }
+    // Empty array = nothing was priced at all (no two-way lines), which is a
+    // different story from a full slate where no under cleared the bar.
+    if (!batters.length) { renderHeroPlaceholder('nolines'); return; }
     const qualifies = (g) => g.side === 'Under' && g.odds != null && g.line != null
       && typeof g.projVal === 'number' && ['1', '2', '3'].includes(String(g.tier));
     const unders = batters.filter(qualifies);
