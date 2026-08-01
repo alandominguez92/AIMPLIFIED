@@ -1809,6 +1809,20 @@ function batterActual(box, playerId, market) {
     });
   });
   if (!bat) return null;
+  // A rostered batter who never came off the bench still carries a stats.batting
+  // object in the boxscore — it is simply empty. {} is truthy, so the guard above
+  // passed him through, and toNum(undefined) then scored every category 0, which
+  // grades an Under as a win. Indistinguishable, after the fact, from a real
+  // 0-for-4. The pitcher grader never had this hole because it null-checks a
+  // FIELD (stats.pitching.strikeOuts) rather than the container.
+  //
+  // Require positive evidence he actually appeared. gamesPlayed leads because a
+  // pinch runner who scores has no PA and no AB but a legitimate H+R+RBI of 1;
+  // keying on plate appearances alone would void him.
+  const appeared = toNum(bat.gamesPlayed) >= 1
+    || toNum(bat.plateAppearances) > 0
+    || toNum(bat.atBats) > 0;
+  if (!appeared) return null; // didn't play -> leave ungraded (void), never a 0
   const h = toNum(bat.hits), d = toNum(bat.doubles), t = toNum(bat.triples), hr = toNum(bat.homeRuns);
   const runs = toNum(bat.runs), rbi = toNum(bat.rbi);
   if (market === 'hr') return hr;
