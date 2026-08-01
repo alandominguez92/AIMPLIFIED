@@ -36,6 +36,12 @@
   --selectedBgStrong:rgba(242,195,77,.12);
   --tintModel:rgba(127,178,240,.14);
   --tintAccent:rgba(242,195,77,.12);
+  /* Display face. Archivo carries the whole UI, but it is a normal-width
+     grotesque: the hero headline is the one place that needs poster scale, and
+     at 72px a player name plus a market in Archivo either wraps or runs past
+     the fold. Condensed buys that width back. Not theme-dependent — declared
+     once here and inherited by [data-theme="light"], which never redefines it. */
+  --display:'Barlow Condensed','Archivo','Arial Narrow',sans-serif;
 }
 
 [data-theme="light"] {
@@ -147,7 +153,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 /* ---------- hero: Tonight's Ace Duel ---------- */
 .hero { padding:56px 0 40px; }
 .eyebrow { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12px; letter-spacing:.18em; color:var(--accent); text-transform:uppercase; }
-.hero h1 { font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif; font-weight:800; font-size:clamp(28px,3.6vw,44px); line-height:1.04; letter-spacing:-.03em; margin:13px 0 10px; text-transform:uppercase; text-wrap:balance; }
+.hero h1 { font-family:var(--display); font-weight:700; font-size:clamp(42px,6vw,72px); line-height:.98; letter-spacing:.005em; margin:16px 0 10px; text-transform:uppercase; text-wrap:balance; }
 .hero h1 .vs { color:var(--textDim); font-size:.55em; vertical-align:middle; margin:0 .2em; }
 /* Explicit line-height: body sets none, so this inherited the browser default
    `normal` (~1.2 for Barlow). Tight enough that descenders in 'value' and
@@ -171,7 +177,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 /* ---------- fade hero: tonight's sharpest batter-under ---------- */
 .fade-card { grid-column:1 / -1; background:var(--board); border-left:3px solid var(--positive); }
 .fc-top { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:20px 26px 4px; flex-wrap:wrap; }
-.fc-pick { font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif; font-weight:800; font-size:21px; letter-spacing:-.02em; text-transform:uppercase; line-height:1; color:var(--positive); }
+.fc-pick { font-family:var(--display); font-weight:700; font-size:27px; letter-spacing:.01em; text-transform:uppercase; line-height:1; color:var(--positive); }
 .fc-odds { color:var(--textDim); font-weight:400; font-size:16px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; text-transform:none; }
 .fc-meta { color:var(--textDim); font-size:12.5px; margin-top:6px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; }
 .fc-tier { display:inline-block; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:13px; font-weight:700; border-radius:6px; padding:4px 11px; background:var(--accent); color:var(--ink); flex:none; }
@@ -223,7 +229,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 
 .duel { margin-top:32px; display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
 .duel .side { background:var(--board); padding:26px 28px; }
-.duel .name { font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif; font-weight:800; font-size:21px; text-transform:uppercase; letter-spacing:-.02em; }
+.duel .name { font-family:var(--display); font-weight:600; font-size:26px; text-transform:uppercase; letter-spacing:.02em; }
 .duel .team { color:var(--textDim); font-size:13px; margin-top:2px; }
 .proj { margin-top:20px; }
 .proj .label { font-size:12px; color:var(--textDim); text-transform:uppercase; letter-spacing:.1em; }
