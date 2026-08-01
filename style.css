@@ -119,6 +119,21 @@ button { font:inherit; }
 
 @keyframes aiPulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
 
+/* Model bars fill from zero when they first appear, so a projection reads as
+   measured rather than printed. One rule, applied through a .bars-in class the
+   renderer puts on the row / panel / hero — the six places that emit a bar all
+   sit inside one of those three, so nothing has to be threaded per template.
+   scaleX (not width) keeps it on the compositor: no layout on 40 rows at once.
+   The global prefers-reduced-motion block above already neutralizes it. */
+@keyframes barIn { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+.bars-in .fill,
+.bars-in .bmini .uz,
+.bars-in .fc-under-zone,
+.bars-in .fc-gap { transform-origin:left; animation:barIn .62s cubic-bezier(.2,.8,.2,1) both; }
+/* The scale's markers belong to the line, not the fill — they must not stretch
+   in with it or the model dot slides away from the value it marks. */
+.bars-in .bmini .tick, .bars-in .fc-dot { animation:none; }
+
 /* ---------- top bar ---------- */
 header { border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--headerBg); backdrop-filter:blur(8px); z-index:10; }
 .bar { display:flex; align-items:center; gap:28px; height:64px; }

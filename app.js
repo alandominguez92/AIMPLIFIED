@@ -1088,6 +1088,22 @@
     return `<span class="odds-books">${rows}</span>`;
   }
 
+  // Model bars fill from zero the first time they're shown. Gated by key,
+  // because the board re-renders on a five-minute poll and on every sort,
+  // filter and search: a whole page of bars re-filling on a silent data refresh
+  // reads as a glitch, not as feedback. A key is claimed once and never
+  // replayed — except a panel's, which is retired on collapse, since
+  // re-opening a row IS a fresh request to see that model.
+  const shownBars = new Set();
+  function barsIn(key) {
+    if (shownBars.has(key)) return '';
+    shownBars.add(key);
+    return ' bars-in';
+  }
+  function retirePanelBars() {
+    shownBars.forEach((k) => { if (k.startsWith('panel:')) shownBars.delete(k); });
+  }
+
   function renderBoardHead() {
     const cols = isBatter()
       // "Edge · vs sharp fair" matters: the prices are DK/FD, but the edge is
@@ -1371,6 +1387,10 @@
       }
 
       const rowClasses = ['board-row'];
+      // Keyed on the row, so a batter's bar fills when he first reaches the
+      // board and stays put through every later refresh.
+      const rowAnim = barsIn('row:' + g.id);
+      if (rowAnim) rowClasses.push(rowAnim.trim());
       if (isSelected) rowClasses.push('selected');
       else if (isExpanded) rowClasses.push('expanded');
       if (corrN >= 2) rowClasses.push('corr');
@@ -1450,7 +1470,7 @@
             <div class="track"><div class="fill" style="width:${s.value}%;background:${TONE_COLOR[s.tone]}"></div></div>
             <span class="badge" style="color:${TONE_COLOR[s.tone]}">${s.value}</span>
           </div>`).join('');
-        detailHtml = `<div class="expanded-detail">
+        detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}">
           <div class="expanded-title">Batter props — model vs. market</div>
           <div class="bm-table">${bm}</div>
           <div class="expanded-title" style="margin-top:26px">Season percentiles (vs. priced pool)</div>${statsHtml}
@@ -1519,13 +1539,13 @@
             : g.ml.fairSource === 'dkfd'
               ? `No Pinnacle line yet — win% is the DK/FD vig-free line and edge is our model vs. that.`
               : `No market line yet — win% is our log5 model (team rating + home field + starter ERA).`;
-          detailHtml = `<div class="expanded-detail">
+          detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}">
             <div class="expanded-title">Starting pitchers — model matchup</div>
             ${duelHtml}
             <div class="ml-pickline">pick ${esc(g.ml.pick || '—')} <span style="color:var(--text)">(${esc(priceStr)})</span> · ${esc(edgeStr)}</div>
             <div style="color:var(--textDim);font-size:12px;margin-top:12px">${fairNote} Bars score each starter's projected Ks, season K/9, and ERA (lower is better).</div></div>`;
         } else {
-          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Moneyline pending</div><div style="color:var(--textDim);font-size:13px">No moneyline posted for this game yet.</div></div>`;
+          detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}"><div class="expanded-title">Moneyline pending</div><div style="color:var(--textDim);font-size:13px">No moneyline posted for this game yet.</div></div>`;
         }
       } else if (isExpanded) {
         if (g.stats && g.stats.length) {
@@ -1536,7 +1556,7 @@
               <span class="badge" style="background:${TONE_COLOR[s.tone]}">${s.value}</span>
             </div>
           `).join('');
-          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Percentile breakdown</div>${statsHtml}</div>`;
+          detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}"><div class="expanded-title">Percentile breakdown</div>${statsHtml}</div>`;
         } else if (g.projRows && g.projRows.length) {
           const rowsHtml = g.projRows.map((p) => {
             const m = p.market;
@@ -1566,9 +1586,9 @@
               ${marketHtml}
             </div>`;
           }).join('');
-          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Projected strikeouts — model vs. market</div>${rowsHtml}<div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: K/9 × expected innings × opponent K-rate × park × weather. Edge = model P(over) vs. the <b>fair line</b> — the median de-vigged P(over) across DK, FD &amp; MGM. MGM is a sharpness reference only; you still bet the best of DK/FD.</div></div>`;
+          detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}"><div class="expanded-title">Projected strikeouts — model vs. market</div>${rowsHtml}<div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: K/9 × expected innings × opponent K-rate × park × weather. Edge = model P(over) vs. the <b>fair line</b> — the median de-vigged P(over) across DK, FD &amp; MGM. MGM is a sharpness reference only; you still bet the best of DK/FD.</div></div>`;
         } else {
-          detailHtml = `<div class="expanded-detail"><div class="expanded-title">Model projection pending</div><div style="color:var(--textDim);font-size:13px">Live game from tonight's slate — probable pitcher not posted yet.</div></div>`;
+          detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}"><div class="expanded-title">Model projection pending</div><div style="color:var(--textDim);font-size:13px">Live game from tonight's slate — probable pitcher not posted yet.</div></div>`;
         }
       }
 
@@ -2354,8 +2374,10 @@
     el.heroEyebrow.textContent = `Tonight's Sharpest Fade · ${heroDateLabel(f.timeMs || f.time)} · ${f.timeLabel || ''}`.replace(/ · $/, '');
     el.heroTitle.innerHTML = `${esc(f.name)} <span class="vs">·</span> ${esc(propLabel)}`;
 
+    // Keyed on the pick, so the hero's scale draws itself when tonight's fade
+    // first resolves (or changes) and holds still through the refresh cycle.
     el.heroDuel.innerHTML = `
-      <div class="fade-card">
+      <div class="fade-card${barsIn('hero:' + f.id)}">
         <div class="fc-top">
           <div>
             <div class="fc-pick">UNDER ${esc(String(f.line))} ${esc(propLabel)} <span class="fc-odds">(${priceStr})</span></div>
@@ -2485,6 +2507,9 @@
   }
 
   function toggleExpand(id) {
+    // Closing or switching rows retires the open panel's key so its bars play
+    // again next time it's opened.
+    retirePanelBars();
     state.expandedId = state.expandedId === id ? null : id;
     renderBoard();
   }
