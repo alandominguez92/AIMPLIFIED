@@ -953,10 +953,58 @@
       games = games.filter((g) => g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
     }
     const byTime = (a, b) => a.time - b.time;
-    const byEdge = (a, b) => (activeEdge(b) ?? -Infinity) - (activeEdge(a) ?? -Infinity);
-    games = [...games].sort(forceTime || state.sortBy !== 'edge' ? byTime : byEdge);
+    // Descending on the metric, unpriced rows sinking to the bottom, ties (and
+    // all-unpriced boards) falling back to first pitch.
+    //
+    // The null handling is load-bearing, not defensive: `-Infinity - -Infinity`
+    // is NaN, and a comparator that returns NaN makes Array.prototype.sort's
+    // order implementation-defined. Early in the day nothing is priced and
+    // EVERY row is null, so the plain subtraction scrambled the board into an
+    // arbitrary order instead of leaving it alone.
+    const desc = (metric) => (a, b) => {
+      const pa = metric(a), pb = metric(b);
+      if (pa == null && pb == null) return byTime(a, b);
+      if (pa == null) return 1;
+      if (pb == null) return -1;
+      return pb - pa || byTime(a, b);
+    };
+    const byEdge = desc(activeEdge);
+    const byModel = desc(modelProbOf);
+    const cmp = forceTime ? byTime
+      : state.sortBy === 'time' ? byTime
+      : state.sortBy === 'model' ? byModel
+      : byEdge;
+    games = [...games].sort(cmp);
     return games;
   }
+
+  // The model's probability for the side each view leans, 0-100, or null when
+  // nothing is priced. Deliberately mirrors what the row's own detail column
+  // shows — sorting by a number you can see beats sorting by a hidden one.
+  //   batter    P(under), the board's Model P(under) cell
+  //   moneyline the fair win prob in the Win Prob cell
+  //   K props   the lead pitcher's P of his leaned side (in the expand panel)
+  //   run line  the model's favourite's win %
+  function modelProbOf(g) {
+    if (isML()) return g.ml && typeof g.ml.winProb === 'number' ? g.ml.winProb : null;
+    if (isRL()) return g.rl && typeof g.rl.modelFavPct === 'number' ? g.rl.modelFavPct : null;
+    if (isBatter()) {
+      if (typeof g.modelOver !== 'number') return null;
+      return g.side === 'Over' ? g.modelOver : 100 - g.modelOver;
+    }
+    // K props: the row's play is the priced starter with the biggest edge —
+    // same rule the board itself uses to pick the row's headline lean.
+    const priced = (Array.isArray(g.projRows) ? g.projRows : [])
+      .filter((p) => p && p.market && p.market.price != null && typeof p.market.modelOver === 'number');
+    if (!priced.length) return null;
+    const lead = priced.reduce((m, p) => (!m || p.market.edge > m.market.edge ? p : m), null);
+    return lead.market.side === 'Under' ? 100 - lead.market.modelOver : lead.market.modelOver;
+  }
+
+  // What the third sort option is called on the active view. Moneyline shows a
+  // win probability, not a model P — naming it "Model P" there would describe a
+  // column that doesn't exist.
+  const modelSortLabel = () => isML() ? 'Win Prob' : 'Model P';
 
   function renderControls() {
     const live = boardHasLive();
@@ -967,7 +1015,7 @@
       : (modeled ? `${getGames().length} ${noun} · model vs. live lines` : `${getGames().length} ${noun} · tonight's slate · live`);
     const trackedCount = Object.keys(state.slip).length;
     el.trackedPill.textContent = `${trackedCount} tracked`;
-    el.sortLabel.textContent = state.sortBy === 'edge' ? 'Edge' : 'Time';
+    el.sortLabel.textContent = state.sortBy === 'edge' ? 'Edge' : state.sortBy === 'time' ? 'Time' : modelSortLabel();
 
     document.querySelectorAll('.viewtab').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.view === state.boardView);
@@ -2429,8 +2477,9 @@
     }
   }
 
+  const SORT_CYCLE = { edge: 'time', time: 'model', model: 'edge' };
   function toggleSort() {
-    state.sortBy = state.sortBy === 'edge' ? 'time' : 'edge';
+    state.sortBy = SORT_CYCLE[state.sortBy] || 'edge';
     renderControls();
     renderBoard();
   }
