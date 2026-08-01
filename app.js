@@ -1553,7 +1553,7 @@
             <div class="stat-row">
               <span class="stat-label">${esc(s.label)}</span>
               <div class="track"><div class="fill" style="width:${s.value}%;background:${TONE_COLOR[s.tone]}"></div></div>
-              <span class="badge" style="background:${TONE_COLOR[s.tone]}">${s.value}</span>
+              <span class="badge" style="color:${TONE_COLOR[s.tone]}">${s.value}</span>
             </div>
           `).join('');
           detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}"><div class="expanded-title">Percentile breakdown</div>${statsHtml}</div>`;
@@ -2388,8 +2388,8 @@
         <div class="fc-scale-wrap">
           <div class="fc-scale-label"><span>Where the model lands vs. the market line</span><span>${esc(propLabel)}</span></div>
           <div class="fc-tagrow">
-            <span class="fc-model" style="--fc-mp:${mp}%">Model ${f.projVal} ▼</span>
-            <span class="fc-linetag" style="left:${lp}%">▼ Line ${esc(String(f.line))}</span>
+            <span class="fc-model">Model ${f.projVal}</span>
+            <span class="fc-linetag">Line ${esc(String(f.line))}</span>
           </div>
           <div class="fc-track">
             <div class="fc-under-zone" style="width:${lp}%"></div>

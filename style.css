@@ -195,15 +195,28 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .fc-pick { font-family:var(--display); font-weight:700; font-size:27px; letter-spacing:.01em; text-transform:uppercase; line-height:1; color:var(--positive); }
 .fc-odds { color:var(--textDim); font-weight:400; font-size:16px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; text-transform:none; }
 .fc-meta { color:var(--textDim); font-size:12.5px; margin-top:6px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; }
-.fc-tier { display:inline-block; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:13px; font-weight:700; border-radius:6px; padding:4px 11px; background:var(--accent); color:var(--ink); flex:none; }
+/* A wrapper, not a chip: it CONTAINS a .tier-chip, which carries its own tier
+   colour. Giving this a solid gold fill too put the T2 chip's gold-tint pill and
+   its grey unit suffix on a gold ground — both unreadable. */
+.fc-tier { display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:13px; font-weight:700; color:var(--text); flex:none; }
 .fc-scale-wrap { padding:16px 26px 10px; }
-.fc-scale-label { display:flex; justify-content:space-between; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); margin-bottom:4px; }
-.fc-tagrow { position:relative; height:20px; }
-/* The two markers grow OUTWARD from their point — Model's ▼ on its right edge so
-   its text runs left, Line's ▼ on its left so its text runs right. On an under the
-   model always sits left of the line, so the labels separate instead of colliding. */
-.fc-model { position:absolute; left:max(var(--fc-mp,0%), 84px); transform:translateX(-100%); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11.5px; font-weight:700; color:var(--model); white-space:nowrap; padding-right:6px; }
-.fc-linetag { position:absolute; transform:translateX(0); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11.5px; font-weight:700; color:var(--text); white-space:nowrap; padding-left:6px; }
+.fc-scale-label { display:flex; justify-content:space-between; gap:4px 14px; flex-wrap:wrap; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); margin-bottom:4px; }
+/* The descriptor is for a first-time reader and needs the room; on a phone the
+   metric name drops to its own line rather than being squeezed beside it. */
+@media (max-width:720px) { .fc-scale-label > span:last-child { flex-basis:100%; text-align:right; } }
+.fc-tagrow { display:flex; justify-content:space-between; align-items:baseline; gap:12px; min-height:20px; }
+/* These two used to be absolutely positioned at their marker's percentage, each
+   growing outward so they'd separate. That produced a collision in every
+   direction it could: the model label crossed the line label whenever the
+   projection exceeded the line (proj 0.72 on a 0.5 H+R+RBI — the board's most
+   common line), and the edge clamps that stopped a label running off the track
+   pushed it back into the other one.
+   The position is already stated twice on the track directly below: the blue dot
+   sits at the model, the dashed edge at the line. The labels only need to name
+   the numbers, so they sit in a plain two-ended row and match their marker by
+   COLOUR — blue label, blue dot. Nothing left to collide. */
+.fc-model { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11.5px; font-weight:700; color:var(--model); white-space:nowrap; }
+.fc-linetag { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11.5px; font-weight:700; color:var(--text); white-space:nowrap; }
 @media (max-width:720px){ .fc-model, .fc-linetag { font-size:10.5px; } }
 /* 58px, not 46: the dot (16px, centred), the dashed gap line (centred) and the
    zone labels all shared top:50%, so the dashes ran straight through the words
@@ -213,6 +226,16 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .fc-under-zone { position:absolute; left:0; top:0; bottom:0; background:color-mix(in srgb, var(--positive) 15%, transparent); border-right:2px dashed var(--positive); }
 .fc-under-tag { position:absolute; bottom:5px; left:10px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; font-weight:700; color:var(--positive); }
 .fc-over-tag { position:absolute; bottom:5px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; color:var(--textDim); }
+/* On a phone the track is ~300px, and a 0.5 line leaves the under zone about
+   75px wide — narrower than its own label, let alone two. The over label goes;
+   "the public bets overs, we fade them" is already the hero's first sentence,
+   so nothing is lost but the collision. */
+/* Both zone labels go on a phone. At a 0.5 line — the board's most common — the
+   under zone is about 75px wide, narrower than "◄ Value: Under" itself, so its
+   own dashed edge cut straight through the word. The card headline above already
+   reads UNDER 0.5 H+R+RBI in green and the pick strip below repeats it, so the
+   labels were the redundant part, not the geometry. */
+@media (max-width:720px) { .fc-over-tag, .fc-under-tag { display:none; } }
 .fc-gap { position:absolute; top:50%; transform:translateY(-50%); height:2px; background:repeating-linear-gradient(90deg, var(--positive) 0 6px, transparent 6px 11px); }
 .fc-dot { position:absolute; top:50%; width:16px; height:16px; border-radius:50%; background:var(--model); transform:translate(-50%,-50%); box-shadow:0 0 0 4px color-mix(in srgb, var(--model) 25%, transparent); }
 .fc-axis { display:flex; justify-content:space-between; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; color:var(--textDim); margin-top:5px; }
