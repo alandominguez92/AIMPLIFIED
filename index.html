@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Aimplified — Tonight's MLB Slate</title>
 <meta name="description" content="Model-driven MLB batter unders, priced against the sharp market — with a public track record where the wins and losses both stay up. 21+, not betting advice.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230A1622'/%3E%3Ctext x='16' y='23' font-family='Barlow Condensed,Arial,sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='%23F0EFEA'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23E8B84B'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0d12'/%3E%3Ctext x='16' y='23' font-family='Archivo,Helvetica,Arial,sans-serif' font-size='21' font-weight='800' text-anchor='middle' fill='%23e8ecf2'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23f2c34d'/%3E%3C/svg%3E">
 <!-- Social share cards. UPDATE these 3 absolute URLs if you move to a custom domain. -->
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Aimplified">
@@ -21,8 +21,8 @@
 <meta name="twitter:image" content="https://aimplified.delexe.workers.dev/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=slate29">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=board01">
 </head>
 <body>
 
@@ -143,28 +143,32 @@
       <button class="viewtab" data-action="set-view" data-view="kprops">K Props<span class="vt-tag">projection</span></button>
       <button class="viewtab" data-action="set-view" data-view="moneyline">Moneyline<span class="vt-tag">context</span></button>
     </div>
-    <p class="tabnote">Plays = <b>batter unders only</b> — the one market our graded record shows a real edge. Everything else is analysis, not bets. Lines vary by book/app — confirm the Under is offered before placing.</p>
+    <div class="tabrow">
+      <p class="tabnote">Plays = <b>batter unders only</b> — the one market our graded record shows a real edge. Everything else is analysis, not bets. Lines vary by book/app — confirm the Under is offered before placing.</p>
+      <p class="pin-note" id="pinNote" hidden><span class="pin-k">Prices pinned to</span> <b>DraftKings</b> <span class="pin-sep">+</span> <b>FanDuel</b> <span class="pin-sep">/</span> best of the two <span class="pin-chk">✓</span></p>
+    </div>
 
-    <!-- Honest context banner for the K Props tab (toggled by app.js) -->
+    <!-- Honest "context, not plays" banner. One element; app.js swaps the copy
+         for whichever analysis tab is active and hides it on the play tab. -->
     <div class="ctx-banner" id="kCtxBanner" hidden>
       <span class="ctx-banner-tag">Projections · not plays</span>
       <span>Our graded record found <b>no betting edge in strikeout props</b> — the market prices them efficiently. The projections stay because they're honest analysis, but we don't post K bets we wouldn't make ourselves.</span>
     </div>
 
-    <p class="pin-note" id="pinNote" hidden>Prices pinned to <b>DraftKings</b> + <b>FanDuel</b> · best of the two highlighted <span class="pin-chk">✓</span></p>
+    <div class="board-toolbar">
+      <div class="board-search">
+        <input type="text" id="searchInput" placeholder="Search team or pitcher…" autocomplete="off">
+      </div>
 
-    <div class="board-search">
-      <input type="text" id="searchInput" placeholder="Search team or pitcher…" autocomplete="off">
-    </div>
-
-    <div class="board-controls">
+      <div class="board-controls">
       <button class="filter-btn" data-action="set-filter" data-filter="all">All</button>
       <button class="filter-btn" data-action="set-filter" data-filter="1">Tier 1</button>
       <button class="filter-btn" data-action="set-filter" data-filter="2">Tier 2</button>
       <button class="filter-btn" data-action="set-filter" data-filter="3">Tier 3</button>
       <button class="filter-btn" data-action="set-filter" data-filter="pass">Pass</button>
       <button class="sort-btn" data-action="toggle-sort">Sort: <span id="sortLabel"></span> ↕</button>
-      <button class="compare-btn" data-action="toggle-compare-mode" id="compareModeBtn"></button>
+        <button class="compare-btn" data-action="toggle-compare-mode" id="compareModeBtn"></button>
+      </div>
     </div>
 
     <div class="compare-hint" id="compareHint"></div>
@@ -184,6 +188,11 @@
         <div id="boardRows"></div>
         <div class="no-results" id="noResults" hidden>No games match this filter.</div>
       </div>
+    </div>
+
+    <div class="board-foot">
+      <span id="shownLabel"></span>
+      <span>odds refresh every 5 min</span>
     </div>
 
     <div id="comparePanel"></div>
@@ -323,6 +332,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=slate28"></script>
+<script src="app.js?v=board01"></script>
 </body>
 </html>

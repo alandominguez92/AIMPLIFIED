@@ -1045,10 +1045,10 @@
       // "Edge · vs sharp fair" matters: the prices are DK/FD, but the edge is
       // measured against the sharp books, not against the book you bet at.
       // Without the qualifier the number reads as edge-over-DraftKings.
-      ? ['', 'Batter', 'The fade · model vs line', 'Price · DK/FD', 'Edge · vs sharp fair', 'Model P(under)', 'Tier', '']
+      ? ['Batter', 'The fade · model vs line', 'Price · DK/FD', 'Edge · vs sharp fair', 'Model P(under)', 'Tier', '']
       : isML()
-        ? ['', 'Matchup', 'Team to win', 'Moneyline', 'Line value', 'Win Prob', '', '']
-        : ['', 'Matchup', 'Model lean', 'Price · DK/FD', 'Edge', '80% Interval', '', ''];
+        ? ['Matchup', 'Team to win', 'Moneyline', 'Line value', 'Win Prob', '', '']
+        : ['Matchup', 'Model lean', 'Price · DK/FD', 'Edge', '80% Interval', '', ''];
     el.boardHead.innerHTML = cols.map((c) => c ? `<span class="col-label">${c}</span>` : '<span></span>').join('');
   }
 
@@ -1179,7 +1179,10 @@
     const cushTxt = cushion > 0
       ? `model <b>${g.projVal}</b> · <b class="u">${cushion} under</b> the ${g.line} line${cushion < 0.4 ? ' — thin' : ''}`
       : `model <b>${g.projVal}</b> · right at the ${g.line} line`;
-    const parts = [`<span class="bw-cush">${cushTxt}</span>`];
+    // The note is prose (what the model thinks); the two factors below it are
+    // chips (what moved it). Splitting them stops the row reading as one long
+    // mono sentence and lets the eye find the arrows.
+    const chips = [];
     const hand = g.facingHand === 'L' ? 'LHP' : g.facingHand === 'R' ? 'RHP' : null;
     // Name the arm, not just the hand. The opposing starter now moves the
     // projection more than platoon or park, so showing who he is (and an arrow
@@ -1192,7 +1195,7 @@
       else if (pa != null && pa > 1.02) arrow = ` <span class="bw-up">↑</span>`;
       const last = g.oppPitcher ? String(g.oppPitcher).split(' ').slice(-1)[0] : null;
       const who = [hand, last].filter(Boolean).join(' ');
-      parts.push(`<span class="bw-fac">vs <b>${esc(who)}</b>${arrow}</span>`);
+      chips.push(`<span class="bw-chip">vs ${esc(who)}${arrow}</span>`);
     }
     if (g.park) {
       const metric = LABEL_METRIC[g.marketLabel];
@@ -1201,9 +1204,10 @@
       if (a != null && a < 0.98) arrow = ` <span class="bw-dn">↓</span>`;
       else if (a != null && a > 1.02) arrow = ` <span class="bw-up">↑</span>`;
       const short = String(g.park).replace(/ (Park|Stadium|Field|Ballpark)$/i, '');
-      parts.push(`<span class="bw-park">${esc(short)}${arrow}</span>`);
+      chips.push(`<span class="bw-chip">${esc(short)}${arrow}</span>`);
     }
-    return `<span class="bwhy">${parts.join('<span class="bw-sep">·</span>')}</span>`;
+    return `<span class="bw-cush">${cushTxt}</span>`
+      + (chips.length ? `<span class="bwhy">${chips.join('')}</span>` : '');
   }
 
   function renderBoard() {
@@ -1217,9 +1221,24 @@
     el.noResults.hidden = games.length !== 0;
     if (!games.length) el.noResults.textContent = emptyBoardMessage();
 
+    // "showing 12 of 40 batters" — tells you a filter is hiding rows, which a
+    // bare list can't. Total is the unfiltered pool for the active view.
+    const shownEl = document.getElementById('shownLabel');
+    if (shownEl) {
+      const total = getGames().length;
+      const noun = isBatter() ? 'batter' : 'game';
+      shownEl.textContent = total
+        ? `showing ${games.length} of ${total} ${noun}${total === 1 ? '' : 's'}`
+        : '';
+    }
+
     // Run Line renders as game cards, not table rows — hide the table head and
     // the panel border so the cards stand free, then bail before the row map.
+    // The active view drives --bcols (see style.css): each board gets its own
+    // column template, and the head row and data rows read it from the same
+    // place so they can never fall out of step.
     const boardWrap = document.getElementById('boardWrap');
+    if (boardWrap) boardWrap.className = 'board view-' + state.boardView;
     if (isRL()) {
       if (el.boardHead) el.boardHead.style.display = 'none';
       if (boardWrap) { boardWrap.style.border = 'none'; boardWrap.style.background = 'none'; }
@@ -1250,6 +1269,18 @@
       // same-game correlation flag + a faint row tint that groups the cluster.
       const corrN = isBatter() && g.gamePk != null ? (gameCounts[g.gamePk] || 0) : 0;
 
+      // Post-pivot: only batter unders are plays. Context views (K/ML) show an
+      // "analysis" chip instead of a tier, and no slip star.
+      const isPlayView = isBatter();
+      // Built here rather than beside the row template because the batter cell
+      // renders the star inline with the name — it tracks that pick, so it sits
+      // with it instead of floating in a column of its own.
+      const leadingHtml = state.compareMode
+        ? `<span class="leading checkbox${isSelected ? ' selected' : ''}" data-action="leading-click" data-id="${g.id}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(g.matchup)} to compare" title="Select to compare">${isSelected ? '\u2713' : ''}</span>`
+        : (isPlayView
+          ? `<span class="leading${isTracked ? ' tracked' : ''}" data-action="leading-click" data-id="${g.id}" role="button" tabindex="0" aria-pressed="${isTracked}" aria-label="Track ${esc(g.matchup)}" title="Track this pick">${isTracked ? '\u2605' : '\u2606'}</span>`
+          : '');
+
       // The four view-specific cells (pick, odds, [edge — shared], detail).
       const money = (v) => v == null ? '—' : (v > 0 ? '+' + v : String(v));
       let pickCell, oddsCell, detailCell;
@@ -1266,10 +1297,11 @@
           const axisMax = g.line <= 1 ? 2 : Math.max(4, Math.ceil(g.line + 1.5));
           const pct = (v) => Math.max(3, Math.min(97, v / axisMax * 100));
           const lp = pct(g.line), mp = pct(g.projVal);
-          pickCell = `<span class="fade-pick" style="color:var(--positive);font-weight:600">${esc(g.pick)}</span>`
-            + `<span class="bmini"><span class="uz" style="width:${lp}%"></span>`
-            + (mp < lp ? `<span class="gp" style="left:${mp}%;width:${lp - mp}%"></span>` : '')
-            + `<span class="dot" style="left:${mp}%"></span></span>`
+          // Fill runs to where the model lands; the tick marks the posted line.
+          // The gap between them IS the cushion — the thing being bet.
+          pickCell = `<span class="fade-pick">${esc(g.pick)}</span>`
+            + `<span class="bmini"><span class="uz" style="width:${mp}%"></span>`
+            + `<span class="tick" style="left:${lp}%"></span></span>`
             + whyUnderCue(g);
         }
         const priced = hasEdge || g.odds != null || (Array.isArray(g.oddsBooks) && g.oddsBooks.length);
@@ -1289,16 +1321,6 @@
           : (priced ? oddsBooksCell(g, money) : `<span class="odds-blank">${esc(projReason(g))}</span>`);
         detailCell = `<span class="interval-cell">${esc(g.interval)}</span>`;
       }
-
-      // Post-pivot: only batter unders are plays. Context views (K/ML) show an
-      // "analysis" chip instead of a tier, and no slip star.
-      const isPlayView = isBatter();
-
-      const leadingHtml = state.compareMode
-        ? `<span class="leading checkbox${isSelected ? ' selected' : ''}" data-action="leading-click" data-id="${g.id}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(g.matchup)} to compare" title="Select to compare">${isSelected ? '✓' : ''}</span>`
-        : (isPlayView
-          ? `<span class="leading${isTracked ? ' tracked' : ''}" data-action="leading-click" data-id="${g.id}" role="button" tabindex="0" aria-pressed="${isTracked}" aria-label="Track ${esc(g.matchup)}" title="Track this pick">${isTracked ? '★' : '☆'}</span>`
-          : '<span></span>');
 
       const rowClasses = ['board-row'];
       if (isSelected) rowClasses.push('selected');
@@ -1323,8 +1345,8 @@
           return `<span class="mp-name${isPick ? ' pick' : ''}">${esc(lastName(p.name))}${ht ? `<span class="mp-hand">${ht}</span>` : ''}</span>`;
         }).join('<span class="mp-vs">vs</span>');
         const sub = [g.matchup, g.timeLabel, g.scorePart].filter(Boolean).join(' · ');
-        matchupCell = `<div>
-            <div class="mp-duel">${duel}</div>
+        matchupCell = `<div class="matchup-cell">
+            <div class="mc-head">${leadingHtml}<span class="mp-duel">${duel}</span></div>
             <span class="matchup-sub">${esc(sub)}</span>
             ${weatherHtml}
           </div>`;
@@ -1340,17 +1362,16 @@
             ? ` <span class="team-badge tc" style="background:${tc[0]};color:${tc[1]}">${esc(g.team)}</span>`
             : ` <span class="team-badge">${esc(g.team)}</span>`;
         }
-        const corrTag = corrN >= 2 ? ` <span class="corr-tag" title="Correlated: these unders share one game and tend to hit or miss together">⚠ ${corrN} in this game</span>` : '';
-        matchupCell = `<div>
-            <b>${esc(g.matchup)}</b>${teamBadge}
-            <span class="matchup-sub">${esc(g.subline)}${corrTag}</span>
-            ${weatherHtml}
+        const corrTag = corrN >= 2 ? `<span class="corr-tag" title="Correlated: these unders share one game and tend to hit or miss together">${corrN} in this game</span>` : '';
+        matchupCell = `<div class="matchup-cell">
+            <span class="mc-head">${leadingHtml}<b>${esc(g.matchup)}</b>${teamBadge}</span>
+            <span class="matchup-sub">${esc(g.subline)}</span>
+            ${weatherHtml}${corrTag}
           </div>`;
       }
 
       const rowHtml = `
         <div class="${rowClasses.join(' ')}" data-action="row-click" data-id="${g.id}" ${rowA11y}>
-          ${leadingHtml}
           ${matchupCell}
           <span>${pickCell}</span>
           ${oddsCell}
@@ -1379,12 +1400,13 @@
           <div class="stat-row">
             <span class="stat-label">${esc(s.label)}</span>
             <div class="track"><div class="fill" style="width:${s.value}%;background:${TONE_COLOR[s.tone]}"></div></div>
-            <span class="badge" style="background:${TONE_COLOR[s.tone]}">${s.value}</span>
+            <span class="badge" style="color:${TONE_COLOR[s.tone]}">${s.value}</span>
           </div>`).join('');
         detailHtml = `<div class="expanded-detail">
-          <div class="expanded-title">Batter props — model vs. market</div>${bm}
-          <div class="expanded-title" style="margin-top:16px">Season percentiles (vs. priced pool)</div>${statsHtml}
-          <div style="color:var(--textDim);font-size:12px;margin-top:12px">Projection: season rate × expected PAs, adjusted for the <b>opposing starter</b>, the <b>hand</b> he throws and the <b>ballpark</b>, then spread with Poisson. Edge = model P(under) vs. the <b>fair line</b> — the Shin de-vigged median across the sharp books (Pinnacle, novig, ProphetX), never the book you bet at. The model is regressed toward that fair line while it builds a track record, so edges stay conservative until results justify more.</div>
+          <div class="expanded-title">Batter props — model vs. market</div>
+          <div class="bm-table">${bm}</div>
+          <div class="expanded-title" style="margin-top:26px">Season percentiles (vs. priced pool)</div>${statsHtml}
+          <p class="expanded-note">Projection: season rate × expected PAs, adjusted for the <b>opposing starter</b>, the <b>hand</b> he throws and the <b>ballpark</b>, then spread with a <b>negative binomial</b> — real batter outcomes are more dispersed than a Poisson allows. Edge = model P(under) vs. the <b>fair line</b> — the Shin de-vigged median across the sharp books (Pinnacle, novig, ProphetX), never the book you bet at. The model is regressed toward that fair line while it builds a track record, so edges stay conservative until results justify more.</p>
         </div>`;
       } else if (isExpanded && isML()) {
         if (g.ml) {
@@ -1488,7 +1510,7 @@
               : `<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">no prop line</span>`;
             return `
             <div style="display:flex;align-items:baseline;gap:10px;margin-top:10px;flex-wrap:wrap">
-              <span style="font-family:'Barlow Condensed';font-weight:600;font-size:16px;text-transform:uppercase;min-width:120px">${esc(p.name)}</span>
+              <span style="font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;min-width:120px">${esc(p.name)}</span>
               <span style="font-family:'IBM Plex Mono';font-size:14px;color:var(--accent);font-weight:600">${p.proj} K</span>
               <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--textDim)">80% ${p.lo} – ${p.hi}</span>
               <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">opp K ${p.oppKpct}%</span>
@@ -1522,14 +1544,14 @@
       .rl-card.closed .rl-side{background:var(--board2);}
       .rl-closed{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--textDim);border:1px solid var(--border);border-radius:4px;padding:1px 6px;}
       .rl-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:3px;flex-wrap:wrap;}
-      .rl-match{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:17px;letter-spacing:.01em;}
+      .rl-match{font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:700;font-size:17px;letter-spacing:.01em;}
       .rl-edge{font-family:ui-monospace,monospace;font-size:12px;color:var(--positive);}
       .rl-edge.pass{color:var(--textDim);}
       .rl-status{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);margin-bottom:13px;}
       .rl-live{color:var(--danger);}
       .rl-sides{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
       .rl-side{border:1px solid var(--border);border-radius:9px;padding:11px 13px;background:var(--board,#10202F);position:relative;}
-      .rl-lbl{font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:700;font-size:15px;}
+      .rl-lbl{font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:700;font-size:15px;}
       .rl-prc{font-family:ui-monospace,monospace;font-size:13px;color:var(--textDim);margin-top:2px;}
       .rl-cov{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);margin-top:5px;}
       .rl-side.pick{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--board,#10202F));}
@@ -2245,13 +2267,13 @@
       : kind === 'nolines' ? 'Lines Pending' : 'Tonight’s Fades';
     el.heroTitle.innerHTML = kind === 'loading' ? 'Tonight’s Slate'
       : kind === 'nolines' ? 'Waiting on Tonight’s Lines' : 'No Fade Meets the Bar Tonight';
-    el.heroDuel.innerHTML = `<div class="hero-empty">${
+    el.heroDuel.innerHTML = `<div class="hero-empty"><p>${
       kind === 'loading'
         ? 'Pulling tonight’s batter props, model projections, and DK/FD lines…'
         : kind === 'nolines'
         ? 'Books haven’t posted two-way batter lines yet. The milestone markets (“2+ Total Bases”) usually go up first, but those quote only the over — we need both sides to strip the vig and find a fair number. Nothing to price until then.'
         : 'No batter under clears our edge threshold tonight — so we post nothing. The projections are on the board below; we only lead with a fade when the gap is real.'
-    }</div>`;
+    }</p></div>`;
   }
 
   // HERO — tonight's sharpest batter-under fade. Auto-selects the highest-edge
