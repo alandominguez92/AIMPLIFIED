@@ -515,7 +515,12 @@ section { padding:44px 0; }
 .board-controls { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
 .filter-btn, .sort-btn, .compare-btn { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; letter-spacing:.06em; height:40px; border-radius:10px; padding:0 15px; cursor:pointer; border:1px solid var(--border); background:var(--board); color:var(--textDim); transition:all .16s ease; }
 .filter-btn:hover, .sort-btn:hover, .compare-btn:hover { color:var(--text); border-color:var(--textDim); }
-.filter-btn.active, .compare-btn.active { border-color:var(--accent); background:var(--tintAccent); color:var(--accent); }
+/* Active = solid gold, not a tint. Only one tier filter is ever active, so a
+   filled chip reads unambiguously as "this is the current view" — a tint sat too
+   close to hover. Uses the fill/onAccent pair so it stays real gold with legible
+   dark text in both themes, matching the active board tab. */
+.filter-btn.active, .compare-btn.active { border-color:var(--accentGrad); background:var(--accentFill); color:var(--onAccent); font-weight:700; }
+.filter-btn.active:hover, .compare-btn.active:hover { border-color:var(--accentGrad); color:var(--onAccent); }
 .compare-hint { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12.5px; color:var(--accent); margin-bottom:12px; display:none; }
 .compare-hint.visible { display:block; }
 
