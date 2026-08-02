@@ -2383,7 +2383,6 @@
             <div class="fc-pick">UNDER ${esc(String(f.line))} ${esc(propLabel)} <span class="fc-odds">(${priceStr})</span></div>
             <div class="fc-meta">${esc([f.team, f.matchup, f.timeLabel, "tonight's largest model-vs-line gap"].filter(Boolean).join(' · '))}</div>
           </div>
-          <span class="fc-tier">${tierChip(f.tier)}${kelly > 0 ? ` <span style="color:var(--textDim);font-weight:400">${kelly}u</span>` : ''}</span>
         </div>
         <div class="fc-scale-wrap">
           <div class="fc-scale-label"><span>Where the model lands vs. the market line</span><span>${esc(propLabel)}</span></div>

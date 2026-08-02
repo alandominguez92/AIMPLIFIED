@@ -195,10 +195,6 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .fc-pick { font-family:var(--display); font-weight:700; font-size:27px; letter-spacing:.01em; text-transform:uppercase; line-height:1; color:var(--positive); }
 .fc-odds { color:var(--textDim); font-weight:400; font-size:16px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; text-transform:none; }
 .fc-meta { color:var(--textDim); font-size:12.5px; margin-top:6px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; }
-/* A wrapper, not a chip: it CONTAINS a .tier-chip, which carries its own tier
-   colour. Giving this a solid gold fill too put the T2 chip's gold-tint pill and
-   its grey unit suffix on a gold ground — both unreadable. */
-.fc-tier { display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:13px; font-weight:700; color:var(--text); flex:none; }
 .fc-scale-wrap { padding:16px 26px 10px; }
 .fc-scale-label { display:flex; justify-content:space-between; gap:4px 14px; flex-wrap:wrap; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); margin-bottom:4px; }
 /* The descriptor is for a first-time reader and needs the room; on a phone the
