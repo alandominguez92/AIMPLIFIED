@@ -18,6 +18,15 @@
   --textFaint:#7d8796;    /* third tier of text: axis labels, secondary book */
   --accent:#f2c34d;
   --accentDim:#d9a83c;
+  /* Gold splits by job. As TEXT on the light ground it must be dark to pass AA,
+     so --accent is dropped to a brown-gold in light mode. But that same brown
+     is wrong as a FILL — it turned every gold button, tab and chip muddy. So
+     fills use --accentFill (real gold in both themes) with --onAccent as the
+     dark glyph that rides on it. In dark mode both equal the originals, so the
+     dark theme is unchanged. */
+  --accentFill:#f2c34d;
+  --onAccent:#15110a;
+  --accentGrad:#e0ad33;   /* deep end of the active-tab gradient */
   --danger:#f0776b;
   --warm:#d9a83c;
   --positive:#6fd6a2;
@@ -56,8 +65,12 @@
   --text:#141a23;
   --textDim:#4a5462;  /* 7.8:1 on white */
   --textFaint:#6b7684;
-  --accent:#8a610a;   /* gold darkened for AA on white */
+  --accent:#8a610a;   /* gold as TEXT: darkened for AA on white (5.5:1) */
   --accentDim:#6f4e08;
+  /* gold as a FILL: real gold, with dark glyphs on it (#E8B33A + ink = 8.4:1) */
+  --accentFill:#E8B33A;
+  --onAccent:#231a02;
+  --accentGrad:#E0A81F;
   --danger:#BE3B2C;
   --warm:#9c6a12;
   --positive:#177a45; /* 5.4:1 on white */
@@ -75,7 +88,7 @@
   --selectedBg:rgba(138,97,10,.09);
   --selectedBgStrong:rgba(138,97,10,.14);
   --tintModel:rgba(26,95,168,.12);
-  --tintAccent:rgba(138,97,10,.12);
+  --tintAccent:rgba(224,168,31,.20);  /* gold-hued tint, not brown, behind T2/filter chips */
 }
 
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -282,7 +295,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .hot { background:var(--danger); }
 .cool { background:var(--positive); }
 .warm { background:var(--warm); }
-.accent-fill { background:var(--accent); transition:width 1.2s ease; }
+.accent-fill { background:var(--accentFill); transition:width 1.2s ease; }
 
 .pick-strip { grid-column:1 / -1; background:var(--board2); padding:16px 28px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; border-top:1px solid var(--border); }
 .stars { color:var(--accent); letter-spacing:2px; font-size:15px; }
@@ -403,7 +416,7 @@ section { padding:44px 0; }
 .livecard-bar { position:relative; height:8px; border-radius:99px; background:var(--trackBg); overflow:hidden; margin-bottom:13px; }
 .livecard-fill { position:absolute; left:0; top:0; bottom:0; border-radius:99px; background:var(--muted); transition:width .5s ease; }
 .livecard-fill.cashing { background:var(--positive); }
-.livecard-fill.live { background:var(--accent); }
+.livecard-fill.live { background:var(--accentFill); }
 .livecard-fill.cooling { background:var(--danger); }
 .livecard-tick { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text); opacity:.6; border-radius:2px; }
 .livecard-foot { display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12px; color:var(--textDim); }
@@ -437,7 +450,7 @@ section { padding:44px 0; }
 .slip-legs { border-bottom:1px solid var(--border); }
 .slip-leg { display:flex; align-items:center; gap:14px; padding:13px 18px; border-bottom:1px solid var(--border); }
 .slip-leg:last-child { border-bottom:none; }
-.slip-tag { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink); background:var(--accent); border-radius:4px; padding:3px 7px; flex:none; min-width:56px; text-align:center; }
+.slip-tag { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--onAccent); background:var(--accentFill); border-radius:4px; padding:3px 7px; flex:none; min-width:56px; text-align:center; }
 .slip-tag.ml { background:var(--positive); }
 .slip-tag.batter { background:var(--warm); }
 .slip-leg-main { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
@@ -462,7 +475,7 @@ section { padding:44px 0; }
 .slip-note { padding:12px 18px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12px; color:var(--textDim); }
 .viewtab { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:5px; min-height:64px; font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif; font-weight:700; font-size:15px; letter-spacing:.02em; text-transform:uppercase; border-radius:12px; padding:16px 20px; cursor:pointer; border:1px solid var(--border); background:var(--board); color:var(--textDim); text-align:left; transition:border-color .18s ease, color .18s ease, background .18s ease; }
 .viewtab:hover { border-color:var(--textDim); color:var(--text); }
-.viewtab.active { border-color:var(--accent); background:linear-gradient(180deg, #f6cd63, var(--accentDim)); color:var(--ink); }
+.viewtab.active { border-color:var(--accentGrad); background:linear-gradient(180deg, var(--accentFill), var(--accentGrad)); color:var(--onAccent); }
 /* Sub-label under each tab: the play tab is marked, the rest read as analysis. */
 .vt-tag { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; font-weight:400; letter-spacing:.14em; color:var(--textDim); text-transform:uppercase; }
 .vt-tag.is-play { color:var(--positive); }
@@ -533,7 +546,7 @@ section { padding:44px 0; }
 .board-row .leading { font-size:13px; line-height:1; color:var(--textFaint); cursor:pointer; user-select:none; flex:none; }
 .board-row .leading.tracked { color:var(--accent); }
 .board-row .leading.checkbox { width:16px; height:16px; border-radius:4px; border:1px solid var(--muted); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--ink); font-weight:700; }
-.board-row .leading.checkbox.selected { border-color:var(--accent); background:var(--accent); }
+.board-row .leading.checkbox.selected { border-color:var(--accentGrad); background:var(--accentFill); color:var(--onAccent); }
 .board-row .matchup-sub { color:var(--textDim); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; display:block; }
 .board-row .matchup-cell { display:flex; flex-direction:column; gap:6px; }
 .board-row .matchup-cell > b { font-size:16px; font-weight:700; letter-spacing:-.01em; }
@@ -589,7 +602,7 @@ section { padding:44px 0; }
 /* Tier heat chip — T1 brightest (strongest lean) → T3 muted → Pass outline.
    Encodes our confidence ranking; readable at a glance, replaces the stars. */
 .tier-chip { display:inline-block; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; font-weight:600; letter-spacing:.02em; border-radius:6px; padding:5px 9px; white-space:nowrap; }
-.tier-chip.t1 { background:var(--accent); color:var(--ink); }
+.tier-chip.t1 { background:var(--accentFill); color:var(--onAccent); }
 .tier-chip.t2 { background:var(--tintAccent); color:var(--accent); }
 .tier-chip.t3 { background:color-mix(in srgb, var(--textDim) 12%, transparent); color:var(--textDim); }
 .tier-chip.pass { background:none; color:var(--textFaint); border:1px solid var(--border); }
@@ -891,13 +904,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* ---------- Hero: legend done above; play/no-play strip, WHY, badge ---------- */
 /* good-for-play heat for the duel bars (scoped to .pct so global .badge is safe) */
-.pct .fill.elite { background:var(--accent); } .pct .badge.elite { background:var(--accent); color:var(--ink); }
+.pct .fill.elite { background:var(--accentFill); } .pct .badge.elite { background:var(--accentFill); color:var(--onAccent); }
 .pct .fill.good  { background:var(--warm); }   .pct .badge.good  { background:var(--warm); color:var(--ink); }
 .pct .fill.low   { background:var(--muted); }  .pct .badge.low   { background:var(--muted); color:var(--text); }
 .pct .fill.model { background:var(--model); }  .pct .badge.model { background:var(--model); color:var(--ink); }
 
 .side { position:relative; }
-.badge-edge { position:absolute; top:16px; right:18px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; font-weight:700; color:var(--ink); background:var(--accent); border-radius:99px; padding:3px 9px; }
+.badge-edge { position:absolute; top:16px; right:18px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; font-weight:700; color:var(--onAccent); background:var(--accentFill); border-radius:99px; padding:3px 9px; }
 
 /* Full-width duel rows must stretch across both grid columns — a flex child
    otherwise collapses to its min-content (the stars) and overlaps the WHY row. */
@@ -907,7 +920,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pick-strip .pick-odds { color:var(--textDim); font-weight:400; }
 .pick-strip .tier { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12.5px; color:var(--textDim); }
 .pick-strip .edge { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:14px; font-weight:700; color:var(--positive); }
-.hero-add { margin-left:auto; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12.5px; font-weight:700; color:var(--ink); background:var(--accent); border:none; border-radius:8px; padding:9px 15px; cursor:pointer; }
+.hero-add { margin-left:auto; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12.5px; font-weight:700; color:var(--onAccent); background:var(--accentFill); border:none; border-radius:8px; padding:9px 15px; cursor:pointer; }
 .hero-add:hover { filter:brightness(1.08); }
 
 .pick-strip.nopl { background:var(--board2); color:var(--textDim); }
