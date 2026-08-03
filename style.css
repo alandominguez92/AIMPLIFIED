@@ -561,8 +561,22 @@ section { padding:44px 0; }
 .board-row.selected { background:var(--selectedBg); border-left-color:var(--accent); }
 /* Expanded rows take the gold rail on the play view and the blue rail on the
    analysis views — same signal split as everywhere else on the page. */
-.board-row.expanded { background:var(--card); border-left-color:var(--accent); }
-.view-kprops .board-row.expanded, .view-moneyline .board-row.expanded { border-left-color:var(--model); }
+/* Open row, made unmistakable: the rail's colour bleeds across the row as a
+   left-anchored wash, an inset hairline rings the whole row, and the name takes
+   the rail colour. Gold on the play view, blue on the analysis views — the same
+   signal split used everywhere else. Answers "which row is open" at a glance. */
+.board-row.expanded {
+  border-left-color:var(--accent);
+  background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 13%, transparent), color-mix(in srgb, var(--accent) 3%, transparent) 45%, transparent), var(--card);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.board-row.expanded .mc-head b { color:var(--accent); }
+.view-kprops .board-row.expanded, .view-moneyline .board-row.expanded {
+  border-left-color:var(--model);
+  background:linear-gradient(90deg, color-mix(in srgb, var(--model) 13%, transparent), color-mix(in srgb, var(--model) 3%, transparent) 45%, transparent), var(--card);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--model) 22%, transparent);
+}
+.view-kprops .board-row.expanded .mc-head b, .view-moneyline .board-row.expanded .mc-head b { color:var(--model); }
 .mc-head { display:flex; align-items:center; gap:9px; }
 .board-row .leading { font-size:13px; line-height:1; color:var(--textFaint); cursor:pointer; user-select:none; flex:none; }
 .board-row .leading.tracked { color:var(--accent); }

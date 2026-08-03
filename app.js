@@ -2860,13 +2860,45 @@
     dispatchAction(target, e);
   });
 
-  // Keyboard: activate any focusable [data-action] control with Enter/Space.
+  // A toggle re-renders #boardRows from scratch, so the focused element is
+  // destroyed. Re-focus the same row by id afterwards to keep the keyboard on
+  // the row it just acted on — otherwise focus falls back to <body> and arrow
+  // nav dead-ends after every expand.
+  function refocusRow(id) {
+    const again = document.querySelector(`.board-row[data-id="${(window.CSS && CSS.escape) ? CSS.escape(id) : id}"]`);
+    if (again) again.focus();
+  }
+
+  // Keyboard on the board rows: arrows walk the list, Escape collapses the open
+  // row, Enter/Space toggles (handled by the generic activator below). Rows are
+  // real role=button/tabindex controls, so this is the expected behaviour.
   document.body.addEventListener('keydown', (e) => {
+    const row = e.target.closest && e.target.closest('.board-row[data-action="row-click"]');
+    if (row) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const rows = Array.from(row.parentElement.querySelectorAll('.board-row[data-action="row-click"]'));
+        const next = rows[rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1)];
+        if (next) next.focus();
+        return;
+      }
+      if (e.key === 'Escape' && state.expandedId === row.dataset.id) {
+        e.preventDefault();
+        const id = row.dataset.id;
+        toggleExpand(id);   // collapses + re-renders
+        refocusRow(id);
+        return;
+      }
+    }
+
+    // Generic: activate any focusable [data-action] control with Enter/Space.
     if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
     const target = e.target.closest('[data-action]');
     if (!target || !target.hasAttribute('tabindex')) return;
     e.preventDefault(); // stop Space from scrolling the page
     dispatchAction(target, e);
+    // Keep focus on a toggled row so the next arrow/Enter lands where expected.
+    if (target.matches('.board-row[data-action="row-click"]')) refocusRow(target.dataset.id);
   });
 
   el.searchInput.addEventListener('input', (e) => {
