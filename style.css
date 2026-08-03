@@ -529,9 +529,16 @@ section { padding:44px 0; }
    goes solid gold like the tier filter, with its direction arrow. */
 .sort-group { display:inline-flex; align-items:center; gap:8px; }
 .sort-lead { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--textFaint); }
-.sort-chips { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.sort-btn.active { border-color:var(--accentGrad); background:var(--accentFill); color:var(--onAccent); font-weight:700; }
-.sort-btn.active:hover { border-color:var(--accentGrad); color:var(--onAccent); }
+/* Sort is a segmented control, not loose chips — one enclosed box with the
+   active segment filled. This is what tells it apart from the tier filters:
+   the filters were reading as the same thing because an active filter and an
+   active sort were both solid-gold pills of identical shape. Now the eye sees
+   "a row of pills" (filter) vs "one boxed control" (sort). */
+.sort-chips { display:inline-flex; align-items:center; gap:2px; padding:3px; border:1px solid var(--border); border-radius:11px; background:var(--board3); }
+.sort-chips .sort-btn { height:32px; padding:0 12px; border:none; background:transparent; border-radius:8px; color:var(--textDim); }
+.sort-chips .sort-btn:hover { background:color-mix(in srgb, var(--text) 6%, transparent); color:var(--text); border-color:transparent; }
+.sort-chips .sort-btn.active { background:var(--accentFill); color:var(--onAccent); font-weight:700; }
+.sort-chips .sort-btn.active:hover { background:var(--accentFill); color:var(--onAccent); }
 .sort-arrow { font-weight:700; }
 .filter-btn:hover, .sort-btn:hover, .compare-btn:hover { color:var(--text); border-color:var(--textDim); }
 /* Active = solid gold, not a tint. Only one tier filter is ever active, so a
