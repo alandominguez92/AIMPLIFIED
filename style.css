@@ -522,6 +522,14 @@ section { padding:44px 0; }
 .filter-btn .chip-count { margin-left:8px; min-width:20px; height:20px; padding:0 6px; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; background:color-mix(in srgb, var(--text) 9%, transparent); color:var(--textDim); font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; }
 .filter-btn.active .chip-count { background:color-mix(in srgb, var(--onAccent) 16%, transparent); color:var(--onAccent); }
 .filter-btn.chip-empty { opacity:.5; }
+/* Sort chip group. "Sort" lead label, then one chip per key; the active chip
+   goes solid gold like the tier filter, with its direction arrow. */
+.sort-group { display:inline-flex; align-items:center; gap:8px; }
+.sort-lead { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--textFaint); }
+.sort-chips { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.sort-btn.active { border-color:var(--accentGrad); background:var(--accentFill); color:var(--onAccent); font-weight:700; }
+.sort-btn.active:hover { border-color:var(--accentGrad); color:var(--onAccent); }
+.sort-arrow { font-weight:700; }
 .filter-btn:hover, .sort-btn:hover, .compare-btn:hover { color:var(--text); border-color:var(--textDim); }
 /* Active = solid gold, not a tint. Only one tier filter is ever active, so a
    filled chip reads unambiguously as "this is the current view" — a tint sat too

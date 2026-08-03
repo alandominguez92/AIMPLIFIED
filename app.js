@@ -109,6 +109,7 @@
     theme: 'dark',
     filter: 'all',
     sortBy: 'edge',
+    sortDir: null, // null = the key's natural default (see SORT_DEFAULT_DIR)
     expandedId: null,
     tracked: {},
     compareMode: false,
@@ -250,7 +251,6 @@
     gameCount: document.getElementById('gameCount'),
     trackedPill: document.getElementById('trackedPill'),
     searchInput: document.getElementById('searchInput'),
-    sortLabel: document.getElementById('sortLabel'),
     compareModeBtn: document.getElementById('compareModeBtn'),
     compareHint: document.getElementById('compareHint'),
     boardRows: document.getElementById('boardRows'),
@@ -968,15 +968,33 @@
       if (pb == null) return -1;
       return pb - pa || byTime(a, b);
     };
-    const byEdge = desc(activeEdge);
-    const byModel = desc(modelProbOf);
-    const cmp = forceTime ? byTime
-      : state.sortBy === 'time' ? byTime
-      : state.sortBy === 'model' ? byModel
-      : byEdge;
+    // Generalised from the desc-only helper: same null discipline (nulls always
+    // sink, all-null falls back to first pitch), now honouring an explicit
+    // direction so a chip can flip high↔low.
+    const cmpBy = (metric, dir) => (a, b) => {
+      const pa = metric(a), pb = metric(b);
+      if (pa == null && pb == null) return byTime(a, b);
+      if (pa == null) return 1;
+      if (pb == null) return -1;
+      return (dir === 'asc' ? pa - pb : pb - pa) || byTime(a, b);
+    };
+    const cmp = forceTime ? byTime : cmpBy(sortMetric(state.sortBy), sortDir());
     games = [...games].sort(cmp);
     return games;
   }
+
+  // The four sort keys and the field each reads. Odds sorts on the price you'd
+  // actually bet (best DK/FD on the batter board, the moneyline on ML); higher
+  // = longer payout, so it defaults high-first like edge and model.
+  const activeOdds = (g) => isML() ? (g.ml ? g.ml.price : null)
+    : isRL() ? (g.rl ? g.rl.price : null)
+    : (typeof g.odds === 'number' ? g.odds : null);
+  const sortMetric = (key) => key === 'time' ? (g) => g.time
+    : key === 'model' ? modelProbOf
+    : key === 'odds' ? activeOdds
+    : activeEdge;
+  const SORT_DEFAULT_DIR = { edge: 'desc', model: 'desc', odds: 'desc', time: 'asc' };
+  const sortDir = () => state.sortDir || SORT_DEFAULT_DIR[state.sortBy] || 'desc';
 
   // The model's probability for the side each view leans, 0-100, or null when
   // nothing is priced. Deliberately mirrors what the row's own detail column
@@ -1006,6 +1024,23 @@
   // column that doesn't exist.
   const modelSortLabel = () => isML() ? 'Win Prob' : 'Model P';
 
+  // The sort chip row. One chip per key; the active one shows its direction
+  // arrow and, on click, flips it. "Model P" renames to "Win Prob" on the
+  // moneyline view, matching that view's own column, so the chip never labels a
+  // number the board doesn't show.
+  const SORT_LABELS = { edge: 'Edge', model: null, odds: 'Odds', time: 'Time' };
+  function renderSortChips() {
+    const host = document.getElementById('sortChips');
+    if (!host) return;
+    const active = state.sortBy, arrow = sortDir() === 'asc' ? '↑' : '↓';
+    host.innerHTML = ['edge', 'model', 'odds', 'time'].map((key) => {
+      const label = key === 'model' ? modelSortLabel() : SORT_LABELS[key];
+      const on = key === active;
+      return `<button class="sort-btn${on ? ' active' : ''}" data-action="set-sort" data-sort="${key}"`
+        + `${on ? ' aria-pressed="true"' : ''}>${esc(label)}${on ? ` <span class="sort-arrow">${arrow}</span>` : ''}</button>`;
+    }).join('');
+  }
+
   function renderControls() {
     const live = boardHasLive();
     const modeled = boardModeled();
@@ -1015,7 +1050,7 @@
       : (modeled ? `${getGames().length} ${noun} · model vs. live lines` : `${getGames().length} ${noun} · tonight's slate · live`);
     const trackedCount = Object.keys(state.slip).length;
     el.trackedPill.textContent = `${trackedCount} tracked`;
-    el.sortLabel.textContent = state.sortBy === 'edge' ? 'Edge' : state.sortBy === 'time' ? 'Time' : modelSortLabel();
+    renderSortChips();
 
     document.querySelectorAll('.viewtab').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.view === state.boardView);
@@ -1059,8 +1094,8 @@
         btn.classList.remove('chip-empty');
       }
     });
-    const sortBtn = document.querySelector('[data-action="toggle-sort"]');
-    if (sortBtn) sortBtn.style.display = hideModelControls ? 'none' : '';
+    const sortGroup = document.getElementById('sortGroup');
+    if (sortGroup) sortGroup.style.display = hideModelControls ? 'none' : '';
 
     el.compareModeBtn.textContent = state.compareMode ? 'Exit Compare' : 'Compare';
     el.compareModeBtn.classList.toggle('active', state.compareMode);
@@ -2552,9 +2587,16 @@
     }
   }
 
-  const SORT_CYCLE = { edge: 'time', time: 'model', model: 'edge' };
-  function toggleSort() {
-    state.sortBy = SORT_CYCLE[state.sortBy] || 'edge';
+  // Click a different key → switch to it at its natural direction. Click the key
+  // you're already on → flip the direction. Mirrors how every sortable table
+  // behaves, so no explaining needed.
+  function setSort(key) {
+    if (state.sortBy === key) {
+      state.sortDir = sortDir() === 'desc' ? 'asc' : 'desc';
+    } else {
+      state.sortBy = key;
+      state.sortDir = SORT_DEFAULT_DIR[key] || 'desc';
+    }
     renderControls();
     renderBoard();
   }
@@ -2771,7 +2813,7 @@
       case 'toggle-theme': toggleTheme(); break;
       case 'set-filter': setFilter(target.dataset.filter); break;
       case 'set-view': setView(target.dataset.view); break;
-      case 'toggle-sort': toggleSort(); break;
+      case 'set-sort': setSort(target.dataset.sort); break;
       case 'toggle-compare-mode': toggleCompareMode(); break;
       case 'toggle-hitter-compare-mode': toggleHitterCompareMode(); break;
       case 'toggle-pitcher-compare-mode': togglePitcherCompareMode(); break;
