@@ -614,6 +614,11 @@ section { padding:44px 0; }
 .odds-books .bk-chk { visibility:hidden; font-size:11px; color:var(--positive); }
 .odds-books .bk.best .bk-price { color:var(--positive); }
 .odds-books .bk.best .bk-chk { visibility:visible; }
+/* Line movement since posted — its own quiet caption under the two book prices. */
+.odds-books .bk-move { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.02em; margin-top:3px; }
+.bk-move.up { color:var(--positive); }
+.bk-move.down { color:var(--danger); }
+.bk-move.flat { color:var(--textFaint); }
 .board-row .edge-cell { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:20px; font-weight:600; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
 /* Analysis views state the edge without shouting it — it isn't a call to act. */
 .view-kprops .board-row .edge-cell, .view-moneyline .board-row .edge-cell { font-size:16px; font-weight:500; }

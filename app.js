@@ -1148,7 +1148,23 @@
         <span class="bk-chk">✓</span>
       </span>`;
     }).join('');
-    return `<span class="odds-books">${rows}</span>`;
+    // Line movement since the pick posted (batter board only; the field only
+    // exists there). Arrow + text carry the sign, so it reads without colour.
+    const move = (isBatter() && typeof g.moveSincePost === 'number') ? moveCaption(g.moveSincePost) : '';
+    return `<span class="odds-books">${rows}${move}</span>`;
+  }
+
+  // "since post" caption: how far the vig-free fair has moved toward our side
+  // since the pick first logged, in probability points. It's the CLV thesis —
+  // "we're early" — made visible at the moment of decision instead of only in
+  // the season aggregate.
+  function moveCaption(mv) {
+    const cls = mv >= 0.1 ? 'up' : mv <= -0.1 ? 'down' : 'flat';
+    const txt = mv >= 0.1 ? `▲ ${mv.toFixed(1)} since post`
+      : mv <= -0.1 ? `▼ ${Math.abs(mv).toFixed(1)} since post`
+      : 'flat since post';
+    const title = 'Vig-free line movement since this pick posted, in probability points. Up = the market moved toward our side — we were early.';
+    return `<span class="bk-move ${cls}" title="${esc(title)}">${txt}</span>`;
   }
 
   // Model bars fill from zero the first time they're shown. Gated by key,

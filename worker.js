@@ -1301,7 +1301,9 @@ async function batters(env, ctx) {
       line: lead ? lead.m.line : null,
       projVal: lead ? expFor(lead.spec.metric) : null,
       marketLabel: lead ? lead.spec.label : null,
+      metric: lead ? lead.spec.metric : null,       // hr|tb|hrr — joins to bpicks
       modelOver: lead ? lead.m.modelOver : null,
+      fairOver: lead ? lead.m.fairOver : null,       // current vig-free P(over) — for since-posted movement
       fairSrc: lead ? lead.m.fairSrc : null,
       hasPriced: priced.length > 0,
       // Per-market detail for the expanded row (also carries what logging needs).
@@ -1327,6 +1329,35 @@ async function batters(env, ctx) {
   const logRows = all.filter((r) => r.hasPriced).slice(0, 60);
 
   if (env && env.DB) {
+    // Line movement since posted: compare each row's CURRENT vig-free fair to the
+    // entry fair we froze the first time this pick logged (entry_over is written
+    // INSERT-OR-IGNORE, so it never drifts). Read before the write below, so it
+    // reflects prior sightings, not this one — a pick's first appearance has no
+    // baseline yet and correctly shows nothing.
+    //
+    // Two guards keep it honest, matching the CLV discipline used at grading:
+    //  - entry line must equal the current line (a moved line compares different
+    //    markets), and
+    //  - entry fair tier must equal the current tier (sharp→mkt is a book gap,
+    //    not real movement).
+    try {
+      const prior = (await env.DB.prepare(
+        'SELECT game_id, player_id, market, entry_over, line, fair_src FROM bpicks WHERE date=?'
+      ).bind(slateDate()).all()).results || [];
+      const em = {};
+      prior.forEach((p) => { em[`${p.game_id}|${p.player_id}|${p.market}`] = p; });
+      rows.forEach((r) => {
+        if (r.playerId == null || r.gamePk == null || !r.metric || r.fairOver == null || !r.side) return;
+        const e = em[`g${r.gamePk}|${r.playerId}|${r.metric}`];
+        if (!e || e.entry_over == null) return;
+        if (e.line !== r.line) return;                             // line moved -> not comparable
+        if ((e.fair_src || null) !== (r.fairSrc || null)) return;  // tier changed -> not comparable
+        // Positive = moved toward our side (fair P(over) fell for an Under).
+        const mv = (r.side === 'Under' ? (e.entry_over - r.fairOver) : (r.fairOver - e.entry_over)) * 100;
+        r.moveSincePost = Math.round(mv * 10) / 10;
+      });
+    } catch (e) { /* movement is optional — never block the board on it */ }
+
     const write = logBatterPicks(env.DB, logRows, slateDate()).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(write); else await write;
   }
@@ -1521,6 +1552,7 @@ async function trackRecord(env) {
     await ensureBatterSchema(env.DB);
     await gradeUngraded(env);
     await gradeBatterPicks(env);
+    await backfillBatterGrades(env);
     await gradeMlPicks(env);
     const kres = await env.DB.prepare('SELECT * FROM picks').all();
     const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
@@ -1590,7 +1622,16 @@ async function ensureBatterSchema(db) {
   // two books, and DK shades toward the public over, so the error has a
   // direction. CLV is only computed when both ends came from the same tier.
   await addColumns(db, 'bpicks', [['close_src', 'TEXT'], ['season_pa', 'INTEGER']]);
+  // Which grader wrote this row's result. Rows graded before the did-not-play
+  // fix carry NULL and are the ones the backfill has to re-derive from the
+  // boxscore; reconciled rows are stamped so the sweep terminates instead of
+  // re-fetching the same games forever.
+  await addColumns(db, 'bpicks', [['grade_ver', 'TEXT']]);
 }
+
+// Stamped on every row this grader touches. Bump only if the grading RULE
+// changes — it is what tells the backfill which rows still need re-deriving.
+const GRADE_VER = 'dnp-void-1';
 
 // Moneyline last-known lines. Unlike strikeout picks, the moneyline is never
 // logged, so it lives only in the live h2h feed. The book only offers it
@@ -1790,15 +1831,71 @@ async function gradeBatterPicks(env) {
     const stmts = [];
     for (const p of picks) {
       const actual = batterActual(box, p.player_id, p.market);
-      if (actual == null) continue; // didn't play / not found -> leave ungraded (void)
-      const result = gradePick(p.side, p.line, actual);
-      stmts.push(db.prepare('UPDATE bpicks SET actual=?, result=? WHERE date=? AND game_id=? AND player_id=? AND market=?').bind(actual, result, p.date, p.game_id, p.player_id, p.market));
+      // Didn't play -> void, written explicitly rather than left NULL. Leaving it
+      // NULL would keep the row in this function's own work queue
+      // (WHERE result IS NULL) forever: every bench player, every night, re-fetching
+      // a boxscore that can never resolve, eventually crowding real games out of
+      // the 30-game slice. 'void' is already excluded from every stats reader,
+      // which all filter to win/loss.
+      const result = actual == null ? 'void' : gradePick(p.side, p.line, actual);
+      stmts.push(db.prepare('UPDATE bpicks SET actual=?, result=?, grade_ver=? WHERE date=? AND game_id=? AND player_id=? AND market=?').bind(actual, result, GRADE_VER, p.date, p.game_id, p.player_id, p.market));
     }
     if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* skip */ } }
   }
 }
 
 // A batter's actual value for a market from the boxscore batting line.
+// One-shot reconciliation of rows graded before the did-not-play fix. Those rows
+// scored a bench player as actual=0, which is an Under win and is not separable
+// from a real 0-for-4 by looking at the table — only the boxscore knows. So the
+// sweep re-derives from the boxscore.
+//
+// Only actual=0 rows can be wrong: any nonzero actual is proof he batted. That
+// keeps the work small, and stamping grade_ver makes it terminate — each game is
+// re-fetched once, ever, and confirmed 0-for-4 rows are marked so they are never
+// looked at again.
+//
+// Four games per pass, newest first. Small because this shares a subrequest
+// budget with gradeUngraded and gradeBatterPicks, which already burn up to 30
+// boxscore fetches each — a bigger batch here would starve live grading rather
+// than merely slow the sweep. Newest first so the current pricing era, which is
+// what projBiasByWeek reads, is clean first.
+async function backfillBatterGrades(env) {
+  const db = env.DB;
+  const games = (await db.prepare(
+    `SELECT DISTINCT game_id, date FROM bpicks
+      WHERE actual = 0 AND result IN ('win','loss')
+        AND (grade_ver IS NULL OR grade_ver <> ?)
+      ORDER BY date DESC LIMIT 4`
+  ).bind(GRADE_VER).all()).results || [];
+  if (!games.length) return;
+
+  for (const g of games) {
+    const pk = String(g.game_id).replace(/^g/, '');
+    let box;
+    try {
+      const r = await fetch(`${STATS}/game/${pk}/boxscore`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      box = await r.json();
+    } catch (e) { continue; }
+    // Re-derive only the suspect rows. Rows with a nonzero actual are left alone
+    // entirely — they were never in question and re-grading them would risk
+    // rewriting a settled result off a boxscore correction.
+    const picks = (await db.prepare(
+      `SELECT * FROM bpicks WHERE game_id=? AND actual = 0 AND result IN ('win','loss')`
+    ).bind(g.game_id).all()).results || [];
+    const stmts = [];
+    for (const p of picks) {
+      const actual = batterActual(box, p.player_id, p.market);
+      const result = actual == null ? 'void' : gradePick(p.side, p.line, actual);
+      stmts.push(db.prepare(
+        'UPDATE bpicks SET actual=?, result=?, grade_ver=? WHERE date=? AND game_id=? AND player_id=? AND market=?'
+      ).bind(actual, result, GRADE_VER, p.date, p.game_id, p.player_id, p.market));
+    }
+    if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* retry next pass */ } }
+  }
+}
+
 function batterActual(box, playerId, market) {
   let bat = null;
   ['away', 'home'].forEach((side) => {
