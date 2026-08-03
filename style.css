@@ -514,6 +514,14 @@ section { padding:44px 0; }
 .board-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
 .board-controls { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
 .filter-btn, .sort-btn, .compare-btn { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; letter-spacing:.06em; height:40px; border-radius:10px; padding:0 15px; cursor:pointer; border:1px solid var(--border); background:var(--board); color:var(--textDim); transition:all .16s ease; }
+/* Only the tier chips carry a count badge, so only they need flex alignment;
+   leaving sort/compare as default buttons preserves the space in "Sort: Edge". */
+.filter-btn { display:inline-flex; align-items:center; justify-content:center; }
+/* Live count per tier chip. Neutral by default; on the active (gold) chip it
+   flips to dark-on-gold so it stays legible. Empty buckets dim via .chip-empty. */
+.filter-btn .chip-count { margin-left:8px; min-width:20px; height:20px; padding:0 6px; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; background:color-mix(in srgb, var(--text) 9%, transparent); color:var(--textDim); font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; }
+.filter-btn.active .chip-count { background:color-mix(in srgb, var(--onAccent) 16%, transparent); color:var(--onAccent); }
+.filter-btn.chip-empty { opacity:.5; }
 .filter-btn:hover, .sort-btn:hover, .compare-btn:hover { color:var(--text); border-color:var(--textDim); }
 /* Active = solid gold, not a tint. Only one tier filter is ever active, so a
    filled chip reads unambiguously as "this is the current view" — a tint sat too

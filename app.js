@@ -1026,10 +1026,38 @@
     // Tier filters grade PLAYS, and only the batter board posts plays — so hide
     // them on the context views (a "Tier 1 moneyline" is not a recommendation).
     const hideTiers = hideModelControls || !isBatter();
+
+    // Live counts per tier chip — how many of tonight's plays fall in each
+    // bucket, given the current search. Counted off the real board and kept
+    // independent of the active tier filter, so you can see the other buckets'
+    // sizes while filtered to one. Search-applied so the numbers track what you
+    // typed. Only the batter board posts tiers, so only it gets counts.
+    const FILTER_LABEL = { all: 'All', 1: 'Tier 1', 2: 'Tier 2', 3: 'Tier 3', pass: 'Pass' };
+    let tierCounts = null;
+    if (isBatter() && !hideTiers) {
+      const q = state.searchQuery.trim().toLowerCase();
+      const pool = getGames().filter((g) => !q || g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
+      tierCounts = { all: pool.length, 1: 0, 2: 0, 3: 0, pass: 0 };
+      pool.forEach((g) => { const t = String(activeTier(g)); if (t in tierCounts) tierCounts[t] += 1; });
+    }
+
     document.querySelectorAll('.filter-btn').forEach((btn) => {
-      const isTierBtn = btn.dataset.filter !== 'all';
+      const f = btn.dataset.filter;
+      const isTierBtn = f !== 'all';
       btn.style.display = hideTiers && isTierBtn ? 'none' : '';
-      btn.classList.toggle('active', btn.dataset.filter === state.filter);
+      const active = f === state.filter;
+      btn.classList.toggle('active', active);
+      const label = FILTER_LABEL[f] || btn.textContent.replace(/\s*\d+$/, '');
+      if (tierCounts) {
+        const n = tierCounts[f] ?? 0;
+        btn.innerHTML = `${esc(label)}<span class="chip-count">${n}</span>`;
+        // Dim a bucket that's empty tonight — unless it's the one you're on,
+        // which must stay legible even at zero.
+        btn.classList.toggle('chip-empty', n === 0 && !active);
+      } else {
+        btn.textContent = label;
+        btn.classList.remove('chip-empty');
+      }
     });
     const sortBtn = document.querySelector('[data-action="toggle-sort"]');
     if (sortBtn) sortBtn.style.display = hideModelControls ? 'none' : '';
@@ -2330,6 +2358,25 @@
   // Saying "no under clears our threshold" when we never had a line to measure
   // claims work we did not do, and "the projections are on the board below"
   // points at an empty board.
+  // The hero's "Why" — a price-play argument built only from numbers we have,
+  // each stated as exactly what it is. Two DISTINCT spreads live here and must
+  // not be conflated:
+  //   priceEdge  = model P(under) − break-even implied by the price you'd bet.
+  //   f.edge     = model P(under) − the SHARP FAIR line (what the board's % is).
+  // They are different quantities; an earlier draft called the first one "the
+  // +6.2% edge", which was the second. The price-play frame only holds when the
+  // model actually beats the price (priceEdge > 0) — because the board edge is
+  // measured against fair, not against the book, the two can disagree in sign,
+  // so we fall back to a plain projection line when it does.
+  function heroWhy(f, pUnder, breakevenPct, cushion, priceStr, propLabel) {
+    const proj = `it projects <b>${f.projVal}</b>, ${cushion > 0 ? `a <b>${cushion}</b> cushion under the ${esc(String(f.line))} line` : `right at the ${esc(String(f.line))} line`}`;
+    if (pUnder != null && breakevenPct != null && pUnder > breakevenPct) {
+      const priceEdge = Math.round((pUnder - breakevenPct) * 10) / 10;
+      return `This is a price play, not a projection play. At <b>${priceStr}</b> the Under only needs <b>${breakevenPct}%</b> to turn a profit, and the model gives it <b>${pUnder}%</b> — <b>${priceEdge} pts</b> clear of break-even, ${proj}. The board's <b>+${f.edge}%</b> measures that same price against the sharp fair line, where casual over-money shades the Under cheapest.`;
+    }
+    return `Casual money pounds the over on a name like ${esc(f.name)}, so the book sets this line high. The model projects <b>${f.projVal} ${esc(propLabel.toLowerCase())}</b>${cushion > 0 ? `, a <b>${cushion}</b> cushion under the ${esc(String(f.line))} line` : `, right at the ${esc(String(f.line))} line`}. That gap is the <b>+${f.edge}%</b> edge vs. the sharp fair line.`;
+  }
+
   function renderHeroPlaceholder(kind) {
     el.heroEyebrow.textContent = kind === 'loading' ? 'Loading tonight’s fades…'
       : kind === 'nolines' ? 'Lines Pending' : 'Tonight’s Fades';
@@ -2364,6 +2411,13 @@
     const propLabel = f.marketLabel || 'prop';
     const priceStr = f.odds > 0 ? '+' + f.odds : String(f.odds);
     const pUnder = typeof f.modelOver === 'number' ? Math.round((100 - f.modelOver) * 10) / 10 : null;
+    // Break-even: the win rate the posted price alone demands, straight from the
+    // odds — no model in it. Pairing it with the model's P(under) turns the pitch
+    // from "trust our projection" into arithmetic anyone can check: the edge is
+    // exactly model P minus break-even.
+    const breakevenPct = f.odds != null
+      ? Math.round((f.odds > 0 ? 100 / (f.odds + 100) : -f.odds / (-f.odds + 100)) * 1000) / 10
+      : null;
     const kelly = pUnder != null ? kellyUnits(pUnder / 100, f.odds) : 0;
     const cushion = Math.round((f.line - f.projVal) * 100) / 100;
     const axisMax = f.line <= 1 ? 2 : Math.max(4, Math.ceil(f.line + 1.5));
@@ -2406,7 +2460,7 @@
           <span class="edge">+${f.edge}% edge</span>
           <button class="hero-add" data-action="hero-add" data-id="${esc(f.id)}">★ Add to slip</button>
         </div>
-        <div class="hero-why"><span class="wk">Why</span><span>Casual money pounds the over on a name like ${esc(f.name)}, so the book sets this line high. The model projects <b>${f.projVal} ${esc(propLabel.toLowerCase())}</b> — ${cushion > 0 ? `a <b>${cushion}</b> cushion under the ${esc(String(f.line))} line` : `right at the ${esc(String(f.line))} line`}${pUnder != null ? `, about a <b>${pUnder}%</b> chance to stay under` : ''}. That gap is the edge.</span></div>
+        <div class="hero-why"><span class="wk">Why</span><span>${heroWhy(f, pUnder, breakevenPct, cushion, priceStr, propLabel)}</span></div>
         <div class="hero-note">Fair-value read priced on DK/FD lines. Availability and exact lines vary by book/app — confirm the Under is offered before placing.</div>
       </div>`;
   }
