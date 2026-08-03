@@ -513,6 +513,9 @@ section { padding:44px 0; }
 /* Search left, filters right — one 40px-tall row, wrapping to two on a phone. */
 .board-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
 .board-controls { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
+/* A hair of separation between the filter cluster and the sort cluster, so the
+   two read as distinct groups rather than one long chip run. */
+.toolbar-div { align-self:center; width:1px; height:22px; background:var(--border); margin:0 5px; }
 .filter-btn, .sort-btn, .compare-btn { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; letter-spacing:.06em; height:40px; border-radius:10px; padding:0 15px; cursor:pointer; border:1px solid var(--border); background:var(--board); color:var(--textDim); transition:all .16s ease; }
 /* Only the tier chips carry a count badge, so only they need flex alignment;
    leaving sort/compare as default buttons preserves the space in "Sort: Edge". */
@@ -668,6 +671,14 @@ section { padding:44px 0; }
 .expanded-detail .badge { min-width:0; height:auto; padding:0; border-radius:0; background:none !important; justify-content:flex-end; font-size:12px; font-weight:600; }
 .expanded-note { margin-top:24px; max-width:900px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12px; line-height:1.75; color:var(--textDim); text-wrap:pretty; }
 .expanded-note b { color:var(--textFaint); font-weight:600; }
+/* Per-row price read — the price-play argument, one line, at the top of the
+   panel. Neutral analysis-blue rail so it never competes with the row's green
+   edge; only the signed gap is coloured. */
+.price-read { display:flex; gap:12px; align-items:flex-start; margin-bottom:18px; padding:12px 15px; border:1px solid var(--border); border-left:3px solid var(--model); border-radius:9px; background:color-mix(in srgb, var(--model) 6%, transparent); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12px; line-height:1.65; color:var(--textDim); text-wrap:pretty; }
+.price-read .pr-k { flex:none; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--model); padding-top:2px; }
+.price-read b { color:var(--text); font-weight:600; }
+.price-read b.pr-clear.pos { color:var(--positive); }
+.price-read b.pr-clear.neg { color:var(--danger); }
 
 /* moneyline expand — head-to-head starting-pitcher duel (Option B) */
 .ml-duel { display:grid; grid-template-columns:1fr 1fr; gap:22px; max-width:640px; margin-top:4px; }
@@ -903,6 +914,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-search { flex:1 1 100%; }
   .board-search input { width:100%; height:38px; }
   .board-controls { margin-left:0; gap:6px; }
+  .toolbar-div { display:none; }
   .filter-btn, .sort-btn, .compare-btn { height:34px; padding:0 11px; font-size:10.5px; border-radius:8px; }
   .ctx-banner { flex-direction:column; gap:10px; padding:13px 15px; font-size:12px; }
   .board-foot { font-size:10px; }

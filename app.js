@@ -1096,6 +1096,10 @@
     });
     const sortGroup = document.getElementById('sortGroup');
     if (sortGroup) sortGroup.style.display = hideModelControls ? 'none' : '';
+    // The divider only earns its keep between two visible groups — drop it when
+    // sort is hidden (context views) so it isn't a rule dangling after Pass.
+    const toolbarDiv = document.getElementById('toolbarDiv');
+    if (toolbarDiv) toolbarDiv.style.display = hideModelControls ? 'none' : '';
 
     el.compareModeBtn.textContent = state.compareMode ? 'Exit Compare' : 'Compare';
     el.compareModeBtn.classList.toggle('active', state.compareMode);
@@ -1135,6 +1139,36 @@
 
   // Two-book odds cell (DraftKings / FanDuel), best payout highlighted in teal.
   // Falls back to a single price when per-book data isn't available (mock mode).
+  // The win rate a price alone demands — no model in it. Shared by the hero and
+  // every row's price read so the arithmetic is defined in exactly one place.
+  function oddsBreakeven(odds) {
+    if (odds == null) return null;
+    const p = odds > 0 ? 100 / (odds + 100) : -odds / (-odds + 100);
+    return Math.round(p * 1000) / 10;
+  }
+
+  // Per-row price read: the same price-play argument as the hero, in one line,
+  // for whatever the row's leaned side is. Break-even is straight from the price;
+  // the model P is the leaned side's probability. "clear/short of break-even" is
+  // model-minus-break-even — a DIFFERENT number from the board's edge (which is
+  // model vs. the sharp fair line), so both are stated as what they are and the
+  // panel never conflates them. Styled neutral (analysis blue), with only the
+  // signed gap coloured, so it never fights the row's own green edge.
+  function rowPriceRead(g) {
+    if (!isBatter() || g.odds == null || typeof g.modelOver !== 'number' || !g.side) return '';
+    const be = oddsBreakeven(g.odds);
+    if (be == null) return '';
+    const pSide = g.side === 'Under' ? Math.round((100 - g.modelOver) * 10) / 10 : Math.round(g.modelOver * 10) / 10;
+    const clear = Math.round((pSide - be) * 10) / 10;
+    const price = g.odds > 0 ? '+' + g.odds : String(g.odds);
+    const verdict = clear > 0 ? `<b class="pr-clear pos">${clear} pts</b> clear of break-even`
+      : clear < 0 ? `<b class="pr-clear neg">${Math.abs(clear)} pts</b> short of break-even`
+      : 'right at break-even';
+    const edgeBit = typeof g.edge === 'number'
+      ? ` The board's <b>+${g.edge}%</b> is that price against the sharp fair line.` : '';
+    return `<div class="price-read"><span class="pr-k">Price read</span><span>At <b>${esc(price)}</b> the ${esc(g.side)} needs <b>${be}%</b> to profit; the model gives it <b>${pSide}%</b> — ${verdict}.${edgeBit}</span></div>`;
+  }
+
   function oddsBooksCell(g, money) {
     const books = g.oddsBooks;
     if (!Array.isArray(books) || !books.length) {
@@ -1550,6 +1584,7 @@
             <span class="badge" style="color:${TONE_COLOR[s.tone]}">${s.value}</span>
           </div>`).join('');
         detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}">
+          ${rowPriceRead(g)}
           <div class="expanded-title">Batter props — model vs. market</div>
           <div class="bm-table">${bm}</div>
           <div class="expanded-title" style="margin-top:26px">Season percentiles (vs. priced pool)</div>${statsHtml}
@@ -2466,9 +2501,7 @@
     // odds — no model in it. Pairing it with the model's P(under) turns the pitch
     // from "trust our projection" into arithmetic anyone can check: the edge is
     // exactly model P minus break-even.
-    const breakevenPct = f.odds != null
-      ? Math.round((f.odds > 0 ? 100 / (f.odds + 100) : -f.odds / (-f.odds + 100)) * 1000) / 10
-      : null;
+    const breakevenPct = oddsBreakeven(f.odds); // shared helper — one definition
     const kelly = pUnder != null ? kellyUnits(pUnder / 100, f.odds) : 0;
     const cushion = Math.round((f.line - f.projVal) * 100) / 100;
     const axisMax = f.line <= 1 ? 2 : Math.max(4, Math.ceil(f.line + 1.5));
