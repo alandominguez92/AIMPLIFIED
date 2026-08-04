@@ -2292,6 +2292,55 @@ function buildTrackRecord(rows) {
     units: Math.round(buU * 10) / 10,
   } : null;
 
+  // Current-era edge, for the gated note under the tabs. The record shown on the
+  // site spans every pricing era we have ever run, which flatters or punishes the
+  // model we are actually shipping tonight. This slice is only the current era,
+  // and it carries its own significance so the UI can say "not yet established"
+  // instead of implying a proven edge from a number that has not cleared a test.
+  //
+  // Same population as batterUnders (posted plays only, tier='pass' excluded) so
+  // the two numbers are directly comparable — this is a subset of that record,
+  // never a different accounting of it.
+  const eraRet = [];
+  let eraW = 0, eraL = 0;
+  for (const r of graded) {
+    if (r.tier === 'pass') continue;
+    if ((r.market || 'K') === 'K' || r.side !== 'Under') continue;
+    if ((r.model_ver || null) !== BATTER_MODEL_VER) continue;
+    if (r.result === 'win') eraW++; else eraL++;
+    eraRet.push(profitUnits(r.result, r.price));
+  }
+  const eraN = eraW + eraL;
+  let eraEdge = null;
+  if (eraN > 0) {
+    const mean = eraRet.reduce((s, x) => s + x, 0) / eraN;
+    let p = null, t = null;
+    if (eraN >= 2) {
+      const sd = Math.sqrt(eraRet.reduce((s, x) => s + (x - mean) * (x - mean), 0) / (eraN - 1));
+      // Epsilon rather than >0: an all-identical slice leaves float dust that
+      // would divide out to a spuriously enormous t.
+      if (sd > 1e-9) {
+        t = mean / (sd / Math.sqrt(eraN));
+        p = Math.round(2 * (1 - normCdf(Math.abs(t))) * 1e4) / 1e4;
+      }
+    }
+    // Established only when the test clears AND the edge is positive. A
+    // significant NEGATIVE ROI is not an edge, and must never open the gate.
+    const established = p != null && p < 0.05 && mean > 0;
+    eraEdge = {
+      era: BATTER_MODEL_VER,
+      n: eraN,
+      record: `${eraW}–${eraL}`,
+      roi: round1(mean * 100),
+      units: Math.round(eraRet.reduce((s, x) => s + x, 0) * 10) / 10,
+      roiP: p,
+      established,
+      note: established
+        ? `${eraN} graded this era · edge significant (p ${p})`
+        : `${eraN} graded this era · edge not yet significant`,
+    };
+  }
+
   // Per-tier calibration: the model's average predicted WIN probability for each
   // tier vs the actual win rate — "our Tier-1 leans win at the rate we claim".
   // Predicted win prob orients model P(over) to the side we actually bet.
@@ -2332,6 +2381,7 @@ function buildTrackRecord(rows) {
     calibrationSummary,
     calibrationByTier,
     batterUnders,
+    eraEdge,
   };
 }
 

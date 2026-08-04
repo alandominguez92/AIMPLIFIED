@@ -272,6 +272,7 @@
     calibrationTiers: document.getElementById('calibrationTiers'),
     proofStrip: document.getElementById('proofStrip'),
     kCtxBanner: document.getElementById('kCtxBanner'),
+    eraNote: document.getElementById('eraNote'),
     trkNote: document.getElementById('trkNote'),
     trkLabel1: document.getElementById('trkLabel1'),
     trkLabel2: document.getElementById('trkLabel2'),
@@ -2379,6 +2380,7 @@
       const tr = await fetchJson('/api/track-record');
       if (tr && typeof tr === 'object') {
         state.trackRecord = tr;
+        renderEraNote();
         renderProofStrip();
         renderRecord();
         renderCalibration();
@@ -2638,6 +2640,7 @@
     moneyline: ['Context · not plays', 'Our graded record shows <b>no reliable edge in moneylines</b> — a heavy favorite can show a number and still be a bad bet. Win probability is shown as context (model vs. the market), not posted as a play.'],
   };
   function renderViewChrome() {
+    renderEraNote();
     if (!el.kCtxBanner) return;
     const b = CTX_BANNERS[state.boardView];
     if (b) {
@@ -2646,6 +2649,26 @@
     } else {
       el.kCtxBanner.hidden = true;
     }
+  }
+
+  // Data-gated era note. Three ways it stays silent rather than misleading:
+  // no track record yet, no eraEdge in the payload (older Worker, or nothing
+  // graded in this era), or a tab that posts no plays. It never renders a
+  // hardcoded claim — every word comes from what actually graded.
+  function renderEraNote() {
+    if (!el.eraNote) return;
+    const ee = state.trackRecord && state.trackRecord.eraEdge;
+    if (!ee || !ee.n || state.boardView !== 'batter') { el.eraNote.hidden = true; return; }
+    // The backend already decides `established`; the UI must not re-derive it
+    // from roi alone, or a positive-but-untested number would read as proven.
+    el.eraNote.classList.toggle('is-sig', !!ee.established);
+    el.eraNote.innerHTML = ee.established
+      ? `<b>${ee.n}</b> graded this era · edge significant <b>p ${ee.roiP}</b>`
+      : `<b>${ee.n}</b> graded this era · edge not yet significant`;
+    el.eraNote.title = `${ee.era} · ${ee.record} · ROI ${ee.roi > 0 ? '+' : ''}${ee.roi}%`
+      + (ee.roiP != null ? ` · two-tailed p ${ee.roiP}` : ' · too few graded picks to test')
+      + '. Current pricing era only — the headline record spans every era.';
+    el.eraNote.hidden = false;
   }
 
   // Click a different key → switch to it at its natural direction. Click the key

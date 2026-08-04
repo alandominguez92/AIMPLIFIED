@@ -483,6 +483,15 @@ section { padding:44px 0; }
 .tabnote { font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; line-height:1.65; color:var(--textDim); margin:0; flex:1 1 420px; max-width:640px; text-wrap:pretty; }
 .tabnote b { color:var(--accent); font-weight:600; }
 .tabrow { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; margin-bottom:22px; }
+/* Current-era sample + significance. Deliberately quiet: it reads as a caveat on
+   the record, not as a badge. .is-sig only appears once a test actually clears. */
+.era-note { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10.5px; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--textFaint); margin:0; flex:none; align-self:flex-start;
+  border:1px solid var(--border); border-radius:8px; padding:8px 11px; white-space:nowrap; }
+.era-note b { color:var(--textDim); font-weight:600; }
+.era-note.is-sig { color:var(--positive); border-color:color-mix(in srgb, var(--positive) 40%, var(--border)); }
+.era-note.is-sig b { color:var(--positive); }
+@media (max-width:640px){ .era-note { white-space:normal; font-size:10px; padding:7px 10px; } }
 /* K-tab honesty banner — compact; only rendered on the K Props view */
 .ctx-banner { display:flex; gap:16px; align-items:flex-start; border:1px solid var(--border); border-left:3px solid var(--model); border-radius:12px; padding:16px 20px; margin-bottom:22px; font-size:13px; line-height:1.65; color:var(--textDim); text-wrap:pretty;
   background:linear-gradient(90deg, color-mix(in srgb, var(--model) 7%, transparent), transparent); }

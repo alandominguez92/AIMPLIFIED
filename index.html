@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board15">
+<link rel="stylesheet" href="style.css?v=board16">
 </head>
 <body>
 
@@ -145,6 +145,11 @@
     <div class="tabrow">
       <p class="tabnote">Plays = <b>batter unders only</b> — the market where public money most reliably overpays the over, and the only one we post. Everything else is analysis, not bets. Every pick stays graded in public, win or loss. Lines vary by book/app — confirm the Under is offered before placing.</p>
       <p class="pin-note" id="pinNote" hidden><span class="pin-k">Prices pinned to</span> <b>DraftKings</b> <span class="pin-sep">+</span> <b>FanDuel</b> <span class="pin-sep">/</span> best of the two <span class="pin-chk">✓</span></p>
+      <!-- Current-era sample size and whether its edge has cleared a significance
+           test. Data-gated: app.js fills it from /api/track-record's eraEdge and
+           leaves it hidden until that arrives, so it can never assert an edge the
+           record does not support. -->
+      <p class="era-note" id="eraNote" hidden></p>
     </div>
 
     <!-- Honest "context, not plays" banner. One element; app.js swaps the copy
@@ -332,6 +337,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=board15"></script>
+<script src="app.js?v=board16"></script>
 </body>
 </html>
