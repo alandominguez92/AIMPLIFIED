@@ -3274,6 +3274,47 @@ async function trackDebug(env) {
           : `PARTIAL — prop_lines=${pn}, rl_lines=${rn} (the empty one had no qualifying pre-game snapshot).`;
     } catch (e) { out.persistenceError = String(e && e.message || e); }
 
+    // Did-not-play reconciliation. Before the DNP fix a rostered batter who never
+    // came off the bench carried an empty stats.batting object, which scored every
+    // category 0 and graded an Under as a win. backfillBatterGrades re-derives
+    // those rows from the boxscore, 4 games per /api/track-record hit, and stamps
+    // grade_ver so the sweep terminates. Without a counter the only way to tell
+    // "finished" from "silently retrying the same games" was to poll the aggregate
+    // numbers and watch for movement — a stuck sweep looks exactly like a done one,
+    // because the loop `continue`s when a boxscore fetch fails. pendingGames is the
+    // honest answer: it is the sweep's own candidate query, so 0 means done.
+    try {
+      // bind() is skipped when there are no placeholders — a zero-arg bind is not
+      // worth relying on across driver versions.
+      const q = async (sql, ...b) => {
+        const st = env.DB.prepare(sql);
+        return (await (b.length ? st.bind(...b) : st).first('n')) || 0;
+      };
+      const voids = await q(`SELECT COUNT(*) AS n FROM bpicks WHERE result='void'`);
+      const stamped = await q(`SELECT COUNT(*) AS n FROM bpicks WHERE grade_ver=?`, GRADE_VER);
+      // Exactly the rows backfillBatterGrades selects, and the games it batches by.
+      const pendingRows = await q(
+        `SELECT COUNT(*) AS n FROM bpicks
+          WHERE actual = 0 AND result IN ('win','loss')
+            AND (grade_ver IS NULL OR grade_ver <> ?)`, GRADE_VER);
+      const pendingGames = await q(
+        `SELECT COUNT(*) AS n FROM (
+           SELECT DISTINCT game_id FROM bpicks
+            WHERE actual = 0 AND result IN ('win','loss')
+              AND (grade_ver IS NULL OR grade_ver <> ?)) AS pend`, GRADE_VER);
+      out.dnp = {
+        gradeVer: GRADE_VER,
+        voids,                                   // rows the fix correctly left ungraded
+        stamped,                                 // rows this grader has reconciled
+        pendingRows,
+        pendingGames,
+        passesRemaining: Math.ceil(pendingGames / 4), // sweep does 4 games per call
+        verdict: pendingGames === 0
+          ? `COMPLETE — no rows left with actual=0 graded win/loss and an unstamped grade_ver. ${voids} void${voids === 1 ? '' : 's'} recorded.`
+          : `IN PROGRESS — ${pendingRows} row(s) across ${pendingGames} game(s) still to re-derive; ~${Math.ceil(pendingGames / 4)} more /api/track-record hit(s). If this number does not fall between checks, the boxscore fetch is failing and the sweep is stuck.`,
+      };
+    } catch (e) { out.dnpError = String(e && e.message || e); }
+
     // Freshest signal: what's logged for tonight, and is the newest date grading?
     const loggedToday = (await env.DB.prepare('SELECT COUNT(*) AS n FROM picks WHERE date=?').bind(today).first('n')) || 0;
     const bLoggedToday = (await env.DB.prepare('SELECT COUNT(*) AS n FROM bpicks WHERE date=?').bind(today).first('n')) || 0;
