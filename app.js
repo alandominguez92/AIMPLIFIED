@@ -1565,8 +1565,13 @@
 
       let detailHtml = '';
       if (isExpanded && isBatter()) {
-        const bm = (g.batterMarkets || []).map((m) => {
-          if (m.none) return `<div class="bm-row"><span class="bm-label">${esc(m.label)}</span><span class="bm-none">no line · proj ${esc(String(m.proj))}</span></div>`;
+        // Markets with no posted line can't be bet, so they don't earn a row each.
+        // Price the ones that are live, then roll the rest into a single summary
+        // line — on a phone those unpriced rows were half the table's height.
+        const allMarkets = g.batterMarkets || [];
+        const priced = allMarkets.filter((m) => !m.none);
+        const unpriced = allMarkets.filter((m) => m.none);
+        const bm = priced.map((m) => {
           const booksStr = Array.isArray(m.books) && m.books.length
             ? m.books.map((b) => `${b.book} ${b.off && b.line != null ? b.line + ' ' : ''}${b.price > 0 ? '+' + b.price : b.price}${b.best ? ' ✓' : ''}`).join(' · ')
             : '';
@@ -1577,6 +1582,11 @@
             <span class="bm-books">${esc(booksStr)}</span>
           </div>`;
         }).join('');
+        const noLine = unpriced.length
+          ? `<div class="bm-row noline"><span class="bm-none">No line posted: ${
+              unpriced.map((m) => `<b>${esc(m.label)}</b> proj ${esc(String(m.proj))}`).join(' · ')
+            }</span></div>`
+          : '';
         const statsHtml = (g.stats || []).map((s) => `
           <div class="stat-row">
             <span class="stat-label">${esc(s.label)}</span>
@@ -1586,9 +1596,11 @@
         detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}">
           ${rowPriceRead(g)}
           <div class="expanded-title">Batter props — model vs. market</div>
-          <div class="bm-table">${bm}</div>
+          <div class="bm-table">${bm}${noLine}</div>
           <div class="expanded-title" style="margin-top:26px">Season percentiles (vs. priced pool)</div>${statsHtml}
+          <details class="method"${window.innerWidth > 640 ? ' open' : ''}><summary>How this projection is built</summary>
           <p class="expanded-note">Projection: season rate × expected PAs, adjusted for the <b>opposing starter</b>, the <b>hand</b> he throws and the <b>ballpark</b>, then spread with a <b>negative binomial</b> — real batter outcomes are more dispersed than a Poisson allows. Edge = model P(under) vs. the <b>fair line</b> — the Shin de-vigged median across the sharp books (Pinnacle, novig, ProphetX), never the book you bet at. The model is regressed toward that fair line while it builds a track record, so edges stay conservative until results justify more.</p>
+          </details>
         </div>`;
       } else if (isExpanded && isML()) {
         if (g.ml) {

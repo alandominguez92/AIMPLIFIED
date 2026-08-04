@@ -676,6 +676,29 @@ section { padding:44px 0; }
 /* The number belongs beside its bar, in the bar's own color — a filled pill
    here competes with the tier chips, which are the page's only solid pills. */
 .expanded-detail .badge { min-width:0; height:auto; padding:0; border-radius:0; background:none !important; justify-content:flex-end; font-size:12px; font-weight:600; }
+/* Read-once reference text. It was 27% of an expanded panel on a phone and it
+   repeats identically in every row you open, so it collapses behind a summary.
+   app.js adds `open` above 640px, keeping the desktop panel as it was. */
+.method { margin-top:20px; }
+.method > summary { list-style:none; cursor:pointer; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--textDim);
+  border:1px solid var(--border); border-radius:8px; padding:9px 12px; }
+.method > summary::-webkit-details-marker { display:none; }
+.method > summary::after { content:' \25BE'; color:var(--textFaint); }
+.method .expanded-note { margin-top:12px; }
+/* Above the phone breakpoint the note is already open, so the toggle would only
+   add height to a panel that never needed collapsing. Keeps desktop identical. */
+@media (min-width:641px) {
+  .method { margin-top:0; }
+  .method > summary { display:none; }
+  .method .expanded-note { margin-top:24px; }
+}
+.bm-row.noline { grid-template-columns:1fr; padding:9px 13px; }
+/* .bm-none is placed at `grid-column:2 / -1` for the old per-market row, which
+   would keep an empty first track alive here. The summary row is a single span. */
+.bm-row.noline .bm-none { grid-column:1 / -1; }
+.bm-row.noline b { color:var(--textDim); font-weight:600; }
+
 .expanded-note { margin-top:24px; max-width:900px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12px; line-height:1.75; color:var(--textDim); text-wrap:pretty; }
 .expanded-note b { color:var(--textFaint); font-weight:600; }
 /* Per-row price read — the price-play argument, one line, at the top of the
@@ -905,7 +928,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-row .odds-books { flex-direction:row; align-items:baseline; gap:14px; }
   .expanded-detail { padding:18px 16px 22px; }
   .bm-table .bm-row { padding:11px 13px; }
-  .bm-row { grid-template-columns:1fr; row-gap:3px; }
+  /* Two columns, not one — a single column stacked the priced market into four
+     separate lines, which is what made the table the tallest thing in the panel. */
+  .bm-row { grid-template-columns:1fr 1fr; column-gap:10px; row-gap:3px; }
+  .bm-row.noline { grid-template-columns:1fr; }
   .expanded-detail .stat-row { grid-template-columns:76px 1fr 38px; gap:10px; }
   .expanded-note { font-size:11.5px; line-height:1.7; }
 }
