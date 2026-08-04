@@ -2992,9 +2992,11 @@ async function batterDebug(env) {
       return { market, side, line: Number(line), thin: s.n < 5, ...s };
     }).sort((a, b) => a.market.localeCompare(b.market) || a.side.localeCompare(b.side) || a.line - b.line);
 
+    const underTotal = summarize(unders);
+    const overTotal = summarize(overs);
     return cors(json({
-      underTotal: summarize(unders),
-      overTotal: summarize(overs),
+      underTotal,
+      overTotal,
       byMarketSide,
       byMarketSideLine,
       projBiasByMarket,
@@ -3010,9 +3012,88 @@ async function batterDebug(env) {
       byMarket,
       cumulative,
       readSig: 'Significance: sig.roiP is the two-tailed p for ROI != 0, sig.clvP the same for CLV. Treat p>=0.05 as "no established effect" no matter how large the ROI looks. These p-values assume independent picks; picks on the same slate are correlated (shared games, shared weather, shared lineups), so the true p is LARGER than reported — read a marginal 0.04 as not significant. avgClvEv is the mean EV% per unit at the closing fair price: unlike avgCLV it accounts for the price paid, so a positive avgCLV with a negative avgClvEv means the line moved our way but we still took a number worse than the close. avgClvEv is the one to trust when they disagree.',
-      read: 'Read p-values before ROI. The graded edge sits in ONE cell: HRR Under 1.5 (n=293, +15.8% ROI, roiP 0.0016, clvP 0.0001) — the only slice where ROI and CLV are both significant. TB Under looks like half the product and does NOT clear the bar (roiP 0.070), so do not treat it as established. Do not chase higher lines to widen availability: HRR Under 2.5 shows roiP 0.64 AND significantly NEGATIVE CLV (clvP 0.027), i.e. the market moves against those picks — that is evidence against a higher-line product, not a gap to exploit. Overs are negative in every non-thin bucket and carry no CLV signal (clvP 0.384); a sharp book quoting only the over is further evidence that side is -EV. Ignore every thin:true row. On avgClvEv: for model_ver dk-fair it measures THE BOOK\'S HOLD, not our edge — fair and price both came from DraftKings, so EV at that fair is mechanically 1/overround - 1 (the observed -6.2% implies a 6.6% hold, which is just DK\'s margin). It only carries information on sharp-shin rows, where the price is DK/FD but the closing fair comes from books we never bet. Judge the refactor there, and nowhere else.',
+      read: readNarrative({ underTotal, overTotal, byMarketSideLine, byModelVer }),
     }, 30));
   } catch (e) { return cors(json({ error: String(e && e.message || e) }, 30)); }
+}
+
+// The `read` field used to be a hand-written paragraph. It asserted that the
+// edge sat in one cell — HRR Under 1.5, n=293, +15.8% ROI, roiP 0.0016 — and it
+// kept asserting exactly that while the sample grew past 1500 and the ROI fell
+// to under a point. A static claim about a live dataset is wrong the moment the
+// data moves, and it moves nightly. Everything below is derived from the same
+// numbers the endpoint returns, so the narrative cannot drift from the table.
+//
+// Rule it enforces: never call an edge established unless the current data says
+// so. Positive claims must clear multiple-comparison correction, because the
+// cells are searched, not pre-registered — the best of eight p-values is not a
+// 0.05 test. Negative findings are reported at raw p, deliberately: a warning
+// that a slice is losing money should not need a stricter bar than a claim that
+// one is winning.
+function readNarrative({ underTotal, overTotal, byMarketSideLine, byModelVer }) {
+  const parts = [];
+  const pct = (v) => (v == null ? '?' : `${v > 0 ? '+' : ''}${v}%`);
+  const verdict = (s) => {
+    const p = s && s.sig && s.sig.roiP;
+    if (p == null) return 'no p-value (too few rows)';
+    return p < 0.05 ? `significant (roiP ${p})` : `NOT significant (roiP ${p})`;
+  };
+
+  parts.push('Read p-values before ROI. This paragraph is generated from the numbers in this response — if it disagrees with a slice below, trust the slice.');
+
+  // --- the product line: unders, then overs, always stated even when null ---
+  if (underTotal && underTotal.n) {
+    parts.push(`UNDERS (the posted side): n=${underTotal.n}, ${underTotal.record}, ROI ${pct(underTotal.roi)} — ${verdict(underTotal)}.`);
+  }
+  if (overTotal && overTotal.n) {
+    const negSig = overTotal.sig && overTotal.sig.roiP != null && overTotal.sig.roiP < 0.05 && overTotal.roi < 0;
+    parts.push(`OVERS: n=${overTotal.n}, ${overTotal.record}, ROI ${pct(overTotal.roi)} — ${verdict(overTotal)}${negSig ? '; the fade thesis survives on this side being reliably negative, which is not the same as the under being reliably positive' : ''}.`);
+  }
+
+  // --- searched cells, corrected. Thin rows never enter the count. ---
+  const cells = (byMarketSideLine || []).filter((c) => !c.thin && c.sig && c.sig.roiP != null);
+  if (cells.length) {
+    const sorted = cells.slice().sort((a, b) => a.sig.roiP - b.sig.roiP);
+    const bonf = 0.05 / sorted.length;
+    // Benjamini-Hochberg: largest k with p(k) <= k/m * 0.05; everything up to k passes.
+    let bh = 0;
+    sorted.forEach((c, i) => { if (c.sig.roiP <= ((i + 1) / sorted.length) * 0.05) bh = i + 1; });
+    const name = (c) => `${c.market} ${c.side} ${c.line}`;
+    const desc = (c) => `${name(c)} (n=${c.n}, ROI ${pct(c.roi)}, roiP ${c.sig.roiP}${c.sig.clvP != null ? `, clvP ${c.sig.clvP}` : ''})`;
+
+    const posCorrected = sorted.filter((c, i) => c.roi > 0 && (c.sig.roiP < bonf || i < bh));
+    const posRaw = sorted.filter((c) => c.roi > 0 && c.sig.roiP < 0.05);
+    const negRaw = sorted.filter((c) => c.roi < 0 && c.sig.roiP < 0.05);
+
+    parts.push(`${sorted.length} non-thin cells were tested, so this is a search, not one hypothesis: the Bonferroni threshold is roiP < ${Math.round(bonf * 1e5) / 1e5}.`);
+
+    if (posCorrected.length) {
+      parts.push(`ESTABLISHED positive edge (survives correction): ${posCorrected.map(desc).join('; ')}. Size the product here and nowhere else.`);
+    } else if (posRaw.length) {
+      parts.push(`No positive cell survives correction. ${posRaw.map(desc).join('; ')} clear${posRaw.length === 1 ? 's' : ''} raw p<0.05 but not the corrected bar — that is what the best of ${sorted.length} searched cells looks like under the null. Do not build on it yet.`);
+    } else {
+      const best = sorted.filter((c) => c.roi > 0)[0];
+      parts.push(`NO positive-ROI cell reaches even raw p<0.05${best ? ` (best is ${desc(best)})` : ''}. There is currently no established edge in any slice — the honest read is that the product is not yet distinguishable from break-even.`);
+    }
+
+    if (negRaw.length) {
+      parts.push(`Significantly NEGATIVE cells — avoid, and do not read a large negative as a fade opportunity: ${negRaw.map(desc).join('; ')}.`);
+    }
+    parts.push('Ignore every thin:true row; they are excluded from the counts above.');
+  }
+
+  // --- eras, when the column is populated ---
+  const eras = (byModelVer || []).filter((e) => e.n && e.sig && e.sig.roiP != null);
+  if (eras.length) {
+    const sigEras = eras.filter((e) => e.sig.roiP < 0.05 && e.roi > 0);
+    parts.push(`By pricing era: ${eras.map((e) => `${e.modelVer || e.model_ver} n=${e.n} ROI ${pct(e.roi)} roiP ${e.sig.roiP}`).join('; ')}. ${sigEras.length ? '' : 'No era shows a significant positive ROI, so the current pricing cannot yet be claimed as an improvement on any earlier one.'}`.trim());
+  }
+
+  // --- durable, structural caveats: true regardless of what the data says ---
+  parts.push('On avgClvEv: for model_ver dk-fair it measures THE BOOK\'S HOLD, not our edge — fair and price both came from DraftKings, so EV at that fair is mechanically 1/overround - 1. It only carries information on sharp-shin rows, where the price is DK/FD but the closing fair comes from books we never bet.');
+  parts.push('All p-values assume independent picks. Same-slate picks share games, weather and lineups, so the true p is LARGER than reported and every "not significant" above is the conservative call.');
+
+  return parts.join(' ');
 }
 
 // /api/fair-probe — READ-ONLY viability check for a real fair-value source.
