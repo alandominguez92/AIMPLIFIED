@@ -2683,7 +2683,24 @@ function priceStrikeouts(prop, projK) {
 // regress it hard toward the market and price it on stricter tiers. This keeps
 // batter picks honest — most land Tier 2/3/pass, not a board full of Tier 1.
 const BATTER_SHRINK = 0.25;      // keep ~25% of the raw model-vs-market gap
-const BATTER_TIERS = [8, 5, 3];  // T1/T2/T3 edge cutoffs (vs 5/3/1.5 for Ks)
+// T1/T2/T3 edge cutoffs (vs 5/3/1.5 for Ks). T1 was 8, which admitted 19 of
+// 1252 posted picks — 1.5%. At that rate T1 can never accumulate enough graded
+// history to say anything (roiP 0.729 on n=19), so the label claimed a
+// confidence the record could not test.
+//
+// 6.5 is chosen against the CURRENT-era edge distribution, not the multi-era
+// history: tier governs picks logged from here on, and the two disagree sharply
+// (a current-era slate ran 75% of posted picks at edge>=5 where the historical
+// blend ran 23%). The error is asymmetric — too low is worse than too high,
+// because a T1 that swallows most of the board stops meaning "strongest lean" —
+// so this targets ~20% of posted on a current-era slate, ~8-10% if the older
+// rates reassert. Both are testable; 1.5% was not.
+//
+// Only the T1 boundary moves. T2/T3 keep their cutoffs, so T2 absorbs the
+// [5, 6.5) band and T3 is untouched. Tier is stamped at log time, so this does
+// NOT relabel graded history — T1's usable sample builds forward from here.
+// edgeDistribution on /api/batter-debug is the instrument to re-check it.
+const BATTER_TIERS = [6.5, 5, 3];
 // Projection calibration. The graded record showed the counting-stat projection
 // runs ~16-17% HIGH — HRR projected 1.9 vs 1.6 actual, TB 1.8 vs 1.5 (n=1382).
 // That over-projection manufactured the losing OVER picks (overs 44% / -15.8%
@@ -3038,6 +3055,38 @@ async function batterDebug(env) {
         : `Monotone (${rois.join(' > ')}) but NO tier is distinguishable from zero, so the ordering is not yet evidence that tier ranks. ${sep}.`;
     })();
 
+    // Where the tier cutoffs actually fall. Choosing a T1 threshold needs the
+    // edge distribution of the picks it will select, and that was never exposed
+    // — the cutoff could only be set by interpolating between tier counts.
+    // Split by era because the eras disagree materially about how much edge the
+    // model finds, and only the current one governs picks logged from here on.
+    const edgeDistribution = (() => {
+      const withEdge = posted.filter((r) => r.edge != null && isFinite(r.edge));
+      if (!withEdge.length) return { n: 0, note: 'no graded posted picks carry an edge value.' };
+      const CUTS = [3, 4, 5, 5.5, 6, 6.5, 7, 8];
+      const shareAt = (rows) => CUTS.map((c) => {
+        const n = rows.filter((r) => r.edge >= c).length;
+        return { cutoff: c, n, pct: round1(n / rows.length * 100) };
+      });
+      const quantiles = (rows) => {
+        const s = rows.map((r) => r.edge).sort((a, b) => a - b);
+        const at = (p) => s[Math.min(s.length - 1, Math.floor((s.length - 1) * p))];
+        return { p50: at(0.5), p75: at(0.75), p80: at(0.8), p90: at(0.9), p95: at(0.95), max: s[s.length - 1] };
+      };
+      const eraMapE = groupBy(withEdge, (r) => r.model_ver || 'dk-fair');
+      return {
+        n: withEdge.length,
+        activeTiers: BATTER_TIERS,
+        overall: { n: withEdge.length, quantiles: quantiles(withEdge), shareAtCutoff: shareAt(withEdge) },
+        byEra: Object.keys(eraMapE).map((k) => ({
+          era: k, n: eraMapE[k].length,
+          quantiles: quantiles(eraMapE[k]),
+          shareAtCutoff: shareAt(eraMapE[k]),
+        })).sort((a, b) => b.n - a.n),
+        note: `T1 cutoff is ${BATTER_TIERS[0]}. Read shareAtCutoff for the CURRENT era (${BATTER_MODEL_VER}) — that is the rate T1 will fill at going forward. Tier is stamped at log time, so changing the cutoff never relabels the rows above.`,
+      };
+    })();
+
     // Calibration for the posted product: the model's claimed win probability
     // against what actually happened. A slope of 1 through the diagonal means
     // calibrated; a slope near 0 means the probabilities carry no information
@@ -3231,6 +3280,7 @@ async function batterDebug(env) {
       byMarketUnder,
       byTier,
       tierVerdict,
+      edgeDistribution,
       calibration,
       cumulative,
       readSig: 'Significance: sig.roiP is the two-tailed p for ROI != 0, sig.clvP the same for CLV. Treat p>=0.05 as "no established effect" no matter how large the ROI looks. These p-values assume independent picks; picks on the same slate are correlated (shared games, shared weather, shared lineups), so the true p is LARGER than reported — read a marginal 0.04 as not significant. avgClvEv is the mean EV% per unit at the closing fair price: unlike avgCLV it accounts for the price paid, so a positive avgCLV with a negative avgClvEv means the line moved our way but we still took a number worse than the close. avgClvEv is the one to trust when they disagree.',
