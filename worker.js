@@ -1818,6 +1818,21 @@ async function gradeBatterPicks(env) {
     } catch (e) { /* skip this date */ }
   }
 
+  // Same reschedule hole as the other graders. bpicks has no stuck rows today,
+  // but the defect is identical and would bite on the next postponement.
+  const unresolvedB = rows.filter((g) => statusByGame[g.game_id] !== 'Final').map((g) => g.game_id);
+  const bByPk = unresolvedB.length ? await gamesByPk(unresolvedB) : {};
+  for (const [gid, g] of Object.entries(bByPk)) {
+    if (g.state === 'Final') statusByGame[gid] = 'Final';
+  }
+  const abandonedB = Object.keys(bByPk).filter((gid) => isAbandoned(bByPk[gid]));
+  if (abandonedB.length) {
+    try {
+      await db.batch(abandonedB.map((gid) => db.prepare(
+        "UPDATE bpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)));
+    } catch (e) { /* retry next pass */ }
+  }
+
   for (const g of rows.slice(0, 30)) {
     if (statusByGame[g.game_id] !== 'Final') continue;
     const pk = String(g.game_id).replace(/^g/, '');
@@ -1961,6 +1976,56 @@ async function logPicks(db, rows, date) {
   if (stmts.length) await db.batch(stmts);
 }
 
+// Resolve games by gamePk instead of by the date they were logged on.
+//
+// Both graders below key scores off `schedule?date=<the pick's date>`. That is
+// correct until a game is postponed: it is replayed under the SAME gamePk on a
+// different officialDate, so it never appears on the original date's schedule,
+// the row is skipped, and it is skipped again on every subsequent pass. Nothing
+// errors and nothing retries differently — the pick just sits ungraded forever.
+//
+// gamePk follows the game across the reschedule, so one lookup keyed on it
+// settles the question. Also returns the terminal-but-unplayed states, because
+// a cancelled game has to be voided or it becomes the same permanent limbo.
+async function gamesByPk(gameIds) {
+  const pks = [...new Set(gameIds.map((id) => String(id).replace(/^g/, '')))].filter(Boolean);
+  if (!pks.length) return {};
+  const out = {};
+  // Batched, and capped: this is a repair path, not the hot path. Anything it
+  // does not reach this pass is picked up on the next one.
+  for (let i = 0; i < pks.length && i < 60; i += 20) {
+    const slice = pks.slice(i, i + 20);
+    try {
+      const r = await fetch(`${STATS}/schedule?sportId=1&gamePks=${slice.join(',')}&hydrate=linescore,team`,
+        { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      const j = await r.json();
+      for (const g of (j.dates || []).flatMap((d) => d.games || [])) {
+        const st = g.status || {};
+        const ls = g.linescore || {};
+        out['g' + g.gamePk] = {
+          state: st.abstractGameState || '',
+          coded: st.codedGameState || '',
+          detailed: st.detailedState || '',
+          officialDate: g.officialDate || null,
+          homeR: numOr((ls.teams && ls.teams.home && ls.teams.home.runs), g.teams && g.teams.home && g.teams.home.score),
+          awayR: numOr((ls.teams && ls.teams.away && ls.teams.away.runs), g.teams && g.teams.away && g.teams.away.score),
+        };
+      }
+    } catch (e) { /* next slice */ }
+  }
+  return out;
+}
+
+// A game that will never produce a box score. 'C' cancelled, 'D' postponed with
+// no replay date, 'T' suspended-and-abandoned. Postponed-and-rescheduled is NOT
+// here: that game still resolves by pk once it is replayed, so voiding it would
+// throw away a real result.
+function isAbandoned(g) {
+  if (!g) return false;
+  return ['C', 'D', 'T'].includes(g.coded) || /cancel/i.test(g.detailed || '');
+}
+
 async function gradeUngraded(env) {
   const db = env.DB;
   const today = slateDate();
@@ -1981,6 +2046,23 @@ async function gradeUngraded(env) {
     } catch (e) { /* skip this date */ }
   }
 
+  // Anything the date-keyed pass could not place is looked up by gamePk, which
+  // is what rescues a game postponed and replayed on a different date.
+  const unresolvedK = rows.filter((g) => statusByGame[g.game_id] !== 'Final').map((g) => g.game_id);
+  const kByPk = unresolvedK.length ? await gamesByPk(unresolvedK) : {};
+  for (const [gid, g] of Object.entries(kByPk)) {
+    if (g.state === 'Final') statusByGame[gid] = 'Final';
+  }
+  // A game that will never be played cannot be graded and must not be retried
+  // forever. Voided rather than left NULL so it leaves the pending pool.
+  const abandonedK = Object.keys(kByPk).filter((gid) => isAbandoned(kByPk[gid]));
+  if (abandonedK.length) {
+    try {
+      await db.batch(abandonedK.map((gid) => db.prepare(
+        "UPDATE picks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)));
+    } catch (e) { /* retry next pass */ }
+  }
+
   for (const g of rows.slice(0, 30)) {
     if (statusByGame[g.game_id] !== 'Final') continue;
     const pk = String(g.game_id).replace(/^g/, '');
@@ -1995,7 +2077,21 @@ async function gradeUngraded(env) {
     const stmts = [];
     for (const p of picks) {
       const k = kById[p.pitcher_id];
-      if (k == null) continue;
+      // Scratched starter: the game is Final but this pitcher has no pitching
+      // line, so there is no strikeout total to grade against. `continue` left
+      // the row NULL and it was re-examined on every pass forever. This is the
+      // pitcher-side twin of the batter did-not-play bug — void it, exactly as
+      // batterActual does, and never score it as a 0 (which would settle an
+      // Under as a win for a pitcher who never threw).
+      //
+      // A pitcher who DID throw and struck out nobody is unaffected: he carries
+      // strikeOuts: 0, which pitcherKsFromBox keeps, so k is 0 and not null.
+      if (k == null) {
+        stmts.push(db.prepare(
+          "UPDATE picks SET result='void' WHERE date=? AND game_id=? AND pitcher_id=?")
+          .bind(p.date, p.game_id, p.pitcher_id));
+        continue;
+      }
       const result = gradePick(p.side, p.line, k);
       stmts.push(db.prepare('UPDATE picks SET actual_k=?, result=? WHERE date=? AND game_id=? AND pitcher_id=?').bind(k, result, p.date, p.game_id, p.pitcher_id));
     }
@@ -2054,6 +2150,28 @@ async function gradeMlPicks(env) {
       const awayR = numOr((ls.teams && ls.teams.away && ls.teams.away.runs), g.teams.away.score);
       if (homeR == null || awayR == null) continue;
       scoreByGame['g' + g.gamePk] = { homeR, awayR };
+    }
+    // Same reschedule hole as the other two graders: a game replayed on another
+    // date never lands in this date's scoreByGame, so the row was skipped every
+    // pass. Resolve the stragglers by gamePk, and void the ones that will never
+    // be played so they stop accumulating in `pending`.
+    const missing = byDate[d].filter((p) => !scoreByGame[p.game_id]).map((p) => p.game_id);
+    if (missing.length) {
+      const byPk = await gamesByPk(missing);
+      const voids = [];
+      for (const [gid, g] of Object.entries(byPk)) {
+        if (g.state === 'Final' && g.homeR != null && g.awayR != null) {
+          scoreByGame[gid] = { homeR: g.homeR, awayR: g.awayR };
+        } else if (isAbandoned(g)) {
+          voids.push(gid);
+        }
+      }
+      if (voids.length) {
+        try {
+          await db.batch(voids.map((gid) => db.prepare(
+            "UPDATE mlpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)));
+        } catch (e) { /* retry next pass */ }
+      }
     }
     const stmts = [];
     for (const p of byDate[d]) {
@@ -3460,6 +3578,33 @@ async function trackDebug(env) {
           : `IN PROGRESS — ${pendingRows} row(s) across ${pendingGames} game(s) still to re-derive; ~${Math.ceil(pendingGames / 4)} more /api/track-record hit(s). If this number does not fall between checks, the boxscore fetch is failing and the sweep is stuck.`,
       };
     } catch (e) { out.dnpError = String(e && e.message || e); }
+
+    // Rows that should have graded and did not. Anything ungraded on a date
+    // before today has had its game finish, so a nonzero count here is a stuck
+    // grader — the failure that used to be invisible because the sweeps skip
+    // silently. Listed with game_id so a straggler can be looked up by gamePk.
+    try {
+      const stuck = {};
+      let stuckTotal = 0;
+      for (const [label, tbl] of Object.entries({ picks: 'picks', bpicks: 'bpicks', mlpicks: 'mlpicks' })) {
+        const rows = (await env.DB.prepare(
+          `SELECT date, game_id, COUNT(*) AS n FROM ${tbl}
+            WHERE result IS NULL AND date < ?
+            GROUP BY date, game_id ORDER BY date DESC LIMIT 12`
+        ).bind(today).all()).results || [];
+        const n = (await env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM ${tbl} WHERE result IS NULL AND date < ?`).bind(today).first('n')) || 0;
+        stuckTotal += n;
+        stuck[label] = { n, rows };
+      }
+      out.stuck = {
+        total: stuckTotal,
+        byTable: stuck,
+        verdict: stuckTotal === 0
+          ? 'OK — every pick on a completed date has graded.'
+          : `${stuckTotal} row(s) ungraded on dates already past. The graders now resolve by gamePk and void abandoned games, so this should fall to 0; if it does not, the game_ids above are not resolving.`,
+      };
+    } catch (e) { out.stuckError = String(e && e.message || e); }
 
     // Freshest signal: what's logged for tonight, and is the newest date grading?
     const loggedToday = (await env.DB.prepare('SELECT COUNT(*) AS n FROM picks WHERE date=?').bind(today).first('n')) || 0;
