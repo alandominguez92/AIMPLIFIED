@@ -2884,8 +2884,22 @@ async function batterDebug(env) {
     const priceOrder = ['<= -140', '-139..-115', '-114..+105', '+106..+140', '+141+'];
     const byPrice = priceOrder.filter((k) => priceMap[k]).map((k) => ({ price: k, ...summarize(priceMap[k]) }));
 
-    const marketMap = groupBy(unders, (r) => String(r.market || '').toUpperCase());
+    // Both sides, matching the field name. This was built from `unders` alone,
+    // which made byMarket.HRR byte-identical to the HRR Under row in
+    // byMarketSide while reading like a both-sides blend — a -17.9% Over slice
+    // sat inside a market the summary showed as positive. The unders-only view
+    // is still available in byMarketSide, so nothing is lost by making the name
+    // honest. Same filter as msMap: K lives in its own table and is never mixed.
+    const marketMap = groupBy(graded, (r) => {
+      const m = String(r.market || '').toUpperCase();
+      return (!m || m === 'K') ? null : m;
+    });
     const byMarket = Object.keys(marketMap).map((k) => ({ market: k, ...summarize(marketMap[k]) })).sort((a, b) => b.n - a.n);
+    // Kept explicitly rather than left implicit: the posted product is unders,
+    // so the unders-only market split is worth reading directly, and naming it
+    // is what stops byMarket from quietly meaning this again.
+    const undersMap = groupBy(unders, (r) => String(r.market || '').toUpperCase());
+    const byMarketUnder = Object.keys(undersMap).map((k) => ({ market: k, ...summarize(undersMap[k]) })).sort((a, b) => b.n - a.n);
 
     // Strikeouts live in `picks`, a different table and a different experiment.
     // Reported here beside the batter numbers but never merged into them, so a
@@ -3060,6 +3074,7 @@ async function batterDebug(env) {
       byMonth,
       byPrice,
       byMarket,
+      byMarketUnder,
       cumulative,
       readSig: 'Significance: sig.roiP is the two-tailed p for ROI != 0, sig.clvP the same for CLV. Treat p>=0.05 as "no established effect" no matter how large the ROI looks. These p-values assume independent picks; picks on the same slate are correlated (shared games, shared weather, shared lineups), so the true p is LARGER than reported — read a marginal 0.04 as not significant. avgClvEv is the mean EV% per unit at the closing fair price: unlike avgCLV it accounts for the price paid, so a positive avgCLV with a negative avgClvEv means the line moved our way but we still took a number worse than the close. avgClvEv is the one to trust when they disagree.',
       read: readNarrative({ underTotal, overTotal, byMarketSideLine, byModelVer }),

@@ -2124,8 +2124,18 @@
     if (tr.winRate != null) bits.push(`${tr.winRate}% win`);
     if (typeof tr.units === 'number') bits.push(`${tr.units > 0 ? '+' : ''}${tr.units}u flat`);
     if (tr.clv != null) bits.push(`${tr.clv > 0 ? '+' : ''}${tr.clv}% CLV`);
+    // The closing clause used to assert "the one market with a proven edge".
+    // That was hardcoded, and it kept asserting a proof while the same page
+    // showed an era note saying the edge had not cleared a test — the two lines
+    // contradicted each other on screen. Gate it on the same field the note
+    // uses, so the strongest claim the page makes is the one the record earns.
+    const ee = tr.eraEdge;
+    const proven = ee && ee.established;
+    const claim = proven
+      ? `it’s the one market whose edge has cleared a significance test (p ${ee.roiP}), not the only one we track.`
+      : `it’s the only market we post, and on the current record that edge is not yet statistically separable from break-even. That’s why the losses stay up too.`;
     return `<b>Full model log</b>, including the K / moneyline / run-line context we grade but don’t post as plays: ${bits.join(' · ')}. `
-      + `We show the whole thing so the batter-under record above can’t read as cherry-picked — it’s the one market with a proven edge, not the only one we track.`;
+      + `We show the whole thing so the batter-under record above can’t read as cherry-picked — ${claim}`;
   }
 
   function renderRecord() {
