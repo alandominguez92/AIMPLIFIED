@@ -1030,11 +1030,34 @@
   // moneyline view, matching that view's own column, so the chip never labels a
   // number the board doesn't show.
   const SORT_LABELS = { edge: 'Edge', model: null, odds: 'Odds', time: 'Time' };
+
+  // Which sort keys are actually meaningful for the board as it stands right now.
+  // Edge and Win-Prob/Model-P only exist when the board carries model output, so
+  // on a context view (ML/K) or a fallback slate with no tiers they'd sort by
+  // all-null and are dropped. Odds shows only when some row has a price to sort.
+  // Time is always meaningful (every game has a first pitch), so the group is
+  // never empty — which is what stops the toolbar collapsing to a lone Compare
+  // when /api/board falls back to the odds-only slate.
+  function availableSortKeys() {
+    const games = getGames();
+    const has = (key) => games.some((g) => sortMetric(key)(g) != null);
+    const keys = [];
+    if (boardModeled()) keys.push('edge', 'model');
+    if (has('odds')) keys.push('odds');
+    keys.push('time');
+    return keys;
+  }
+
   function renderSortChips() {
     const host = document.getElementById('sortChips');
     if (!host) return;
-    const active = state.sortBy, arrow = sortDir() === 'asc' ? '↑' : '↓';
-    host.innerHTML = ['edge', 'model', 'odds', 'time'].map((key) => {
+    const keys = availableSortKeys();
+    // getFilteredSortedGames force-sorts by time whenever the board isn't
+    // modeled, so if the stored key isn't offered here, Time is the real order —
+    // highlight it, rather than leaving a hidden key "active" with no chip.
+    const active = keys.includes(state.sortBy) ? state.sortBy : 'time';
+    const arrow = sortDir() === 'asc' ? '↑' : '↓';
+    host.innerHTML = keys.map((key) => {
       const label = key === 'model' ? modelSortLabel() : SORT_LABELS[key];
       const on = key === active;
       return `<button class="sort-btn${on ? ' active' : ''}" data-action="set-sort" data-sort="${key}"`
@@ -1095,12 +1118,19 @@
         btn.classList.remove('chip-empty');
       }
     });
+    // Sort shows whenever there are rows to order — Time alone is reason enough,
+    // and it's always available. Tying this to hideModelControls made the group
+    // vanish on the fallback ML/K slate, so the same tab's toolbar rearranged
+    // between data refreshes and read as a glitch. renderSortChips trims the
+    // chips to the meaningful keys, so an unmodeled board shows just Time.
+    const anyGames = getGames().length > 0;
     const sortGroup = document.getElementById('sortGroup');
-    if (sortGroup) sortGroup.style.display = hideModelControls ? 'none' : '';
-    // The divider only earns its keep between two visible groups — drop it when
-    // sort is hidden (context views) so it isn't a rule dangling after Pass.
+    if (sortGroup) sortGroup.style.display = anyGames ? '' : 'none';
+    // The divider only earns its keep between the tier filters and sort. Tier
+    // filters exist only when !hideTiers (the modeled batter board), so key the
+    // divider off that — never off sort, which now shows on context views too.
     const toolbarDiv = document.getElementById('toolbarDiv');
-    if (toolbarDiv) toolbarDiv.style.display = hideModelControls ? 'none' : '';
+    if (toolbarDiv) toolbarDiv.style.display = (!hideTiers && anyGames) ? '' : 'none';
 
     el.compareModeBtn.textContent = state.compareMode ? 'Exit Compare' : 'Compare';
     el.compareModeBtn.classList.toggle('active', state.compareMode);
