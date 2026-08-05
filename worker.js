@@ -3008,6 +3008,42 @@ async function batterDebug(env) {
     // sat inside a market the summary showed as positive. The unders-only view
     // is still available in byMarketSide, so nothing is lost by making the name
     // honest. Same filter as msMap: K lives in its own table and is never mixed.
+    // Does tier actually rank? The pooled tierBreakdown on /api/track-record
+    // mixes three markets whose ROIs run 0% / -16.9% / -19.4%, so its tier
+    // ordering is dominated by which market happens to sit in which tier — a
+    // mixing artifact, not a property of the tiers. This slice is the POSTED
+    // product alone (batter unders, pass excluded), which is the only place the
+    // question means anything.
+    const posted = unders.filter((r) => r.tier !== 'pass');
+    const tierMap = groupBy(posted, (r) => String(r.tier || '?'));
+    const byTier = ['1', '2', '3'].filter((k) => tierMap[k])
+      .map((k) => ({ tier: k, ...summarize(tierMap[k]) }));
+    // Ranking verdict. Monotone ROI is necessary but not sufficient: with these
+    // sample sizes an ordering can look clean and still be noise, so T1 vs T3 is
+    // tested directly rather than eyeballed.
+    const tierVerdict = (() => {
+      if (byTier.length < 2) return 'too few tiers graded to say.';
+      const rois = byTier.map((t) => t.roi);
+      const mono = rois.every((v, i) => i === 0 || rois[i - 1] >= v);
+      const t1 = byTier[0], t3 = byTier[byTier.length - 1];
+      // Two-proportion z on win rate is the wrong test here (prices differ per
+      // tier); compare ROI via the same t on per-pick returns summarize() uses.
+      const sep = (t1.sig && t3.sig && t1.sig.roiP != null && t3.sig.roiP != null)
+        ? `T${t1.tier} roiP ${t1.sig.roiP}, T${t3.tier} roiP ${t3.sig.roiP}`
+        : 'no p-values available';
+      if (!mono) return `NOT monotone — ROI does not fall with tier (${rois.join(', ')}). Tier is not ranking these picks. ${sep}.`;
+      const anySig = byTier.some((t) => t.sig && t.sig.roiP != null && t.sig.roiP < 0.05);
+      return anySig
+        ? `Monotone (${rois.join(' > ')}) and at least one tier clears p<0.05. Tier is ranking. ${sep}.`
+        : `Monotone (${rois.join(' > ')}) but NO tier is distinguishable from zero, so the ordering is not yet evidence that tier ranks. ${sep}.`;
+    })();
+
+    // Calibration for the posted product: the model's claimed win probability
+    // against what actually happened. A slope of 1 through the diagonal means
+    // calibrated; a slope near 0 means the probabilities carry no information
+    // about outcomes, which makes every tier cutoff derived from them arbitrary.
+    const calibration = calibrationCurve(posted);
+
     const marketMap = groupBy(graded, (r) => {
       const m = String(r.market || '').toUpperCase();
       return (!m || m === 'K') ? null : m;
@@ -3193,6 +3229,9 @@ async function batterDebug(env) {
       byPrice,
       byMarket,
       byMarketUnder,
+      byTier,
+      tierVerdict,
+      calibration,
       cumulative,
       readSig: 'Significance: sig.roiP is the two-tailed p for ROI != 0, sig.clvP the same for CLV. Treat p>=0.05 as "no established effect" no matter how large the ROI looks. These p-values assume independent picks; picks on the same slate are correlated (shared games, shared weather, shared lineups), so the true p is LARGER than reported — read a marginal 0.04 as not significant. avgClvEv is the mean EV% per unit at the closing fair price: unlike avgCLV it accounts for the price paid, so a positive avgCLV with a negative avgClvEv means the line moved our way but we still took a number worse than the close. avgClvEv is the one to trust when they disagree.',
       read: readNarrative({ underTotal, overTotal, byMarketSideLine, byModelVer }),
@@ -3213,6 +3252,72 @@ async function batterDebug(env) {
 // 0.05 test. Negative findings are reported at raw p, deliberately: a warning
 // that a slice is losing money should not need a stricter bar than a claim that
 // one is winning.
+// Reliability curve + slope fit for a set of graded picks.
+//
+// Every tier cutoff in this codebase is a threshold on `edge`, and edge is the
+// distance between the model's probability and the market's. That only ranks
+// anything if the model's probability tracks reality. The slope below measures
+// exactly that: regress realised win rate on claimed win rate, both centred on
+// 50%. Slope 1 = calibrated. Slope 0 = the number carries no information, and
+// every cutoff built on it is sorting noise.
+//
+// Fitted through the centred origin deliberately — an intercept would absorb a
+// flat bias that belongs in the aggregate gap, not in the slope.
+function calibrationCurve(rows) {
+  const pts = [];
+  for (const r of rows) {
+    if (r.model_over == null || !r.side) continue;
+    if (r.result !== 'win' && r.result !== 'loss') continue;
+    const pred = (r.side === 'Over' ? r.model_over : 100 - r.model_over) / 100;
+    if (!(pred > 0) || !(pred < 1)) continue;
+    pts.push({ pred, win: r.result === 'win' ? 1 : 0 });
+  }
+  if (pts.length < 20) return { n: pts.length, buckets: [], slope: null, verdict: 'too few graded picks to fit a curve.' };
+
+  const EDGES = [0, 0.40, 0.475, 0.525, 0.60, 1];
+  const buckets = [];
+  for (let i = 0; i < EDGES.length - 1; i++) {
+    const inB = pts.filter((p) => p.pred >= EDGES[i] && p.pred < EDGES[i + 1]);
+    if (!inB.length) continue;
+    const predicted = inB.reduce((s, p) => s + p.pred, 0) / inB.length;
+    const actual = inB.reduce((s, p) => s + p.win, 0) / inB.length;
+    buckets.push({
+      range: `${Math.round(EDGES[i] * 100)}-${Math.round(EDGES[i + 1] * 100)}%`,
+      n: inB.length,
+      predicted: round1(predicted * 100),
+      actual: round1(actual * 100),
+      gapPts: round1((actual - predicted) * 100),
+    });
+  }
+
+  // Weighted LS on the raw picks, not the buckets — bucketing is for display.
+  const num = pts.reduce((s, p) => s + (p.pred - 0.5) * (p.win - 0.5), 0);
+  const den = pts.reduce((s, p) => s + (p.pred - 0.5) ** 2, 0);
+  if (!(den > 1e-9)) return { n: pts.length, buckets, slope: null, verdict: 'model probabilities are constant; no slope to fit.' };
+  const slope = num / den;
+  const resid = pts.reduce((s, p) => s + ((p.win - 0.5) - slope * (p.pred - 0.5)) ** 2, 0);
+  const se = Math.sqrt(resid / Math.max(pts.length - 1, 1) / den);
+  const sTo = (target) => (se > 1e-12 ? (slope - target) / se : null);
+  const vs1 = sTo(1), vs0 = sTo(0);
+  const informative = vs0 != null && Math.abs(vs0) > 2;
+  const calibrated = vs1 != null && Math.abs(vs1) <= 2;
+
+  return {
+    n: pts.length,
+    buckets,
+    slope: Math.round(slope * 1000) / 1000,
+    slopeSE: Math.round(se * 1000) / 1000,
+    sigmasFromCalibrated: vs1 == null ? null : Math.round(vs1 * 10) / 10,
+    sigmasFromNoInfo: vs0 == null ? null : Math.round(vs0 * 10) / 10,
+    informative,
+    verdict: calibrated
+      ? `Calibrated — slope ${round1(slope * 100) / 100} is within 2 SE of 1.`
+      : informative
+        ? `Miscalibrated but informative — slope ${Math.round(slope * 1000) / 1000} is ${Math.abs(Math.round(vs1 * 10) / 10)} SE below 1, yet ${Math.abs(Math.round(vs0 * 10) / 10)} SE above 0. The probabilities rank picks but overstate confidence; tier cutoffs still mean something, the stated win rates do not.`
+        : `NOT informative — slope ${Math.round(slope * 1000) / 1000} is only ${vs0 == null ? '?' : Math.abs(Math.round(vs0 * 10) / 10)} SE above 0. The model's probability does not track outcomes, so every tier cutoff derived from it is sorting noise. Reordering the cutoffs cannot fix this; the probability has to become informative first.`,
+  };
+}
+
 function readNarrative({ underTotal, overTotal, byMarketSideLine, byModelVer }) {
   const parts = [];
   const pct = (v) => (v == null ? '?' : `${v > 0 ? '+' : ''}${v}%`);
