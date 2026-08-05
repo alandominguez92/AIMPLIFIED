@@ -2683,24 +2683,30 @@ function priceStrikeouts(prop, projK) {
 // regress it hard toward the market and price it on stricter tiers. This keeps
 // batter picks honest — most land Tier 2/3/pass, not a board full of Tier 1.
 const BATTER_SHRINK = 0.25;      // keep ~25% of the raw model-vs-market gap
-// T1/T2/T3 edge cutoffs (vs 5/3/1.5 for Ks). T1 was 8, which admitted 19 of
-// 1252 posted picks — 1.5%. At that rate T1 can never accumulate enough graded
-// history to say anything (roiP 0.729 on n=19), so the label claimed a
-// confidence the record could not test.
+// T1/T2/T3 edge cutoffs (vs 5/3/1.5 for Ks). T1 was 8, which admitted 4 of the
+// 899 posted picks in the current era — 0.4%. At that rate T1 could never
+// accumulate enough graded history to say anything (roiP 0.729 on n=19 across
+// all eras), so the label claimed a confidence the record could not test.
 //
-// 6.5 is chosen against the CURRENT-era edge distribution, not the multi-era
-// history: tier governs picks logged from here on, and the two disagree sharply
-// (a current-era slate ran 75% of posted picks at edge>=5 where the historical
-// blend ran 23%). The error is asymmetric — too low is worse than too high,
-// because a T1 that swallows most of the board stops meaning "strongest lean" —
-// so this targets ~20% of posted on a current-era slate, ~8-10% if the older
-// rates reassert. Both are testable; 1.5% was not.
+// Set from the graded edge distribution per era (edgeDistribution on
+// /api/batter-debug), NOT from a single slate. A one-night sample ran 75% of
+// posted picks at edge>=5; the graded current era runs 22.6%. Fitting to the
+// slate produced 6.5, which turned out to admit just 3.8% — barely better than
+// the 8 it replaced. The nightly board is far too volatile to site a threshold
+// on; only the graded population is.
 //
-// Only the T1 boundary moves. T2/T3 keep their cutoffs, so T2 absorbs the
-// [5, 6.5) band and T3 is untouched. Tier is stamped at log time, so this does
-// NOT relabel graded history — T1's usable sample builds forward from here.
-// edgeDistribution on /api/batter-debug is the instrument to re-check it.
-const BATTER_TIERS = [6.5, 5, 3];
+// Share of posted picks at [5.5, 4, 3], by era:
+//   sharp-shin-nb (current, n=899)  T1 13.3%  T2 40.6%  T3 46.1%
+//   dk-fair              (n=234)    T1 17.5%  T2 44.5%  T3 38.0%
+//   sharp-shin           (n=119)    T1 10.9%  T2 33.6%  T3 55.5%
+// T1 stays a selective minority in every era while being large enough to build
+// a testable sample, and T2 keeps a real population — holding T2 at 5 would
+// have squeezed it to a 9% sliver between T1 and T3.
+//
+// T3 stays at 3, so the pass boundary is unchanged: this relabels picks, it does
+// not change which ones get posted. Tier is stamped at log time, so graded
+// history is not relabelled — T1's usable sample builds forward from here.
+const BATTER_TIERS = [5.5, 4, 3];
 // Projection calibration. The graded record showed the counting-stat projection
 // runs ~16-17% HIGH — HRR projected 1.9 vs 1.6 actual, TB 1.8 vs 1.5 (n=1382).
 // That over-projection manufactured the losing OVER picks (overs 44% / -15.8%
