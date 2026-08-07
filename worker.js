@@ -3497,6 +3497,16 @@ async function fairProbe(env, reqUrl) {
     // Accumulate across every probed game so coverage reflects the slate rather
     // than one matchup. acc[book][market] = { players, twoSided, games, sums[] }.
     const acc = {};
+    // Per-book totals cannot answer "how many player-lines have TWO sharp books
+    // on them" — 105 quotes from one book and 120 from another may or may not be
+    // the same players. Overlap has to be keyed the way the pricer keys it.
+    //
+    // bestBookMarket requires `b.point === refLine`: a sharp book only counts if
+    // it quotes the EXACT line being priced, two-sided. So the unit here is
+    // (market, player, point), not (market, player). lineAcc[mk][player|point] =
+    // { sharp:Set, exec:Set }. Costs no extra API calls — it reads the same
+    // responses the loop already fetched.
+    const lineAcc = {};
     for (const e of upcoming) {
       const url = `${ODDS}/events/${e.id}/odds?apiKey=${key}&bookmakers=${allBooks.join(',')}`
         + `&markets=${markets.join(',')}&oddsFormat=american&dateFormat=iso`;
@@ -3525,6 +3535,20 @@ async function fairProbe(env, reqUrl) {
           const m = bAcc[mk.key] || (bAcc[mk.key] = { players: 0, twoSided: 0, games: 0, sums: [] });
           m.players += list.length; m.twoSided += twoSided.length; m.games += 1;
           for (const s of sums) m.sums.push(s);
+
+          // Same pass, keyed by the line. Only two-sided quotes with a point can
+          // ever serve as a fair source, so one-sided and point-less rows are
+          // skipped here exactly as the pricer skips them.
+          const isSharp = PROBE_FAIR_BOOKS.includes(bm.key);
+          const mkAcc = lineAcc[mk.key] || (lineAcc[mk.key] = {});
+          for (const nm of Object.keys(players)) {
+            const p = players[nm];
+            if (p.over == null || p.under == null || p.point == null) continue;
+            // Event id in the key so the same player name in two games can't merge.
+            const k = `${e.id}|${nm}|${p.point}`;
+            const slot = mkAcc[k] || (mkAcc[k] = { sharp: new Set(), exec: new Set() });
+            (isSharp ? slot.sharp : slot.exec).add(bm.key);
+          }
         }
       }
     }
@@ -3547,6 +3571,53 @@ async function fairProbe(env, reqUrl) {
       byBook[book] = entry;
     }
     out.byBook = byBook;
+
+    // Sharp overlap per bettable line. The denominator is what matters: a line
+    // nobody can bet is not a lost pick, so only lines an execution book (DK/FD)
+    // quotes two-sided count as the universe. Of those, how many carry 1, 2, or
+    // 3+ sharp books at the SAME point?
+    //
+    // This is the cost of the two-book-minimum rule. Note the current pricer
+    // accepts a single sharp book (`if (pool.length)`), so `sharp1` rows are
+    // priced today and would be SKIPPED under the new rule — that difference is
+    // `wouldSkipUnderTwoBookRule`.
+    try {
+      const overlap = {};
+      for (const mkKey of Object.keys(lineAcc)) {
+        const rows = Object.values(lineAcc[mkKey]);
+        const bettable = rows.filter((r) => r.exec.size > 0);
+        const cnt = (n, set) => set.filter((r) => r.sharp.size === n).length;
+        const atLeast = (n, set) => set.filter((r) => r.sharp.size >= n).length;
+        const b = bettable;
+        const two = atLeast(2, b);
+        overlap[mkKey] = {
+          linesQuotedByAnyBook: rows.length,
+          bettableLines: b.length,               // DK or FD two-sided
+          sharp0: cnt(0, b),
+          sharp1: cnt(1, b),
+          sharp2: cnt(2, b),
+          sharp3plus: atLeast(3, b),
+          pricedToday: atLeast(1, b),            // current rule: >=1 sharp book
+          pricedUnderTwoBookRule: two,           // new rule: >=2
+          wouldSkipUnderTwoBookRule: atLeast(1, b) - two,
+          pctBettableWithTwoSharp: b.length ? Math.round(1000 * two / b.length) / 10 : null,
+          pctLossVsToday: atLeast(1, b)
+            ? Math.round(1000 * (atLeast(1, b) - two) / atLeast(1, b)) / 10
+            : null,
+        };
+      }
+      out.sharpOverlap = overlap;
+      const tot = Object.values(overlap).reduce((s, o) => ({
+        priced: s.priced + o.pricedToday,
+        two: s.two + o.pricedUnderTwoBookRule,
+      }), { priced: 0, two: 0 });
+      out.sharpOverlapVerdict = tot.priced
+        ? `Two-book rule prices ${tot.two} of ${tot.priced} currently-priced lines `
+          + `(${Math.round(1000 * tot.two / tot.priced) / 10}% kept, `
+          + `${tot.priced - tot.two} skipped). Read per-market — H+R+RBI has only two `
+          + `eligible books, so it has no redundancy under this rule.`
+        : 'no bettable lines in the sample.';
+    } catch (err) { out.sharpOverlapError = String(err && err.message || err); }
     // A sharp book only counts if it posts a TWO-SIDED quote — a one-sided price
     // cannot be de-vigged, so it can't produce a fair line no matter who posts it.
     const deviggable = (b) => byBook[b] && Object.values(byBook[b].markets).some((m) => m.twoSided > 0);
