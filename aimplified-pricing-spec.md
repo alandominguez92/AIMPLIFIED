@@ -65,7 +65,11 @@ a fair line independent of the execution venue.
 - H+R+RBI → novig + prophetx (two-book midpoint)
 - Total Bases / Home Runs → pinnacle + novig + prophetx (three-book median)
 - Never touches DK or FD.
-- No two-sided sharp quote → **no fair → no pick.** No silent fallback.
+- **Minimum two sharp books, each quoting two-sided.** A single book is never a
+  fair line — it has no disagreement guard at all, so nothing distinguishes a
+  real number from a stale or fat-fingered one.
+- Fewer than two two-sided sharp quotes → **no fair → no pick.** No silent
+  fallback, no single-book pricing.
 
 ### `edge`
 
@@ -113,6 +117,22 @@ and prophetx *diverging*, but nothing catches them being wrong *together* —
 correlated error passes through as "fair." A three-book median degrades
 gracefully when one book is stale; a two-book midpoint does not. There is no
 fourth book available. Mitigation is measurement, not redundancy: see §7.
+
+**Consequence of the two-book minimum on H+R+RBI.** Because Pinnacle doesn't
+quote it, HRR has exactly two eligible sources and therefore **zero redundancy
+under this rule**: if either novig or prophetx is missing for a player, that
+player has no fair and is skipped. TB and HR degrade gracefully (lose one of
+three, still priced); HRR fails closed. Since HRR is ~80% of the board, board
+size is effectively a function of novig∩prophetx availability.
+
+That is the correct trade — a lone-book fair is worse than no pick — but it
+should be monitored rather than assumed benign. The 2026-08-05 probe reports
+per-book totals, not their intersection (HRR: novig 105 two-sided of 118 quoted;
+prophetx 120 of 120), so the true overlap and therefore the real board-size cost
+is **not yet measured**. Instrument it at build time: log how many
+player-markets are skipped for `reason = 'insufficient sharp quotes'`, split by
+market. If HRR skips run high, that is the number to bring back to this decision
+— not a reason to relax the rule silently.
 
 ---
 
@@ -222,12 +242,18 @@ Do not ship 2 and 3 together — the ROI change would be unattributable.
 
 ## 9. Open
 
-Decided: `best_price` as specified; sharp-pool `fair_prob`; both edges recorded
-with `price_edge` selecting.
+Decided:
+
+- `best_price` as specified — best real DK/FD offer, book attached, nothing when
+  there is no offer
+- `fair_prob` = Shin de-vigged median across sharp books quoting that market,
+  **minimum two books two-sided**, skip the pick otherwise
+- Both edges recorded; `price_edge` selects, `model_edge` rides along
+- `fair_src` tagged to distinguish 2-book midpoint from 3-book median
 
 Still to confirm before build:
 
-- Tier on EV% (§6) — recommended, not yet ratified
-- Exact behavior on a market where only one sharp book quotes two-sided: use it
-  alone, or require two? (Recommendation: require two, tagged; a lone book has
-  no disagreement guard at all.)
+- Tier on EV% rather than probability points (§6) — recommended, not yet ratified
+
+To measure at build time (§3): skip rate for `insufficient sharp quotes`, by
+market. Unknown today; determines the real board-size cost of the two-book rule.
