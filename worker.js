@@ -3496,8 +3496,33 @@ function fairEvCalibration(rows) {
   const se = Math.sqrt(resid / Math.max(n - 2, 1) / sxx);
   const sig = (t) => (se > 1e-12 ? (slope - t) / se : null);
   const vs0 = sig(0), vs1 = sig(1);
-  const ranks = vs0 != null && Math.abs(vs0) > 2;
   const r2 = (v) => Math.round(v * 100) / 100;
+  // Three-way, not two-way. "Not 2 SE above 0" is NOT the same claim as "does
+  // not rank": when the standard error is large the slope can sit within 2 SE of
+  // BOTH 0 and 1, and the only honest reading is that the test cannot tell them
+  // apart. Reporting that as a finding would recommend killing a refactor on the
+  // strength of a measurement that establishes nothing.
+  //
+  // Why the SE is large here is itself the point: predicted EV is dominated by
+  // the book's hold, so it barely varies (most rows cluster near -6.4). A
+  // predictor with almost no spread cannot have its slope estimated, no matter
+  // how many rows there are. Power comes from rows where the fair genuinely
+  // diverges from the price — exactly the rows that are rare.
+  const excludesNoInfo = vs0 != null && Math.abs(vs0) > 2;
+  const excludesCalibrated = vs1 != null && Math.abs(vs1) > 2;
+  const inconclusive = !excludesNoInfo && !excludesCalibrated;
+  const lo = r2(slope - 1.96 * se), hi = r2(slope + 1.96 * se);
+
+  let verdict;
+  if (inconclusive) {
+    verdict = `INCONCLUSIVE — slope ${r2(slope)} with SE ${r2(se)}; the 95% interval [${lo}, ${hi}] contains BOTH 0 (no information) and 1 (calibrated). This test cannot yet tell them apart, so it is not evidence for or against building price_edge. Cause: predicted EV barely varies (mean ${r2(mP)}, dominated by the book hold), and only rows where the fair diverges from the price carry power — there are few. Separately, realised beat predicted by ${r2(mR - mP)} pts, which is the level question, not the ranking question.`;
+  } else if (!excludesNoInfo) {
+    verdict = `FAIR DOES NOT RANK — slope ${r2(slope)}, 95% interval [${lo}, ${hi}], excludes 1 but not 0. Predicted EV does not track realised return, so price_edge cannot select picks. Do NOT build it as the selector.`;
+  } else if (!excludesCalibrated && Math.abs(mR - mP) < 2) {
+    verdict = `FAIR IS CALIBRATED — slope ${r2(slope)} within 2 SE of 1, mean gap ${r2(mR - mP)} pts. price_edge is a valid selector as specified.`;
+  } else {
+    verdict = `FAIR RANKS BUT IS LEVEL-BIASED — slope ${r2(slope)} is ${Math.abs(r2(vs0))} SE above 0, but realised beats predicted by ${r2(mR - mP)} pts on average. The ordering is usable; the ">0" cutoff is not. Derive the threshold from the bucket table, not from EV=0.`;
+  }
 
   return {
     n,
@@ -3507,14 +3532,13 @@ function fairEvCalibration(rows) {
     meanGapPts: r2(mR - mP),          // systematic level bias of the fair
     slope: r2(slope),
     slopeSE: r2(se),
+    slopeCI95: [lo, hi],
     sigmasFromNoInfo: vs0 == null ? null : r2(vs0),
     sigmasFromCalibrated: vs1 == null ? null : r2(vs1),
-    fairRanksOutcomes: ranks,
-    verdict: !ranks
-      ? `FAIR DOES NOT RANK — slope ${r2(slope)} is only ${vs0 == null ? '?' : Math.abs(r2(vs0))} SE above 0. Predicted EV does not track realised return, so price_edge cannot select picks. Do NOT build it as the selector.`
-      : (Math.abs(vs1) <= 2 && Math.abs(mR - mP) < 2)
-        ? `FAIR IS CALIBRATED — slope ${r2(slope)} within 2 SE of 1 and mean gap ${r2(mR - mP)} pts. price_edge is a valid selector as specified.`
-        : `FAIR RANKS BUT IS LEVEL-BIASED — slope ${r2(slope)} (${vs0 == null ? '?' : Math.abs(r2(vs0))} SE above 0), but realised beats predicted by ${r2(mR - mP)} pts on average. The ordering is usable; the ">0" cutoff is not. Derive the threshold from this table, not from EV=0.`,
+    // Only true when the data actually EXCLUDES the no-information hypothesis.
+    fairRanksOutcomes: excludesNoInfo && slope > 0,
+    inconclusive,
+    verdict,
   };
 }
 
