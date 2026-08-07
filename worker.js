@@ -3080,16 +3080,74 @@ async function batterDebug(env) {
         return { p50: at(0.5), p75: at(0.75), p80: at(0.8), p90: at(0.9), p95: at(0.95), max: s[s.length - 1] };
       };
       const eraMapE = groupBy(withEdge, (r) => r.model_ver || 'dk-fair');
+
+      // ---- EV% views -------------------------------------------------------
+      // Tiers are moving to EV%, and an edge-point quantile does NOT convert to
+      // an EV% quantile by any fixed factor: EV% = edge_points / implied_prob,
+      // and implied_prob varies per row, so the two orderings genuinely differ
+      // across the price range. A cutoff read off the edge-point quantiles above
+      // would be in the wrong units.
+      //
+      // Derivation. Staking 1u at American price P with vig-inclusive implied
+      // probability q = amProb(P), a true win probability p returns
+      //   EV = p*(1/q) - 1 = (p - q)/q
+      // so EV% = 100 * (p - q)/q. Both views below use that, differing only in
+      // what stands in for p:
+      //
+      //   modelEv  — p = the shrunk model probability (today's selecting number,
+      //              restated in EV terms so old and new tiers are comparable)
+      //   priceEv  — p = the SHARP FAIR probability. This is exactly the
+      //              price_edge the refactor will select on, computable today
+      //              because entry_over already stores the fair at log time.
+      //              Expect most rows to be NEGATIVE: paying a vigged price
+      //              against a fair line is -EV unless the book is genuinely off,
+      //              which is the point — it is a far stricter filter than the
+      //              model edge, and this distribution is what the new cutoffs
+      //              should be derived from.
+      const sideProb = (r, pOver) => (r.side === 'Over' ? pOver : 1 - pOver);
+      const evOf = (r, pOver) => {
+        if (pOver == null || !isFinite(pOver) || r.price == null) return null;
+        const q = amProb(r.price);
+        if (!(q > 0) || !(q < 1)) return null;
+        const p = sideProb(r, pOver);
+        if (!(p > 0) || !(p < 1)) return null;
+        return 100 * (p - q) / q;
+      };
+      const modelEv = (r) => evOf(r, r.model_over == null ? null : r.model_over / 100);
+      const priceEv = (r) => evOf(r, r.entry_over == null ? null : r.entry_over);
+
+      const EV_CUTS = [-2, -1, 0, 1, 2, 3, 5, 7.5];
+      const evBlock = (rows, fn, label) => {
+        const vals = rows.map(fn).filter((v) => v != null && isFinite(v)).sort((a, b) => a - b);
+        if (!vals.length) return { n: 0, note: `no rows carry the inputs for ${label}.` };
+        const at = (p) => Math.round(vals[Math.min(vals.length - 1, Math.floor((vals.length - 1) * p))] * 100) / 100;
+        return {
+          n: vals.length,
+          quantiles: { p10: at(0.1), p50: at(0.5), p75: at(0.75), p90: at(0.9), p95: at(0.95), max: Math.round(vals[vals.length - 1] * 100) / 100 },
+          shareAtCutoff: EV_CUTS.map((c) => {
+            const n = vals.filter((v) => v >= c).length;
+            return { cutoff: c, n, pct: round1(n / vals.length * 100) };
+          }),
+        };
+      };
+      const evByEra = (fn) => Object.keys(eraMapE).map((k) => ({ era: k, ...evBlock(eraMapE[k], fn, 'ev') }))
+        .sort((a, b) => b.n - a.n);
+
       return {
         n: withEdge.length,
         activeTiers: BATTER_TIERS,
+        units: 'edge points (probability points); see evPct / priceEdgeEvPct for the EV% views',
         overall: { n: withEdge.length, quantiles: quantiles(withEdge), shareAtCutoff: shareAt(withEdge) },
         byEra: Object.keys(eraMapE).map((k) => ({
           era: k, n: eraMapE[k].length,
           quantiles: quantiles(eraMapE[k]),
           shareAtCutoff: shareAt(eraMapE[k]),
         })).sort((a, b) => b.n - a.n),
-        note: `T1 cutoff is ${BATTER_TIERS[0]}. Read shareAtCutoff for the CURRENT era (${BATTER_MODEL_VER}) — that is the rate T1 will fill at going forward. Tier is stamped at log time, so changing the cutoff never relabels the rows above.`,
+        // Today's selecting edge, restated as EV% at the price actually taken.
+        evPct: { basis: 'model probability vs price taken', overall: evBlock(withEdge, modelEv, 'modelEv'), byEra: evByEra(modelEv) },
+        // The refactor's selecting number, measurable now.
+        priceEdgeEvPct: { basis: 'sharp fair (entry_over) vs price taken — the post-refactor price_edge', overall: evBlock(withEdge, priceEv, 'priceEv'), byEra: evByEra(priceEv) },
+        note: `T1 cutoff is ${BATTER_TIERS[0]} in EDGE POINTS. Read shareAtCutoff for the CURRENT era (${BATTER_MODEL_VER}) — that is the rate T1 fills at. Tier is stamped at log time, so changing a cutoff never relabels rows above. When moving tiers to EV%, derive from priceEdgeEvPct, not from the edge-point quantiles.`,
       };
     })();
 

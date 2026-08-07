@@ -268,8 +268,11 @@ All design questions are closed. Decided:
 
 Carried into build scope:
 
-- Extend `edgeDistribution` to report EV% quantiles before re-deriving cutoffs
-  (§6) — otherwise the tiers get set in the wrong units
+- ~~Extend `edgeDistribution` to report EV% quantiles~~ **DONE 2026-08-07.**
+  `edgeDistribution` now returns `evPct` (today's model edge in EV% terms) and
+  `priceEdgeEvPct` (the post-refactor `price_edge`, computable now because
+  `entry_over` already stores the sharp fair at log time). **Derive the new
+  cutoffs from `priceEdgeEvPct`.**
 - Log skips as `reason = 'insufficient sharp quotes'`, split by market (§3) —
   the real board-size cost of the two-book rule
 
