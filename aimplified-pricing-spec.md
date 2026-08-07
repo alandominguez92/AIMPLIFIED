@@ -176,7 +176,7 @@ as T1 sitting at n=19 for a season.
 
 ## 6. Tiering
 
-**Tier on EV%, not probability points.**
+**Tier on EV%, not probability points.** (Ratified 2026-08-07.)
 
 ```
 EV% = edge_points / implied_prob
@@ -192,6 +192,20 @@ magnitudes (current era: p50 4.1, p75 4.9, p90 5.7, p95 6.3). Market-vs-market
 edges run materially smaller. Re-derive from `edgeDistribution` on
 `/api/batter-debug`, which is already deployed and reports per-era quantiles and
 share-at-cutoff.
+
+**Build-scope consequence of tiering on EV%:** `edgeDistribution` today reports
+quantiles in **edge points**, so its output can no longer be read straight into
+the cutoffs. Because `EV% = edge_points / implied_prob`, and implied_prob varies
+per row, an edge-point quantile does **not** map to an EV% quantile by any fixed
+factor — the two rankings genuinely differ across the price range. Either:
+
+- extend `edgeDistribution` to report EV% quantiles alongside edge-point ones
+  (preferred — keeps one instrument, allows before/after comparison), or
+- derive cutoffs from a separate EV% pass.
+
+Do this **before** setting the new cutoffs, or they will be set in the wrong
+units. This is the same class of error as siting a threshold on one night's
+board: the instrument has to measure the quantity being thresholded.
 
 Target when re-deriving: T1 lands **10–20% of posted picks in the current era**,
 no tier below ~8%, checked across *every* era rather than one night's board. A
@@ -242,7 +256,7 @@ Do not ship 2 and 3 together — the ROI change would be unattributable.
 
 ## 9. Open
 
-Decided:
+All design questions are closed. Decided:
 
 - `best_price` as specified — best real DK/FD offer, book attached, nothing when
   there is no offer
@@ -250,10 +264,18 @@ Decided:
   **minimum two books two-sided**, skip the pick otherwise
 - Both edges recorded; `price_edge` selects, `model_edge` rides along
 - `fair_src` tagged to distinguish 2-book midpoint from 3-book median
+- **Tier on EV%** (`edge_points / implied_prob`), not probability points
 
-Still to confirm before build:
+Carried into build scope:
 
-- Tier on EV% rather than probability points (§6) — recommended, not yet ratified
+- Extend `edgeDistribution` to report EV% quantiles before re-deriving cutoffs
+  (§6) — otherwise the tiers get set in the wrong units
+- Log skips as `reason = 'insufficient sharp quotes'`, split by market (§3) —
+  the real board-size cost of the two-book rule
 
-To measure at build time (§3): skip rate for `insufficient sharp quotes`, by
-market. Unknown today; determines the real board-size cost of the two-book rule.
+Pending inputs (both land Aug 10, routine `trig_01G36ncw3kb4taeqAgVG1HVf`,
+fires 20:00Z):
+
+- W32 projection-bias verdict → whether `BATTER_PROJ_CAL` is re-derived upward
+  first
+- Sharp-overlap measurement → the measured cost of the two-book rule
