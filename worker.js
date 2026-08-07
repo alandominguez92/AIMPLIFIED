@@ -3156,6 +3156,9 @@ async function batterDebug(env) {
     // calibrated; a slope near 0 means the probabilities carry no information
     // about outcomes, which makes every tier cutoff derived from them arbitrary.
     const calibration = calibrationCurve(posted);
+    // Same question aimed at the market rather than the model: does the sharp
+    // fair predict outcomes? Decides whether the pricing refactor is buildable.
+    const fairCalibration = fairEvCalibration(posted);
 
     const marketMap = groupBy(graded, (r) => {
       const m = String(r.market || '').toUpperCase();
@@ -3346,6 +3349,7 @@ async function batterDebug(env) {
       tierVerdict,
       edgeDistribution,
       calibration,
+      fairCalibration,
       cumulative,
       readSig: 'Significance: sig.roiP is the two-tailed p for ROI != 0, sig.clvP the same for CLV. Treat p>=0.05 as "no established effect" no matter how large the ROI looks. These p-values assume independent picks; picks on the same slate are correlated (shared games, shared weather, shared lineups), so the true p is LARGER than reported — read a marginal 0.04 as not significant. avgClvEv is the mean EV% per unit at the closing fair price: unlike avgCLV it accounts for the price paid, so a positive avgCLV with a negative avgClvEv means the line moved our way but we still took a number worse than the close. avgClvEv is the one to trust when they disagree.',
       read: readNarrative({ underTotal, overTotal, byMarketSideLine, byModelVer }),
@@ -3429,6 +3433,88 @@ function calibrationCurve(rows) {
       : informative
         ? `Miscalibrated but informative — slope ${Math.round(slope * 1000) / 1000} is ${Math.abs(Math.round(vs1 * 10) / 10)} SE below 1, yet ${Math.abs(Math.round(vs0 * 10) / 10)} SE above 0. The probabilities rank picks but overstate confidence; tier cutoffs still mean something, the stated win rates do not.`
         : `NOT informative — slope ${Math.round(slope * 1000) / 1000} is only ${vs0 == null ? '?' : Math.abs(Math.round(vs0 * 10) / 10)} SE above 0. The model's probability does not track outcomes, so every tier cutoff derived from it is sorting noise. Reordering the cutoffs cannot fix this; the probability has to become informative first.`,
+  };
+}
+
+// Does the SHARP FAIR predict outcomes? This is calibrationCurve's test aimed at
+// the market instead of the model, and it decides whether the planned pricing
+// refactor is buildable at all.
+//
+// The refactor selects on price_edge = fair - implied(price). That only works if
+// the fair is a true probability. Measured on the current record it is not
+// obviously so: predicted EV at the sharp fair runs a median of -6.4% (i.e. the
+// full book hold), yet the same picks realised roughly 0% over 3600+ bets — a
+// gap far outside sampling error. Either the model finds edge the sharp books
+// miss, or those books' PROP pricing is biased (novig/prophetx are low-vig
+// venues, sharp on main lines but not necessarily on batter props).
+//
+// Regress realised return on predicted EV, WITH an intercept, because the two
+// failure modes are different and only the intercept separates them:
+//   slope ~1, intercept ~0  -> fair is calibrated; price_edge is a valid selector
+//   slope >0, intercept >>0 -> fair RANKS but is level-biased; the ranking is
+//                              usable, the ">0" threshold is not
+//   slope ~0                -> fair carries no information about outcomes and
+//                              cannot select picks however clean the plumbing is
+function fairEvCalibration(rows) {
+  const pts = [];
+  for (const r of rows) {
+    if (r.result !== 'win' && r.result !== 'loss') continue;
+    if (r.entry_over == null || r.price == null || !r.side) continue;
+    const q = amProb(r.price);
+    if (!(q > 0) || !(q < 1)) continue;
+    const p = r.side === 'Over' ? r.entry_over : 1 - r.entry_over;
+    if (!(p > 0) || !(p < 1)) continue;
+    pts.push({ pred: 100 * (p - q) / q, real: profitUnits(r.result, r.price) * 100 });
+  }
+  if (pts.length < 100) return { n: pts.length, verdict: 'too few graded rows to test the fair.' };
+
+  const EDGES = [-Infinity, -8, -6, -4, -2, 0, Infinity];
+  const buckets = [];
+  for (let i = 0; i < EDGES.length - 1; i++) {
+    const inB = pts.filter((x) => x.pred >= EDGES[i] && x.pred < EDGES[i + 1]);
+    if (!inB.length) continue;
+    const mp = inB.reduce((s, x) => s + x.pred, 0) / inB.length;
+    const mr = inB.reduce((s, x) => s + x.real, 0) / inB.length;
+    buckets.push({
+      range: `${EDGES[i] === -Infinity ? 'min' : EDGES[i]}..${EDGES[i + 1] === Infinity ? 'max' : EDGES[i + 1]}`,
+      n: inB.length,
+      predictedEvPct: round1(mp),
+      realisedRoiPct: round1(mr),
+      gapPts: round1(mr - mp),
+    });
+  }
+
+  const n = pts.length;
+  const mP = pts.reduce((s, x) => s + x.pred, 0) / n;
+  const mR = pts.reduce((s, x) => s + x.real, 0) / n;
+  const sxx = pts.reduce((s, x) => s + (x.pred - mP) ** 2, 0);
+  if (!(sxx > 1e-9)) return { n, buckets, verdict: 'predicted EV is constant; no slope to fit.' };
+  const sxy = pts.reduce((s, x) => s + (x.pred - mP) * (x.real - mR), 0);
+  const slope = sxy / sxx;
+  const intercept = mR - slope * mP;
+  const resid = pts.reduce((s, x) => s + (x.real - (intercept + slope * x.pred)) ** 2, 0);
+  const se = Math.sqrt(resid / Math.max(n - 2, 1) / sxx);
+  const sig = (t) => (se > 1e-12 ? (slope - t) / se : null);
+  const vs0 = sig(0), vs1 = sig(1);
+  const ranks = vs0 != null && Math.abs(vs0) > 2;
+  const r2 = (v) => Math.round(v * 100) / 100;
+
+  return {
+    n,
+    buckets,
+    meanPredictedEvPct: r2(mP),
+    meanRealisedRoiPct: r2(mR),
+    meanGapPts: r2(mR - mP),          // systematic level bias of the fair
+    slope: r2(slope),
+    slopeSE: r2(se),
+    sigmasFromNoInfo: vs0 == null ? null : r2(vs0),
+    sigmasFromCalibrated: vs1 == null ? null : r2(vs1),
+    fairRanksOutcomes: ranks,
+    verdict: !ranks
+      ? `FAIR DOES NOT RANK — slope ${r2(slope)} is only ${vs0 == null ? '?' : Math.abs(r2(vs0))} SE above 0. Predicted EV does not track realised return, so price_edge cannot select picks. Do NOT build it as the selector.`
+      : (Math.abs(vs1) <= 2 && Math.abs(mR - mP) < 2)
+        ? `FAIR IS CALIBRATED — slope ${r2(slope)} within 2 SE of 1 and mean gap ${r2(mR - mP)} pts. price_edge is a valid selector as specified.`
+        : `FAIR RANKS BUT IS LEVEL-BIASED — slope ${r2(slope)} (${vs0 == null ? '?' : Math.abs(r2(vs0))} SE above 0), but realised beats predicted by ${r2(mR - mP)} pts on average. The ordering is usable; the ">0" cutoff is not. Derive the threshold from this table, not from EV=0.`,
   };
 }
 
