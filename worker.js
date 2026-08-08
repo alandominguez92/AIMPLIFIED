@@ -2707,15 +2707,35 @@ const BATTER_SHRINK = 0.25;      // keep ~25% of the raw model-vs-market gap
 // not change which ones get posted. Tier is stamped at log time, so graded
 // history is not relabelled — T1's usable sample builds forward from here.
 const BATTER_TIERS = [5.5, 4, 3];
-// Projection calibration. The graded record showed the counting-stat projection
-// runs ~16-17% HIGH — HRR projected 1.9 vs 1.6 actual, TB 1.8 vs 1.5 (n=1382).
-// That over-projection manufactured the losing OVER picks (overs 44% / -15.8%
-// ROI) while the rare unders won (69% / +18.5%). Multiply lambda down to align
-// projection with reality: this stops the fake over-edges and lets the model
-// correctly find UNDER value where the market shades overs up. Applied at ~85%
-// of the measured bias (one month of data) — re-measure via /api/batter-debug
-// and tighten toward the full 0.84 as more months grade.
-const BATTER_PROJ_CAL = 0.86;
+// Projection calibration. HISTORY: the projection once ran ~16-17% HIGH (HRR
+// projected 1.9 vs 1.6 actual, TB 1.8 vs 1.5, n=1382), which manufactured losing
+// OVER picks. 0.86 pulled lambda down to fix that.
+//
+// 2026-08-08: that correction has OVER-shot and now runs the other way. The
+// projection under-projects, which over-rates Unders — the only side posted —
+// and those Unders lose when actuals land higher. Measured on projBiasByWeek:
+//
+//   HRR W31  n=1342  proj 1.4  actual 1.7   k = 1.214
+//   HRR W32  n= 910  proj 1.4  actual 1.8   k = 1.286
+//   TB  W31  n= 668  proj 1.5  actual 1.6   k = 1.067
+//   TB  W32  n= 465  proj 1.4  actual 1.6   k = 1.143
+//
+// One constant serves hr/tb/hrr, so the correction is the n-weighted blend:
+// k = 1.195 over 3385 graded rows. Full correction would be 0.86*1.195 = 1.027;
+// applied at 85% of measured bias (the same caution the original used, and the
+// direction has only just reversed, so the estimate is not yet stable) that is
+// 1.002 -> 1.00.
+//
+// Corroboration, not just the bias number: batter unders fell from +6.7u to
+// -31.7u in two days, the 387 newly graded picks returning -9.9%. The graded
+// EDGE distribution was unchanged over the same window (p50 4.1, >=5.5 at 13.5%),
+// so this is a projection problem, not a tier problem.
+//
+// Caveat on precision: projBias is reported to 1dp, so k could sit anywhere in
+// 1.120-1.275, putting the 85% correction between 0.948 and 1.061. 1.00 is the
+// centre of that band. The reporting is widened to 2dp below so the 2026-08-10
+// read can re-derive this sharply and confirm or adjust.
+const BATTER_PROJ_CAL = 1.00;
 // Variance-to-mean ratio per market, measured from this system's own graded
 // outcomes (see negBinomCdf). Home runs stay on Poisson: no graded HR sample
 // exists to fit, and at a per-game lambda near 0.15 the Poisson, binomial and
@@ -3202,7 +3222,10 @@ async function batterDebug(env) {
       const avg = arr.reduce((s, r) => s + (r.proj - r.actual), 0) / arr.length;
       const avgProj = arr.reduce((s, r) => s + r.proj, 0) / arr.length;
       const avgActual = arr.reduce((s, r) => s + r.actual, 0) / arr.length;
-      return { market: m, n: arr.length, avgProj: round1(avgProj), avgActual: round1(avgActual), avgProjMinusActual: round1(avg) };
+      // 2dp, not 1dp: BATTER_PROJ_CAL is re-derived from actual/proj, and at 1dp
+      // a ratio like 1.8/1.4 is only pinned to 1.12-1.28 — a 13-point spread in
+      // the constant. The extra digit is what makes the re-derivation decidable.
+      return { market: m, n: arr.length, avgProj: round2(avgProj), avgActual: round2(avgActual), avgProjMinusActual: round2(avg) };
     }).sort((a, b) => b.n - a.n);
 
     // Same bias, sliced by week, so a shift can be seen rather than inferred
@@ -3226,9 +3249,9 @@ async function batterDebug(env) {
       const arr = bwMap[k];
       return {
         market, week, n: arr.length,
-        avgProj: round1(arr.reduce((s, r) => s + r.proj, 0) / arr.length),
-        avgActual: round1(arr.reduce((s, r) => s + r.actual, 0) / arr.length),
-        avgProjMinusActual: round1(arr.reduce((s, r) => s + (r.proj - r.actual), 0) / arr.length),
+        avgProj: round2(arr.reduce((s, r) => s + r.proj, 0) / arr.length),
+        avgActual: round2(arr.reduce((s, r) => s + r.actual, 0) / arr.length),
+        avgProjMinusActual: round2(arr.reduce((s, r) => s + (r.proj - r.actual), 0) / arr.length),
       };
     }).sort((a, b) => a.market.localeCompare(b.market) || a.week.localeCompare(b.week));
 
