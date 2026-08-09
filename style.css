@@ -977,6 +977,25 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-controls { gap:5px; }
   .filter-btn { padding:0 6px; }
   .filter-btn .chip-count { margin-left:6px; min-width:17px; height:17px; padding:0 4px; font-size:10px; border-radius:5px; }
+
+  /* The sort row never actually got mobile sizing. `.sort-chips .sort-btn`
+     (0,2,0) outranks the `.filter-btn, .sort-btn, .compare-btn` rule above
+     (0,1,0), so those buttons kept their desktop 32px height and 12px padding
+     while every other control shrank. That left the group 293px wide — too wide
+     to share the 326px row with Compare (73px), so each took a row of its own.
+     Re-stating the sizing at matching specificity fixes it, and the group then
+     sits alongside Compare instead of stacking. */
+  .sort-group { gap:6px; }
+  .sort-lead { font-size:9.5px; letter-spacing:.1em; }
+  .sort-chips { padding:2px; gap:1px; border-radius:9px; }
+  /* 6px, with Compare trimmed to match. Missing this row by a few pixels is the
+     worst outcome available — it costs a whole 34px row — so it is sized to the
+     375px case (iPhone SE/mini) rather than only to 390: at 8px padding the pair
+     needed 329 of 326 at 390, and at 7px still 315 of 311 at 375. 6px lands at
+     ~307, which clears both. Matches the filter chips' padding, so the two rows
+     read as one system. */
+  .sort-chips .sort-btn { height:30px; padding:0 6px; font-size:10.5px; border-radius:7px; }
+  .compare-btn { padding:0 8px; }
   .ctx-banner { flex-direction:column; gap:10px; padding:13px 15px; font-size:12px; }
   .board-foot { font-size:10px; }
   .board-row { padding:14px 14px 16px; row-gap:10px; }
