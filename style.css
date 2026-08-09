@@ -961,7 +961,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-search input { width:100%; height:38px; }
   .board-controls { margin-left:0; gap:6px; }
   .toolbar-div { display:none; }
-  .filter-btn, .sort-btn, .compare-btn { height:34px; padding:0 11px; font-size:10.5px; border-radius:8px; }
+  /* 38px matches the search field above, so the whole toolbar sits on one
+     rhythm, and it is a materially better touch target than the 34px it
+     replaced. Still under the ~44px iOS guideline, but a filter row at 44 would
+     cost more height than the control deserves. */
+  .filter-btn, .sort-btn, .compare-btn { height:38px; padding:0 11px; font-size:10.5px; border-radius:8px; }
   /* Swap to the short labels and tighten the count pill so all five chips fit a
      single 390px row. Previously they wrapped 3 + 2, leaving a half-empty second
      row under a full one — the thing that read as unfinished. */
@@ -988,14 +992,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .sort-group { gap:6px; }
   .sort-lead { font-size:9.5px; letter-spacing:.1em; }
   .sort-chips { padding:2px; gap:1px; border-radius:9px; }
-  /* 6px, with Compare trimmed to match. Missing this row by a few pixels is the
-     worst outcome available — it costs a whole 34px row — so it is sized to the
-     375px case (iPhone SE/mini) rather than only to 390: at 8px padding the pair
-     needed 329 of 326 at 390, and at 7px still 315 of 311 at 375. 6px lands at
-     ~307, which clears both. Matches the filter chips' padding, so the two rows
-     read as one system. */
-  .sort-chips .sort-btn { height:30px; padding:0 6px; font-size:10.5px; border-radius:7px; }
-  .compare-btn { padding:0 8px; }
+  /* Sized for the thumb, not for density. An earlier pass squeezed these to 30px
+     and 6px padding so the group could share a row with Compare — it saved ~35px
+     of height but left the sort chips the smallest targets on the page and out
+     of step with the 38px controls around them. Compare goes back to its own
+     row, which frees the whole width for this group and lets the buttons match
+     everything else. */
+  .sort-chips .sort-btn { height:38px; padding:0 11px; font-size:10.5px; border-radius:7px; }
   .ctx-banner { flex-direction:column; gap:10px; padding:13px 15px; font-size:12px; }
   .board-foot { font-size:10px; }
   .board-row { padding:14px 14px 16px; row-gap:10px; }
