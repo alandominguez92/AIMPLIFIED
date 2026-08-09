@@ -532,6 +532,10 @@ section { padding:44px 0; }
 /* Live count per tier chip. Neutral by default; on the active (gold) chip it
    flips to dark-on-gold so it stays legible. Empty buckets dim via .chip-empty. */
 .filter-btn .chip-count { margin-left:8px; min-width:20px; height:20px; padding:0 6px; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; background:color-mix(in srgb, var(--text) 9%, transparent); color:var(--textDim); font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; }
+/* Two labels ship in the markup; CSS picks one. Desktop shows "Tier 1", phones
+   show "T1" — see the FILTER_SHORT comment in app.js for why this is not done
+   in JS. */
+.fl-short { display:none; }
 .filter-btn.active .chip-count { background:color-mix(in srgb, var(--onAccent) 16%, transparent); color:var(--onAccent); }
 .filter-btn.chip-empty { opacity:.5; }
 /* Sort chip group. "Sort" lead label, then one chip per key; the active chip
@@ -958,6 +962,21 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-controls { margin-left:0; gap:6px; }
   .toolbar-div { display:none; }
   .filter-btn, .sort-btn, .compare-btn { height:34px; padding:0 11px; font-size:10.5px; border-radius:8px; }
+  /* Swap to the short labels and tighten the count pill so all five chips fit a
+     single 390px row. Previously they wrapped 3 + 2, leaving a half-empty second
+     row under a full one — the thing that read as unfinished. */
+  .fl-long { display:none; }
+  .fl-short { display:inline; }
+  /* Sized so all five chips hold one row down to a 375px viewport (iPhone SE and
+     mini, not just the 390 of a 14/15). At 9px padding + 6px gaps they needed
+     338px against 326 available and the last chip wrapped alone; 6px padding and
+     a 5px gap brings that to ~305, inside the 311 a 375px screen offers.
+     Narrower than 375 wraps to two rows, which is graceful — no clipping and no
+     horizontal scroll. Kept at 6px rather than squeezed further because these
+     are tap targets. */
+  .board-controls { gap:5px; }
+  .filter-btn { padding:0 6px; }
+  .filter-btn .chip-count { margin-left:6px; min-width:17px; height:17px; padding:0 4px; font-size:10px; border-radius:5px; }
   .ctx-banner { flex-direction:column; gap:10px; padding:13px 15px; font-size:12px; }
   .board-foot { font-size:10px; }
   .board-row { padding:14px 14px 16px; row-gap:10px; }

@@ -1092,6 +1092,15 @@
     // sizes while filtered to one. Search-applied so the numbers track what you
     // typed. Only the batter board posts tiers, so only it gets counts.
     const FILTER_LABEL = { all: 'All', 1: 'Tier 1', 2: 'Tier 2', 3: 'Tier 3', pass: 'Pass' };
+    // Both labels are rendered and CSS picks one, rather than measuring the
+    // viewport here — a JS-chosen label would need a resize listener and would
+    // be wrong for the first paint after an orientation change.
+    //
+    // "Tier 3" beside a count of 11 reads as "Tier 311" at a glance on a phone;
+    // "T3" next to the count pill does not. Shortening also lets all five chips
+    // sit on ONE row at 390px instead of wrapping 3+2 with a half-empty second
+    // row, which is what made the filter block look unfinished.
+    const FILTER_SHORT = { all: 'All', 1: 'T1', 2: 'T2', 3: 'T3', pass: 'Pass' };
     let tierCounts = null;
     if (isBatter() && !hideTiers) {
       const q = state.searchQuery.trim().toLowerCase();
@@ -1107,16 +1116,20 @@
       const active = f === state.filter;
       btn.classList.toggle('active', active);
       const label = FILTER_LABEL[f] || btn.textContent.replace(/\s*\d+$/, '');
+      const short = FILTER_SHORT[f] || label;
+      const labelHtml = `<span class="fl-long">${esc(label)}</span><span class="fl-short">${esc(short)}</span>`;
       if (tierCounts) {
         const n = tierCounts[f] ?? 0;
-        btn.innerHTML = `${esc(label)}<span class="chip-count">${n}</span>`;
+        btn.innerHTML = `${labelHtml}<span class="chip-count">${n}</span>`;
         // Dim a bucket that's empty tonight — unless it's the one you're on,
         // which must stay legible even at zero.
         btn.classList.toggle('chip-empty', n === 0 && !active);
       } else {
-        btn.textContent = label;
+        btn.innerHTML = labelHtml;
         btn.classList.remove('chip-empty');
       }
+      // Screen readers and the a11y tree get the full label, never "T3".
+      btn.setAttribute('aria-label', tierCounts ? `${label}, ${tierCounts[f] ?? 0}` : label);
     });
     // Sort shows whenever there are rows to order — Time alone is reason enough,
     // and it's always available. Tying this to hideModelControls made the group
