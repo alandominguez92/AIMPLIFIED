@@ -3084,6 +3084,25 @@ async function batterDebug(env) {
     // product alone (batter unders, pass excluded), which is the only place the
     // question means anything.
     const posted = unders.filter((r) => r.tier !== 'pass');
+
+    // byModelProb restricted to POSTED picks. The unrestricted table showed ROI
+    // falling as model probability rises, with the <45% bucket a large positive
+    // outlier — but it counts every graded under, including pass-tier rows the
+    // board never recommended. If the effect lives only in the pass rows it is a
+    // property of what the model already rejects, not something a sort on the
+    // posted board could ever capture. This is the split that tells them apart.
+    //
+    // Read the two together: a bucket whose posted ROI collapses toward zero
+    // while its all-unders ROI stayed high was carried by picks nobody could
+    // have bet.
+    const probMapPosted = groupBy(posted, probLabel);
+    const byModelProbPosted = probOrder.filter((k) => probMapPosted[k])
+      .map((k) => ({ modelProb: k, ...summarize(probMapPosted[k]) }));
+    // Same question for price, for the same reason — byPrice is also all-unders.
+    const pricePostedMap = groupBy(posted, (r) => priceLabel(r.price));
+    const byPricePosted = priceOrder.filter((k) => pricePostedMap[k])
+      .map((k) => ({ price: k, ...summarize(pricePostedMap[k]) }));
+
     const tierMap = groupBy(posted, (r) => String(r.tier || '?'));
     const byTier = ['1', '2', '3'].filter((k) => tierMap[k])
       .map((k) => ({ tier: k, ...summarize(tierMap[k]) }));
@@ -3392,7 +3411,9 @@ async function batterDebug(env) {
       sharpBookAccuracy,
       byMonth,
       byPrice,
+      byPricePosted,
       byModelProb,
+      byModelProbPosted,
       byMarket,
       byMarketUnder,
       byTier,
