@@ -1005,6 +1005,25 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-row .matchup-cell > b { font-size:15px; }
   .fade-pick { font-size:14px; }
   .board-row .edge-cell { font-size:18px; }
+
+  /* Expanded panel: reclaim the whitespace, not the content.
+     Measured at 390px the panel ran 631px — 75% of the screen — of which the
+     CONTENT was only 465px. The other 166px was padding and margins: 40px of
+     container padding, 44px of stat-row margins on rows just 18px tall, 40px
+     around the second title, plus 18 and 20 either side of the price read and
+     the methodology toggle. The gaps were the single largest item in the panel,
+     larger than any block they separated.
+     Everything below tightens spacing only. No section is removed and no text
+     is shortened — the per-pick numbers all still read. */
+  .expanded-detail { padding:14px 16px 16px; }
+  .expanded-detail .expanded-title { margin-bottom:9px; }
+  /* The inline margin-top:26px on the second title is set in app.js, so it is
+     overridden here rather than there — keeps this whole block in one place. */
+  .expanded-detail .expanded-title + .stat-row { margin-top:0; }
+  .expanded-detail [style*="margin-top:26px"] { margin-top:15px !important; }
+  .expanded-detail .stat-row { margin-top:7px; }
+  .price-read { margin-bottom:12px; padding:10px 13px; line-height:1.55; }
+  .method { margin-top:13px; }
 }
 @media (max-width:480px) {
   .hitters-grid { grid-template-columns:1fr 1fr !important; }
