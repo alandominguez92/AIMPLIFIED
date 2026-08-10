@@ -3045,6 +3045,32 @@ async function batterDebug(env) {
     const priceOrder = ['<= -140', '-139..-115', '-114..+105', '+106..+140', '+141+'];
     const byPrice = priceOrder.filter((k) => priceMap[k]).map((k) => ({ price: k, ...summarize(priceMap[k]) }));
 
+    // ROI bucketed by the model's own win probability — the missing third of the
+    // "which sort surfaces winners?" question. byTier answers it for Edge and
+    // byPrice for Odds, but Model P / Win Prob had only a calibration curve,
+    // which measures whether the probability is ACCURATE, not whether sorting by
+    // it makes money. Those are different: a perfectly calibrated probability
+    // sorted high just surfaces favourites, which win often and pay little.
+    //
+    // Read it against byPrice. With BATTER_SHRINK at 0.25 the model probability
+    // is three-quarters market fair, so these buckets track the price closely and
+    // the two tables should tell nearly the same story. Where they diverge is the
+    // quarter of the number the model actually contributes.
+    const probLabel = (r) => {
+      if (r.model_over == null || !r.side) return null;
+      const p = r.side === 'Over' ? r.model_over : 100 - r.model_over;
+      if (!(p > 0) || !(p < 100)) return null;
+      if (p < 45) return '<45%';
+      if (p < 50) return '45-50%';
+      if (p < 55) return '50-55%';
+      if (p < 60) return '55-60%';
+      if (p < 65) return '60-65%';
+      return '65%+';
+    };
+    const probMap = groupBy(unders, probLabel);
+    const probOrder = ['<45%', '45-50%', '50-55%', '55-60%', '60-65%', '65%+'];
+    const byModelProb = probOrder.filter((k) => probMap[k]).map((k) => ({ modelProb: k, ...summarize(probMap[k]) }));
+
     // Both sides, matching the field name. This was built from `unders` alone,
     // which made byMarket.HRR byte-identical to the HRR Under row in
     // byMarketSide while reading like a both-sides blend — a -17.9% Over slice
@@ -3366,6 +3392,7 @@ async function batterDebug(env) {
       sharpBookAccuracy,
       byMonth,
       byPrice,
+      byModelProb,
       byMarket,
       byMarketUnder,
       byTier,
