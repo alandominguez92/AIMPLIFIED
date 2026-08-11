@@ -693,18 +693,35 @@ section { padding:44px 0; }
    repeats identically in every row you open, so it collapses behind a summary.
    app.js adds `open` above 640px, keeping the desktop panel as it was. */
 .method { margin-top:20px; }
-.method > summary { list-style:none; cursor:pointer; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+/* Shared chip styling for both collapsible sections in the panel. */
+.method > summary, .pctl > summary { list-style:none; cursor:pointer; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
   font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--textDim);
   border:1px solid var(--border); border-radius:8px; padding:9px 12px; }
-.method > summary::-webkit-details-marker { display:none; }
-.method > summary::after { content:' \25BE'; color:var(--textFaint); }
+.method > summary::-webkit-details-marker, .pctl > summary::-webkit-details-marker { display:none; }
+.method > summary::after, .pctl > summary::after { content:' \25BE'; color:var(--textFaint); }
 .method .expanded-note { margin-top:12px; }
-/* Above the phone breakpoint the note is already open, so the toggle would only
-   add height to a panel that never needed collapsing. Keeps desktop identical. */
+
+/* Season percentiles. Batter-level context (power, contact, discipline) rather
+   than the price case for this pick, and it was 123px of a 563px panel — the
+   third-largest block. Same disclosure treatment as the methodology.
+   Unlike .method this section HAS a heading that desktop needs, so above the
+   breakpoint the summary is not hidden: it is restyled to look exactly like the
+   .expanded-title it replaced (no border, no chevron, no pointer), which keeps
+   the desktop panel identical while giving phones a toggle. */
+.pctl { margin-top:26px; }
+.pctl > summary { margin-bottom:0; }
+.pctl[open] > summary { margin-bottom:12px; }
+
+/* Above the phone breakpoint both sections are already open, so a toggle would
+   only add height to a panel that never needed collapsing. Keeps desktop
+   identical. */
 @media (min-width:641px) {
   .method { margin-top:0; }
   .method > summary { display:none; }
   .method .expanded-note { margin-top:24px; }
+  .pctl > summary { border:none; border-radius:0; padding:0; cursor:default; margin-bottom:14px; }
+  .pctl > summary::after { content:''; }
+  .pctl[open] > summary { margin-bottom:14px; }
 }
 .bm-row.noline { grid-template-columns:1fr; padding:9px 13px; }
 /* .bm-none is placed at `grid-column:2 / -1` for the old per-market row, which
@@ -1017,13 +1034,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      is shortened — the per-pick numbers all still read. */
   .expanded-detail { padding:14px 16px 16px; }
   .expanded-detail .expanded-title { margin-bottom:9px; }
-  /* The inline margin-top:26px on the second title is set in app.js, so it is
-     overridden here rather than there — keeps this whole block in one place. */
-  .expanded-detail .expanded-title + .stat-row { margin-top:0; }
-  .expanded-detail [style*="margin-top:26px"] { margin-top:15px !important; }
   .expanded-detail .stat-row { margin-top:7px; }
+  /* First stat row sits directly under the open summary, which already carries
+     its own bottom margin — a second gap there reads as a break in the list. */
+  .pctl[open] > summary + .stat-row { margin-top:0; }
   .price-read { margin-bottom:12px; padding:10px 13px; line-height:1.55; }
   .method { margin-top:13px; }
+  .pctl { margin-top:13px; }
 }
 @media (max-width:480px) {
   .hitters-grid { grid-template-columns:1fr 1fr !important; }

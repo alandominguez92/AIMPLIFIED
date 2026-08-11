@@ -1641,7 +1641,7 @@
           ${rowPriceRead(g)}
           <div class="expanded-title">Batter props — model vs. market</div>
           <div class="bm-table">${bm}${noLine}</div>
-          <div class="expanded-title" style="margin-top:26px">Season percentiles (vs. priced pool)</div>${statsHtml}
+          <details class="pctl"${window.innerWidth > 640 ? ' open' : ''}><summary>Season percentiles (vs. priced pool)</summary>${statsHtml}</details>
           <details class="method"${window.innerWidth > 640 ? ' open' : ''}><summary>How this projection is built</summary>
           <p class="expanded-note">Projection: season rate × expected PAs, adjusted for the <b>opposing starter</b>, the <b>hand</b> he throws and the <b>ballpark</b>, then spread with a <b>negative binomial</b> — real batter outcomes are more dispersed than a Poisson allows. Edge = model P(under) vs. the <b>fair line</b> — the Shin de-vigged median across the sharp books (Pinnacle, novig, ProphetX), never the book you bet at. The model is regressed toward that fair line while it builds a track record, so edges stay conservative until results justify more.</p>
           </details>
