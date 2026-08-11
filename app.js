@@ -476,12 +476,26 @@
     try {
       const rows = await fetchJson('/api/batters');
       if (!Array.isArray(rows)) return;
-      const mapped = rows.map((b) => ({
-        ...b,
-        matchup: b.name,
-        subline: `${b.matchup}${b.timeLabel ? ' · ' + b.timeLabel : ''}`,
-        time: b.timeMs || 0,
-      }));
+      // Once a game starts the first-pitch time stops being the useful fact, so
+      // the score replaces it — the same swap /api/board already does for the K
+      // board. Scores are null on a Preview game, which is how "not started" is
+      // told apart from a genuine 0-0.
+      const scoreBit = (b) => {
+        if (b.awayScore == null || b.homeScore == null) return null;
+        const [away, home] = String(b.matchup || '').split('@').map((s) => s.trim());
+        const state = b.status === 'Final' ? 'Final' : 'Live';
+        return `${state} ${away} ${b.awayScore}–${home} ${b.homeScore}`;
+      };
+      const mapped = rows.map((b) => {
+        const sc = scoreBit(b);
+        return {
+          ...b,
+          matchup: b.name,
+          subline: [b.matchup, sc || b.timeLabel].filter(Boolean).join(' · '),
+          scorePart: sc,
+          time: b.timeMs || 0,
+        };
+      });
       state.liveBatters = mapped;
       renderHero(); // the hero is now the top batter under
       if (isBatter()) {

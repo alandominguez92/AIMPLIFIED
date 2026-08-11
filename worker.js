@@ -1001,7 +1001,16 @@ async function batters(env, ctx) {
         // Key by team NAME through the same table the Odds events use, so
         // StatsAPI abbreviations that differ (e.g. AZ vs ARI) still match.
         const away = keyAbbr((g.teams.away.team || {}).name), home = keyAbbr((g.teams.home.team || {}).name);
-        schedByMatchup[`${away}@${home}`] = { gamePk: g.gamePk, status: (g.status && g.status.abstractGameState) || 'Preview' };
+        // Score comes free with this response — no extra hydration and no extra
+        // request. It was being dropped, which is why the batter board (the only
+        // one that posts plays) was the only board that could not show a score
+        // once a game started, while /api/board carried one all along.
+        schedByMatchup[`${away}@${home}`] = {
+          gamePk: g.gamePk,
+          status: (g.status && g.status.abstractGameState) || 'Preview',
+          awayScore: numOr(g.teams.away.score, null),
+          homeScore: numOr(g.teams.home.score, null),
+        };
         const lp = g.lineups || {};
         [['awayPlayers', g.teams.away.team], ['homePlayers', g.teams.home.team]].forEach(([k, team]) => {
           const arr = lp[k] || [];
@@ -1104,7 +1113,7 @@ async function batters(env, ctx) {
           for (const oc of (mk.outcomes || [])) {
             const nm = normName(oc.description);
             if (!nm) continue;
-            const rec = byName[nm] || (byName[nm] = { name: oc.description, matchup, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), gamePk: sched ? sched.gamePk : null, gameStatus: sched ? sched.status : 'Preview', props: {} });
+            const rec = byName[nm] || (byName[nm] = { name: oc.description, matchup, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), gamePk: sched ? sched.gamePk : null, gameStatus: sched ? sched.status : 'Preview', awayScore: sched ? sched.awayScore : null, homeScore: sched ? sched.homeScore : null, props: {} });
             const mp = rec.props[spec.metric] || (rec.props[spec.metric] = {});
             const b = mp[label] || (mp[label] = {});
             if (oc.point != null) b.point = oc.point;
@@ -1276,6 +1285,10 @@ async function batters(env, ctx) {
       matchup: b.rec.matchup,
       timeMs: b.rec.timeMs,
       timeLabel: b.rec.timeLabel,
+      // Away-home, matching the order the matchup string reads. Null on a
+      // Preview game so the client can tell "not started" from "0-0".
+      awayScore: b.rec.awayScore ?? null,
+      homeScore: b.rec.homeScore ?? null,
       lineupSlot: b.slot || null,
       // Matchup context that shaped the projection — surfaced so the reasoning
       // stays visible. facingHand = opposing arm, park = venue, adj = the applied
