@@ -958,6 +958,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-row .odds-books { flex-direction:row; align-items:baseline; gap:14px; }
   .expanded-detail { padding:18px 16px 22px; }
   .bm-table .bm-row { padding:11px 13px; }
+  /* The base `.bm-row.noline { padding:9px 13px }` loses to the rule above —
+     same specificity, declared later — so the summary row was padded like a
+     full market row. It carries one line, not four cells. */
+  .bm-table .bm-row.noline { padding:8px 13px; }
   /* Two columns, not one — a single column stacked the priced market into four
      separate lines, which is what made the table the tallest thing in the panel. */
   .bm-row { grid-template-columns:1fr 1fr; column-gap:10px; row-gap:3px; }

@@ -1626,9 +1626,14 @@
             <span class="bm-books">${esc(booksStr)}</span>
           </div>`;
         }).join('');
+        // "No line posted: HR proj 0 · TB proj 0.33" measured 40 characters, which
+        // wraps to two lines inside the 264px this row gets on a phone and made a
+        // one-line summary 60px tall. Saying "proj" once in the lead instead of
+        // per market drops it to ~30 and back onto a single line, without losing
+        // what the numbers are.
         const noLine = unpriced.length
-          ? `<div class="bm-row noline"><span class="bm-none">No line posted: ${
-              unpriced.map((m) => `<b>${esc(m.label)}</b> proj ${esc(String(m.proj))}`).join(' · ')
+          ? `<div class="bm-row noline"><span class="bm-none">No line (proj): ${
+              unpriced.map((m) => `<b>${esc(m.label)}</b> ${esc(String(m.proj))}`).join(' · ')
             }</span></div>`
           : '';
         const statsHtml = (g.stats || []).map((s) => `
