@@ -1243,9 +1243,9 @@ async function batters(env, ctx) {
     }
 
     const lambda = {
-      hr: baseRate.hr * expPA * BATTER_PROJ_CAL * adj.hr,
-      tb: baseRate.tb * expPA * BATTER_PROJ_CAL * adj.tb,
-      hrr: (slot ? baseRate.hrr * expPA : (hits + runs + rbi) / gp) * BATTER_PROJ_CAL * adj.hrr,
+      hr: baseRate.hr * expPA * BATTER_PROJ_CAL.hr * adj.hr,
+      tb: baseRate.tb * expPA * BATTER_PROJ_CAL.tb * adj.tb,
+      hrr: (slot ? baseRate.hrr * expPA : (hits + runs + rbi) / gp) * BATTER_PROJ_CAL.hrr * adj.hrr,
     };
     const markets = {};
     for (const spec of BATTER_MARKETS) {
@@ -2748,7 +2748,28 @@ const BATTER_TIERS = [5.5, 4, 3];
 // 1.120-1.275, putting the 85% correction between 0.948 and 1.061. 1.00 is the
 // centre of that band. The reporting is widened to 2dp below so the 2026-08-10
 // read can re-derive this sharply and confirm or adjust.
-const BATTER_PROJ_CAL = 1.00;
+// Per market, not one number for all three.
+//
+// 2026-08-11: W33 is the first week priced entirely at the post-fix value, and
+// it shows the two markets needing corrections in OPPOSITE directions:
+//
+//   HRR  n=159  proj 1.64  actual 1.87  k = 1.140  (wants MORE lambda)
+//   TB   n= 74  proj 1.71  actual 1.50  k = 0.877  (wants LESS)
+//
+// A single constant is now guaranteed to be wrong for at least one of them: the
+// n-weighted blend is 1.057, which would push TB further past an actual it is
+// already overshooting. HRR is ~80% of the posted board, so a shared constant
+// gets dragged toward HRR and leaves TB worse.
+//
+// The values below are DELIBERATELY all 1.00 — identical to the single constant
+// they replace, so this change is a no-op on pricing. It exists so the two
+// markets can be tuned independently once W33 has more than one graded day
+// behind it. `projCalSuggest` on /api/batter-debug reports the measured k and a
+// suggested value per market; re-derive from there rather than by hand.
+//
+// HR keeps 1.00 and no suggestion of its own: home runs are not posted as a
+// market and carry no graded projection bias to fit against.
+const BATTER_PROJ_CAL = { hr: 1.00, tb: 1.00, hrr: 1.00 };
 // Variance-to-mean ratio per market, measured from this system's own graded
 // outcomes (see negBinomCdf). Home runs stay on Poisson: no graded HR sample
 // exists to fit, and at a per-game lambda near 0.15 the Poisson, binomial and
@@ -3313,6 +3334,47 @@ async function batterDebug(env) {
       };
     }).sort((a, b) => a.market.localeCompare(b.market) || a.week.localeCompare(b.week));
 
+    // Suggested BATTER_PROJ_CAL per market, so the split is tuned from measured
+    // bias rather than by hand. k = actual/proj on the CURRENT pricing era only:
+    // weeks priced under an older constant describe a model that no longer runs,
+    // and blending them in drags the suggestion toward a correction already made.
+    //
+    // 85% of the measured gap, matching the caution used every time this constant
+    // has moved — the estimate is unstable while a week is only part graded, and
+    // under-correcting is recoverable in a way that oscillating is not.
+    //
+    // Declared here, after projBiasByWeek, and not beside the other posted-only
+    // blocks: it reads that array, and a `const` referenced above its declaration
+    // throws at runtime rather than being hoisted.
+    const projCalSuggest = (() => {
+      const CUR_WEEK_MIN = '2026-W33';   // first week priced entirely at 1.00
+      const out = { basis: `projBiasByWeek from ${CUR_WEEK_MIN} (post-fix pricing only)`, current: BATTER_PROJ_CAL, markets: [] };
+      for (const mk of ['HRR', 'TB']) {
+        const wks = projBiasByWeek.filter((w) => w.market === mk && w.week >= CUR_WEEK_MIN && w.avgProj > 0);
+        const n = wks.reduce((s, w) => s + w.n, 0);
+        if (!n) { out.markets.push({ market: mk, n: 0, note: 'no graded rows on the current pricing yet' }); continue; }
+        const k = wks.reduce((s, w) => s + w.n * (w.avgActual / w.avgProj), 0) / n;
+        const cur = mk === 'HRR' ? BATTER_PROJ_CAL.hrr : BATTER_PROJ_CAL.tb;
+        out.markets.push({
+          market: mk, n,
+          avgProj: round2(wks.reduce((s, w) => s + w.n * w.avgProj, 0) / n),
+          avgActual: round2(wks.reduce((s, w) => s + w.n * w.avgActual, 0) / n),
+          k: round2(k),
+          current: cur,
+          suggestedFull: round2(cur * k),
+          suggestedAt85: round2(cur * (1 + 0.85 * (k - 1))),
+          direction: k > 1 ? 'raise (under-projecting)' : k < 1 ? 'lower (over-projecting)' : 'hold',
+          // A week that is one graded day is a direction, not a value.
+          confidence: n < 300 ? 'LOW — too few graded rows to set a value; read as direction only' : 'usable',
+        });
+      }
+      const dirs = new Set(out.markets.filter((m) => m.n).map((m) => (m.k > 1 ? 'up' : 'down')));
+      out.verdict = dirs.size > 1
+        ? 'Markets need corrections in OPPOSITE directions — this is why the constant is split. Do not average them.'
+        : 'Markets agree in direction; a shared constant would still work, but the split costs nothing.';
+      return out;
+    })();
+
     // Era split. Rows logged before the sharp-fair cutover carry model_ver NULL
     // and priced their edge against DraftKings — the same book the bet lands at,
     // so the "edge" was self-referential and CLV had nothing to converge on.
@@ -3416,6 +3478,7 @@ async function batterDebug(env) {
       byMarketSideLine,
       projBiasByMarket,
       projBiasByWeek,
+      projCalSuggest,
       byModelVer,
       byModelVerMarket,
       strikeouts: kBlock,
