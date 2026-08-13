@@ -429,7 +429,7 @@ section { padding:44px 0; }
 /* ---------- board controls ---------- */
 /* Four equal-width segments so the row reads symmetric — the lone play tab and
    the three context tabs share the same footprint, distinguished by color/tag. */
-.board-view { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:22px; }
+.board-view { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
 .pin-note { display:flex; align-items:center; gap:9px; flex-wrap:wrap; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:11px; letter-spacing:.02em; color:var(--textDim); border:1px solid var(--borderSoft); border-radius:10px; background:var(--board); padding:10px 14px; margin:0; }
 .pin-note b { color:var(--text); font-weight:600; }
 .pin-note .pin-chk { color:var(--positive); }
@@ -894,7 +894,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 @media (max-width:760px) {
   .split { grid-template-columns:1fr !important; }
   /* Board tabs: three across on phones — short enough to stay in one clean row. */
-  .board-view { grid-template-columns:repeat(3,1fr); gap:6px; }
+  .board-view { grid-template-columns:repeat(4,1fr); gap:6px; }
   .board-view .viewtab { font-size:14px; padding:9px 4px; }
   /* Season stats as a 2×2 grid, not four full-width cards eating the screen. */
   .record { grid-template-columns:repeat(2,1fr) !important; }
@@ -972,9 +972,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Phone: the three board tabs still sit side by side — they're the primary
    navigation — but the labels and their sub-tags shrink to fit three across. */
 @media (max-width:640px) {
-  .board-view { gap:7px; }
-  .viewtab { min-height:0; padding:11px 9px; font-size:11.5px; gap:3px; border-radius:10px; white-space:nowrap; }
-  .vt-tag { font-size:8.5px; letter-spacing:.08em; }
+  /* Four tabs across, not three. Padding drops from 9px to 5px a side and the
+     sub-tag shrinks, because "K PROPS" is the widest short label and a 390px
+     row leaves roughly 76px per tab once the gaps are taken out. */
+  .board-view { gap:5px; }
+  .viewtab { min-height:0; padding:11px 5px; font-size:11px; gap:2px; border-radius:10px; white-space:nowrap; }
+  .vt-tag { font-size:8px; letter-spacing:.06em; }
   .tabrow { gap:12px; margin-bottom:16px; }
   .pin-note { font-size:10.5px; padding:9px 12px; gap:6px; }
   .board-toolbar { gap:8px; }

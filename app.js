@@ -423,6 +423,10 @@
             scorePart,
             projRows: b.pitchers || [],
             ml: b.ml || null,
+            // The run line was computed by the Worker and dropped here, so
+            // getFilteredSortedGames' `isRL() && g.rl == null` test discarded
+            // every row and the view rendered empty. That is why it had no tab.
+            rl: b.rl || null,
           };
         }).sort((a, b) => a.time - b.time);
       } else {
@@ -2714,6 +2718,7 @@
   const CTX_BANNERS = {
     kprops: ['Projections · not plays', 'Our graded record found <b>no betting edge in strikeout props</b> — the market prices them efficiently. The projections stay because they’re honest analysis, but we don’t post K bets we wouldn’t make ourselves.'],
     moneyline: ['Context · not plays', 'Our graded record shows <b>no reliable edge in moneylines</b> — a heavy favorite can show a number and still be a bad bet. Win probability is shown as context (model vs. the market), not posted as a play.'],
+    runline: ['Context · not plays', 'The run line is <b>not graded and not posted</b> — no track record stands behind it. It is shown so the model’s read on the 1.5 is visible next to the moneyline, and the two can be compared. Treat it as analysis only.'],
   };
   function renderViewChrome() {
     renderEraNote();

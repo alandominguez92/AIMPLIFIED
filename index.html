@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board26">
+<link rel="stylesheet" href="style.css?v=board27">
 </head>
 <body>
 
@@ -138,9 +138,13 @@
     </div>
 
     <div class="board-view">
-      <button class="viewtab" data-action="set-view" data-view="batter">Under Plays<span class="vt-tag is-play">the play</span></button>
-      <button class="viewtab" data-action="set-view" data-view="kprops">K Props<span class="vt-tag">projection</span></button>
-      <button class="viewtab" data-action="set-view" data-view="moneyline">Moneyline<span class="vt-tag">context</span></button>
+      <!-- Both label lengths ship and CSS picks one, same as the tier chips:
+           four full labels do not fit a 390px row. aria-label carries the long
+           form so a screen reader never hears "ML". -->
+      <button class="viewtab" data-action="set-view" data-view="batter" aria-label="Under Plays"><span><span class="fl-long">Under Plays</span><span class="fl-short">Unders</span></span><span class="vt-tag is-play">the play</span></button>
+      <button class="viewtab" data-action="set-view" data-view="kprops" aria-label="K Props"><span><span class="fl-long">K Props</span><span class="fl-short">K Props</span></span><span class="vt-tag">projection</span></button>
+      <button class="viewtab" data-action="set-view" data-view="moneyline" aria-label="Moneyline"><span><span class="fl-long">Moneyline</span><span class="fl-short">ML</span></span><span class="vt-tag">context</span></button>
+      <button class="viewtab" data-action="set-view" data-view="runline" aria-label="Run Line"><span><span class="fl-long">Run Line</span><span class="fl-short">RL</span></span><span class="vt-tag">context</span></button>
     </div>
     <div class="tabrow">
       <p class="tabnote">Plays = <b>batter unders only</b> — the market where public money most reliably overpays the over, and the only one we post. Everything else is analysis, not bets. Every pick stays graded in public, win or loss. Lines vary by book/app — confirm the Under is offered before placing.</p>
@@ -337,6 +341,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=board26"></script>
+<script src="app.js?v=board27"></script>
 </body>
 </html>
