@@ -952,8 +952,6 @@
   }
 
   function getFilteredSortedGames() {
-    // Only force time-sort on a live slate with no market tiers.
-    const forceTime = boardIsLive() && !boardModeled();
     let games = getGames().filter((g) => {
       // Run Line only has content once a run line is posted — omit games without
       // one (they'd render as blank cards). "All" then shows every posted run
@@ -976,16 +974,10 @@
     // order implementation-defined. Early in the day nothing is priced and
     // EVERY row is null, so the plain subtraction scrambled the board into an
     // arbitrary order instead of leaving it alone.
-    const desc = (metric) => (a, b) => {
-      const pa = metric(a), pb = metric(b);
-      if (pa == null && pb == null) return byTime(a, b);
-      if (pa == null) return 1;
-      if (pb == null) return -1;
-      return pb - pa || byTime(a, b);
-    };
-    // Generalised from the desc-only helper: same null discipline (nulls always
-    // sink, all-null falls back to first pitch), now honouring an explicit
-    // direction so a chip can flip high↔low.
+    // Nulls always sink, all-null falls back to first pitch, and an explicit
+    // direction lets a chip flip high↔low. (A desc-only helper used to sit here
+    // too; it was superseded when direction support landed and had no remaining
+    // call sites.)
     const cmpBy = (metric, dir) => (a, b) => {
       const pa = metric(a), pb = metric(b);
       if (pa == null && pb == null) return byTime(a, b);
@@ -993,8 +985,13 @@
       if (pb == null) return -1;
       return (dir === 'asc' ? pa - pb : pb - pa) || byTime(a, b);
     };
-    const cmp = forceTime ? byTime : cmpBy(sortMetric(state.sortBy), sortDir());
-    games = [...games].sort(cmp);
+    // Sort by whatever key is selected. The old code forced time order whenever
+    // the board carried no numeric tier, which on an all-'pass' moneyline slate
+    // overrode a perfectly sortable Edge or Win Prob column and pinned the board
+    // to Time. It was also redundant: cmpBy already falls back to byTime when a
+    // metric is null on BOTH rows, so a genuinely empty column still degrades to
+    // first-pitch order without a special case.
+    games = [...games].sort(cmpBy(sortMetric(state.sortBy), sortDir()));
     return games;
   }
 
@@ -1056,7 +1053,14 @@
     const games = getGames();
     const has = (key) => games.some((g) => sortMetric(key)(g) != null);
     const keys = [];
-    if (boardModeled()) keys.push('edge', 'model');
+    // Availability is "does this metric have values", NOT "did any row clear a
+    // tier cutoff". These were tied to boardModeled(), which needs a NUMERIC
+    // tier somewhere on the board — so on a moneyline slate where every game
+    // priced under the T3 cutoff (all tier:'pass'), Edge and Win Prob vanished
+    // from the sort even though every row displayed both. Whether a pick is
+    // worth betting and whether a column can be ordered are different questions.
+    if (has('edge')) keys.push('edge');
+    if (has('model')) keys.push('model');
     if (has('odds')) keys.push('odds');
     keys.push('time');
     return keys;
