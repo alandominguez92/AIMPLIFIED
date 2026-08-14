@@ -79,7 +79,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
-  '/api/fair-probe',
+  '/api/fair-probe', '/api/nfl-ingest',
 ]);
 
 export default {
@@ -101,6 +101,7 @@ export default {
     // path — except fair-probe, whose ?market= and ?games= change what is
     // actually being asked. Stripping them there would serve a batter-market
     // result to a strikeout probe and silently answer the wrong question.
+    if (p === '/api/nfl-ingest') return handleApi(p, env, ctx, url);   // writes; caching it would skip the write
     const cacheKey = new Request(url.origin + p + (p === '/api/fair-probe' ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -183,6 +184,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/edge-debug') return edgeDebug(env);
   if (p === '/api/batter-debug') return batterDebug(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
+  if (p === '/api/nfl-ingest') return nflIngest(env, url);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -1770,6 +1772,186 @@ async function addColumns(db, table, cols) {
     try { await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run(); }
     catch (e) { /* column already exists */ }
   }
+}
+
+// ---------------------------------------------------------------------------
+// NFL
+// ---------------------------------------------------------------------------
+// Two tables, plus a `sport` column on the MLB ones. The column is what makes a
+// cross-sport CLV harness possible: NFL yields roughly 600-1,000 graded picks a
+// SEASON against MLB's ~40 a night, so a per-sport harness would never reach
+// significance on the NFL side. Sport has to be a dimension of one sample, not
+// its own table.
+//
+// nfl_lines is raw quotes, one row per book per poll -- deliberately not
+// de-duplicated to "current". The close is the number CLV is measured against,
+// and it can only be reconstructed later if the intermediate polls were kept.
+async function ensureNflSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nfl_lines (
+    season INTEGER, week INTEGER, event_id TEXT, commence TEXT,
+    home TEXT, away TEXT,
+    market TEXT, player_id TEXT, player TEXT, point REAL,
+    book TEXT, over INTEGER, under INTEGER,
+    captured_at TEXT,
+    PRIMARY KEY (event_id, market, player, point, book, captured_at)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_evt ON nfl_lines (event_id, market)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_wk ON nfl_lines (season, week)').run();
+
+  // npicks carries the lifecycle. The state column is the reason this is not
+  // modelled as a boolean `posted`: an NFL play exists for four days and can be
+  // re-priced or pulled at lock, and those outcomes are themselves the data the
+  // "where the ladder moved us" panel reports. firm_point/firm_price preserve
+  // what firming showed -- without them a re-price destroys the evidence that
+  // it happened.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS npicks (
+    id TEXT PRIMARY KEY, sport TEXT NOT NULL DEFAULT 'nfl',
+    season INTEGER, week INTEGER, event_id TEXT,
+    player_id TEXT, player TEXT, team TEXT, pos TEXT,
+    market TEXT, point REAL, side TEXT DEFAULT 'under',
+
+    fair_src TEXT CHECK (fair_src IN ('gameline-pool','props-pool','MKT')),
+    fair_prob REAL, sharp_n INTEGER NOT NULL DEFAULT 0,
+    best_price INTEGER, best_book TEXT, price_edge REAL,
+    model_prob REAL, model_proj REAL, model_edge REAL, tier TEXT,
+    prior_only INTEGER NOT NULL DEFAULT 0,
+
+    state TEXT NOT NULL DEFAULT 'provisional'
+      CHECK (state IN ('provisional','firming','locked','graded','pulled')),
+    posted_at TEXT, firmed_at TEXT, locked_at TEXT, graded_at TEXT,
+    lock_outcome TEXT CHECK (lock_outcome IN ('confirmed','repriced','pulled')),
+    firm_point REAL, firm_price INTEGER,
+
+    actual_live REAL, actual_official REAL,
+    result TEXT, exit_reason TEXT, exited_q INTEGER,
+    grade_ver TEXT, model_ver TEXT,
+    script_key TEXT, stake REAL
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS npicks_state ON npicks (state, season, week)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS npicks_evt ON npicks (event_id)').run();
+
+  // Stat corrections run through Tuesday. Rather than overwrite a graded row --
+  // which would make the record silently disagree with what was published -- a
+  // change from the live gamebook value writes a row here and the pick keeps
+  // both numbers.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS npick_corrections (
+    pick_id TEXT, was REAL, now_val REAL, was_result TEXT, now_result TEXT,
+    noticed_at TEXT,
+    PRIMARY KEY (pick_id, noticed_at)
+  )`).run();
+
+  // Existing MLB tables join the same harness. Default 'mlb' backfills every
+  // row already written, so nothing has to be migrated by hand.
+  for (const t of ['picks', 'bpicks', 'mlpicks']) {
+    await addColumns(db, t, [['sport', "TEXT NOT NULL DEFAULT 'mlb'"]]);
+  }
+}
+
+// Game lines for the NFL slate. Player props are not on the wire yet (every
+// prop market returned zero bookmakers on 2026-08-14, while h2h returned all
+// seven books), so this ingests what exists and is written to pick up props
+// unchanged when they appear -- the row shape is already per-player.
+const NFL_ODDS = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl';
+const NFL_GAME_MARKETS = 'h2h,spreads,totals';
+async function ingestNflLines(env, opts) {
+  const key = env && env.ODDS_API_KEY;
+  const out = { wrote: 0, events: 0, books: 0, markets: {}, errors: [] };
+  if (!key) { out.errors.push('ODDS_API_KEY not configured'); return out; }
+  if (!env.DB) { out.errors.push('no DB binding'); return out; }
+  await ensureNflSchema(env.DB);
+  await nflSchedule(env);   // nflWeekOf reads NFL_SCHED; without this every row lands week NULL
+  const dry = !!(opts && opts.dry);
+  try {
+    const r = await fetch(
+      `${NFL_ODDS}/odds?apiKey=${key}&regions=us,eu&markets=${NFL_GAME_MARKETS}`
+      + '&oddsFormat=american&dateFormat=iso',
+      { headers: { accept: 'application/json' } });
+    out.httpStatus = r.status;
+    out.creditsUsed = r.headers.get('x-requests-last');
+    out.creditsRemaining = r.headers.get('x-requests-remaining');
+    if (!r.ok) { out.errors.push((await r.text()).slice(0, 200)); return out; }
+    const events = await r.json();
+    if (!Array.isArray(events)) { out.errors.push('unexpected payload'); return out; }
+    const now = new Date().toISOString();
+    const seen = new Set();
+    const stmts = [];
+    for (const e of events) {
+      out.events++;
+      const wk = nflWeekOf(e.commence_time);
+      for (const bm of (e.bookmakers || [])) {
+        seen.add(bm.key);
+        for (const mk of (bm.markets || [])) {
+          out.markets[mk.key] = (out.markets[mk.key] || 0) + 1;
+          // h2h/spreads/totals are two-outcome markets keyed by team or
+          // Over/Under. Both collapse to the same (point, over, under) shape the
+          // prop rows use, so one table serves both and the props ingest will
+          // not need a second schema.
+          const oc = mk.outcomes || [];
+          const isOU = oc.some((o) => o.name === 'Over' || o.name === 'Under');
+          if (isOU) {
+            const over = oc.find((o) => o.name === 'Over');
+            const under = oc.find((o) => o.name === 'Under');
+            stmts.push(env.DB.prepare(
+              `INSERT OR REPLACE INTO nfl_lines
+               (season, week, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+            ).bind(2026, wk, e.id, e.commence_time || null, e.home_team || null, e.away_team || null,
+              mk.key, null, null, over && over.point != null ? over.point : null,
+              bm.key, over ? over.price : null, under ? under.price : null, now));
+          } else {
+            // Team-keyed (h2h, spreads): one row per side, the team in `player`
+            // so the column means "which selection" for every market.
+            for (const o of oc) {
+              stmts.push(env.DB.prepare(
+                `INSERT OR REPLACE INTO nfl_lines
+                 (season, week, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+              ).bind(2026, wk, e.id, e.commence_time || null, e.home_team || null, e.away_team || null,
+                mk.key, null, o.name || null, o.point != null ? o.point : null,
+                bm.key, o.price != null ? o.price : null, null, now));
+            }
+          }
+        }
+      }
+    }
+    out.books = seen.size;
+    out.bookList = [...seen].sort();
+    out.wrote = stmts.length;
+    if (dry) { out.dryRun = true; return out; }
+    // D1 caps a batch; chunk so a full slate cannot exceed it.
+    for (let i = 0; i < stmts.length; i += 80) {
+      await env.DB.batch(stmts.slice(i, i + 80));
+    }
+  } catch (e) { out.errors.push(String((e && e.message) || e)); }
+  return out;
+}
+
+// Week number from a kickoff timestamp, off the shipped schedule asset rather
+// than arithmetic on a season-opener date -- byes, international kickoffs and
+// the Wednesday opener all break the arithmetic version.
+let NFL_SCHED = null;
+async function nflSchedule(env) {
+  if (NFL_SCHED) return NFL_SCHED;
+  try {
+    const r = await env.ASSETS.fetch(new Request('https://x/nfl-schedule-2026.json'));
+    if (r.ok) NFL_SCHED = await r.json();
+  } catch (e) { /* asset missing -> week stays null */ }
+  return NFL_SCHED;
+}
+function nflWeekOf(commence) {
+  if (!commence || !NFL_SCHED || !NFL_SCHED.games) return null;
+  const t = Date.parse(commence);
+  if (!isFinite(t)) return null;
+  let best = null, bestGap = Infinity;
+  for (const g of NFL_SCHED.games) {
+    const gt = Date.parse(`${g.d}T${g.t}:00Z`);
+    if (!isFinite(gt)) continue;
+    const gap = Math.abs(gt - t);
+    if (gap < bestGap) { bestGap = gap; best = g; }
+  }
+  // Kickoff times drift by a few hours between sources; anything further out is
+  // a different game and should stay null rather than be forced into a week.
+  return bestGap <= 36 * 3600e3 ? best.wk : null;
 }
 
 async function logBatterPicks(db, rows, date) {
@@ -4457,4 +4639,26 @@ function cors(resp) {
   resp.headers.set('access-control-allow-methods', 'GET,OPTIONS');
   resp.headers.set('access-control-expose-headers', 'x-requests-remaining,x-requests-used');
   return resp;
+}
+
+// GET /api/nfl-ingest — pulls the NFL game-line slate into nfl_lines and reports
+// what it wrote. ?dry=1 parses and counts without writing, so the shape can be
+// checked against a live payload before any row lands in D1.
+async function nflIngest(env, url) {
+  const dry = url && url.searchParams && url.searchParams.get('dry') === '1';
+  const res = await ingestNflLines(env, { dry });
+  if (env && env.DB && !res.errors.length) {
+    try {
+      await ensureNflSchema(env.DB);
+      const tot = await env.DB.prepare('SELECT COUNT(*) AS n FROM nfl_lines').first();
+      const wks = await env.DB.prepare(
+        'SELECT week, COUNT(*) AS n FROM nfl_lines GROUP BY week ORDER BY week'
+      ).all();
+      const nullWk = await env.DB.prepare('SELECT COUNT(*) AS n FROM nfl_lines WHERE week IS NULL').first();
+      res.tableRows = tot ? tot.n : null;
+      res.byWeek = (wks.results || []).map((r) => `wk${r.week == null ? '?' : r.week}:${r.n}`);
+      res.rowsWithoutWeek = nullWk ? nullWk.n : null;
+    } catch (e) { res.errors.push('readback: ' + String((e && e.message) || e)); }
+  }
+  return cors(json(res, 30));
 }
