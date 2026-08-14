@@ -1853,6 +1853,21 @@ async function ensureNflSchema(db) {
 // unchanged when they appear -- the row shape is already per-player.
 const NFL_ODDS = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl';
 const NFL_GAME_MARKETS = 'h2h,spreads,totals';
+// Books are named explicitly rather than pulled by region. Three reasons, all
+// found by dry-running the live payload: regions=us,eu returned 23 books, 13 of
+// them European retail we will never price against; it billed 6 credits where a
+// named list of <=10 bills 3; and it did NOT include novig or prophetx, which
+// are the exchanges the props pool depends on -- they only appear when asked for
+// by key. Keep this at 10 or fewer or the request bills as a second region.
+const NFL_BOOKS = [
+  'pinnacle', 'lowvig', 'betonlineag', 'novig', 'prophetx',   // fair candidates
+  'draftkings', 'fanduel', 'williamhill_us', 'betmgm', 'betrivers', // execution
+];
+// How far ahead to ingest. The Odds API returns the entire remaining season --
+// 272 events, 4,743 rows on one call -- and re-writing all of it on every poll
+// would bury the slate we actually price in months of untouched future games.
+// Ten days covers a full Tue-to-Mon game week with room either side.
+const NFL_HORIZON_DAYS = 10;
 async function ingestNflLines(env, opts) {
   const key = env && env.ODDS_API_KEY;
   const out = { wrote: 0, events: 0, books: 0, markets: {}, errors: [] };
@@ -1863,7 +1878,7 @@ async function ingestNflLines(env, opts) {
   const dry = !!(opts && opts.dry);
   try {
     const r = await fetch(
-      `${NFL_ODDS}/odds?apiKey=${key}&regions=us,eu&markets=${NFL_GAME_MARKETS}`
+      `${NFL_ODDS}/odds?apiKey=${key}&bookmakers=${NFL_BOOKS.join(',')}&markets=${NFL_GAME_MARKETS}`
       + '&oddsFormat=american&dateFormat=iso',
       { headers: { accept: 'application/json' } });
     out.httpStatus = r.status;
@@ -1875,7 +1890,11 @@ async function ingestNflLines(env, opts) {
     const now = new Date().toISOString();
     const seen = new Set();
     const stmts = [];
+    const horizon = Date.now() + NFL_HORIZON_DAYS * 864e5;
+    out.eventsReturned = events.length;
     for (const e of events) {
+      const ct = Date.parse(e.commence_time);
+      if (isFinite(ct) && ct > horizon) { out.skippedBeyondHorizon = (out.skippedBeyondHorizon || 0) + 1; continue; }
       out.events++;
       const wk = nflWeekOf(e.commence_time);
       for (const bm of (e.bookmakers || [])) {
