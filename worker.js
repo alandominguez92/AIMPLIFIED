@@ -3768,10 +3768,31 @@ function readNarrative({ underTotal, overTotal, byMarketSideLine, byModelVer }) 
 // `regions`), so <=10 books bills as one region equivalent: markets x 1.
 const PROBE_FAIR_BOOKS = ['pinnacle', 'novig', 'prophetx', 'lowvig'];
 const PROBE_EXEC_BOOKS = ['draftkings', 'fanduel'];
+// Sports this probe may be pointed at. A whitelist rather than passing the query
+// through: the value lands in an upstream path, and an unbounded one turns a
+// read-only diagnostic into an open proxy for any Odds API endpoint.
+const PROBE_SPORTS = {
+  mlb: 'baseball_mlb',
+  nfl: 'americanfootball_nfl',
+  nflpre: 'americanfootball_nfl_preseason',
+};
 async function fairProbe(env, reqUrl) {
   const key = env && env.ODDS_API_KEY;
   if (!key) return cors(json({ error: 'ODDS_API_KEY not configured' }, 30));
-  const allBooks = [...PROBE_FAIR_BOOKS, ...PROBE_EXEC_BOOKS];
+  // ?sport=nfl retargets the probe. NFL has no single sharp book the way MLB has
+  // Pinnacle, so which books to ask for is itself the open question — hence
+  // ?books=, so alternate pools can be tested without a redeploy. Capped at 10
+  // because past that the request bills as a second region equivalent.
+  const qSport = reqUrl && reqUrl.searchParams ? reqUrl.searchParams.get('sport') : null;
+  const sportKey = PROBE_SPORTS[(qSport || 'mlb').toLowerCase()];
+  if (!sportKey) {
+    return cors(json({ error: `unknown sport; expected one of ${Object.keys(PROBE_SPORTS).join(', ')}` }, 30));
+  }
+  const base = `https://api.the-odds-api.com/v4/sports/${sportKey}`;
+  const qBooks = reqUrl && reqUrl.searchParams ? reqUrl.searchParams.get('books') : null;
+  const allBooks = (qBooks
+    ? qBooks.split(',').map((s) => s.trim()).filter(Boolean)
+    : [...PROBE_FAIR_BOOKS, ...PROBE_EXEC_BOOKS]).slice(0, 10);
   // ?market=pitcher_strikeouts probes the K board instead of the batter board.
   // Coverage is per-market — Pinnacle posts total bases but not H+R+RBI — so a
   // batter-market result says nothing about strikeouts and has to be asked for
@@ -3780,16 +3801,28 @@ async function fairProbe(env, reqUrl) {
   const markets = qMarket
     ? qMarket.split(',').map((s) => s.trim()).filter(Boolean)
     : BATTER_MARKETS.map((m) => m.key);
+  // Which of the requested books count as a fair source. Split out from ?books=
+  // because the two lists are not the same question: ?books= is who to ask,
+  // ?sharp= is whose answer may set a price. Defaults to the MLB sharp pool, so
+  // an unlisted book added via ?books= is treated as execution-only until it is
+  // named here deliberately.
+  const qSharp = reqUrl && reqUrl.searchParams ? reqUrl.searchParams.get('sharp') : null;
+  const sharpBooks = qSharp
+    ? qSharp.split(',').map((s) => s.trim()).filter(Boolean)
+    : PROBE_FAIR_BOOKS;
   const out = {
     question: `Do sharp books post ${markets.join(', ')}? If yes, a non-circular fair line is possible.`,
+    sportProbed: sportKey,
     marketsProbed: markets,
     booksRequested: allBooks,
+    sharpPool: sharpBooks,
+    execPool: allBooks.filter((b) => !sharpBooks.includes(b)),
     regionEquivalents: Math.ceil(allBooks.length / 10),
     estimatedCredits: markets.length * Math.ceil(allBooks.length / 10),
   };
   try {
     // The events list is free (no markets requested) — pick one upcoming game.
-    const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+    const evR = await fetch(`${base}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
     const events = await evR.json();
     const now = Date.now();
     // ?games=N samples N upcoming games instead of one. Coverage varies by game
@@ -3823,7 +3856,7 @@ async function fairProbe(env, reqUrl) {
     // responses the loop already fetched.
     const lineAcc = {};
     for (const e of upcoming) {
-      const url = `${ODDS}/events/${e.id}/odds?apiKey=${key}&bookmakers=${allBooks.join(',')}`
+      const url = `${base}/events/${e.id}/odds?apiKey=${key}&bookmakers=${allBooks.join(',')}`
         + `&markets=${markets.join(',')}&oddsFormat=american&dateFormat=iso`;
       const r = await fetch(url, { headers: { accept: 'application/json' } });
       out.httpStatus = r.status;
@@ -3854,7 +3887,7 @@ async function fairProbe(env, reqUrl) {
           // Same pass, keyed by the line. Only two-sided quotes with a point can
           // ever serve as a fair source, so one-sided and point-less rows are
           // skipped here exactly as the pricer skips them.
-          const isSharp = PROBE_FAIR_BOOKS.includes(bm.key);
+          const isSharp = sharpBooks.includes(bm.key);
           const mkAcc = lineAcc[mk.key] || (lineAcc[mk.key] = {});
           for (const nm of Object.keys(players)) {
             const p = players[nm];
