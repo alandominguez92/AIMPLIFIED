@@ -79,7 +79,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
-  '/api/fair-probe', '/api/nfl-ingest',
+  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-board',
 ]);
 
 export default {
@@ -185,6 +185,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/batter-debug') return batterDebug(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
+  if (p === '/api/nfl-board') return nflBoard(env, url);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -4753,4 +4754,133 @@ async function nflIngest(env, url) {
     } catch (e) { res.errors.push('readback: ' + String((e && e.message) || e)); }
   }
   return cors(json(res, 30));
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/nfl-board — the NFL slate as game-line context.
+//
+// Context only, and structurally so: this endpoint has no player rows to return
+// because no book is quoting NFL player props yet. It reads what the ingest
+// stored rather than calling the Odds API, so loading the page costs nothing and
+// the board always shows exactly what was last ingested.
+//
+// The gameline pool is Pinnacle / LowVig / BetOnline. Circa is not carried by
+// the API, so the spec's third book is simply absent rather than substituted --
+// quietly swapping in a retail book would make "sharp fair" mean something else.
+const NFL_GAMELINE_POOL = ['pinnacle', 'lowvig', 'betonlineag'];
+const NFL_EXEC = ['draftkings', 'fanduel', 'betmgm', 'betrivers', 'williamhill_us'];
+
+async function nflBoard(env, url) {
+  const out = { seasonType: null, games: [], empty: true, asOf: null };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 60)); }
+  const want = (url && url.searchParams && url.searchParams.get('type')) || null;
+  try {
+    await ensureNflSchema(env.DB);
+    await nflSchedule(env);
+    // Prefer the regular season once it has lines; fall back to preseason so the
+    // board is never blank just because Week 1 has not been ingested yet.
+    let type = want;
+    if (!type) {
+      const reg = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM nfl_lines WHERE season_type='REG' AND commence > ?"
+      ).bind(new Date().toISOString()).first();
+      type = (reg && reg.n > 0) ? 'REG' : 'PRE';
+    }
+    out.seasonType = type;
+
+    const rows = (await env.DB.prepare(
+      `SELECT event_id, commence, home, away, market, player, point, book, over, under, captured_at, week
+         FROM nfl_lines WHERE season_type = ? AND commence > ?
+        ORDER BY captured_at ASC`
+    ).bind(type, new Date(Date.now() - 6 * 3600e3).toISOString()).all()).results || [];
+
+    // Latest value per (event, market, selection, book). Rows are append-on-
+    // change, so the last one seen in captured_at order is current.
+    const latest = new Map();
+    let asOf = null;
+    for (const r of rows) {
+      const k = `${r.event_id}|${r.market}|${r.player == null ? '' : r.player}|${r.book}`;
+      latest.set(k, r);
+      if (!asOf || String(r.captured_at) > String(asOf)) asOf = r.captured_at;
+    }
+    out.asOf = asOf;
+
+    const games = new Map();
+    for (const r of latest.values()) {
+      const g = games.get(r.event_id) || games.set(r.event_id, {
+        id: r.event_id, home: r.home, away: r.away, commence: r.commence,
+        week: r.week, h2h: {}, spreads: {}, totals: {},
+      }).get(r.event_id);
+      if (r.market === 'h2h') (g.h2h[r.player] = g.h2h[r.player] || {})[r.book] = r.over;
+      else if (r.market === 'spreads') (g.spreads[r.player] = g.spreads[r.player] || {})[r.book] = { price: r.over, point: r.point };
+      else if (r.market === 'totals') g.totals[r.book] = { point: r.point, over: r.over, under: r.under };
+    }
+
+    const sched = NFL_SCHED && NFL_SCHED.games ? NFL_SCHED.games : [];
+    for (const g of games.values()) {
+      const teams = Object.keys(g.h2h);
+      if (teams.length !== 2) continue;   // a half-quoted game is not a board row
+      const [a, b] = g.away && teams.includes(g.away) ? [g.away, teams.find((t) => t !== g.away)] : teams;
+
+      // Fair from the sharp pool only, Shin de-vigged per book then medianed.
+      // Two books minimum: one book's number is that book's opinion, not a fair
+      // line, and it can never be checked against a second source.
+      const fairs = [];
+      const usedBooks = [];
+      for (const bk of NFL_GAMELINE_POOL) {
+        const pa = g.h2h[a] && g.h2h[a][bk];
+        const pb = g.h2h[b] && g.h2h[b][bk];
+        if (typeof pa !== 'number' || typeof pb !== 'number') continue;
+        const f = shinDevig(pa, pb);
+        if (f != null && isFinite(f)) { fairs.push(f); usedBooks.push(bk); }
+      }
+      const sharpN = fairs.length;
+      const fair = sharpN >= 2 ? median(fairs) : null;
+      const fairSrc = sharpN >= 2 ? 'gameline-pool' : 'MKT';
+
+      // Best available price per side across execution books, book-attributed.
+      const best = (team) => {
+        let bp = null, bb = null;
+        for (const bk of NFL_EXEC) {
+          const p = g.h2h[team] && g.h2h[team][bk];
+          if (typeof p !== 'number') continue;
+          if (bp == null || amProb(p) < amProb(bp)) { bp = p; bb = bk; }
+        }
+        return { price: bp, book: bb };
+      };
+      const bestA = best(a), bestB = best(b);
+
+      // Consensus spread and total, medianed across every book that quoted.
+      const spreadOf = (team) => {
+        const pts = Object.values(g.spreads[team] || {}).map((x) => x.point).filter((x) => x != null);
+        return pts.length ? median(pts) : null;
+      };
+      const sA = spreadOf(a), sB = spreadOf(b);
+      const totPts = Object.values(g.totals).map((x) => x.point).filter((x) => x != null);
+      const total = totPts.length ? median(totPts) : null;
+      // Implied team total: half the game total, shifted by half the spread.
+      const impl = (sp) => (total != null && sp != null) ? Math.round((total / 2 - sp / 2) * 10) / 10 : null;
+
+      const sg = sched.find((x) => x.id && g.commence
+        && Math.abs(Date.parse(`${x.d}T${x.t}:00Z`) - Date.parse(g.commence)) < 36 * 3600e3);
+
+      out.games.push({
+        id: g.id, away: a, home: b, commence: g.commence, week: g.week,
+        standalone: sg ? !!sg.standalone : null,
+        roof: sg ? sg.roof : null,
+        fairSrc, sharpN, fairBooks: usedBooks,
+        away_fair: fair != null ? Math.round(fair * 1000) / 10 : null,
+        home_fair: fair != null ? Math.round((1 - fair) * 1000) / 10 : null,
+        away_price: bestA.price, away_book: bestA.book,
+        home_price: bestB.price, home_book: bestB.book,
+        away_spread: sA, home_spread: sB, total,
+        away_implied: impl(sA), home_implied: impl(sB),
+        books: new Set([...Object.keys(g.h2h[a] || {}), ...Object.keys(g.h2h[b] || {})]).size,
+      });
+    }
+    out.games.sort((x, y) => Date.parse(x.commence || 0) - Date.parse(y.commence || 0));
+    out.empty = out.games.length === 0;
+    out.postable = 0;   // no player props on the wire -> nothing is postable yet
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return cors(json(out, 60));
 }
