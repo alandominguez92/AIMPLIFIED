@@ -1790,11 +1790,13 @@ async function ensureNflSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS nfl_lines (
     season INTEGER, week INTEGER, event_id TEXT, commence TEXT,
     home TEXT, away TEXT,
+    season_type TEXT NOT NULL DEFAULT 'REG',
     market TEXT, player_id TEXT, player TEXT, point REAL,
     book TEXT, over INTEGER, under INTEGER,
     captured_at TEXT,
     PRIMARY KEY (event_id, market, player, point, book, captured_at)
   )`).run();
+  await addColumns(db, 'nfl_lines', [['season_type', "TEXT NOT NULL DEFAULT 'REG'"]]);
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_evt ON nfl_lines (event_id, market)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_wk ON nfl_lines (season, week)').run();
 
@@ -1851,7 +1853,14 @@ async function ensureNflSchema(db) {
 // prop market returned zero bookmakers on 2026-08-14, while h2h returned all
 // seven books), so this ingests what exists and is written to pick up props
 // unchanged when they appear -- the row shape is already per-player.
-const NFL_ODDS = 'https://api.the-odds-api.com/v4/sports/americanfootball_nfl';
+// Preseason is a separate sport key upstream. It is ingested so the pipeline has
+// live games to run against before Week 1, and every row it writes is tagged
+// PRE -- starters play a quarter, so these lines describe a different game than
+// the model is built for and must stay separable forever.
+const NFL_SPORTS = {
+  nfl:    { key: 'americanfootball_nfl',           seasonType: 'REG' },
+  nflpre: { key: 'americanfootball_nfl_preseason', seasonType: 'PRE' },
+};
 const NFL_GAME_MARKETS = 'h2h,spreads,totals';
 // Books are named explicitly rather than pulled by region. Three reasons, all
 // found by dry-running the live payload: regions=us,eu returned 23 books, 13 of
@@ -1869,8 +1878,10 @@ const NFL_BOOKS = [
 // Ten days covers a full Tue-to-Mon game week with room either side.
 const NFL_HORIZON_DAYS = 10;
 async function ingestNflLines(env, opts) {
+  const sp = NFL_SPORTS[(opts && opts.sport) || 'nfl'];
+  if (!sp) return { wrote: 0, errors: [`unknown sport; expected one of ${Object.keys(NFL_SPORTS).join(', ')}`] };
   const key = env && env.ODDS_API_KEY;
-  const out = { wrote: 0, events: 0, books: 0, markets: {}, errors: [] };
+  const out = { sport: (opts && opts.sport) || 'nfl', seasonType: sp.seasonType, wrote: 0, events: 0, books: 0, markets: {}, errors: [] };
   if (!key) { out.errors.push('ODDS_API_KEY not configured'); return out; }
   if (!env.DB) { out.errors.push('no DB binding'); return out; }
   await ensureNflSchema(env.DB);
@@ -1878,7 +1889,7 @@ async function ingestNflLines(env, opts) {
   const dry = !!(opts && opts.dry);
   try {
     const r = await fetch(
-      `${NFL_ODDS}/odds?apiKey=${key}&bookmakers=${NFL_BOOKS.join(',')}&markets=${NFL_GAME_MARKETS}`
+      `https://api.the-odds-api.com/v4/sports/${sp.key}/odds?apiKey=${key}&bookmakers=${NFL_BOOKS.join(',')}&markets=${NFL_GAME_MARKETS}`
       + '&oddsFormat=american&dateFormat=iso',
       { headers: { accept: 'application/json' } });
     out.httpStatus = r.status;
@@ -1896,7 +1907,7 @@ async function ingestNflLines(env, opts) {
       const ct = Date.parse(e.commence_time);
       if (isFinite(ct) && ct > horizon) { out.skippedBeyondHorizon = (out.skippedBeyondHorizon || 0) + 1; continue; }
       out.events++;
-      const wk = nflWeekOf(e.commence_time);
+      const wk = sp.seasonType === 'REG' ? nflWeekOf(e.commence_time) : null;
       for (const bm of (e.bookmakers || [])) {
         seen.add(bm.key);
         for (const mk of (bm.markets || [])) {
@@ -1912,9 +1923,9 @@ async function ingestNflLines(env, opts) {
             const under = oc.find((o) => o.name === 'Under');
             stmts.push(env.DB.prepare(
               `INSERT OR REPLACE INTO nfl_lines
-               (season, week, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-            ).bind(2026, wk, e.id, e.commence_time || null, e.home_team || null, e.away_team || null,
+               (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+            ).bind(2026, wk, sp.seasonType, e.id, e.commence_time || null, e.home_team || null, e.away_team || null,
               mk.key, null, null, over && over.point != null ? over.point : null,
               bm.key, over ? over.price : null, under ? under.price : null, now));
           } else {
@@ -1923,9 +1934,9 @@ async function ingestNflLines(env, opts) {
             for (const o of oc) {
               stmts.push(env.DB.prepare(
                 `INSERT OR REPLACE INTO nfl_lines
-                 (season, week, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-              ).bind(2026, wk, e.id, e.commence_time || null, e.home_team || null, e.away_team || null,
+                 (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+              ).bind(2026, wk, sp.seasonType, e.id, e.commence_time || null, e.home_team || null, e.away_team || null,
                 mk.key, null, o.name || null, o.point != null ? o.point : null,
                 bm.key, o.price != null ? o.price : null, null, now));
             }
@@ -4665,7 +4676,8 @@ function cors(resp) {
 // checked against a live payload before any row lands in D1.
 async function nflIngest(env, url) {
   const dry = url && url.searchParams && url.searchParams.get('dry') === '1';
-  const res = await ingestNflLines(env, { dry });
+  const sport = (url && url.searchParams && url.searchParams.get('sport')) || 'nfl';
+  const res = await ingestNflLines(env, { dry, sport });
   if (env && env.DB && !res.errors.length) {
     try {
       await ensureNflSchema(env.DB);
