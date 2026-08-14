@@ -1901,6 +1901,37 @@ async function ingestNflLines(env, opts) {
     const now = new Date().toISOString();
     const seen = new Set();
     const stmts = [];
+    // Current value per line, so a poll that finds nothing moved writes nothing.
+    // captured_at is in the primary key, which means every poll would otherwise
+    // store a full snapshot -- at the Sunday 5-minute cadence that is roughly
+    // 69k rows a week of mostly identical prices. Appending only on a real
+    // change keeps the full price history CLV needs without the duplication.
+    const cur = new Map();
+    const lineKey = (ev, mkt, who, pt, bk) =>
+      ev + '|' + mkt + '|' + (who == null ? '' : who) + '|' + (pt == null ? '' : pt) + '|' + bk;
+    try {
+      const ids = events.map((e) => e.id);
+      for (let i = 0; i < ids.length; i += 40) {
+        const chunk = ids.slice(i, i + 40);
+        const marks = chunk.map(() => '?').join(',');
+        const q = await env.DB.prepare(
+          'SELECT event_id, market, player, point, book, over, under, captured_at'
+          + ' FROM nfl_lines WHERE event_id IN (' + marks + ')'
+        ).bind(...chunk).all();
+        for (const r of (q.results || [])) {
+          const k = lineKey(r.event_id, r.market, r.player, r.point, r.book);
+          const prev = cur.get(k);
+          if (!prev || String(prev.captured_at) < String(r.captured_at)) cur.set(k, r);
+        }
+      }
+    } catch (e) { out.errors.push('readCurrent: ' + String((e && e.message) || e)); }
+    const same = (k, ov, un) => {
+      const p = cur.get(k);
+      if (!p) return false;
+      const eq = (a, c) => (a == null && c == null) || Number(a) === Number(c);
+      return eq(p.over, ov) && eq(p.under, un);
+    };
+    out.unchanged = 0;
     const horizon = Date.now() + NFL_HORIZON_DAYS * 864e5;
     out.eventsReturned = events.length;
     for (const e of events) {
@@ -1921,6 +1952,8 @@ async function ingestNflLines(env, opts) {
           if (isOU) {
             const over = oc.find((o) => o.name === 'Over');
             const under = oc.find((o) => o.name === 'Under');
+            const kOU = lineKey(e.id, mk.key, null, over && over.point != null ? over.point : null, bm.key);
+            if (same(kOU, over ? over.price : null, under ? under.price : null)) { out.unchanged++; continue; }
             stmts.push(env.DB.prepare(
               `INSERT OR REPLACE INTO nfl_lines
                (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
@@ -1932,6 +1965,8 @@ async function ingestNflLines(env, opts) {
             // Team-keyed (h2h, spreads): one row per side, the team in `player`
             // so the column means "which selection" for every market.
             for (const o of oc) {
+              const kT = lineKey(e.id, mk.key, o.name || null, o.point != null ? o.point : null, bm.key);
+              if (same(kT, o.price != null ? o.price : null, null)) { out.unchanged++; continue; }
               stmts.push(env.DB.prepare(
                 `INSERT OR REPLACE INTO nfl_lines
                  (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
@@ -4677,7 +4712,33 @@ function cors(resp) {
 async function nflIngest(env, url) {
   const dry = url && url.searchParams && url.searchParams.get('dry') === '1';
   const sport = (url && url.searchParams && url.searchParams.get('sport')) || 'nfl';
+  // One-off repair for rows written before change-detection existed: every poll
+  // stored a full snapshot, so identical prices repeat. Keeps the EARLIEST row of
+  // each run of identical values -- which is exactly what appending-on-change
+  // would have produced -- and deletes only rows an older identical twin already
+  // covers. A price that genuinely moved and moved back keeps both entries.
+  if (url && url.searchParams && url.searchParams.get('dedupe') === '1') {
+    await ensureNflSchema(env.DB);
+    const before = await env.DB.prepare('SELECT COUNT(*) AS n FROM nfl_lines').first();
+    const del = await env.DB.prepare(
+      'DELETE FROM nfl_lines WHERE rowid IN ('
+      + '  SELECT a.rowid FROM nfl_lines a JOIN nfl_lines b'
+      + '    ON a.event_id = b.event_id AND a.market = b.market AND a.book = b.book'
+      + '   AND IFNULL(a.player,\'\') = IFNULL(b.player,\'\')'
+      + '   AND IFNULL(a.point,-9999) = IFNULL(b.point,-9999)'
+      + '   AND IFNULL(a.over,-9999) = IFNULL(b.over,-9999)'
+      + '   AND IFNULL(a.under,-9999) = IFNULL(b.under,-9999)'
+      + '   AND b.captured_at < a.captured_at)'
+    ).run();
+    const after = await env.DB.prepare('SELECT COUNT(*) AS n FROM nfl_lines').first();
+    return cors(json({
+      dedupe: true, before: before ? before.n : null, after: after ? after.n : null,
+      deleted: (before && after) ? before.n - after.n : null,
+      meta: del && del.meta ? del.meta : null,
+    }, 30));
+  }
   const res = await ingestNflLines(env, { dry, sport });
+
   if (env && env.DB && !res.errors.length) {
     try {
       await ensureNflSchema(env.DB);
