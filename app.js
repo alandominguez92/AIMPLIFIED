@@ -287,6 +287,7 @@
     proofStrip: document.getElementById('proofStrip'),
     kCtxBanner: document.getElementById('kCtxBanner'),
     eraNote: document.getElementById('eraNote'),
+    tabnote: document.querySelector('.tabnote'),
     trkNote: document.getElementById('trkNote'),
     trkLabel1: document.getElementById('trkLabel1'),
     trkLabel2: document.getElementById('trkLabel2'),
@@ -2749,6 +2750,12 @@
   };
   function renderViewChrome() {
     renderEraNote();
+    // The tabnote opens "Plays = batter unders only", which describes this tab
+    // and only this tab. On the three analysis tabs it was 177px explaining a
+    // board the reader is not looking at, directly above a context banner
+    // explaining the one they are. The banner is the accurate disclosure there,
+    // so the note steps aside rather than both being shown.
+    if (el.tabnote) el.tabnote.hidden = state.boardView !== 'batter';
     if (!el.kCtxBanner) return;
     const b = CTX_BANNERS[state.boardView];
     if (b) {
