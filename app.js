@@ -110,6 +110,8 @@
     nfl: null,
     nflOpen: null,
     rlOpen: null,
+    nflView: 'receiving',
+    nflProps: null,
     theme: 'dark',
     filter: 'all',
     sortBy: 'edge',
@@ -3028,6 +3030,7 @@
         renderBoard();
         break;
       }
+      case 'nfl-view': setNflView(target.dataset.nflview); break;
       case 'nfl-toggle': {
         const id = target.dataset.id;
         state.nflOpen = state.nflOpen === id ? null : id;
@@ -3210,6 +3213,7 @@
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
     if (el.slateSummary && nfl) el.slateSummary.hidden = true;
     if (nfl && !state.nfl) refreshNfl();          // lazy first load
+    if (nfl && state.nflView !== 'lines' && !state.nflProps) refreshNflProps();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -3240,44 +3244,60 @@
     const games = d.games || [];
     const pre = d.seasonType === 'PRE';
 
-    // Both disclosures in one block. The postable claim always applies; the
-    // grading claim only in preseason, so that sentence is added rather than a
-    // second banner being shown, and it disappears on its own in Week 1.
+    const isLines = state.nflView === 'lines';
+    const props = (state.nflProps && state.nflProps.rows) || [];
+    const propRows = props.filter((r) => r.market === state.nflView);
+
+    document.querySelectorAll('.nflm[data-nflview]').forEach((b) =>
+      b.classList.toggle('is-on', b.dataset.nflview === state.nflView));
+
     if (el.nflBannerTag) el.nflBannerTag.textContent = pre ? 'Preseason · context only' : 'Context · not plays';
     if (el.nflBannerBody) {
-      el.nflBannerBody.innerHTML =
-        'No book quotes <b>NFL player props</b> yet, so nothing here is postable. Below is the game-line '
-        + 'read — spread, total and implied team totals — priced against the sharp pool where two or more '
-        + 'sharp books agree.'
-        + (pre
-          ? ' Preseason starters play a quarter: <b>nothing enters the public record</b>, and preseason '
-            + 'snaps and routes never reach the model’s priors.'
-          : '');
+      el.nflBannerBody.innerHTML = isLines
+        ? 'No book quotes <b>NFL player props</b> yet, so nothing here is postable. Below is the game-line '
+          + 'read — spread, total and implied team totals — priced against the sharp pool where two or more '
+          + 'sharp books agree.'
+        : 'These are <b>projections, not plays</b>. No book quotes NFL yardage props through our feed, so '
+          + 'there is no line to price against and nothing here is graded. <b>Passing yards are not shown</b>: '
+          + 'backtested over two seasons the outcome landed below the projected mean only 42% and 49% of the '
+          + 'time, so the skew this model trades on is not there.'
+        ;
+      if (pre) el.nflBannerBody.innerHTML += ' Preseason starters play a quarter: <b>nothing enters the public '
+        + 'record</b>, and preseason snaps and routes never reach the model’s priors.';
     }
     if (el.nflBoardTitle) el.nflBoardTitle.textContent = pre ? 'Preseason Board' : 'NFL Board';
     if (el.nflCount) {
       const wk = games.find((g) => g.week != null);
-      el.nflCount.textContent = games.length
-        ? games.length + ' game' + (games.length === 1 ? '' : 's')
-          + (wk ? ' · week ' + wk.week : '') + ' · game lines only'
-        : '';
+      el.nflCount.textContent = isLines
+        ? (games.length ? games.length + ' game' + (games.length === 1 ? '' : 's')
+            + (wk ? ' · week ' + wk.week : '') + ' · game lines only' : '')
+        : (propRows.length ? propRows.length + ' players · ' + state.nflView + ' yards · projection only' : '');
     }
-    // Read from the payload, never inferred from the row count. A board full of
-    // context rows still posts nothing, and the chip has to say so.
     if (el.nflPostable) el.nflPostable.textContent = (d.postable || 0) + ' postable';
 
-    if (el.nflEmpty) el.nflEmpty.hidden = games.length > 0;
-    el.nflGrid.innerHTML = games.length ? nflTable(games) : '';
+    const shown = isLines ? games.length : propRows.length;
+    if (el.nflEmpty) el.nflEmpty.hidden = shown > 0;
+    el.nflGrid.innerHTML = shown
+      ? (isLines ? nflTable(games) : nflPropTable(propRows, state.nflView))
+      : '';
 
-    // Standalone-game strip: when one game owns its kickoff window it gets the
-    // wide treatment instead of being a lone card in a grid built for many.
-    const solo = games.length === 1 || (games.length > 0 && games.every((g) => g.standalone));
+    // The standalone strip belongs to the game-line read; a player board is not
+    // about one kickoff window.
+    const solo = isLines && (games.length === 1 || (games.length > 0 && games.every((g) => g.standalone)));
     if (el.nflStrip) {
-      el.nflStrip.hidden = !solo || games.length === 0;
-      if (solo && games.length) el.nflStrip.innerHTML = nflStrip(games[0]);
+      el.nflStrip.hidden = !solo;
+      if (solo) el.nflStrip.innerHTML = nflStrip(games[0]);
     }
 
     if (el.nflFoot) {
+      if (!isLines) {
+        el.nflFoot.innerHTML = propRows.length
+          ? 'Volume-ordered — with no line to compare against there is no edge to rank by. '
+            + 'Priors from the <b>' + ((state.nflProps && state.nflProps.builtFrom) || '—') + '</b> season; '
+            + 'players who changed teams and rookies are held back until they have current-season usage.'
+          : (state.nflProps ? 'No projections for this slate.' : 'Loading projections…');
+        return;
+      }
       const mkt = games.filter((g) => g.fairSrc === 'MKT').length;
       el.nflFoot.innerHTML = games.length
         ? 'Fair from the sharp pool (Pinnacle · LowVig · BetOnline), Shin de-vigged, <b>two books minimum</b>. '
@@ -3409,6 +3429,97 @@
         ${cell('Roof', g.roof || '—')}
       </div>
       <div class="nfd-foot">Context only — the run line and moneyline are not graded and not posted.</div>
+    </div>`;
+  }
+
+
+  // -------------------------------------------------------------------------
+  // NFL yardage projections — board
+  // -------------------------------------------------------------------------
+  // A projections board, not a plays board, and the columns say so. There is no
+  // line, no price, no edge and no tier, because none of those exist for a
+  // market no book quotes through our feed. Inventing a tier here would be the
+  // one dishonest thing this table could do.
+  const NFL_PROP_COLS = ['Player', 'Projection', '50% range', 'Median', 'Usage', '', ''];
+
+  async function refreshNflProps() {
+    if (!LIVE_MODE) return;
+    try {
+      const d = await fetchJson('/api/nfl-props');
+      state.nflProps = (d && Array.isArray(d.rows)) ? d : { rows: [], error: 'empty' };
+    } catch (e) {
+      state.nflProps = { rows: [], error: 'unreachable' };
+    }
+    renderNfl();
+  }
+
+  function setNflView(v) {
+    if (state.nflView === v) return;
+    state.nflView = v;
+    state.nflOpen = null;
+    if (v !== 'lines' && !state.nflProps) refreshNflProps();   // lazy first load
+    renderNfl();
+  }
+
+  function nflPropTable(rows, market) {
+    const head = NFL_PROP_COLS
+      .map((c) => (c ? `<span class="col-label">${c}</span>` : '<span></span>'))
+      .join('');
+    return `<div class="board view-nflprops"><div class="board-inner">`
+      + `<div class="board-head-row">${head}</div>`
+      + `<div>${rows.map((r) => nflPropRow(r, market)).join('')}</div>`
+      + `</div></div>`;
+  }
+
+  function nflPropRow(r, market) {
+    const id = r.player + '|' + r.market;
+    const open = state.nflOpen === id;
+    // Usage is a different measurement per market and is labelled as such rather
+    // than collapsed into one number that means two things.
+    const usage = market === 'receiving'
+      ? `${r.rp}%<i class="bk-tag">routes</i>`
+      : `${r.count}<i class="bk-tag">carries</i>`;
+    const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="nfl-toggle" data-id="${esc(id)}"
+        role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
+        aria-label="${esc(r.player)} — toggle breakdown">
+        <div class="matchup-cell">
+          <span class="mc-head"><b>${esc(r.player)}</b> <span class="team-badge">${esc(r.team)}</span></span>
+          <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}</span>
+        </div>
+        <span class="np-proj">${r.proj}<i>yds</i></span>
+        <span class="np-range">${r.p25} – ${r.p75}</span>
+        <span class="interval-cell" style="color:var(--model)">${r.p50}</span>
+        <span class="np-usage">${usage}</span>
+        <span class="tier-cell"><span class="ctx-chip">projection</span></span>
+        <span class="chevron">${open ? '▲' : '▼'}</span>
+      </div>`;
+    return row + (open ? nflPropDetail(r, market) : '');
+  }
+
+  function nflPropDetail(r, market) {
+    const skew = Math.round((r.proj - r.p50) * 10) / 10;
+    const cell = (k, v) => `<div class="nfd-c"><span>${k}</span><b>${v}</b></div>`;
+    return `<div class="expanded-detail nfl-detail">
+      <div class="nfd-k">How this number is built</div>
+      <div class="nfd-read">
+        The game's spread and total set the team's plays and pass/run split; ${esc(r.player)}'s
+        share of that volume sets his opportunity; his own efficiency turns it into yards.
+        ${market === 'receiving'
+          ? 'Receptions are drawn from a negative binomial and each catch\'s yards from a gamma, then multiplied — receiving yards are a compound outcome, not a bell curve.'
+          : 'Carries are drawn from a negative binomial and each carry\'s yards from a shifted gamma, so a stuffed run can lose yardage.'}
+        The mean sits <b>${skew} yds above the median</b>, which is the whole reason this market is worth
+        fading: a line set near the mean is above the outcome that actually happens most often.
+      </div>
+      <div class="nfd-grid">
+        ${cell('Mean', r.proj)}
+        ${cell('Median', r.p50)}
+        ${cell('25th pct', r.p25)}
+        ${cell('75th pct', r.p75)}
+        ${cell(market === 'receiving' ? 'Routes' : 'Carries', market === 'receiving' ? r.rp + '%' : r.count)}
+        ${cell('Prior', state.nflProps && state.nflProps.builtFrom ? state.nflProps.builtFrom : '—')}
+      </div>
+      <div class="nfd-foot">No book quotes this market through our feed, so there is no line to price
+        against — this is a projection, not a play, and nothing here is graded.</div>
     </div>`;
   }
 

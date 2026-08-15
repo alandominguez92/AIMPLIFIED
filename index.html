@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board38">
+<link rel="stylesheet" href="style.css?v=board39">
 </head>
 <body>
 
@@ -148,14 +148,19 @@
       <span class="tracked-pill" id="nflPostable">0 postable</span>
     </div>
 
-    <!-- Market cards. The yardage markets are the plays once lines exist; they
-         render disabled rather than being hidden, so the board states plainly
-         what it is waiting for instead of looking like it forgot them. -->
+    <!-- The market cards are the switcher. Rec and Rush carry projections; Pass
+         is present but disabled, because a market that failed its own premise in
+         two backtested seasons should say so rather than quietly vanish. -->
     <div class="nfl-markets">
-      <div class="nflm is-soon"><div class="nflm-k">Pass yds</div><div class="nflm-t">no lines posted</div></div>
-      <div class="nflm is-soon"><div class="nflm-k">Rec yds</div><div class="nflm-t">no lines posted</div></div>
-      <div class="nflm is-soon"><div class="nflm-k">Rush yds</div><div class="nflm-t">no lines posted</div></div>
-      <div class="nflm is-ctx"><div class="nflm-k">ML · Spread · Total</div><div class="nflm-t">context</div></div>
+      <button class="nflm is-off" id="nflmPass" disabled
+        title="Not posted: actuals landed below the projected mean only 42.0% of the time in 2024 and 49.5% in 2025">
+        <span class="nflm-k">Pass yds</span><span class="nflm-t">not posted</span></button>
+      <button class="nflm" data-action="nfl-view" data-nflview="receiving">
+        <span class="nflm-k">Rec yds</span><span class="nflm-t">projection</span></button>
+      <button class="nflm" data-action="nfl-view" data-nflview="rushing">
+        <span class="nflm-k">Rush yds</span><span class="nflm-t">projection</span></button>
+      <button class="nflm" data-action="nfl-view" data-nflview="lines">
+        <span class="nflm-k">ML · Spread · Total</span><span class="nflm-t">context</span></button>
     </div>
 
     <div class="nfl-strip" id="nflStrip" hidden></div>
@@ -385,6 +390,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=board38"></script>
+<script src="app.js?v=board39"></script>
 </body>
 </html>
