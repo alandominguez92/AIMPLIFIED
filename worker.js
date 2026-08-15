@@ -79,7 +79,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
-  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-board', '/api/be-gate',
+  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-board', '/api/be-gate', '/api/nfl-props',
 ]);
 
 export default {
@@ -187,6 +187,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-board') return nflBoard(env, url);
   if (p === '/api/be-gate') return beGate(env, url);
+  if (p === '/api/nfl-props') return nflProps(env, url);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -4791,9 +4792,11 @@ const nflAbbr = (n) => NFL_ABBR[n] || n || '';
 const NFL_GAMELINE_POOL = ['pinnacle', 'lowvig', 'betonlineag'];
 const NFL_EXEC = ['draftkings', 'fanduel', 'betmgm', 'betrivers', 'williamhill_us'];
 
-async function nflBoard(env, url) {
+// Split so the projection endpoint can reuse the same slate without re-querying
+// D1 or re-deriving fair from scratch. nflBoard is now only the response wrapper.
+async function nflBoardData(env, url) {
   const out = { seasonType: null, games: [], empty: true, asOf: null };
-  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 60)); }
+  if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   const want = (url && url.searchParams && url.searchParams.get('type')) || null;
   try {
     await ensureNflSchema(env.DB);
@@ -4926,7 +4929,19 @@ async function nflBoard(env, url) {
     out.empty = out.games.length === 0;
     out.postable = 0;   // no player props on the wire -> nothing is postable yet
   } catch (e) { out.error = String((e && e.message) || e); }
-  return cors(json(out, 60));
+  return out;
+}
+
+async function nflBoard(env, url) {
+  return cors(json(await nflBoardData(env, url), 60));
+}
+
+// Slate as a plain array, with seasonType carried alongside.
+async function nflBoardGames(env, url) {
+  const d = await nflBoardData(env, url);
+  const arr = Array.isArray(d.games) ? d.games : [];
+  arr.seasonType = d.seasonType;
+  return arr;
 }
 
 // GET /api/be-gate — would a break-even gate have improved the graded record?
@@ -5062,4 +5077,164 @@ function erfApprox(x) {
   const t = 1 / (1 + 0.3275911 * x);
   const poly = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
   return s * (1 - poly * Math.exp(-x * x));
+}
+
+// ---------------------------------------------------------------------------
+// NFL yardage projections
+// ---------------------------------------------------------------------------
+// Receiving and rushing only. Passing is deliberately absent: backtested over
+// 2024 and 2025 it never once cleared 50% on "actual below projected mean"
+// (42.0% and 49.5%), because passing yards sum roughly twenty completions and
+// the central limit theorem flattens the right skew the whole thesis rests on.
+// A market that fails its own premise in both seasons does not get posted.
+//
+// Everything cascades from the two market numbers, same as the backtest:
+//   spread + total -> plays -> pass/run split -> opportunity share
+//   -> efficiency -> simulated stat line
+//
+// Constants below are the backtested ones. EFF_CAL is the only calibration and
+// it is earned: the trailing efficiency prior read ~5% low in BOTH seasons.
+const NFL_EFF_CAL = { receiving: 1.05, rushing: 1.05 };
+const NFL_REC_DISP = 1.35;      // variance/mean on receptions
+const NFL_RUSH_DISP = 2.6;      // carries swing on game script far more
+const NFL_RUSH_SHIFT = 3;       // a carry can lose yards; gamma cannot go negative
+const NFL_PACE_COEF = 0.006;    // plays per point of total
+const NFL_SCRIPT_COEF = 0.0075; // pass rate per point of spread
+const NFL_MIN_RP = 0.5;         // participation gate
+const NFL_DRAWS = 400;          // enough for the quantiles reported; see nflPropsCost
+
+let NFL_PRIORS = null;
+async function nflPriors(env) {
+  if (NFL_PRIORS) return NFL_PRIORS;
+  try {
+    const r = await env.ASSETS.fetch(new Request('https://x/nfl-model-priors.json'));
+    if (r.ok) NFL_PRIORS = await r.json();
+  } catch (e) { /* asset missing -> no projections rather than wrong ones */ }
+  return NFL_PRIORS;
+}
+
+// Deterministic RNG so the same slate renders the same numbers on every colo and
+// every refresh. A projection that flickers between reloads is not a projection.
+function nflRng(seed) {
+  let s = seed | 0;
+  return function () {
+    s = s + 0x6D2B79F5 | 0;
+    let t = Math.imul(s ^ s >>> 15, 1 | s);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let nflSpare = null;
+function nflGauss(rnd) {
+  if (nflSpare !== null) { const v = nflSpare; nflSpare = null; return v; }
+  let u, v, s;
+  do { u = 2 * rnd() - 1; v = 2 * rnd() - 1; s = u * u + v * v; } while (s === 0 || s >= 1);
+  const f = Math.sqrt(-2 * Math.log(s) / s); nflSpare = v * f; return u * f;
+}
+function nflGamma(shape, scale, rnd) {
+  if (shape < 1) return nflGamma(shape + 1, scale, rnd) * Math.pow(rnd(), 1 / shape);
+  const d = shape - 1 / 3, c = 1 / Math.sqrt(9 * d);
+  for (;;) {
+    let x, v;
+    do { x = nflGauss(rnd); v = 1 + c * x; } while (v <= 0);
+    v = v * v * v; const u = rnd();
+    if (u < 1 - 0.0331 * x * x * x * x) return d * v * scale;
+    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v * scale;
+  }
+}
+function nflPoisson(lam, rnd) {
+  if (lam <= 0) return 0;
+  if (lam < 30) { const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= rnd(); } while (p > L); return k - 1; }
+  return Math.max(0, Math.round(lam + Math.sqrt(lam) * nflGauss(rnd)));
+}
+function nflNegBin(m, disp, rnd) {
+  if (m <= 0) return 0;
+  if (disp <= 1) return nflPoisson(m, rnd);
+  return nflPoisson(nflGamma(m / (disp - 1), disp - 1, rnd), rnd);
+}
+
+// GET /api/nfl-props — projections for the ingested slate.
+async function nflProps(env, url) {
+  const out = { markets: ['receiving', 'rushing'], excluded: {
+    passing: 'not posted — under-mean was 42.0% (2024) and 49.5% (2025); '
+      + 'passing yards sum ~20 completions, so the right skew the model trades is absent',
+  }, rows: [], games: 0 };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 120)); }
+  try {
+    const pri = await nflPriors(env);
+    if (!pri || !pri.players) { out.error = 'priors asset unavailable'; return cors(json(out, 120)); }
+    out.builtFrom = pri.builtFrom;
+
+    const board = await nflBoardGames(env, url);
+    out.games = board.length;
+    out.seasonType = board.seasonType;
+
+    const byTeam = {};
+    for (const [pid, p] of Object.entries(pri.players)) {
+      // Week-1 carry-over rule: only a player still on the team he earned the
+      // prior with is eligible. Movers and rookies wait for current-season reps.
+      if (p.status !== 'same-team') continue;
+      if (p.rp < NFL_MIN_RP) continue;
+      (byTeam[p.tm26 || p.tm] = byTeam[p.tm26 || p.tm] || []).push({ pid, ...p });
+    }
+
+    for (const g of board) {
+      if (g.total == null) continue;
+      for (const side of ['away', 'home']) {
+        const abbr = g[side];
+        const spread = side === 'away' ? g.away_spread : g.home_spread;
+        if (spread == null) continue;
+        const roster = byTeam[abbr] || [];
+        const plays = pri.league.playsPerTeamGame * (1 + NFL_PACE_COEF * (g.total - 44));
+        const passRate = Math.min(0.72, Math.max(0.45, pri.league.passRate + NFL_SCRIPT_COEF * spread));
+        const teamPass = plays * passRate, teamRush = plays * (1 - passRate);
+
+        for (const p of roster) {
+          const seed = (p.pid.length * 7919 + abbr.charCodeAt(0) * 104729 + Math.round(g.total * 10)) | 0;
+
+          if (p.recN >= 12) {
+            const ypr = ((p.ypr * p.recN + 12 * pri.league.yprCohort) / (p.recN + 12)) * NFL_EFF_CAL.receiving;
+            const shape = Math.max(1.2, Math.min(6, ypr / 3.2));
+            const q = nflSim(teamPass * p.recShare, NFL_REC_DISP, shape, ypr / shape, 0, nflRng(seed));
+            out.rows.push({ ...nflRow(p, abbr, g, 'receiving'), ...q });
+          }
+          if (p.carN >= 20) {
+            const ypc = ((p.ypc * p.carN + 15 * pri.league.ypcCohort) / (p.carN + 15)) * NFL_EFF_CAL.rushing;
+            const shifted = ypc + NFL_RUSH_SHIFT;
+            const shape = Math.max(1.5, Math.min(9, shifted / 1.6));
+            const q = nflSim(teamRush * p.carShare, NFL_RUSH_DISP, shape, shifted / shape, NFL_RUSH_SHIFT, nflRng(seed + 7));
+            out.rows.push({ ...nflRow(p, abbr, g, 'rushing'), ...q });
+          }
+        }
+      }
+    }
+    // Biggest projections first — with no market line to rank against, volume is
+    // the only honest ordering. It is explicitly NOT an edge ranking.
+    out.rows.sort((a, b) => b.proj - a.proj);
+    out.note = 'projections only — no book quotes NFL player props through our feed, '
+      + 'so nothing here is priced, graded or postable';
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return cors(json(out, 120));
+}
+
+function nflRow(p, abbr, g, market) {
+  return { player: p.n, pos: p.pos, team: abbr, market,
+    game: `${g.away} @ ${g.home}`, commence: g.commence, rp: Math.round(p.rp * 100) };
+}
+
+function nflSim(countMean, disp, shape, scale, shift, rnd) {
+  const d = new Array(NFL_DRAWS);
+  for (let i = 0; i < NFL_DRAWS; i++) {
+    const n = nflNegBin(Math.max(0.05, countMean), disp, rnd);
+    let y = 0;
+    for (let j = 0; j < n; j++) y += nflGamma(shape, scale, rnd) - shift;
+    d[i] = y;
+  }
+  d.sort((a, b) => a - b);
+  const q = (x) => Math.round(d[Math.min(d.length - 1, Math.floor(x * d.length))] * 10) / 10;
+  return {
+    proj: Math.round((d.reduce((s, x) => s + x, 0) / d.length) * 10) / 10,
+    p25: q(0.25), p50: q(0.50), p75: q(0.75),
+    count: Math.round(countMean * 10) / 10,
+  };
 }
