@@ -3267,7 +3267,7 @@
     if (el.nflPostable) el.nflPostable.textContent = (d.postable || 0) + ' postable';
 
     if (el.nflEmpty) el.nflEmpty.hidden = games.length > 0;
-    el.nflGrid.innerHTML = games.map(nflCard).join('');
+    el.nflGrid.innerHTML = games.length ? nflTable(games) : '';
 
     // Standalone-game strip: when one game owns its kickoff window it gets the
     // wide treatment instead of being a lone card in a grid built for many.
@@ -3296,50 +3296,7 @@
     return t.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
   }
 
-  function nflCard(g) {
-    const isMkt = g.fairSrc === 'MKT';
-    // Model blue is reserved for our number. An MKT row has no fair line, so it
-    // gets the muted source chip instead — colouring a market price as if it
-    // were our projection is the one mistake this palette must not make.
-    const srcChip = isMkt
-      ? '<span class="nfl-src is-mkt" title="fewer than two sharp books quoted this game">MKT</span>'
-      : '<span class="nfl-src is-sharp" title="' + (g.fairBooks || []).map(bkLabel).join(' · ')
-        + '">SHARP ' + g.sharpN + '</span>';
-    const fair = isMkt ? ''
-      : '<div class="nfl-fair"><span class="nf-k">fair</span>'
-        + '<span class="nf-v">' + g.away + ' ' + g.away_fair + '%</span><span class="nf-sep">·</span>'
-        + '<span class="nf-v">' + g.home + ' ' + g.home_fair + '%</span></div>';
-    const env = (g.roof && g.roof !== 'outdoors')
-      ? ' · <span class="nfl-env is-' + g.roof + '">' + g.roof + '</span>' : '';
-    // One-line digest carrying the two numbers worth seeing without opening a
-    // card: the spread and the total. It replaces the detail rows on a phone,
-    // where ten full cards ran 2,341px -- longer than the slate is worth
-    // scrolling past. Desktop has three columns and ignores all of this.
-    const sum = '<div class="nfl-sum">' + g.away + ' ' + signed(g.away_spread)
-      + '<span class="nf-sep">·</span>O/U ' + num(g.total)
-      + '<span class="nf-sep">·</span>' + kickoff(g.commence) + '</div>';
-    const open = state.nflOpen === g.id;
-    return '<article class="rl-card nfl-card' + (open ? ' is-open' : '')
-      + '" data-action="nfl-toggle" data-id="' + g.id + '"'
-      + ' tabindex="0" role="button" aria-expanded="' + (open ? 'true' : 'false') + '">'
-      + '<div class="nfl-head"><span class="nfl-tm">' + g.away + '</span>'
-      + '<span class="nfl-at">at</span><span class="nfl-tm">' + g.home + '</span>' + srcChip
-      + '<span class="nfl-chev" aria-hidden="true"></span></div>'
-      + sum
-      + '<div class="nfl-when">' + kickoff(g.commence) + env + '</div>'
-      + fair
-      + '<div class="nfl-rows">'
-      + '<div class="nfl-row"><span class="nf-k">ML</span>'
-      + '<span class="nf-p">' + g.away + ' ' + AM(g.away_price) + '<i>' + bkLabel(g.away_book) + '</i></span>'
-      + '<span class="nf-p">' + g.home + ' ' + AM(g.home_price) + '<i>' + bkLabel(g.home_book) + '</i></span></div>'
-      + '<div class="nfl-row"><span class="nf-k">Spread</span>'
-      + '<span class="nf-p">' + g.away + ' ' + signed(g.away_spread) + '</span>'
-      + '<span class="nf-p">Total ' + num(g.total) + '</span></div>'
-      + '<div class="nfl-row"><span class="nf-k">Implied</span>'
-      + '<span class="nf-p">' + g.away + ' ' + num(g.away_implied) + '</span>'
-      + '<span class="nf-p">' + g.home + ' ' + num(g.home_implied) + '</span></div>'
-      + '</div></article>';
-  }
+
 
   function nflStrip(g) {
     const cell = (k, v) => '<div><span>' + k + '</span><b>' + v + '</b></div>';
@@ -3352,6 +3309,106 @@
       + cell('Implied ' + g.home, num(g.home_implied))
       + cell('Plays', '0')
       + '</div></div>';
+  }
+
+
+  // NFL moneyline table. Deliberately emits the same .board / .board-row markup
+  // the MLB moneyline view uses rather than a parallel component: it inherits the
+  // column widths, the row chrome, the expand styling and — the part that would
+  // otherwise have to be rebuilt — the mobile collapse, which keys on
+  // .board-row:not(.expanded).
+  //
+  // Columns match the MLB moneyline head exactly:
+  //   Matchup | Team to win | Moneyline | Line value | Win Prob | (chip) | (chev)
+  const NFL_ML_COLS = ['Matchup', 'Team to win', 'Moneyline', 'Line value', 'Win Prob', '', ''];
+
+  function nflTable(games) {
+    const head = NFL_ML_COLS
+      .map((c) => (c ? `<span class="col-label">${c}</span>` : '<span></span>'))
+      .join('');
+    return `<div class="board" id="nflBoardWrap"><div class="board-inner">`
+      + `<div class="board-head-row">${head}</div>`
+      + `<div>${games.map(nflRow).join('')}</div>`
+      + `</div></div>`;
+  }
+
+  function nflRow(g) {
+    const open = state.nflOpen === g.id;
+    const isMkt = g.fairSrc === 'MKT';
+
+    // Sub-line carries what the card used to: kickoff, the market's own numbers,
+    // and the roof when it is not simply outdoors.
+    const sub = [
+      kickoff(g.commence),
+      g.away_spread != null ? `${g.away} ${signed(g.away_spread)}` : null,
+      g.total != null ? `O/U ${g.total}` : null,
+      g.roof && g.roof !== 'outdoors' ? g.roof : null,
+    ].filter(Boolean).join(' · ');
+
+    // An MKT row has no fair line, so it carries no team-to-win, no value and no
+    // win probability. Those cells stay empty rather than borrowing the market's
+    // number and presenting it as ours.
+    const pick = isMkt ? '<span class="odds-blank">fewer than two sharp books</span>' : (g.pickTeam || '—');
+    const odds = isMkt
+      ? (g.away_price != null
+        ? `<span class="odds-cell mono">${AM(g.away_price)} / ${AM(g.home_price)}</span>`
+        : '<span class="odds-blank">no price</span>')
+      : `<span class="odds-cell mono">${AM(g.pickPrice)}<i class="bk-tag">${bkLabel(g.pickBook)}</i></span>`;
+    const val = (!isMkt && g.pickValue != null) ? g.pickValue : null;
+    // Green only when the fair line actually sits above the price. Value is the
+    // one number here that says "this price is better than fair", so it is the
+    // one that earns the positive colour.
+    const valColor = val == null ? 'var(--textFaint)' : (val > 0 ? 'var(--positive)' : 'var(--textDim)');
+    const valLabel = val == null ? '—' : (val > 0 ? '+' : '') + val + '%';
+    const winProb = (!isMkt && g.pickFair != null)
+      ? `<span class="interval-cell" style="color:var(--model)">${g.pickFair}%</span>`
+      : '<span class="interval-cell">—</span>';
+    const chip = isMkt
+      ? '<span class="ctx-chip nfl-mktchip">MKT</span>'
+      : `<span class="ctx-chip">sharp ${g.sharpN}</span>`;
+
+    const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="nfl-toggle" data-id="${g.id}"
+        role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
+        aria-label="${g.away} at ${g.home} — toggle breakdown">
+        <div class="matchup-cell">
+          <span class="mc-head"><b>${g.away} @ ${g.home}</b></span>
+          <span class="matchup-sub">${sub}</span>
+        </div>
+        <span>${pick}</span>
+        ${odds}
+        <span class="edge-cell" style="color:${valColor}">${valLabel}</span>
+        ${winProb}
+        <span class="tier-cell">${chip}</span>
+        <span class="chevron">${open ? '▲' : '▼'}</span>
+      </div>`;
+    return row + (open ? nflDetail(g) : '');
+  }
+
+  function nflDetail(g) {
+    const isMkt = g.fairSrc === 'MKT';
+    const cell = (k, v) => `<div class="nfd-c"><span>${k}</span><b>${v}</b></div>`;
+    const read = isMkt
+      ? `Only ${g.sharpN} sharp book${g.sharpN === 1 ? '' : 's'} quoted this game, so there is no fair line to price against. `
+        + `The prices shown are the market's, not a value read.`
+      : `Fair from ${(g.fairBooks || []).map(bkLabel).join(' · ')}, Shin de-vigged and medianed. `
+        + `<b>${g.pickTeam}</b> is fair at <b>${g.pickFair}%</b>; the best price of ${AM(g.pickPrice)} at `
+        + `${bkLabel(g.pickBook)} implies ${g.pickImplied}%. `
+        + (g.pickValue > 0
+          ? `That is <b>${g.pickValue} points of value</b>.`
+          : `That is ${Math.abs(g.pickValue)} points the wrong way — no value at this price.`);
+    return `<div class="expanded-detail nfl-detail">
+      <div class="nfd-k">Price read</div>
+      <div class="nfd-read">${read}</div>
+      <div class="nfd-grid">
+        ${cell('Spread', g.away + ' ' + signed(g.away_spread))}
+        ${cell('Total', num(g.total))}
+        ${cell('Implied ' + g.away, num(g.away_implied))}
+        ${cell('Implied ' + g.home, num(g.home_implied))}
+        ${cell('Books', g.books)}
+        ${cell('Roof', g.roof || '—')}
+      </div>
+      <div class="nfd-foot">Context only — the run line and moneyline are not graded and not posted.</div>
+    </div>`;
   }
 
 })();

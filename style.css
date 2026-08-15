@@ -1158,31 +1158,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 .nfl-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px }
 .nfl-grid.is-solo { grid-template-columns:minmax(0,1fr) }
-.nfl-card { display:flex; flex-direction:column; gap:8px }
 
-.nfl-head { display:flex; align-items:center; gap:7px }
-.nfl-tm { font-size:15px; font-weight:600; color:var(--text) }
-.nfl-at { font-size:12px; color:var(--textFaint) }
-.nfl-src { margin-left:auto; font-size:10px; letter-spacing:.08em; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
-  border-radius:6px; padding:3px 7px; border:1px solid var(--border) }
-.nfl-src.is-sharp { color:var(--srcSharp); border-color:color-mix(in srgb, var(--srcSharp) 45%, transparent) }
-.nfl-src.is-mkt   { color:var(--srcMkt) }
 .nfl-mkt { color:var(--srcMkt); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace }
 
-.nfl-when { font-size:12px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; color:var(--textFaint) }
-.nfl-env.is-dome        { color:var(--envDome) }
-.nfl-env.is-retractable { color:var(--envCold) }
-
-/* Our number, so model blue — never used for a book's price. */
-.nfl-fair { display:flex; align-items:center; gap:6px; font-size:13px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace }
-.nfl-fair .nf-v { color:var(--model) }
-.nfl-fair .nf-sep { color:var(--textFaint) }
-
-.nfl-rows { display:flex; flex-direction:column; gap:5px; border-top:1px solid var(--borderSoft); padding-top:9px }
-.nfl-row { display:grid; grid-template-columns:64px 1fr 1fr; gap:8px; align-items:baseline }
-.nf-k { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--textFaint); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace }
-.nf-p { font-size:13px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; color:var(--text) }
-.nf-p i { font-style:normal; font-size:10px; color:var(--textFaint); margin-left:5px }
 
 /* Standalone-game strip — Wed / Thu / SNF / MNF, 81 of 272 games. */
 .nfl-strip { margin-bottom:12px }
@@ -1208,53 +1186,6 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .nflm-k { font-size:13px }
   .nfl-grid { grid-template-columns:minmax(0,1fr) }
   .nfs-g { grid-template-columns:repeat(2,minmax(0,1fr)) }
-  .nfl-row { grid-template-columns:56px 1fr 1fr; gap:6px }
-  .nf-p { font-size:12px }
-}
-
-/* Collapsed NFL cards on mobile.
-   Ten expanded cards ran 2,341px at 390px -- longer than a ten-game slate is
-   worth scrolling. The digest line carries the spread, the total and kickoff, so
-   the collapsed state still answers the question most people open the card for.
-   Desktop lays out three columns and has the room, so none of this applies
-   there: the .is-open class is simply ignored above 640px. */
-.nfl-chev { display:none }
-.nfl-sum { display:none }
-
-@media (max-width:640px) {
-  .nfl-card { cursor:pointer; gap:6px; position:relative }
-  .nfl-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
-
-  /* Collapsed: header + digest only. */
-  .nfl-sum {
-    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
-    font-size:12.5px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
-    color:var(--textDim);
-  }
-  .nfl-card .nfl-when,
-  .nfl-card .nfl-fair,
-  .nfl-card .nfl-rows { display:none }
-
-  /* Open: the digest steps aside and the full detail returns. */
-  .nfl-card.is-open .nfl-sum { display:none }
-  .nfl-card.is-open .nfl-when { display:block }
-  .nfl-card.is-open .nfl-fair { display:flex }
-  .nfl-card.is-open .nfl-rows { display:flex }
-
-  /* Affordance. Rotates when open so the card's state is readable without
-     having to compare it against its neighbours. */
-  .nfl-chev {
-    display:block; width:7px; height:7px; margin-left:8px; flex:none;
-    border-right:1.5px solid var(--textFaint); border-bottom:1.5px solid var(--textFaint);
-    transform:rotate(45deg); transform-origin:center; transition:transform .16s ease;
-  }
-  .nfl-card.is-open .nfl-chev { transform:rotate(225deg) }
-  .nfl-head { gap:6px }
-  .nfl-src { margin-left:auto }
-}
-
-@media (max-width:640px) and (prefers-reduced-motion:reduce) {
-  .nfl-chev { transition:none }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1370,4 +1301,47 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   /* Buttons keep their 38px height; only the space between rows gives. */
   .board-toolbar { gap:6px; margin-bottom:12px }
   .board-controls { gap:5px 5px }
+}
+
+/* ---------------------------------------------------------------------------
+   NFL moneyline table
+   ---------------------------------------------------------------------------
+   The table itself reuses .board / .board-row / .matchup-cell wholesale, so it
+   inherits the column grid, row chrome and the mobile collapse. Only the pieces
+   the MLB board has no equivalent for are defined here.                      */
+
+/* Book tag beside a price, matching the .bk pattern on the batter board. */
+.bk-tag { font-style:normal; font-size:10px; color:var(--textFaint); margin-left:6px }
+
+/* MKT chip. Muted, never accent: a row with fewer than two sharp books has no
+   fair line, and colouring it like a priced row would imply one exists. */
+.ctx-chip.nfl-mktchip { color:var(--srcMkt) }
+
+.nfl-detail { display:flex; flex-direction:column; gap:11px }
+.nfd-k {
+  font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--textFaint);
+  font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+.nfd-read { font-size:13px; line-height:1.6; color:var(--textDim) }
+.nfd-read b { color:var(--text) }
+.nfd-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px }
+.nfd-c { display:flex; flex-direction:column; gap:3px; min-width:0 }
+.nfd-c span {
+  font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--textFaint);
+  font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.nfd-c b {
+  font-size:15px; font-weight:600; color:var(--text);
+  font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+}
+.nfd-foot { font-size:11.5px; color:var(--textFaint); border-top:1px solid var(--borderSoft); padding-top:9px }
+
+@media (max-width:900px) {
+  .nfd-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px }
+}
+@media (max-width:640px) {
+  .nfd-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .nfd-c b { font-size:14px }
+  .nfd-read { font-size:12.5px }
 }

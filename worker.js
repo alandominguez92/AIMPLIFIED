@@ -4882,6 +4882,25 @@ async function nflBoard(env, url) {
       // Implied team total: half the game total, shifted by half the spread.
       const impl = (sp) => (total != null && sp != null) ? Math.round((total / 2 - sp / 2) * 10) / 10 : null;
 
+      // Moneyline read, in the same shape the MLB board uses: which side, at what
+      // price, and how far our fair sits above what that price implies. Value is
+      // fair-minus-implied in probability points -- the sharp pool's number
+      // against the softest execution price, never against itself.
+      let pickTeam = null, pickPrice = null, pickBook = null, pickFair = null, pickValue = null, pickImplied = null;
+      if (fair != null) {
+        const awayFair = fair, homeFair = 1 - fair;
+        const takeAway = awayFair >= homeFair;
+        pickTeam = takeAway ? nflAbbr(a) : nflAbbr(b);
+        pickFair = takeAway ? awayFair : homeFair;
+        const bp = takeAway ? bestA : bestB;
+        pickPrice = bp.price; pickBook = bp.book;
+        const imp = amProb(pickPrice);
+        if (imp != null && isFinite(imp)) {
+          pickImplied = Math.round(imp * 1000) / 10;
+          pickValue = Math.round((pickFair - imp) * 1000) / 10;
+        }
+      }
+
       const sg = sched.find((x) => x.id && g.commence
         && Math.abs(Date.parse(`${x.d}T${x.t}:00Z`) - Date.parse(g.commence)) < 36 * 3600e3);
 
@@ -4897,6 +4916,9 @@ async function nflBoard(env, url) {
         home_price: bestB.price, home_book: bestB.book,
         away_spread: sA, home_spread: sB, total,
         away_implied: impl(sA), home_implied: impl(sB),
+        pickTeam, pickPrice, pickBook,
+        pickFair: pickFair != null ? Math.round(pickFair * 1000) / 10 : null,
+        pickImplied, pickValue,
         books: new Set([...Object.keys(g.h2h[a] || {}), ...Object.keys(g.h2h[b] || {})]).size,
       });
     }
