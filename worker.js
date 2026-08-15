@@ -79,7 +79,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
-  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-board',
+  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-board', '/api/be-gate',
 ]);
 
 export default {
@@ -186,6 +186,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-board') return nflBoard(env, url);
+  if (p === '/api/be-gate') return beGate(env, url);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -4904,4 +4905,139 @@ async function nflBoard(env, url) {
     out.postable = 0;   // no player props on the wire -> nothing is postable yet
   } catch (e) { out.error = String((e && e.message) || e); }
   return cors(json(out, 60));
+}
+
+// GET /api/be-gate — would a break-even gate have improved the graded record?
+//
+// The board tiers on `edge`, which is model-minus-fair in probability points. It
+// says nothing about the price actually paid, so a row can carry a healthy edge
+// and still be a losing bet: on 2026-08-14 the T2 play was +5.1 edge at -179,
+// needing 64.2% while the model gave it 51.4%.
+//
+// This asks the only question that decides whether that matters: over the rows
+// already graded, does dropping every pick whose model probability sits below
+// its break-even improve ROI? It changes nothing and writes nothing.
+//
+// Units are reported rather than assumed. model_over is stored as a PERCENT and
+// entry_over as a FRACTION, which is exactly the kind of asymmetry that silently
+// produces a confident wrong answer.
+function bePayout(am) { return am > 0 ? am / 100 : 100 / (-am); }
+function beProb(am) { return am > 0 ? 100 / (am + 100) : (-am) / ((-am) + 100); }
+
+async function beGate(env, url) {
+  const out = { question: 'Does gating on model >= break-even improve the graded record?' };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 60)); }
+  try {
+    await ensureBatterSchema(env.DB);
+    const era = (url && url.searchParams && url.searchParams.get('era')) || BATTER_MODEL_VER;
+    out.era = era;
+    const rows = (await env.DB.prepare(
+      `SELECT player, market, line, side, price, proj, model_over, entry_over, edge, tier, result, date
+         FROM bpicks
+        WHERE result IN ('win','loss') AND model_over IS NOT NULL AND price IS NOT NULL
+          AND (model_ver = ? OR ? = 'all')`
+    ).bind(era, era).all()).results || [];
+    out.graded = rows.length;
+    if (!rows.length) { out.note = 'no graded rows in this era'; return cors(json(out, 60)); }
+
+    // Unit check, printed so a reader can see the assumption is tested.
+    const mo = rows.map((r) => r.model_over).filter((x) => x != null);
+    const eo = rows.map((r) => r.entry_over).filter((x) => x != null);
+    out.units = {
+      model_over: { min: round1(Math.min(...mo)), max: round1(Math.max(...mo)),
+        reading: Math.max(...mo) > 1.5 ? 'percent' : 'fraction' },
+      entry_over: eo.length ? { min: Math.round(Math.min(...eo) * 1e4) / 1e4,
+        max: Math.round(Math.max(...eo) * 1e4) / 1e4,
+        reading: Math.max(...eo) > 1.5 ? 'percent' : 'fraction' } : null,
+    };
+    // If model_over is ever stored as a fraction the arithmetic below is wrong,
+    // so refuse rather than report a confident wrong number.
+    if (out.units.model_over.reading !== 'percent') {
+      out.error = 'model_over is not in percent; aborting rather than guessing';
+      return cors(json(out, 60));
+    }
+
+    const scored = rows.map((r) => {
+      const modelPick = (r.side === 'Under' ? 100 - r.model_over : r.model_over) / 100;
+      const be = beProb(r.price);
+      const w = bePayout(r.price);
+      const won = r.result === 'win';
+      return {
+        ...r,
+        modelPick, be, ev: modelPick * w - (1 - modelPick),
+        profit: won ? w : -1, won,
+        passes: modelPick >= be,
+      };
+    });
+
+    const summarise = (set, label) => {
+      const n = set.length;
+      if (!n) return { label, n: 0 };
+      const wins = set.filter((s) => s.won).length;
+      const units = set.reduce((a, s) => a + s.profit, 0);
+      const roi = units / n;
+      // Per-pick variance of the profit series, so the SE reflects mixed prices
+      // rather than assuming every bet is even money.
+      const mean = roi;
+      const varr = set.reduce((a, s) => a + (s.profit - mean) ** 2, 0) / Math.max(1, n - 1);
+      const se = Math.sqrt(varr / n);
+      const z = se > 0 ? roi / se : 0;
+      // Two-sided normal tail.
+      const p = 2 * (1 - 0.5 * (1 + erfApprox(Math.abs(z) / Math.SQRT2)));
+      return {
+        label, n, wins, winRate: round1((wins / n) * 100),
+        units: Math.round(units * 100) / 100,
+        roiPct: round1(roi * 100),
+        se: round1(se * 100), z: round1(z), p: Math.round(p * 1e4) / 1e4,
+        significant: p < 0.05,
+      };
+    };
+
+    out.all = summarise(scored, 'every graded pick');
+    out.gated = summarise(scored.filter((s) => s.passes), 'model >= break-even');
+    out.dropped = summarise(scored.filter((s) => !s.passes), 'dropped by the gate');
+    out.keptPct = round1((scored.filter((s) => s.passes).length / scored.length) * 100);
+
+    // Does the gate help inside each tier, or only by reshuffling which tiers
+    // survive? A gate that merely drops T3 is not the same finding.
+    const byTier = {};
+    for (const t of ['1', '2', '3', 'pass']) {
+      const set = scored.filter((s) => String(s.tier) === t);
+      if (!set.length) continue;
+      byTier[t] = {
+        all: summarise(set, 'all'),
+        gated: summarise(set.filter((s) => s.passes), 'gated'),
+      };
+    }
+    out.byTier = byTier;
+
+    // Ranking check: if EV ranks better than edge, that is the actionable part.
+    const decile = (key) => {
+      const sorted = [...scored].sort((a, b) => b[key] - a[key]);
+      const cut = Math.max(1, Math.floor(sorted.length / 5));
+      return { top: summarise(sorted.slice(0, cut), `top fifth by ${key}`),
+        bottom: summarise(sorted.slice(-cut), `bottom fifth by ${key}`) };
+    };
+    out.rankedByEdge = decile('edge');
+    out.rankedByEv = decile('ev');
+
+    out.verdict = (() => {
+      const a = out.all, g = out.gated;
+      if (!g.n || g.n < 100) return 'INCONCLUSIVE — too few rows survive the gate to judge';
+      const lift = g.roiPct - a.roiPct;
+      if (g.significant && g.roiPct > 0) return `GATE HELPS — gated ROI ${g.roiPct}% is significant (p=${g.p})`;
+      if (lift > 0 && !g.significant) return `DIRECTIONAL ONLY — gate lifts ROI ${round1(lift)}pts but the result is not significant (p=${g.p})`;
+      if (lift <= 0) return `GATE DOES NOT HELP — ROI moves ${round1(lift)}pts`;
+      return 'INCONCLUSIVE';
+    })();
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return cors(json(out, 60));
+}
+
+// Abramowitz & Stegun 7.1.26 — enough precision for a p-value read to 4dp.
+function erfApprox(x) {
+  const s = x < 0 ? -1 : 1; x = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * x);
+  const poly = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+  return s * (1 - poly * Math.exp(-x * x));
 }
