@@ -1329,3 +1329,30 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 @media (prefers-reduced-motion:reduce) {
   .board-row .chevron, .rl-chev { transition:none }
 }
+
+/* ---------------------------------------------------------------------------
+   Section head and toolbar on mobile
+   ---------------------------------------------------------------------------
+   The section head was 113px at 390px for four items that each claimed their own
+   line: a 26px/39px display heading, the count, the tracked pill and a disabled
+   "Full slate — Soon" link, separated by 14px gaps.
+
+   The toolbar is a different case and is left nearly alone on purpose. Its ten
+   controls are all exactly 38px, which is a deliberate touch-target floor, and
+   the compare control sits on its own row because bigger targets were asked for.
+   Shrinking either would undo that. Only the dead space between rows is taken,
+   which is worth about 10px -- the toolbar is at its floor, not merely
+   untightened.                                                               */
+@media (max-width:640px) {
+  .sec-head { gap:8px; margin-bottom:12px }
+  .sec-head h2 { font-size:21px; line-height:28px }
+
+  /* A disabled "Soon" link is the one item here that does nothing. It costs a
+     full line plus a gap on a phone, so it waits for the screen that has room
+     for it rather than for a feature that does not exist yet. */
+  .sec-head .all.soon-link { display:none }
+
+  /* Buttons keep their 38px height; only the space between rows gives. */
+  .board-toolbar { gap:6px; margin-bottom:12px }
+  .board-controls { gap:5px 5px }
+}
