@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board40">
+<link rel="stylesheet" href="style.css?v=board41">
 </head>
 <body>
 
@@ -248,6 +248,10 @@
       </div>
     </div>
 
+    <!-- Phone-only fold for Pass rows. Sits outside the board so it can never be
+         hidden by the rule it controls. Plays are never folded. -->
+    <button class="np-more" id="passMore" data-action="toggle-pass" hidden></button>
+
     <div class="board-foot">
       <span id="shownLabel"></span>
       <span>odds refresh every 5 min</span>
@@ -390,6 +394,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=board40"></script>
+<script src="app.js?v=board41"></script>
 </body>
 </html>

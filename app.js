@@ -113,6 +113,7 @@
     nflView: 'receiving',
     nflProps: null,
     nflShowAll: false,
+    batterShowPass: false,
     theme: 'dark',
     filter: 'all',
     sortBy: 'edge',
@@ -257,6 +258,7 @@
     nflCount: document.getElementById('nflCount'),
     nflPostable: document.getElementById('nflPostable'),
     nflGrid: document.getElementById('nflGrid'),
+    passMore: document.getElementById('passMore'),
     nflStrip: document.getElementById('nflStrip'),
     nflEmpty: document.getElementById('nflEmpty'),
     nflFoot: document.getElementById('nflFoot'),
@@ -1600,6 +1602,11 @@
       if (isSelected) rowClasses.push('selected');
       else if (isExpanded) rowClasses.push('expanded');
       if (corrN >= 2) rowClasses.push('corr');
+      // Passes fold on a phone. Only on the batter board, only when the reader
+      // has not explicitly filtered TO passes, and never on desktop. Plays are
+      // never folded — the board recommends them, so they stay on screen; these
+      // are the rows the model already declined to back.
+      if (isPlayView && String(tierVal) === 'pass' && state.filter !== 'pass') rowClasses.push('bp-pass');
 
       const rowA11y = state.compareMode
         ? `role="button" tabindex="0" aria-pressed="${isSelected}" aria-label="Compare ${esc(g.matchup)}"`
@@ -1818,6 +1825,19 @@
 
       return rowHtml + detailHtml;
     }).join('');
+
+    // Pass-fold plumbing, set after the rows exist. The container class drives
+    // the CSS; the button names how many rows are folded so the count is never a
+    // mystery. Desktop ignores both -- see the 640px rule.
+    el.boardRows.className = state.batterShowPass ? 'show-pass' : '';
+    if (el.passMore) {
+      const passN = isBatter() && state.filter !== 'pass'
+        ? games.filter((g) => String(activeTier(g)) === 'pass').length : 0;
+      el.passMore.hidden = passN === 0;
+      el.passMore.textContent = state.batterShowPass
+        ? 'Hide ' + passN + ' Pass row' + (passN === 1 ? '' : 's')
+        : 'Show ' + passN + ' Pass row' + (passN === 1 ? '' : 's') + ' the model declined';
+    }
   }
 
   // Run Line view — game cards. The value side (DK/FD price beats Pinnacle's
@@ -3032,6 +3052,7 @@
         break;
       }
       case 'nfl-view': setNflView(target.dataset.nflview); break;
+      case 'toggle-pass': state.batterShowPass = !state.batterShowPass; renderBoard(); break;
       case 'nfl-showall': state.nflShowAll = !state.nflShowAll; renderNfl(); break;
       case 'nfl-toggle': {
         const id = target.dataset.id;

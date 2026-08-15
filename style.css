@@ -1422,3 +1422,17 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      the cap stays resize-safe without a JS width branch. */
   .np-rows:not(.show-all) .np-tail { display:none }
 }
+
+/* ---------------------------------------------------------------------------
+   Pass-tier fold, phone only
+   ---------------------------------------------------------------------------
+   The batter board ran 40 rows / 5,114px at 390px, more than double any other
+   view. Plays are never folded — the board recommends them, so they stay on
+   screen. What folds is the Pass tier: rows the model already declined to back.
+
+   Not applied when the reader has filtered TO passes, which is handled in JS by
+   simply not marking those rows, so the CSS here stays a single rule.          */
+@media (max-width:640px) {
+  #boardRows:not(.show-pass) .bp-pass { display:none }
+  #boardRows:not(.show-pass) .bp-pass + .expanded-detail { display:none }
+}
