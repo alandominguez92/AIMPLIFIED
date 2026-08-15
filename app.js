@@ -108,6 +108,7 @@
   const state = {
     sport: 'mlb',
     nfl: null,
+    nflOpen: null,
     theme: 'dark',
     filter: 'all',
     sortBy: 'edge',
@@ -2990,6 +2991,12 @@
       case 'set-filter': setFilter(target.dataset.filter); break;
       case 'set-view': setView(target.dataset.view); break;
       case 'set-sport': setSport(target.dataset.sport); break;
+      case 'nfl-toggle': {
+        const id = target.dataset.id;
+        state.nflOpen = state.nflOpen === id ? null : id;
+        renderNfl();
+        break;
+      }
       case 'set-sort': setSort(target.dataset.sort); break;
       case 'toggle-compare-mode': toggleCompareMode(); break;
       case 'toggle-hitter-compare-mode': toggleHitterCompareMode(); break;
@@ -3254,9 +3261,21 @@
         + '<span class="nf-v">' + g.home + ' ' + g.home_fair + '%</span></div>';
     const env = (g.roof && g.roof !== 'outdoors')
       ? ' · <span class="nfl-env is-' + g.roof + '">' + g.roof + '</span>' : '';
-    return '<article class="rl-card nfl-card">'
+    // One-line digest carrying the two numbers worth seeing without opening a
+    // card: the spread and the total. It replaces the detail rows on a phone,
+    // where ten full cards ran 2,341px -- longer than the slate is worth
+    // scrolling past. Desktop has three columns and ignores all of this.
+    const sum = '<div class="nfl-sum">' + g.away + ' ' + signed(g.away_spread)
+      + '<span class="nf-sep">·</span>O/U ' + num(g.total)
+      + '<span class="nf-sep">·</span>' + kickoff(g.commence) + '</div>';
+    const open = state.nflOpen === g.id;
+    return '<article class="rl-card nfl-card' + (open ? ' is-open' : '')
+      + '" data-action="nfl-toggle" data-id="' + g.id + '"'
+      + ' tabindex="0" role="button" aria-expanded="' + (open ? 'true' : 'false') + '">'
       + '<div class="nfl-head"><span class="nfl-tm">' + g.away + '</span>'
-      + '<span class="nfl-at">at</span><span class="nfl-tm">' + g.home + '</span>' + srcChip + '</div>'
+      + '<span class="nfl-at">at</span><span class="nfl-tm">' + g.home + '</span>' + srcChip
+      + '<span class="nfl-chev" aria-hidden="true"></span></div>'
+      + sum
       + '<div class="nfl-when">' + kickoff(g.commence) + env + '</div>'
       + fair
       + '<div class="nfl-rows">'

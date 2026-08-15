@@ -1211,3 +1211,48 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .nfl-row { grid-template-columns:56px 1fr 1fr; gap:6px }
   .nf-p { font-size:12px }
 }
+
+/* Collapsed NFL cards on mobile.
+   Ten expanded cards ran 2,341px at 390px -- longer than a ten-game slate is
+   worth scrolling. The digest line carries the spread, the total and kickoff, so
+   the collapsed state still answers the question most people open the card for.
+   Desktop lays out three columns and has the room, so none of this applies
+   there: the .is-open class is simply ignored above 640px. */
+.nfl-chev { display:none }
+.nfl-sum { display:none }
+
+@media (max-width:640px) {
+  .nfl-card { cursor:pointer; gap:6px; position:relative }
+  .nfl-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+
+  /* Collapsed: header + digest only. */
+  .nfl-sum {
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    font-size:12.5px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+    color:var(--textDim);
+  }
+  .nfl-card .nfl-when,
+  .nfl-card .nfl-fair,
+  .nfl-card .nfl-rows { display:none }
+
+  /* Open: the digest steps aside and the full detail returns. */
+  .nfl-card.is-open .nfl-sum { display:none }
+  .nfl-card.is-open .nfl-when { display:block }
+  .nfl-card.is-open .nfl-fair { display:flex }
+  .nfl-card.is-open .nfl-rows { display:flex }
+
+  /* Affordance. Rotates when open so the card's state is readable without
+     having to compare it against its neighbours. */
+  .nfl-chev {
+    display:block; width:7px; height:7px; margin-left:8px; flex:none;
+    border-right:1.5px solid var(--textFaint); border-bottom:1.5px solid var(--textFaint);
+    transform:rotate(45deg); transform-origin:center; transition:transform .16s ease;
+  }
+  .nfl-card.is-open .nfl-chev { transform:rotate(225deg) }
+  .nfl-head { gap:6px }
+  .nfl-src { margin-left:auto }
+}
+
+@media (max-width:640px) and (prefers-reduced-motion:reduce) {
+  .nfl-chev { transition:none }
+}
