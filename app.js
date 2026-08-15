@@ -247,7 +247,8 @@
     yesterdayCard: document.getElementById('yesterdayCard'),
     slateSummary: document.getElementById('slateSummary'),
     nflBoard: document.getElementById('nflBoard'),
-    nflPreBanner: document.getElementById('nflPreBanner'),
+    nflBannerTag: document.getElementById('nflBannerTag'),
+    nflBannerBody: document.getElementById('nflBannerBody'),
     nflBoardTitle: document.getElementById('nflBoardTitle'),
     nflCount: document.getElementById('nflCount'),
     nflPostable: document.getElementById('nflPostable'),
@@ -3203,7 +3204,20 @@
     const games = d.games || [];
     const pre = d.seasonType === 'PRE';
 
-    if (el.nflPreBanner) el.nflPreBanner.hidden = !pre;
+    // Both disclosures in one block. The postable claim always applies; the
+    // grading claim only in preseason, so that sentence is added rather than a
+    // second banner being shown, and it disappears on its own in Week 1.
+    if (el.nflBannerTag) el.nflBannerTag.textContent = pre ? 'Preseason · context only' : 'Context · not plays';
+    if (el.nflBannerBody) {
+      el.nflBannerBody.innerHTML =
+        'No book quotes <b>NFL player props</b> yet, so nothing here is postable. Below is the game-line '
+        + 'read — spread, total and implied team totals — priced against the sharp pool where two or more '
+        + 'sharp books agree.'
+        + (pre
+          ? ' Preseason starters play a quarter: <b>nothing enters the public record</b>, and preseason '
+            + 'snaps and routes never reach the model’s priors.'
+          : '');
+    }
     if (el.nflBoardTitle) el.nflBoardTitle.textContent = pre ? 'Preseason Board' : 'NFL Board';
     if (el.nflCount) {
       const wk = games.find((g) => g.week != null);

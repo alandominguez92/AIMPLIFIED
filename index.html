@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board29">
+<link rel="stylesheet" href="style.css?v=board30">
 </head>
 <body>
 
@@ -132,14 +132,14 @@
        no tier filters, no track-record chip and no play/pin notes, because none
        of those would be telling the truth yet. -->
   <section id="nflBoard" hidden>
-    <div class="ctx-banner nfl-pre" id="nflPreBanner" hidden>
-      <span class="ctx-banner-tag">Preseason · not graded</span>
-      <span>Starters play a quarter. The board runs live so the pipeline is exercised against real games — <b>nothing here enters the public record</b>, and preseason snap and route data never touch the model's priors.</span>
-    </div>
-
-    <div class="ctx-banner" id="nflCtxBanner">
-      <span class="ctx-banner-tag">Context · not plays</span>
-      <span>No book is quoting <b>NFL player props</b> yet, so there is nothing to post. What follows is the game-line read — spread, total and implied team totals — priced against the sharp pool where two or more sharp books agree.</span>
+    <!-- One banner, not two. Both disclosures survive intact — nothing is
+         postable, and in preseason nothing is graded either — but they were
+         stacked blocks saying related things and cost 288px on a phone, more
+         than the ten collapsed cards below them. app.js fills both halves and
+         drops the preseason sentence once the regular season starts. -->
+    <div class="ctx-banner nfl-banner" id="nflCtxBanner">
+      <span class="ctx-banner-tag" id="nflBannerTag">Context · not plays</span>
+      <span id="nflBannerBody"></span>
     </div>
 
     <div class="sec-head">
@@ -385,6 +385,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=board29"></script>
+<script src="app.js?v=board30"></script>
 </body>
 </html>
