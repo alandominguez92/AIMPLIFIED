@@ -1361,6 +1361,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      for it rather than for a feature that does not exist yet. */
   .sec-head .all.soon-link { display:none }
 
+  /* The count qualifier goes, so the count and the tracked pill fit one line
+     instead of two. They measured 328px against 326px available -- a two-pixel
+     miss that cost the whole row. The number and noun stay; only the trailing
+     description is dropped, and it returns above 640px. */
+  .sec-head .count .gc-more { display:none }
+
   /* Buttons keep their 38px height; only the space between rows gives. */
   .board-toolbar { gap:6px; margin-bottom:12px }
   .board-controls { gap:5px 5px }

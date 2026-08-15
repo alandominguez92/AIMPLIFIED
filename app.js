@@ -1106,9 +1106,18 @@
     const live = boardHasLive();
     const modeled = boardModeled();
     const noun = isBatter() ? 'batters' : 'games';
-    el.gameCount.textContent = !live
-      ? (LIVE_MODE ? (isFeedLoading() ? 'loading tonight’s slate…' : 'no games posted yet') : `${RAW_GAMES.length} games · odds refresh :30`)
-      : (modeled ? `${getGames().length} ${noun} · model vs. live lines` : `${getGames().length} ${noun} · tonight's slate · live`);
+    // The qualifier is wrapped so CSS can drop it on a phone. At 390px the count
+    // and the tracked pill came to 328px against 326px available — they missed
+    // sharing a line by two pixels, which cost the section head a whole third
+    // row. Only literals and a number are interpolated here, so innerHTML
+    // carries nothing that could come from a feed.
+    const n = getGames().length;
+    const qualifier = modeled ? 'model vs. live lines' : 'tonight’s slate · live';
+    el.gameCount.innerHTML = !live
+      ? (LIVE_MODE
+        ? (isFeedLoading() ? 'loading tonight’s slate…' : 'no games posted yet')
+        : `${RAW_GAMES.length} games<span class="gc-more"> · odds refresh :30</span>`)
+      : `${n} ${noun}<span class="gc-more"> · ${qualifier}</span>`;
     const trackedCount = Object.keys(state.slip).length;
     el.trackedPill.textContent = `${trackedCount} tracked`;
     renderSortChips();
