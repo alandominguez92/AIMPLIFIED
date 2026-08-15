@@ -1256,3 +1256,76 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 @media (max-width:640px) and (prefers-reduced-motion:reduce) {
   .nfl-chev { transition:none }
 }
+
+/* ---------------------------------------------------------------------------
+   Collapsed board rows on mobile — all four tabs
+   ---------------------------------------------------------------------------
+   Measured at 390px before this change: batter 40 rows x 259px = 11,066px of
+   slate, roughly thirteen screens. K props 3,020px, moneyline 3,138px, run line
+   4,248px.
+
+   Nothing is deleted, only deferred. Every element hidden here returns when the
+   row is expanded, and on the three .board-row tabs the .expanded-detail panel
+   (a sibling, not a child) already carries the price read and the model-vs-
+   market table. The collapsed row is a summary of something one tap away, not a
+   shorter version of the truth.
+
+   What survives is what the row is scanned for: who, the pick, the price, the
+   edge, the tier. What defers is second-order — the game/score line, the
+   correlation badge, the model cushion sentence, the why line, the CLV movement
+   note and the fair-source label.
+
+   Scoped to 640px and below; desktop has the room and is untouched.          */
+
+/* Base state first, so the media query below can override it. Written the other
+   way round these two rules have equal specificity and the later one wins,
+   which hides the digest on the one screen it exists for. */
+.rl-sum { display:none }
+.rl-chev { display:none }
+
+@media (max-width:640px) {
+  .board-row:not(.expanded) .matchup-sub,
+  .board-row:not(.expanded) .corr-tag,
+  .board-row:not(.expanded) .bmini,
+  .board-row:not(.expanded) .bw-cush,
+  .board-row:not(.expanded) .bwhy,
+  .board-row:not(.expanded) .bk-move,
+  .board-row:not(.expanded) .fsrc { display:none }
+
+  /* Tighter shell. The row carries two lines instead of five, so the generous
+     desktop padding reads as a gap rather than as breathing room. */
+  .board-row { padding:11px 12px 12px; gap:7px 12px }
+
+  /* The chevron is the only affordance left once the sub-lines are gone, so it
+     gets a real open/closed state instead of staying a static glyph. */
+  .board-row .chevron { transition:transform .16s ease }
+  .board-row.expanded .chevron { transform:rotate(180deg) }
+
+  /* --- run line: had no expand at all, so one was added --- */
+  .rl-card { cursor:pointer }
+  .rl-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+  /* Higher specificity than the .rl-sides / .rl-status / .rl-lean rules app.js
+     injects at runtime, so this wins regardless of which stylesheet lands last. */
+  .rl-card:not(.is-open) .rl-status,
+  .rl-card:not(.is-open) .rl-sides,
+  .rl-card:not(.is-open) .rl-lean { display:none }
+
+  .rl-card:not(.is-open) .rl-sum {
+    display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+    font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+    font-size:12.5px; color:var(--textDim); margin-top:2px;
+  }
+  .rl-sumsep { color:var(--textFaint) }
+  .rl-sumv { margin-left:auto; color:var(--textFaint); letter-spacing:.06em; text-transform:uppercase; font-size:10.5px }
+
+  .rl-chev {
+    display:block; width:7px; height:7px; margin-left:8px; flex:none; align-self:center;
+    border-right:1.5px solid var(--textFaint); border-bottom:1.5px solid var(--textFaint);
+    transform:rotate(45deg); transition:transform .16s ease;
+  }
+  .rl-card.is-open .rl-chev { transform:rotate(225deg) }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .board-row .chevron, .rl-chev { transition:none }
+}

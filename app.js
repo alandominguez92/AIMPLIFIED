@@ -109,6 +109,7 @@
     sport: 'mlb',
     nfl: null,
     nflOpen: null,
+    rlOpen: null,
     theme: 'dark',
     filter: 'all',
     sortBy: 'edge',
@@ -1908,8 +1909,21 @@
         stars = `<span class="rl-stars pass">pass</span>`;
       }
 
-      return `<div class="rl-card${rl.closed ? ' closed' : ''}">
-        <div class="rl-top"><span class="rl-match">${esc(g.matchup || '—')}</span>${badge}${rl.closed ? '<span class="rl-closed">closed</span>' : ''}</div>
+      // Collapsed digest for phones. Carries both prices and the verdict word,
+      // which is what the card is read for; the full side boxes and the model
+      // sentence come back on tap. Desktop never shows it.
+      const sumSide = (s) => {
+        const pt = s.point == null ? '' : (s.point > 0 ? '+' : '') + s.point;
+        return `${esc(s.abbr || '—')} ${esc(pt)} ${esc(money(s.price))}`.replace(/\s+/g, ' ').trim();
+      };
+      const verdict = isPickCard ? 'play' : (rl.edge != null && rl.edge > 0 ? 'no play' : 'pass');
+      const rlSum = `<div class="rl-sum">${sides.map(sumSide).join('<span class="rl-sumsep">·</span>')}`
+        + `<span class="rl-sumv">${verdict}</span></div>`;
+      const rlOpen = state.rlOpen === g.id;
+      return `<div class="rl-card${rl.closed ? ' closed' : ''}${rlOpen ? ' is-open' : ''}"
+        data-action="rl-toggle" data-id="${esc(g.id)}" tabindex="0" role="button" aria-expanded="${rlOpen ? 'true' : 'false'}">
+        <div class="rl-top"><span class="rl-match">${esc(g.matchup || '—')}</span>${badge}${rl.closed ? '<span class="rl-closed">closed</span>' : ''}<span class="rl-chev" aria-hidden="true"></span></div>
+        ${rlSum}
         <div class="rl-status">${statusLine}</div>
         <div class="rl-sides">${sides.map(sideBox).join('')}</div>
         <div class="rl-lean">${lean}${stars}</div></div>`;
@@ -2992,6 +3006,12 @@
       case 'set-filter': setFilter(target.dataset.filter); break;
       case 'set-view': setView(target.dataset.view); break;
       case 'set-sport': setSport(target.dataset.sport); break;
+      case 'rl-toggle': {
+        const rid = target.dataset.id;
+        state.rlOpen = state.rlOpen === rid ? null : rid;
+        renderBoard();
+        break;
+      }
       case 'nfl-toggle': {
         const id = target.dataset.id;
         state.nflOpen = state.nflOpen === id ? null : id;
