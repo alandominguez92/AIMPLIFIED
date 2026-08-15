@@ -1258,7 +1258,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 }
 
 /* ---------------------------------------------------------------------------
-   Collapsed board rows on mobile — all four tabs
+   Collapsed board rows on small screens — all four tabs
    ---------------------------------------------------------------------------
    Measured at 390px before this change: batter 40 rows x 259px = 11,066px of
    slate, roughly thirteen screens. K props 3,020px, moneyline 3,138px, run line
@@ -1275,7 +1275,16 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    correlation badge, the model cushion sentence, the why line, the CLV movement
    note and the fair-source label.
 
-   Scoped to 640px and below; desktop has the room and is untouched.          */
+   Scoped to 900px and below, not 640. The 641-900 band was measured worse than
+   either neighbour: a batter row ran 272px at 768px, against 109px collapsed on
+   a phone and 128px on desktop. The row is wide enough there that the grid gives
+   the matchup cell and the pick span a full line each, so it stacks four deep
+   with nothing filling the space beside them. That band is iPad-portrait -- a
+   touch device -- so it wants the collapse more than a mouse does, not less.
+
+   Only THIS block moves. The phone-sizing query further down stays at 640: it
+   carries short tier labels and 10.5px type meant for a 390px screen, and
+   tablets should not inherit either.                                         */
 
 /* Base state first, so the media query below can override it. Written the other
    way round these two rules have equal specificity and the later one wins,
@@ -1283,7 +1292,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .rl-sum { display:none }
 .rl-chev { display:none }
 
-@media (max-width:640px) {
+@media (max-width:900px) {
   .board-row:not(.expanded) .matchup-sub,
   .board-row:not(.expanded) .corr-tag,
   .board-row:not(.expanded) .bmini,
