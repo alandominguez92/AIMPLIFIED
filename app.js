@@ -3326,7 +3326,9 @@
     const head = NFL_ML_COLS
       .map((c) => (c ? `<span class="col-label">${c}</span>` : '<span></span>'))
       .join('');
-    return `<div class="board" id="nflBoardWrap"><div class="board-inner">`
+    // view-moneyline carries --bcols. Without it .board-row has no column template
+    // and every cell collapses to content width -- rows went 201px instead of 97px.
+    return `<div class="board view-moneyline" id="nflBoardWrap"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map(nflRow).join('')}</div>`
       + `</div></div>`;
