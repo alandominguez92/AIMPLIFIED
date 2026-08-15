@@ -1380,3 +1380,45 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .np-proj { font-size:15px }
   .np-range, .np-usage { font-size:12px }
 }
+
+/* ---------------------------------------------------------------------------
+   Projection confidence + mobile row cap
+   ---------------------------------------------------------------------------
+   Confidence is NOT the tier chip. The MLB tier is measured against a price and
+   says how strong a play is; this says how much a projection is worth trusting.
+   Different claim, so a different component and a different palette — green
+   here would read as "our side", which is exactly what it must not mean.       */
+.conf-chip {
+  display:inline-flex; align-items:center; justify-content:center;
+  font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+  border-radius:6px; padding:4px 9px; border:1px solid var(--border);
+  color:var(--textDim); background:var(--board3);
+}
+/* Model blue, not accent and not positive: this is a statement about our own
+   estimate, and blue is the token reserved for our number. */
+.conf-chip.c1 { color:var(--model); border-color:color-mix(in srgb, var(--model) 45%, transparent) }
+.conf-chip.c2 { color:var(--textDim) }
+.conf-chip.c3 { color:var(--textFaint); border-style:dashed }
+
+/* Row cap. The list is 44 rows deep on a phone; the tail folds rather than being
+   discarded, so nothing is hidden from the reader — it just is not the first
+   thing they scroll through. Desktop shows everything. */
+.np-more {
+  display:none; width:100%; margin-top:10px; padding:11px 12px;
+  font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--textDim); background:var(--board3);
+  border:1px dashed var(--borderFaint); border-radius:10px; cursor:pointer;
+}
+.np-more:hover { color:var(--text); border-color:var(--textDim) }
+.np-more:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+
+@media (max-width:640px) {
+  .np-more { display:block }
+  /* The tail is marked at render time. nth-of-type would count expanded-detail
+     siblings too -- they are also divs -- so opening a row inside the first
+     fifteen would shift the cut by one. CSS still decides whether to hide, so
+     the cap stays resize-safe without a JS width branch. */
+  .np-rows:not(.show-all) .np-tail { display:none }
+}

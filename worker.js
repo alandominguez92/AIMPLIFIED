@@ -5154,12 +5154,41 @@ function nflNegBin(m, disp, rnd) {
   return nflPoisson(nflGamma(m / (disp - 1), disp - 1, rnd), rnd);
 }
 
+// Projection confidence, NOT a betting tier.
+//
+// With no line there is nothing to rank by value, so this ranks by how much the
+// projection can be trusted: how many events the prior rests on, how stable the
+// player's role is, and how tight the resulting distribution is. A reader should
+// be able to use it to discount a thin projection, never to size a bet.
+//
+// Named `conf` rather than `tier` throughout so it cannot be mistaken for the
+// MLB board's tier, which means something different and is measured against a
+// price. On the MLB side tiering on edge turned out not to track profit at all;
+// naming this the same thing would invite exactly that confusion.
+function nflConfidence(market, p, q) {
+  // Relative width of the 50% band. A projection whose middle half spans more
+  // than the projection itself is not a confident number, however many carries
+  // sit behind it.
+  const width = q.proj > 0 ? (q.p75 - q.p25) / q.proj : 99;
+  const events = market === 'receiving' ? p.recN : p.carN;
+  const role = market === 'receiving' ? p.rp : p.carShare;
+
+  const strongVol  = market === 'receiving' ? events >= 60 : events >= 150;
+  const mediumVol  = market === 'receiving' ? events >= 30 : events >= 70;
+  const strongRole = market === 'receiving' ? role >= 0.70 : role >= 0.45;
+  const mediumRole = market === 'receiving' ? role >= 0.55 : role >= 0.28;
+
+  if (strongVol && strongRole && width <= 1.05) return 1;
+  if (mediumVol && mediumRole && width <= 1.45) return 2;
+  return 3;
+}
+
 // GET /api/nfl-props — projections for the ingested slate.
 async function nflProps(env, url) {
   const out = { markets: ['receiving', 'rushing'], excluded: {
     passing: 'not posted — under-mean was 42.0% (2024) and 49.5% (2025); '
       + 'passing yards sum ~20 completions, so the right skew the model trades is absent',
-  }, rows: [], games: 0 };
+  }, confidenceMeans: 'how much the projection can be trusted (prior size, role stability, distribution width) — NOT value, and not a betting tier', rows: [], games: 0 };
   if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 120)); }
   try {
     const pri = await nflPriors(env);
@@ -5197,7 +5226,7 @@ async function nflProps(env, url) {
             const ypr = ((p.ypr * p.recN + 12 * pri.league.yprCohort) / (p.recN + 12)) * NFL_EFF_CAL.receiving;
             const shape = Math.max(1.2, Math.min(6, ypr / 3.2));
             const q = nflSim(teamPass * p.recShare, NFL_REC_DISP, shape, ypr / shape, 0, nflRng(seed));
-            out.rows.push({ ...nflRow(p, abbr, g, 'receiving'), ...q });
+            out.rows.push({ ...nflRow(p, abbr, g, 'receiving'), ...q, conf: nflConfidence('receiving', p, q) });
           }
           // Rushing does not. A back who never runs a route still carries the
           // ball 300 times; the rushing backtest gated on carry volume alone and
@@ -5207,7 +5236,7 @@ async function nflProps(env, url) {
             const shifted = ypc + NFL_RUSH_SHIFT;
             const shape = Math.max(1.5, Math.min(9, shifted / 1.6));
             const q = nflSim(teamRush * p.carShare, NFL_RUSH_DISP, shape, shifted / shape, NFL_RUSH_SHIFT, nflRng(seed + 7));
-            out.rows.push({ ...nflRow(p, abbr, g, 'rushing'), ...q });
+            out.rows.push({ ...nflRow(p, abbr, g, 'rushing'), ...q, conf: nflConfidence('rushing', p, q) });
           }
         }
       }

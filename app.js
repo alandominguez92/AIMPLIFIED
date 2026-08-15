@@ -112,6 +112,7 @@
     rlOpen: null,
     nflView: 'receiving',
     nflProps: null,
+    nflShowAll: false,
     theme: 'dark',
     filter: 'all',
     sortBy: 'edge',
@@ -3031,6 +3032,7 @@
         break;
       }
       case 'nfl-view': setNflView(target.dataset.nflview); break;
+      case 'nfl-showall': state.nflShowAll = !state.nflShowAll; renderNfl(); break;
       case 'nfl-toggle': {
         const id = target.dataset.id;
         state.nflOpen = state.nflOpen === id ? null : id;
@@ -3440,7 +3442,8 @@
   // line, no price, no edge and no tier, because none of those exist for a
   // market no book quotes through our feed. Inventing a tier here would be the
   // one dishonest thing this table could do.
-  const NFL_PROP_COLS = ['Player', 'Projection', '50% range', 'Median', 'Usage', '', ''];
+  const NFL_MOBILE_CAP = 15;   // rows kept on a phone before the tail is folded
+  const NFL_PROP_COLS = ['Player', 'Projection', '50% range', 'Median', 'Usage', 'Confidence', ''];
 
   async function refreshNflProps() {
     if (!LIVE_MODE) return;
@@ -3467,11 +3470,15 @@
       .join('');
     return `<div class="board view-nflprops"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
-      + `<div>${rows.map((r) => nflPropRow(r, market)).join('')}</div>`
+      + `<div class="np-rows${state.nflShowAll ? ' show-all' : ''}">${rows.map((r, i) => nflPropRow(r, market, i)).join('')}</div>`
+      + (rows.length > NFL_MOBILE_CAP
+        ? `<button class="np-more" data-action="nfl-showall">${state.nflShowAll
+            ? 'Show top ' + NFL_MOBILE_CAP : 'Show all ' + rows.length + ' players'}</button>`
+        : '')
       + `</div></div>`;
   }
 
-  function nflPropRow(r, market) {
+  function nflPropRow(r, market, i) {
     const id = r.player + '|' + r.market;
     const open = state.nflOpen === id;
     // Usage is a different measurement per market and is labelled as such rather
@@ -3479,7 +3486,9 @@
     const usage = market === 'receiving'
       ? `${r.rp}%<i class="bk-tag">routes</i>`
       : `${r.count}<i class="bk-tag">carries</i>`;
-    const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="nfl-toggle" data-id="${esc(id)}"
+    // Marked here, hidden by CSS only on a phone -- see .np-tail.
+    const tail = i >= NFL_MOBILE_CAP ? ' np-tail' : '';
+    const row = `<div class="board-row${open ? ' expanded' : ''}${tail}" data-action="nfl-toggle" data-id="${esc(id)}"
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${esc(r.player)} — toggle breakdown">
         <div class="matchup-cell">
@@ -3490,7 +3499,7 @@
         <span class="np-range">${r.p25} – ${r.p75}</span>
         <span class="interval-cell" style="color:var(--model)">${r.p50}</span>
         <span class="np-usage">${usage}</span>
-        <span class="tier-cell"><span class="ctx-chip">projection</span></span>
+        <span class="tier-cell">${confChip(r.conf)}</span>
         <span class="chevron">${open ? '▲' : '▼'}</span>
       </div>`;
     return row + (open ? nflPropDetail(r, market) : '');
@@ -3521,6 +3530,15 @@
       <div class="nfd-foot">No book quotes this market through our feed, so there is no line to price
         against — this is a projection, not a play, and nothing here is graded.</div>
     </div>`;
+  }
+
+  // Confidence chip. Deliberately not tierChip(): that renders the MLB board's
+  // T1/T2/T3, which is measured against a price and means "how strong is the
+  // play". This means "how much is the projection worth trusting", and reusing
+  // the same component would quietly merge two different claims.
+  function confChip(c) {
+    const label = c === 1 ? 'High' : c === 2 ? 'Med' : 'Low';
+    return `<span class="conf-chip c${c}" title="Projection confidence — prior size, role stability and distribution width. Not a betting tier.">${label}</span>`;
   }
 
 })();
