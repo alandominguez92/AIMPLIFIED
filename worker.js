@@ -4767,6 +4767,26 @@ async function nflIngest(env, url) {
 // The gameline pool is Pinnacle / LowVig / BetOnline. Circa is not carried by
 // the API, so the spec's third book is simply absent rather than substituted --
 // quietly swapping in a retail book would make "sharp fair" mean something else.
+// The Odds API returns full team names; every board on this site shows
+// abbreviations, and a card reading "Tampa Bay Buccaneers at New York Jets"
+// wraps to three lines on a phone. Mapped here so the abbreviation is decided
+// once, server-side, instead of in each renderer.
+const NFL_ABBR = {
+  'Arizona Cardinals': 'ARI', 'Atlanta Falcons': 'ATL', 'Baltimore Ravens': 'BAL',
+  'Buffalo Bills': 'BUF', 'Carolina Panthers': 'CAR', 'Chicago Bears': 'CHI',
+  'Cincinnati Bengals': 'CIN', 'Cleveland Browns': 'CLE', 'Dallas Cowboys': 'DAL',
+  'Denver Broncos': 'DEN', 'Detroit Lions': 'DET', 'Green Bay Packers': 'GB',
+  'Houston Texans': 'HOU', 'Indianapolis Colts': 'IND', 'Jacksonville Jaguars': 'JAX',
+  'Kansas City Chiefs': 'KC', 'Las Vegas Raiders': 'LV', 'Los Angeles Chargers': 'LAC',
+  'Los Angeles Rams': 'LA', 'Miami Dolphins': 'MIA', 'Minnesota Vikings': 'MIN',
+  'New England Patriots': 'NE', 'New Orleans Saints': 'NO', 'New York Giants': 'NYG',
+  'New York Jets': 'NYJ', 'Philadelphia Eagles': 'PHI', 'Pittsburgh Steelers': 'PIT',
+  'San Francisco 49ers': 'SF', 'Seattle Seahawks': 'SEA', 'Tampa Bay Buccaneers': 'TB',
+  'Tennessee Titans': 'TEN', 'Washington Commanders': 'WAS',
+};
+// Falls back to the full name rather than an invented abbreviation: a relocation
+// or a rename should read oddly and get fixed, not silently render as garbage.
+const nflAbbr = (n) => NFL_ABBR[n] || n || '';
 const NFL_GAMELINE_POOL = ['pinnacle', 'lowvig', 'betonlineag'];
 const NFL_EXEC = ['draftkings', 'fanduel', 'betmgm', 'betrivers', 'williamhill_us'];
 
@@ -4865,7 +4885,8 @@ async function nflBoard(env, url) {
         && Math.abs(Date.parse(`${x.d}T${x.t}:00Z`) - Date.parse(g.commence)) < 36 * 3600e3);
 
       out.games.push({
-        id: g.id, away: a, home: b, commence: g.commence, week: g.week,
+        id: g.id, away: nflAbbr(a), home: nflAbbr(b), awayFull: a, homeFull: b,
+        commence: g.commence, week: g.week,
         standalone: sg ? !!sg.standalone : null,
         roof: sg ? sg.roof : null,
         fairSrc, sharpN, fairBooks: usedBooks,

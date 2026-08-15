@@ -1124,3 +1124,90 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* ---------- Toast ---------- */
 .toast { position:fixed; left:50%; bottom:26px; transform:translate(-50%,14px); opacity:0; pointer-events:none; background:var(--card); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:9px; padding:11px 16px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:12.5px; color:var(--text); box-shadow:0 8px 28px rgba(0,0,0,.45); z-index:60; transition:opacity .2s ease, transform .2s ease; max-width:calc(100vw - 32px); }
 .toast.show { opacity:1; transform:translate(-50%,0); }
+
+/* ---------------------------------------------------------------------------
+   NFL board
+   ---------------------------------------------------------------------------
+   No new colours. Every value below is an existing token, plus the NFL-only
+   state/source/env tokens declared here. The semantic rules hold: --accent is
+   the market's number, --model is ours and never the book's, --positive is our
+   side or a locked state, --danger is an alert.                              */
+:root {
+  --stateProvisional: #6b7684;
+  --stateFirming:     #f2c34d;
+  --stateLocked:      #6fd6a2;
+  --statePulled:      #f0776b;
+  --srcSharp:         #6fd6a2;
+  --srcMkt:           #7d8796;
+  --envDome:          #7fb2f0;
+  --envWind:          #f2c34d;
+  --envCold:          #b0a4f0;
+}
+
+/* Market cards: three plays-in-waiting and one context card. The yardage
+   markets render disabled rather than hidden, so the board says what it is
+   waiting for instead of looking like it forgot them. */
+.nfl-markets { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:14px 0 16px }
+.nflm { border-radius:10px; padding:11px 12px; border:1px solid var(--border); background:var(--card) }
+.nflm-k { font-size:15px; font-weight:600; color:var(--text) }
+.nflm-t { font-size:11px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; color:var(--textFaint); letter-spacing:.06em; text-transform:uppercase; margin-top:3px }
+/* Not gold. Gold is the live market number, and these markets have no number --
+   filling them would promise a play that does not exist. */
+.nflm.is-soon { background:var(--board3); border-style:dashed; opacity:.72 }
+.nflm.is-ctx  { background:var(--board2) }
+
+.nfl-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:10px }
+.nfl-grid.is-solo { grid-template-columns:minmax(0,1fr) }
+.nfl-card { display:flex; flex-direction:column; gap:8px }
+
+.nfl-head { display:flex; align-items:center; gap:7px }
+.nfl-tm { font-size:15px; font-weight:600; color:var(--text) }
+.nfl-at { font-size:12px; color:var(--textFaint) }
+.nfl-src { margin-left:auto; font-size:10px; letter-spacing:.08em; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  border-radius:6px; padding:3px 7px; border:1px solid var(--border) }
+.nfl-src.is-sharp { color:var(--srcSharp); border-color:color-mix(in srgb, var(--srcSharp) 45%, transparent) }
+.nfl-src.is-mkt   { color:var(--srcMkt) }
+.nfl-mkt { color:var(--srcMkt); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace }
+
+.nfl-when { font-size:12px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; color:var(--textFaint) }
+.nfl-env.is-dome        { color:var(--envDome) }
+.nfl-env.is-retractable { color:var(--envCold) }
+
+/* Our number, so model blue — never used for a book's price. */
+.nfl-fair { display:flex; align-items:center; gap:6px; font-size:13px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace }
+.nfl-fair .nf-v { color:var(--model) }
+.nfl-fair .nf-sep { color:var(--textFaint) }
+
+.nfl-rows { display:flex; flex-direction:column; gap:5px; border-top:1px solid var(--borderSoft); padding-top:9px }
+.nfl-row { display:grid; grid-template-columns:64px 1fr 1fr; gap:8px; align-items:baseline }
+.nf-k { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--textFaint); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace }
+.nf-p { font-size:13px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; color:var(--text) }
+.nf-p i { font-style:normal; font-size:10px; color:var(--textFaint); margin-left:5px }
+
+/* Standalone-game strip — Wed / Thu / SNF / MNF, 81 of 272 games. */
+.nfl-strip { margin-bottom:12px }
+.nfs { border:1px solid var(--borderFaint); background:var(--board2); border-radius:12px; padding:13px 15px }
+.nfs-t { font-family:var(--display); font-size:21px; font-weight:700; color:var(--text); letter-spacing:.01em }
+.nfs-t span { color:var(--textFaint); font-size:14px; padding:0 4px }
+.nfs-g { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-top:11px }
+.nfs-g div { display:flex; flex-direction:column; gap:3px }
+.nfs-g span { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--textFaint); font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace }
+.nfs-g b { font-size:16px; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; color:var(--text); font-weight:600 }
+
+/* Empty board. A designed, reachable state -- not an accident. */
+.nfl-empty { border:1px dashed var(--borderFaint); border-radius:12px; padding:26px 18px; text-align:center; background:var(--board3) }
+.nfe-k { font-family:var(--display); font-size:22px; font-weight:700; color:var(--text) }
+.nfe-d { font-size:13px; color:var(--textDim); margin-top:7px; line-height:1.55; max-width:46ch; margin-left:auto; margin-right:auto }
+
+.nfl-foot { font-size:12px; color:var(--textFaint); line-height:1.6; margin-top:12px }
+.ctx-banner.nfl-pre .ctx-banner-tag { color:var(--accent) }
+
+@media (max-width:640px) {
+  .nfl-markets { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px }
+  .nflm { padding:9px 10px }
+  .nflm-k { font-size:13px }
+  .nfl-grid { grid-template-columns:minmax(0,1fr) }
+  .nfs-g { grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .nfl-row { grid-template-columns:56px 1fr 1fr; gap:6px }
+  .nf-p { font-size:12px }
+}

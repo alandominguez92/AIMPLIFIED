@@ -106,6 +106,8 @@
   // ---------------------------------------------------------------------
 
   const state = {
+    sport: 'mlb',
+    nfl: null,
     theme: 'dark',
     filter: 'all',
     sortBy: 'edge',
@@ -243,6 +245,15 @@
     injuryBar: document.getElementById('injuryBar'),
     yesterdayCard: document.getElementById('yesterdayCard'),
     slateSummary: document.getElementById('slateSummary'),
+    nflBoard: document.getElementById('nflBoard'),
+    nflPreBanner: document.getElementById('nflPreBanner'),
+    nflBoardTitle: document.getElementById('nflBoardTitle'),
+    nflCount: document.getElementById('nflCount'),
+    nflPostable: document.getElementById('nflPostable'),
+    nflGrid: document.getElementById('nflGrid'),
+    nflStrip: document.getElementById('nflStrip'),
+    nflEmpty: document.getElementById('nflEmpty'),
+    nflFoot: document.getElementById('nflFoot'),
     liveNowSection: document.getElementById('liveNow'),
     liveNowGrid: document.getElementById('liveNowGrid'),
     liveNowNote: document.getElementById('liveNowNote'),
@@ -2978,6 +2989,7 @@
       case 'toggle-theme': toggleTheme(); break;
       case 'set-filter': setFilter(target.dataset.filter); break;
       case 'set-view': setView(target.dataset.view); break;
+      case 'set-sport': setSport(target.dataset.sport); break;
       case 'set-sort': setSort(target.dataset.sort); break;
       case 'toggle-compare-mode': toggleCompareMode(); break;
       case 'toggle-hitter-compare-mode': toggleHitterCompareMode(); break;
@@ -3131,4 +3143,146 @@
 
   el.searchInput.value = state.searchQuery;
   renderAll();
+
+  // -------------------------------------------------------------------------
+  // NFL — game-line context board
+  // -------------------------------------------------------------------------
+  // Sections that belong to the MLB product. Switching sport hides them rather
+  // than trying to make them sport-agnostic: the hero argues the batter-unders
+  // thesis and the track record is an MLB record, so showing either under an NFL
+  // tab would be a claim we have not earned.
+  const MLB_ONLY = ['.hero', '#liveNow', '#slate', '#slipSection', '#record'];
+
+  function setSport(s) {
+    if (state.sport === s) return;
+    state.sport = s;
+    document.querySelectorAll('.stab[data-sport]').forEach((t) =>
+      t.classList.toggle('active', t.dataset.sport === s));
+    const nfl = s === 'nfl';
+    for (const sel of MLB_ONLY) {
+      const n = document.querySelector(sel);
+      if (n) n.hidden = nfl;
+    }
+    if (el.nflBoard) el.nflBoard.hidden = !nfl;
+    if (el.slateSummary && nfl) el.slateSummary.hidden = true;
+    if (nfl && !state.nfl) refreshNfl();          // lazy first load
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function refreshNfl() {
+    if (!LIVE_MODE) return;
+    try {
+      const d = await fetchJson('/api/nfl-board');
+      state.nfl = (d && Array.isArray(d.games)) ? d : { games: [], empty: true };
+    } catch (e) {
+      state.nfl = { games: [], empty: true, error: 'unreachable' };
+    }
+    renderNfl();
+  }
+
+  const AM = (n) => (n == null ? '—' : (n > 0 ? '+' + n : String(n)));
+  const BOOK_LABEL = {
+    draftkings: 'DK', fanduel: 'FD', betmgm: 'MGM', betrivers: 'BR',
+    williamhill_us: 'CZR', pinnacle: 'PIN', lowvig: 'LV', betonlineag: 'BOL',
+    novig: 'NOVIG', prophetx: 'PX',
+  };
+  const bkLabel = (k) => BOOK_LABEL[k] || (k || '').toUpperCase();
+  const num = (v) => (v == null ? '—' : String(v));
+  const signed = (v) => (v == null ? '—' : (v > 0 ? '+' + v : String(v)));
+
+  function renderNfl() {
+    const d = state.nfl;
+    if (!d || !el.nflGrid) return;
+    const games = d.games || [];
+    const pre = d.seasonType === 'PRE';
+
+    if (el.nflPreBanner) el.nflPreBanner.hidden = !pre;
+    if (el.nflBoardTitle) el.nflBoardTitle.textContent = pre ? 'Preseason Board' : 'NFL Board';
+    if (el.nflCount) {
+      const wk = games.find((g) => g.week != null);
+      el.nflCount.textContent = games.length
+        ? games.length + ' game' + (games.length === 1 ? '' : 's')
+          + (wk ? ' · week ' + wk.week : '') + ' · game lines only'
+        : '';
+    }
+    // Read from the payload, never inferred from the row count. A board full of
+    // context rows still posts nothing, and the chip has to say so.
+    if (el.nflPostable) el.nflPostable.textContent = (d.postable || 0) + ' postable';
+
+    if (el.nflEmpty) el.nflEmpty.hidden = games.length > 0;
+    el.nflGrid.innerHTML = games.map(nflCard).join('');
+
+    // Standalone-game strip: when one game owns its kickoff window it gets the
+    // wide treatment instead of being a lone card in a grid built for many.
+    const solo = games.length === 1 || (games.length > 0 && games.every((g) => g.standalone));
+    if (el.nflStrip) {
+      el.nflStrip.hidden = !solo || games.length === 0;
+      if (solo && games.length) el.nflStrip.innerHTML = nflStrip(games[0]);
+    }
+    el.nflGrid.classList.toggle('is-solo', solo && games.length === 1);
+
+    if (el.nflFoot) {
+      const mkt = games.filter((g) => g.fairSrc === 'MKT').length;
+      el.nflFoot.innerHTML = games.length
+        ? 'Fair from the sharp pool (Pinnacle · LowVig · BetOnline), Shin de-vigged, <b>two books minimum</b>. '
+          + mkt + ' of ' + games.length + ' game' + (games.length === 1 ? '' : 's')
+          + ' did not clear that bar and show as <span class="nfl-mkt">MKT</span> — market price only, no fair line.'
+          + (d.asOf ? ' Lines as of ' + new Date(d.asOf).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '.' : '')
+        : '';
+    }
+  }
+
+  function kickoff(iso) {
+    if (!iso) return '';
+    const t = new Date(iso);
+    if (isNaN(t)) return '';
+    return t.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  }
+
+  function nflCard(g) {
+    const isMkt = g.fairSrc === 'MKT';
+    // Model blue is reserved for our number. An MKT row has no fair line, so it
+    // gets the muted source chip instead — colouring a market price as if it
+    // were our projection is the one mistake this palette must not make.
+    const srcChip = isMkt
+      ? '<span class="nfl-src is-mkt" title="fewer than two sharp books quoted this game">MKT</span>'
+      : '<span class="nfl-src is-sharp" title="' + (g.fairBooks || []).map(bkLabel).join(' · ')
+        + '">SHARP ' + g.sharpN + '</span>';
+    const fair = isMkt ? ''
+      : '<div class="nfl-fair"><span class="nf-k">fair</span>'
+        + '<span class="nf-v">' + g.away + ' ' + g.away_fair + '%</span><span class="nf-sep">·</span>'
+        + '<span class="nf-v">' + g.home + ' ' + g.home_fair + '%</span></div>';
+    const env = (g.roof && g.roof !== 'outdoors')
+      ? ' · <span class="nfl-env is-' + g.roof + '">' + g.roof + '</span>' : '';
+    return '<article class="rl-card nfl-card">'
+      + '<div class="nfl-head"><span class="nfl-tm">' + g.away + '</span>'
+      + '<span class="nfl-at">at</span><span class="nfl-tm">' + g.home + '</span>' + srcChip + '</div>'
+      + '<div class="nfl-when">' + kickoff(g.commence) + env + '</div>'
+      + fair
+      + '<div class="nfl-rows">'
+      + '<div class="nfl-row"><span class="nf-k">ML</span>'
+      + '<span class="nf-p">' + g.away + ' ' + AM(g.away_price) + '<i>' + bkLabel(g.away_book) + '</i></span>'
+      + '<span class="nf-p">' + g.home + ' ' + AM(g.home_price) + '<i>' + bkLabel(g.home_book) + '</i></span></div>'
+      + '<div class="nfl-row"><span class="nf-k">Spread</span>'
+      + '<span class="nf-p">' + g.away + ' ' + signed(g.away_spread) + '</span>'
+      + '<span class="nf-p">Total ' + num(g.total) + '</span></div>'
+      + '<div class="nfl-row"><span class="nf-k">Implied</span>'
+      + '<span class="nf-p">' + g.away + ' ' + num(g.away_implied) + '</span>'
+      + '<span class="nf-p">' + g.home + ' ' + num(g.home_implied) + '</span></div>'
+      + '</div></article>';
+  }
+
+  function nflStrip(g) {
+    const cell = (k, v) => '<div><span>' + k + '</span><b>' + v + '</b></div>';
+    return '<div class="nfs">'
+      + '<div class="nfs-t">' + g.away + ' <span>at</span> ' + g.home + '</div>'
+      + '<div class="nfs-g">'
+      + cell('Spread', g.away + ' ' + signed(g.away_spread))
+      + cell('Total', num(g.total))
+      + cell('Implied ' + g.away, num(g.away_implied))
+      + cell('Implied ' + g.home, num(g.home_implied))
+      + cell('Plays', '0')
+      + '</div></div>';
+  }
+
 })();
