@@ -5100,7 +5100,8 @@ const NFL_RUSH_DISP = 2.6;      // carries swing on game script far more
 const NFL_RUSH_SHIFT = 3;       // a carry can lose yards; gamma cannot go negative
 const NFL_PACE_COEF = 0.006;    // plays per point of total
 const NFL_SCRIPT_COEF = 0.0075; // pass rate per point of spread
-const NFL_MIN_RP = 0.5;         // participation gate
+const NFL_MIN_RP = 0.5;         // participation gate — RECEIVING only
+const NFL_MIN_CARRIES = 20;     // rushing gate: volume, not routes
 const NFL_DRAWS = 400;          // enough for the quantiles reported; see nflPropsCost
 
 let NFL_PRIORS = null;
@@ -5174,7 +5175,6 @@ async function nflProps(env, url) {
       // Week-1 carry-over rule: only a player still on the team he earned the
       // prior with is eligible. Movers and rookies wait for current-season reps.
       if (p.status !== 'same-team') continue;
-      if (p.rp < NFL_MIN_RP) continue;
       (byTeam[p.tm26 || p.tm] = byTeam[p.tm26 || p.tm] || []).push({ pid, ...p });
     }
 
@@ -5192,13 +5192,17 @@ async function nflProps(env, url) {
         for (const p of roster) {
           const seed = (p.pid.length * 7919 + abbr.charCodeAt(0) * 104729 + Math.round(g.total * 10)) | 0;
 
-          if (p.recN >= 12) {
+          // Receiving carries the route-participation gate, as backtested.
+          if (p.recN >= 12 && p.rp >= NFL_MIN_RP) {
             const ypr = ((p.ypr * p.recN + 12 * pri.league.yprCohort) / (p.recN + 12)) * NFL_EFF_CAL.receiving;
             const shape = Math.max(1.2, Math.min(6, ypr / 3.2));
             const q = nflSim(teamPass * p.recShare, NFL_REC_DISP, shape, ypr / shape, 0, nflRng(seed));
             out.rows.push({ ...nflRow(p, abbr, g, 'receiving'), ...q });
           }
-          if (p.carN >= 20) {
+          // Rushing does not. A back who never runs a route still carries the
+          // ball 300 times; the rushing backtest gated on carry volume alone and
+          // this must match it or the deployed model is not the validated one.
+          if (p.carN >= NFL_MIN_CARRIES) {
             const ypc = ((p.ypc * p.carN + 15 * pri.league.ypcCohort) / (p.carN + 15)) * NFL_EFF_CAL.rushing;
             const shifted = ypc + NFL_RUSH_SHIFT;
             const shape = Math.max(1.5, Math.min(9, shifted / 1.6));
