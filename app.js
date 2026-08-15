@@ -3276,7 +3276,6 @@
       el.nflStrip.hidden = !solo || games.length === 0;
       if (solo && games.length) el.nflStrip.innerHTML = nflStrip(games[0]);
     }
-    el.nflGrid.classList.toggle('is-solo', solo && games.length === 1);
 
     if (el.nflFoot) {
       const mkt = games.filter((g) => g.fairSrc === 'MKT').length;
