@@ -1136,7 +1136,14 @@
     const qualifier = modeled ? 'model vs. live lines' : 'tonight’s slate · live';
     el.gameCount.innerHTML = !live
       ? (LIVE_MODE
-        ? (isFeedLoading() ? 'loading tonight’s slate…' : 'no games posted yet')
+        ? (isFeedLoading()
+          ? 'loading tonight’s slate…'
+          // "no games posted yet" was false whenever games existed but carried no
+          // battable lines — fifteen on the board and the header said none.
+          : slateGames().length
+            ? `${slateGames().length} game${slateGames().length === 1 ? '' : 's'}`
+              + `<span class="gc-more"> · ${slateStarted() ? 'underway — no lines up' : 'no lines up yet'}</span>`
+            : 'no games posted yet')
         : `${RAW_GAMES.length} games<span class="gc-more"> · odds refresh :30</span>`)
       : `${n} ${noun}<span class="gc-more"> · ${qualifier}</span>`;
     const trackedCount = Object.keys(state.slip).length;
@@ -1352,6 +1359,19 @@
   // Honest empty-state copy for the board — distinguishes "still loading",
   // "no two-way lines posted yet", "genuinely no games tonight", and
   // "filter/search hid everything".
+  // Has tonight's slate already started? Games exist and none is still a Preview.
+  // Separates "lines are not up YET" from "lines are gone" — identical from an
+  // empty board, completely different to a reader. The run line already drew this
+  // distinction; the batter board did not, so at 3pm on a Sunday it was telling
+  // people to check back closer to first pitch while seven games were final.
+  function slateGames() {
+    return boardIsLive() ? (state.liveBoard || []) : [];
+  }
+  function slateStarted() {
+    const rows = slateGames();
+    return rows.length > 0 && rows.every((g) => g.status === 'Live' || g.status === 'Final');
+  }
+
   function emptyBoardMessage() {
     if (isFeedLoading()) return `Loading tonight’s ${isBatter() ? 'batter props' : 'slate'}…`;
     // Batters get their own line because "no props" reads as broken when a book
@@ -1361,16 +1381,19 @@
     // side we play. We never request the milestone keys, so this describes what
     // books usually do rather than claiming to have checked what is up now.
     if (LIVE_MODE && !boardHasLive()) {
-      return isBatter()
-        ? 'No two-way batter lines posted yet — books put the milestone markets (“2+ Total Bases”) up first, and those quote only the over. Pricing a fair number needs both sides. Check back closer to first pitch.'
+      if (isBatter()) {
+        return slateStarted()
+          ? 'Batter market closed — tonight’s games are underway or final, so books have pulled the props. Lines return before first pitch tomorrow.'
+          : 'No two-way batter lines posted yet — books put the milestone markets (“2+ Total Bases”) up first, and those quote only the over. Pricing a fair number needs both sides. Check back closer to first pitch.';
+      }
+      return slateStarted()
+        ? 'Tonight’s games are underway — the board returns with tomorrow’s slate.'
         : 'No games on tonight’s board yet.';
     }
     if (state.searchQuery.trim()) return 'No games match your search.';
     // Run Line depends on sportsbooks posting spreads — often later than K props.
     if (isRL() && state.filter === 'all') {
-      const rows = boardIsLive() ? (state.liveBoard || []) : [];
-      const allStarted = rows.length && rows.every((g) => g.status === 'Live' || g.status === 'Final');
-      return allStarted
+      return slateStarted()
         ? 'Run line market closed — tonight’s games are underway. Spreads return before first pitch tomorrow.'
         : 'No run lines posted yet — spreads usually go up closer to first pitch. Check back soon.';
     }
@@ -2551,18 +2574,24 @@
     return `Casual money pounds the over on a name like ${esc(f.name)}, so the book sets this line high. The model projects <b>${f.projVal} ${esc(propLabel.toLowerCase())}</b>${cushion > 0 ? `, a <b>${cushion}</b> cushion under the ${esc(String(f.line))} line` : `, right at the ${esc(String(f.line))} line`}. That gap is the <b>+${f.edge}%</b> edge vs. the sharp fair line.`;
   }
 
+  // Four states, not three. 'closed' was previously folded into 'nolines', so a
+  // finished slate said "Waiting on Tonight's Lines" — waiting on something that
+  // had already been and gone.
+  const HERO_PLACEHOLDER = {
+    loading: ['Loading tonight’s fades…', 'Tonight’s Slate',
+      'Pulling tonight’s batter props, model projections, and DK/FD lines…'],
+    nolines: ['Lines Pending', 'Waiting on Tonight’s Lines',
+      'Books haven’t posted two-way batter lines yet. The milestone markets (“2+ Total Bases”) usually go up first, but those quote only the over — we need both sides to strip the vig and find a fair number. Nothing to price until then.'],
+    closed: ['Market Closed', 'Tonight’s Games Are Underway',
+      'Books pull batter props once a game starts, so there is nothing left to price tonight. The board returns with tomorrow’s slate — the graded record below does not move in the meantime.'],
+    none: ['Tonight’s Fades', 'No Fade Meets the Bar Tonight',
+      'No batter under clears the bar tonight — so we post nothing. The projections are on the board below; we only lead with a fade when the price is better than the model thinks the outcome is worth.'],
+  };
   function renderHeroPlaceholder(kind) {
-    el.heroEyebrow.textContent = kind === 'loading' ? 'Loading tonight’s fades…'
-      : kind === 'nolines' ? 'Lines Pending' : 'Tonight’s Fades';
-    el.heroTitle.innerHTML = kind === 'loading' ? 'Tonight’s Slate'
-      : kind === 'nolines' ? 'Waiting on Tonight’s Lines' : 'No Fade Meets the Bar Tonight';
-    el.heroDuel.innerHTML = `<div class="hero-empty"><p>${
-      kind === 'loading'
-        ? 'Pulling tonight’s batter props, model projections, and DK/FD lines…'
-        : kind === 'nolines'
-        ? 'Books haven’t posted two-way batter lines yet. The milestone markets (“2+ Total Bases”) usually go up first, but those quote only the over — we need both sides to strip the vig and find a fair number. Nothing to price until then.'
-        : 'No batter under clears our edge threshold tonight — so we post nothing. The projections are on the board below; we only lead with a fade when the gap is real.'
-    }</p></div>`;
+    const [eyebrow, title, body] = HERO_PLACEHOLDER[kind] || HERO_PLACEHOLDER.none;
+    el.heroEyebrow.textContent = eyebrow;
+    el.heroTitle.innerHTML = title;
+    el.heroDuel.innerHTML = `<div class="hero-empty"><p>${body}</p></div>`;
   }
 
   // HERO — tonight's sharpest batter-under fade. Auto-selects the highest-edge
@@ -2573,7 +2602,9 @@
     if (batters === null) { renderHeroPlaceholder('loading'); return; }
     // Empty array = nothing was priced at all (no two-way lines), which is a
     // different story from a full slate where no under cleared the bar.
-    if (!batters.length) { renderHeroPlaceholder('nolines'); return; }
+    // No batter rows means one of two very different things: the books have not
+    // posted yet, or they have already pulled. The slate itself says which.
+    if (!batters.length) { renderHeroPlaceholder(slateStarted() ? 'closed' : 'nolines'); return; }
     const qualifies = (g) => g.side === 'Under' && g.odds != null && g.line != null
       && typeof g.projVal === 'number' && isPlayTier(g.tier);
     const unders = batters.filter(qualifies);
