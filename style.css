@@ -1221,8 +1221,6 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Base state first, so the media query below can override it. Written the other
    way round these two rules have equal specificity and the later one wins,
    which hides the digest on the one screen it exists for. */
-.rl-sum { display:none }
-.rl-chev { display:none }
 
 @media (max-width:900px) {
   .board-row:not(.expanded) .matchup-sub,
@@ -1242,33 +1240,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-row .chevron { transition:transform .16s ease }
   .board-row.expanded .chevron { transform:rotate(180deg) }
 
-  /* --- run line: had no expand at all, so one was added --- */
-  .rl-card { cursor:pointer }
-  .rl-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
-  /* Higher specificity than the .rl-sides / .rl-status / .rl-lean rules app.js
-     injects at runtime, so this wins regardless of which stylesheet lands last. */
-  .rl-card:not(.is-open) .rl-status,
-  .rl-card:not(.is-open) .rl-sides,
-  .rl-card:not(.is-open) .rl-lean { display:none }
-
-  .rl-card:not(.is-open) .rl-sum {
-    display:flex; align-items:center; gap:7px; flex-wrap:wrap;
-    font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
-    font-size:12.5px; color:var(--textDim); margin-top:2px;
-  }
-  .rl-sumsep { color:var(--textFaint) }
-  .rl-sumv { margin-left:auto; color:var(--textFaint); letter-spacing:.06em; text-transform:uppercase; font-size:10.5px }
-
-  .rl-chev {
-    display:block; width:7px; height:7px; margin-left:8px; flex:none; align-self:center;
-    border-right:1.5px solid var(--textFaint); border-bottom:1.5px solid var(--textFaint);
-    transform:rotate(45deg); transition:transform .16s ease;
-  }
-  .rl-card.is-open .rl-chev { transform:rotate(225deg) }
 }
 
 @media (prefers-reduced-motion:reduce) {
-  .board-row .chevron, .rl-chev { transition:none }
+  .board-row .chevron { transition:none }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1436,3 +1411,27 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   #boardRows:not(.show-pass) .bp-pass { display:none }
   #boardRows:not(.show-pass) .bp-pass + .expanded-detail { display:none }
 }
+
+/* ---------------------------------------------------------------------------
+   Run line as a table
+   ---------------------------------------------------------------------------
+   Was the last card-based view, at 220px a row against 81px everywhere else.
+   The data was always table-shaped — two sides, a price, a fair cover percentage
+   and a verdict — so the cards were buying height without buying information.
+
+   These few rules replace the ~36-line stylesheet app.js used to inject at
+   runtime for the cards; everything else comes from the shared .board-row.     */
+.board.view-runline { --bcols:1.7fr 1fr .9fr 1fr .9fr 76px 34px; }
+
+/* Verdict marks inside the expanded panel. Green only when the model actually
+   backs the side — a value figure the model declines is not "our side". */
+.rl-ok { color:var(--positive); font-weight:700 }
+.rl-no { color:var(--textFaint); font-weight:700 }
+.rl-cov { font-size:10px; color:var(--textFaint); letter-spacing:.06em }
+
+/* A closed line is shown but not bettable, so it reads back rather than gone. */
+.rl-closed {
+  margin-left:7px; font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--textFaint); border:1px solid var(--border); border-radius:5px; padding:2px 6px;
+}
+.board-row.rl-closed-row { opacity:.72 }

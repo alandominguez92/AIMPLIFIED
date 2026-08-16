@@ -109,7 +109,6 @@
     sport: 'mlb',
     nfl: null,
     nflOpen: null,
-    rlOpen: null,
     nflView: 'receiving',
     nflProps: null,
     nflShowAll: false,
@@ -1320,6 +1319,8 @@
       ? ['Batter', 'The fade · model vs line', 'Price · DK/FD', 'Edge · vs sharp fair', 'Model P(under)', 'Tier', '']
       : isML()
         ? ['Matchup', 'Team to win', 'Moneyline', 'Line value', 'Win Prob', '', '']
+        : isRL()
+          ? ['Matchup', 'Value side', 'Run line', 'Edge', 'Cover %', '', '']
         : ['Matchup', 'Model lean', 'Price · DK/FD', 'Edge', '80% Interval', '', ''];
     el.boardHead.innerHTML = cols.map((c) => c ? `<span class="col-label">${c}</span>` : '<span></span>').join('');
   }
@@ -1511,17 +1512,20 @@
     // place so they can never fall out of step.
     const boardWrap = document.getElementById('boardWrap');
     if (boardWrap) boardWrap.className = 'board view-' + state.boardView;
-    if (isRL()) {
-      if (el.boardHead) el.boardHead.style.display = 'none';
-      if (boardWrap) { boardWrap.style.border = 'none'; boardWrap.style.background = 'none'; }
-      if (el.pinNote) el.pinNote.hidden = true;
-      el.boardRows.innerHTML = renderRunlineCards(games);
-      return;
-    }
     if (el.boardHead) el.boardHead.style.display = '';
     if (boardWrap) { boardWrap.style.border = ''; boardWrap.style.background = ''; }
     renderBoardHead();
-    if (el.pinNote) el.pinNote.hidden = !getGames().some((g) => Array.isArray(g.oddsBooks) && g.oddsBooks.length);
+    // The run line has no DK/FD price of its own to pin, so the note stays off
+    // there even though it is now a table like the rest.
+    if (el.pinNote) el.pinNote.hidden = isRL()
+      || !getGames().some((g) => Array.isArray(g.oddsBooks) && g.oddsBooks.length);
+
+    if (isRL()) {
+      el.boardRows.innerHTML = renderRunlineRows(games);
+      el.boardRows.className = '';
+      if (el.passMore) el.passMore.hidden = true;
+      return;
+    }
 
     el.boardRows.innerHTML = games.map((g) => {
       const ml = g.ml || {};
@@ -1844,124 +1848,9 @@
   // de-vigged run line) is the Pick, and it only lights up when the win% model
   // agrees the game breaks that way; otherwise the card sits under the Pass tab.
   // Styles are injected once so style.css stays untouched.
-  function ensureRlStyle() {
-    if (document.getElementById('rl-style')) return;
-    const s = document.createElement('style');
-    s.id = 'rl-style';
-    s.textContent = `
-      .rl-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-      @media(max-width:680px){.rl-grid{grid-template-columns:1fr;}}
-      .rl-card{border:1px solid var(--border);border-radius:12px;background:var(--board3,#0C1A26);padding:16px 17px;}
-      .rl-card.closed{opacity:.72;}
-      .rl-card.closed .rl-side{background:var(--board2);}
-      .rl-closed{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--textDim);border:1px solid var(--border);border-radius:4px;padding:1px 6px;}
-      .rl-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:3px;flex-wrap:wrap;}
-      .rl-match{font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:700;font-size:17px;letter-spacing:.01em;}
-      .rl-edge{font-family:ui-monospace,monospace;font-size:12px;color:var(--positive);}
-      .rl-edge.pass{color:var(--textDim);}
-      .rl-status{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);margin-bottom:13px;}
-      .rl-live{color:var(--danger);}
-      .rl-sides{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-      .rl-side{border:1px solid var(--border);border-radius:9px;padding:11px 13px;background:var(--board,#10202F);position:relative;}
-      .rl-lbl{font-family:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:700;font-size:15px;}
-      .rl-prc{font-family:ui-monospace,monospace;font-size:13px;color:var(--textDim);margin-top:2px;}
-      .rl-cov{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);margin-top:5px;}
-      .rl-side.pick{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--board,#10202F));}
-      .rl-side.pick .rl-lbl{color:var(--accent);}
-      .rl-side.pick .rl-prc{color:var(--text);}
-      .rl-tag{position:absolute;top:-8px;right:10px;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#10202F;border-radius:99px;padding:1px 7px;font-weight:700;}
-      .rl-lean{display:flex;align-items:center;gap:7px;margin-top:12px;font-family:ui-monospace,monospace;font-size:11.5px;flex-wrap:wrap;}
-      .rl-ok{color:var(--positive);}
-      .rl-no{color:var(--danger);}
-      .rl-dim{color:var(--textDim);}
-      .rl-dim b{color:var(--text);}
-      .rl-nolabel{color:var(--danger)!important;}
-      .rl-stars{margin-left:auto;color:var(--accent);letter-spacing:1px;font-size:11px;white-space:nowrap;}
-      .rl-stars.pass{color:var(--textDim);letter-spacing:0;}`;
-    document.head.appendChild(s);
-  }
 
-  function renderRunlineCards(games) {
-    ensureRlStyle();
-    const money = (v) => v == null ? '—' : (v > 0 ? '+' + v : String(v));
-    return `<div class="rl-grid">${games.map((g) => {
-      const rl = g.rl || {};
-      const isPickCard = typeof rl.tier === 'number' && rl.modelAgrees;
 
-      // Two sides, favorite (−1.5) first.
-      const sideObj = (abbr, point, price, cover) => ({ abbr, point, price, cover, pick: isPickCard && abbr === rl.teamAbbr });
-      const sides = [
-        sideObj(rl.homeAbbr, rl.homePoint, rl.homePrice, rl.homeCoverPct),
-        sideObj(rl.awayAbbr, rl.awayPoint, rl.awayPrice, rl.awayCoverPct),
-      ].sort((a, b) => (a.point ?? 0) - (b.point ?? 0));
-      const sideBox = (s) => {
-        const ptStr = s.point == null ? '' : (s.point > 0 ? '+' : '') + s.point;
-        const cov = s.cover == null ? '' : `fair ${s.cover}%${s.pick ? ' ✓' : ''}`;
-        return `<div class="rl-side${s.pick ? ' pick' : ''}">${s.pick ? '<span class="rl-tag">Pick</span>' : ''}
-          <div class="rl-lbl">${esc(s.abbr || '—')} ${esc(ptStr)}</div>
-          <div class="rl-prc">${esc(money(s.price))}</div>
-          <div class="rl-cov">${esc(cov)}</div></div>`;
-      };
 
-      // Status / score line (matchup is "AWAY @ HOME", score is "away-home").
-      const parts = (g.matchup || ' @ ').split(' @ ');
-      const awayT = parts[0] || '', homeT = parts[1] || '';
-      let statusLine;
-      if ((g.status === 'Live' || g.status === 'Final') && g.score && g.score.includes('-')) {
-        const sc = g.score.split('-');
-        const tag = g.status === 'Live' ? '<span class="rl-live">● Live</span>' : 'Final';
-        statusLine = `${tag} · ${esc(awayT)} ${esc(sc[0])} – ${esc(homeT)} ${esc(sc[1])}`;
-      } else {
-        statusLine = `${esc(g.timeLabel || 'TBD')} · scheduled`;
-      }
-
-      let badge = '';
-      if (isPickCard && rl.edge != null) badge = `<span class="rl-edge">+${rl.edge}% edge</span>`;
-      else if (rl.edge != null && rl.edge > 0) badge = `<span class="rl-edge pass">+${rl.edge}% value</span>`;
-
-      // Model-lean line — the filter, shown explicitly.
-      const pickModelWin = (rl.teamAbbr && rl.teamAbbr === rl.modelFavAbbr)
-        ? rl.modelFavPct : (rl.modelFavPct != null ? 100 - rl.modelFavPct : null);
-      let lean, stars;
-      if (isPickCard) {
-        const backs = rl.side === 'fav' ? 'backs the −1.5' : 'backs the +1.5';
-        const verb = rl.side === 'fav'
-          ? `likes <b>${esc(rl.teamAbbr)}</b> to win (${pickModelWin}%)`
-          : `gives <b>${esc(rl.teamAbbr)}</b> a live ${pickModelWin}%`;
-        lean = `<span class="rl-ok">✓</span> <span class="rl-dim">model ${verb} — ${backs}</span>`;
-        stars = `<span class="rl-stars">${tierChip(rl.tier)}</span>`;
-      } else if (rl.edge != null && rl.edge > 0) {
-        const ptStr = rl.point != null ? (rl.point > 0 ? '+' : '') + rl.point : '';
-        lean = `<span class="rl-no">✕</span> <span class="rl-dim">value on <b>${esc(rl.teamAbbr || '')} ${esc(ptStr)}</b>, model has it ${pickModelWin}% — <b class="rl-nolabel">no play</b></span>`;
-        stars = `<span class="rl-stars pass">pass</span>`;
-      } else if (rl.fairSource !== 'pinnacle') {
-        lean = `<span class="rl-dim">no sharp run line posted yet</span>`;
-        stars = `<span class="rl-stars pass">—</span>`;
-      } else {
-        lean = `<span class="rl-dim">no value vs Pinnacle's fair</span>`;
-        stars = `<span class="rl-stars pass">pass</span>`;
-      }
-
-      // Collapsed digest for phones. Carries both prices and the verdict word,
-      // which is what the card is read for; the full side boxes and the model
-      // sentence come back on tap. Desktop never shows it.
-      const sumSide = (s) => {
-        const pt = s.point == null ? '' : (s.point > 0 ? '+' : '') + s.point;
-        return `${esc(s.abbr || '—')} ${esc(pt)} ${esc(money(s.price))}`.replace(/\s+/g, ' ').trim();
-      };
-      const verdict = isPickCard ? 'play' : (rl.edge != null && rl.edge > 0 ? 'no play' : 'pass');
-      const rlSum = `<div class="rl-sum">${sides.map(sumSide).join('<span class="rl-sumsep">·</span>')}`
-        + `<span class="rl-sumv">${verdict}</span></div>`;
-      const rlOpen = state.rlOpen === g.id;
-      return `<div class="rl-card${rl.closed ? ' closed' : ''}${rlOpen ? ' is-open' : ''}"
-        data-action="rl-toggle" data-id="${esc(g.id)}" tabindex="0" role="button" aria-expanded="${rlOpen ? 'true' : 'false'}">
-        <div class="rl-top"><span class="rl-match">${esc(g.matchup || '—')}</span>${badge}${rl.closed ? '<span class="rl-closed">closed</span>' : ''}<span class="rl-chev" aria-hidden="true"></span></div>
-        ${rlSum}
-        <div class="rl-status">${statusLine}</div>
-        <div class="rl-sides">${sides.map(sideBox).join('')}</div>
-        <div class="rl-lean">${lean}${stars}</div></div>`;
-    }).join('')}</div>`;
-  }
 
   function renderComparePanel() {
     const showPanel = state.compareMode && state.compareIds.length === 2;
@@ -3045,12 +2934,6 @@
       case 'set-filter': setFilter(target.dataset.filter); break;
       case 'set-view': setView(target.dataset.view); break;
       case 'set-sport': setSport(target.dataset.sport); break;
-      case 'rl-toggle': {
-        const rid = target.dataset.id;
-        state.rlOpen = state.rlOpen === rid ? null : rid;
-        renderBoard();
-        break;
-      }
       case 'nfl-view': setNflView(target.dataset.nflview); break;
       case 'toggle-pass': state.batterShowPass = !state.batterShowPass; renderBoard(); break;
       case 'nfl-showall': state.nflShowAll = !state.nflShowAll; renderNfl(); break;
@@ -3564,6 +3447,84 @@
   function confChip(c) {
     const label = c === 1 ? 'High' : c === 2 ? 'Med' : 'Low';
     return `<span class="conf-chip c${c}" title="Projection confidence — prior size, role stability and distribution width. Not a betting tier.">${label}</span>`;
+  }
+
+
+  // Run Line as table rows. Was the last view still built from cards, which made
+  // it 220px a row against 81px everywhere else. The data was always table-
+  // shaped — two sides, a price, a fair cover percentage and a verdict — so the
+  // card format was buying height without buying information.
+  //
+  // Uses the shared .board-row markup and its own --bcols, so it inherits the
+  // column grid, the expand chrome and the mobile collapse like every other view.
+  function renderRunlineRows(games) {
+    const money = (v) => v == null ? '—' : (v > 0 ? '+' + v : String(v));
+    return games.map((g) => {
+      const rl = g.rl || {};
+      const isExpanded = state.expandedId === g.id;
+      const isPick = typeof rl.tier === 'number' && rl.modelAgrees;
+
+      const sideObj = (abbr, point, price, cover) => ({ abbr, point, price, cover });
+      const sides = [
+        sideObj(rl.homeAbbr, rl.homePoint, rl.homePrice, rl.homeCoverPct),
+        sideObj(rl.awayAbbr, rl.awayPoint, rl.awayPrice, rl.awayCoverPct),
+      ].sort((a, b) => (a.point ?? 0) - (b.point ?? 0));
+      const pt = (v) => v == null ? '' : (v > 0 ? '+' : '') + v;
+
+      // The side the value sits on, which is what the card led with.
+      const val = sides.find((s) => s.abbr === rl.teamAbbr) || sides[0];
+      const other = sides.find((s) => s !== val);
+
+      const status = (g.status === 'Live' || g.status === 'Final') && g.score && g.score.includes('-')
+        ? `${g.status === 'Live' ? '● Live' : 'Final'} ${esc(g.score)}`
+        : esc(g.timeLabel || 'TBD');
+      const sub = [esc(g.matchup || ''), status].filter(Boolean).join(' · ');
+
+      const edgeVal = rl.edge;
+      const edgeColor = edgeVal == null ? 'var(--textFaint)'
+        : (isPick ? 'var(--positive)' : edgeVal > 0 ? 'var(--textDim)' : 'var(--textFaint)');
+      const edgeLabel = edgeVal == null ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal + '%';
+
+      const chip = isPick ? tierChip(rl.tier) : '<span class="ctx-chip">pass</span>';
+
+      const row = `<div class="board-row${isExpanded ? ' expanded' : ''}${rl.closed ? ' rl-closed-row' : ''}"
+          data-action="row-click" data-id="${esc(g.id)}"
+          role="button" tabindex="0" aria-expanded="${isExpanded}"
+          aria-label="${esc(g.matchup || '')} — toggle breakdown">
+          <div class="matchup-cell">
+            <span class="mc-head"><b>${esc(g.matchup || '—')}</b>${rl.closed ? '<span class="rl-closed">closed</span>' : ''}</span>
+            <span class="matchup-sub">${sub}</span>
+          </div>
+          <span>${esc(val.abbr || '—')} ${esc(pt(val.point))}</span>
+          <span class="odds-cell mono">${esc(money(val.price))}</span>
+          <span class="edge-cell" style="color:${edgeColor}">${edgeLabel}</span>
+          <span class="interval-cell" style="color:var(--model)">${val.cover == null ? '—' : val.cover + '%'}</span>
+          <span class="tier-cell">${chip}</span>
+          <span class="chevron">${isExpanded ? '▲' : '▼'}</span>
+        </div>`;
+
+      if (!isExpanded) return row;
+
+      // The panel carries what the card's second half used to: both sides side by
+      // side, and the model's verdict in words.
+      const lean = isPick
+        ? `<span class="rl-ok">✓</span> model backs <b>${esc(rl.teamAbbr)}</b> ${esc(pt(val.point))}`
+        : (rl.edge != null && rl.edge > 0
+          ? `<span class="rl-no">✕</span> value shows on <b>${esc(val.abbr)} ${esc(pt(val.point))}</b>, but the model does not back it — <b>no play</b>`
+          : 'no value against the sharp fair line');
+      const box = (s) => `<div class="nfd-c"><span>${esc(s.abbr || '—')} ${esc(pt(s.point))}</span>`
+        + `<b>${esc(money(s.price))}</b><span class="rl-cov">${s.cover == null ? '' : 'fair ' + s.cover + '%'}</span></div>`;
+      return row + `<div class="expanded-detail nfl-detail">
+        <div class="nfd-k">Run line read</div>
+        <div class="nfd-read">${lean}</div>
+        <div class="nfd-grid">
+          ${box(val)}${box(other || {})}
+          <div class="nfd-c"><span>Edge</span><b>${edgeLabel}</b></div>
+          <div class="nfd-c"><span>Fair source</span><b>${esc(rl.fairSource || '—')}</b></div>
+        </div>
+        <div class="nfd-foot">Context only — the run line is not graded and not posted.</div>
+      </div>`;
+    }).join('');
   }
 
 })();
