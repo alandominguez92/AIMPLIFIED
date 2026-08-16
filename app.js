@@ -52,6 +52,10 @@
     // plays, so it says play or pass and stops there. K props and the run line
     // still rank, and keep the numeric chips.
     if (v === 'play') return `<span class="tier-chip play">Play</span>`;
+    // The run line stops ranking too, but it posts nothing, so its positive case
+    // is a lean rather than a play -- calling it Play would contradict that
+    // board own banner, which says it is not posted and not graded.
+    if (v === 'lean') return `<span class="tier-chip lean">Lean</span>`;
     if (v === '1' || v === '2' || v === '3') return `<span class="tier-chip t${v}">T${v}</span>`;
     if (v === 'pass') return `<span class="tier-chip pass">Pass</span>`;
     return `<span class="tier-dash">—</span>`; // 'model'/projection-only: no line to grade yet
@@ -3578,7 +3582,10 @@
         : (isPick ? 'var(--positive)' : edgeVal > 0 ? 'var(--textDim)' : 'var(--textFaint)');
       const edgeLabel = edgeVal == null ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal + '%';
 
-      const chip = isPick ? tierChip(rl.tier) : '<span class="ctx-chip">pass</span>';
+      // T1/T2/T3 came off the same edge ranking the batter board just dropped --
+      // and with no graded run-line record at all, an ordering here rests on less
+      // evidence than the one that was removed, not more.
+      const chip = isPick ? tierChip('lean') : tierChip('pass');
 
       const row = `<div class="board-row${isExpanded ? ' expanded' : ''}${rl.closed ? ' rl-closed-row' : ''}"
           data-action="row-click" data-id="${esc(g.id)}"

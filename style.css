@@ -1471,3 +1471,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   color:var(--positive);
   border:1px solid color-mix(in srgb, var(--positive) 40%, transparent);
 }
+
+/* Run-line lean. Model blue, not the batter board's positive green: green marks
+   a side we post, and the run line posts nothing. Same binary shape as Play, a
+   deliberately weaker colour. */
+.tier-chip.lean {
+  background:color-mix(in srgb, var(--model) 14%, transparent);
+  color:var(--model);
+  border:1px solid color-mix(in srgb, var(--model) 38%, transparent);
+}
