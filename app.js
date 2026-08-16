@@ -1496,12 +1496,34 @@
 
     // "showing 12 of 40 batters" — tells you a filter is hiding rows, which a
     // bare list can't. Total is the unfiltered pool for the active view.
+    // Fold gate, computed before the label so both agree. It is also read by the
+    // row map and the toggle button further down.
+    const PLAY_FLOOR = 5;
+    const playCount = isBatter()
+      ? games.filter((g) => typeof activeTier(g) === 'number').length : 0;
+    const foldPasses = playCount >= PLAY_FLOOR;
+    const passCount = isBatter() && state.filter !== 'pass' && foldPasses
+      ? games.filter((g) => String(activeTier(g)) === 'pass').length : 0;
+    const foldActive = passCount > 0 && !state.batterShowPass;
+
     const shownEl = document.getElementById('shownLabel');
     if (shownEl) {
       const total = getGames().length;
       const noun = isBatter() ? 'batter' : 'game';
-      shownEl.textContent = total
-        ? `showing ${games.length} of ${total} ${noun}${total === 1 ? '' : 's'}`
+      const plural = (n) => `${noun}${n === 1 ? '' : 's'}`;
+      // Two labels ship and CSS picks one, the same pattern as the tier chips and
+      // the count qualifier. The fold is a CSS decision keyed on width, so JS
+      // cannot know whether rows are actually hidden — but it does know whether a
+      // fold WOULD apply, which is enough to render both readings and let the
+      // media query choose. Without this the footer read "showing 29 of 29" over
+      // a board displaying 14.
+      shownEl.className = foldActive ? 'sl-has-fold' : '';
+      shownEl.innerHTML = total
+        ? `<span class="sl-full">showing ${games.length} of ${total} ${plural(total)}</span>`
+          + (foldActive
+            ? `<span class="sl-folded">showing ${games.length - passCount} of ${total} ${plural(total)}`
+              + ` · ${passCount} pass ${passCount === 1 ? 'row' : 'rows'} folded</span>`
+            : '')
         : '';
     }
 
@@ -1526,14 +1548,6 @@
       if (el.passMore) el.passMore.hidden = true;
       return;
     }
-
-    // Fold only when there is a board left after folding. A 28-pass, one-play
-    // slate folded down to a single visible row -- technically correct and
-    // useless. Below the floor the passes stay, because they are all there is.
-    const PLAY_FLOOR = 5;
-    const playCount = isBatter()
-      ? games.filter((g) => typeof activeTier(g) === 'number').length : 0;
-    const foldPasses = playCount >= PLAY_FLOOR;
 
     el.boardRows.innerHTML = games.map((g) => {
       const ml = g.ml || {};
@@ -1843,8 +1857,7 @@
     // mystery. Desktop ignores both -- see the 640px rule.
     el.boardRows.className = state.batterShowPass ? 'show-pass' : '';
     if (el.passMore) {
-      const passN = isBatter() && state.filter !== 'pass' && foldPasses
-        ? games.filter((g) => String(activeTier(g)) === 'pass').length : 0;
+      const passN = passCount;
       el.passMore.hidden = passN === 0;
       el.passMore.textContent = state.batterShowPass
         ? 'Hide ' + passN + ' Pass row' + (passN === 1 ? '' : 's')

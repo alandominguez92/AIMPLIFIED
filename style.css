@@ -1435,3 +1435,18 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   color:var(--textFaint); border:1px solid var(--border); border-radius:5px; padding:2px 6px;
 }
 .board-row.rl-closed-row { opacity:.72 }
+
+/* ---------------------------------------------------------------------------
+   Shown label under a fold
+   ---------------------------------------------------------------------------
+   The pass fold is a CSS decision keyed on width, so JS cannot know whether rows
+   are actually hidden — it only knows a fold WOULD apply. Both readings ship and
+   the media query picks one, the same pattern as the tier chips and the count
+   qualifier. Without it the footer read "showing 29 of 29" over a board that was
+   displaying 14.                                                              */
+.sl-folded { display:none }
+
+@media (max-width:640px) {
+  .sl-has-fold .sl-full { display:none }
+  .sl-has-fold .sl-folded { display:inline }
+}
