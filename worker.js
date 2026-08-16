@@ -5055,6 +5055,65 @@ async function beGate(env, url) {
       return { top: summarise(sorted.slice(0, cut), `top fifth by ${key}`),
         bottom: summarise(sorted.slice(-cut), `bottom fifth by ${key}`) };
     };
+
+    // ---------------------------------------------------------------------
+    // EV buckets — the basis for retiering
+    // ---------------------------------------------------------------------
+    // Tiers currently cut on `edge` (model minus fair, in probability points),
+    // which says nothing about the price actually paid. This reports ROI by EV
+    // band so a cutoff can be read off the graded record instead of invented.
+    //
+    // Reported at a fixed grid rather than as quantiles: quantile cuts move with
+    // the sample and would need re-deriving every time the record grows, while a
+    // fixed grid can be compared across eras.
+    const evGrid = [-0.20, -0.10, -0.05, -0.02, 0, 0.02, 0.05, 0.10, 0.20];
+    const bandOf = (ev) => {
+      for (let i = 0; i < evGrid.length; i++) if (ev < evGrid[i]) return i;
+      return evGrid.length;
+    };
+    const bands = {};
+    for (const s of scored) {
+      const k = bandOf(s.ev);
+      (bands[k] = bands[k] || []).push(s);
+    }
+    out.evBands = Object.keys(bands).sort((a, b) => a - b).map((k) => {
+      const i = +k;
+      const lo = i === 0 ? null : evGrid[i - 1];
+      const hi = i === evGrid.length ? null : evGrid[i];
+      const set = bands[k];
+      const s = summarise(set, `EV ${lo == null ? '<' + (hi * 100).toFixed(0) : (hi == null ? '>=' + (lo * 100).toFixed(0) : (lo * 100).toFixed(0) + '..' + (hi * 100).toFixed(0))}%`);
+      return s;
+    });
+
+    // Monotonicity is the question that decides whether EV can carry a tier at
+    // all: does ROI actually rise with EV? A metric that ranks but does not
+    // order is no better than the one being replaced.
+    const ordered = out.evBands.filter((b) => b.n >= 50);
+    let rises = 0, falls = 0;
+    for (let i = 1; i < ordered.length; i++) {
+      if (ordered[i].roiPct > ordered[i - 1].roiPct) rises++; else falls++;
+    }
+    out.evMonotonicity = { bandsWith50Plus: ordered.length, rises, falls,
+      verdict: rises > falls ? 'ROI generally rises with EV' : 'no reliable ordering' };
+
+    // Candidate cutoffs, evaluated as a tier set rather than one at a time.
+    // Reported for several thresholds so the choice is visible, not smuggled in.
+    out.evCutoffCandidates = [[0.04, 0.02, 0.00], [0.05, 0.02, 0.00], [0.03, 0.015, 0.00], [0.06, 0.03, 0.01]]
+      .map((cuts) => {
+        const tierOf = (ev) => ev >= cuts[0] ? 1 : ev >= cuts[1] ? 2 : ev >= cuts[2] ? 3 : 'pass';
+        const byT = {};
+        for (const s of scored) (byT[tierOf(s.ev)] = byT[tierOf(s.ev)] || []).push(s);
+        const t = (k) => summarise(byT[k] || [], 'T' + k);
+        const t1 = t(1), t2 = t(2), t3 = t(3), tp = t('pass');
+        const played = [...(byT[1] || []), ...(byT[2] || []), ...(byT[3] || [])];
+        return {
+          cuts, t1, t2, t3, pass: tp,
+          played: summarise(played, 'all tiered'),
+          // The property the current edge tiers lack: T1 better than T2 better than T3.
+          monotone: (t1.n && t2.n && t3.n) ? (t1.roiPct >= t2.roiPct && t2.roiPct >= t3.roiPct) : null,
+        };
+      });
+
     out.rankedByEdge = decile('edge');
     out.rankedByEv = decile('ev');
 
