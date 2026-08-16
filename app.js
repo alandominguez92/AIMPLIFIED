@@ -3478,7 +3478,9 @@
       const status = (g.status === 'Live' || g.status === 'Final') && g.score && g.score.includes('-')
         ? `${g.status === 'Live' ? '● Live' : 'Final'} ${esc(g.score)}`
         : esc(g.timeLabel || 'TBD');
-      const sub = [esc(g.matchup || ''), status].filter(Boolean).join(' · ');
+      // The matchup already leads the head cell; repeating it here printed
+      // "NYY @ TOR NYY @ TOR · 10:37 AM PT". The sub-line carries time and score.
+      const sub = status;
 
       const edgeVal = rl.edge;
       const edgeColor = edgeVal == null ? 'var(--textFaint)'
