@@ -3220,6 +3220,38 @@
 
     const shown = propRows.length;
     if (el.nflEmpty) el.nflEmpty.hidden = shown > 0;
+    // Why the board is empty, distinguished the way the MLB board distinguishes
+    // it. "No play clears the bar" claims we evaluated a slate and declined it;
+    // saying that when there are simply no games is a claim about analysis that
+    // never happened.
+    if (el.nflEmpty && shown === 0) {
+      const loading = !isLines && !state.nflProps;
+      const filtered = base.length > 0;
+      const k = el.nflEmpty.querySelector('.nfe-k');
+      const d = el.nflEmpty.querySelector('.nfe-d');
+      if (k && d) {
+        if (loading) {
+          k.textContent = 'Loading projections…';
+          d.textContent = '';
+        } else if (filtered) {
+          k.textContent = 'Nothing matches this filter.';
+          d.textContent = `${base.length} row${base.length === 1 ? '' : 's'} on the board — clear the search or choose All to see them.`;
+        } else if (isLines) {
+          k.textContent = 'No NFL games in range.';
+          d.textContent = 'Preseason has finished for now and the regular season is still outside the ten-day ingest window. '
+            + 'The board fills again once Week 1 comes into range.';
+        } else {
+          k.textContent = 'No NFL games in range.';
+          d.textContent = 'Projections need a slate to price against — a game supplies the spread and total everything else '
+            + 'cascades from. Nothing is scheduled inside the ingest window right now.';
+        }
+      }
+    }
+    // A toolbar over an empty board is furniture. Hide it when there is nothing
+    // it could act on, but keep it the moment a filter is what emptied the list.
+    const tb = document.querySelector('#nflBoard .board-toolbar');
+    if (tb) tb.hidden = base.length === 0;
+
     el.nflGrid.innerHTML = shown
       ? (isLines ? nflTable(propRows) : nflPropTable(propRows, state.nflView))
       : '';
