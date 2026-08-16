@@ -1527,6 +1527,14 @@
       return;
     }
 
+    // Fold only when there is a board left after folding. A 28-pass, one-play
+    // slate folded down to a single visible row -- technically correct and
+    // useless. Below the floor the passes stay, because they are all there is.
+    const PLAY_FLOOR = 5;
+    const playCount = isBatter()
+      ? games.filter((g) => typeof activeTier(g) === 'number').length : 0;
+    const foldPasses = playCount >= PLAY_FLOOR;
+
     el.boardRows.innerHTML = games.map((g) => {
       const ml = g.ml || {};
       const isTracked = !!state.slip[legIdFor(g)];
@@ -1610,7 +1618,7 @@
       // has not explicitly filtered TO passes, and never on desktop. Plays are
       // never folded — the board recommends them, so they stay on screen; these
       // are the rows the model already declined to back.
-      if (isPlayView && String(tierVal) === 'pass' && state.filter !== 'pass') rowClasses.push('bp-pass');
+      if (isPlayView && String(tierVal) === 'pass' && state.filter !== 'pass' && foldPasses) rowClasses.push('bp-pass');
 
       const rowA11y = state.compareMode
         ? `role="button" tabindex="0" aria-pressed="${isSelected}" aria-label="Compare ${esc(g.matchup)}"`
@@ -1835,7 +1843,7 @@
     // mystery. Desktop ignores both -- see the 640px rule.
     el.boardRows.className = state.batterShowPass ? 'show-pass' : '';
     if (el.passMore) {
-      const passN = isBatter() && state.filter !== 'pass'
+      const passN = isBatter() && state.filter !== 'pass' && foldPasses
         ? games.filter((g) => String(activeTier(g)) === 'pass').length : 0;
       el.passMore.hidden = passN === 0;
       el.passMore.textContent = state.batterShowPass
