@@ -41,8 +41,17 @@
   const clampPct = (v) => Math.max(0, Math.min(100, v)); // bar width, 0–100
   // Tier shown as a compact letter+number heat chip (T1 brightest = strongest
   // lean) instead of stars — far easier to read at a glance across the board.
+  // A posted play, whichever regime produced it: the batter board now emits
+  // 'play', while K props and the run line still emit 1/2/3. Defined once so the
+  // two never drift apart.
+  const isPlayTier = (t) => t === 'play' || ['1', '2', '3'].includes(String(t));
+
   function tierChip(tierVal) {
     const v = String(tierVal);
+    // The batter board no longer ranks — nothing in the graded record orders the
+    // plays, so it says play or pass and stops there. K props and the run line
+    // still rank, and keep the numeric chips.
+    if (v === 'play') return `<span class="tier-chip play">Play</span>`;
     if (v === '1' || v === '2' || v === '3') return `<span class="tier-chip t${v}">T${v}</span>`;
     if (v === 'pass') return `<span class="tier-chip pass">Pass</span>`;
     return `<span class="tier-dash">—</span>`; // 'model'/projection-only: no line to grade yet
@@ -180,7 +189,7 @@
   const boardHasLive = () => isBatter() ? battersLive() : boardIsLive();
   const boardModeled = () => isRL()
     ? boardIsLive() && getGames().some((g) => g.rl && g.rl.edge != null) // real Pinnacle run line -> show tier/Pass controls
-    : boardHasLive() && getGames().some((g) => typeof activeTier(g) === 'number');
+    : boardHasLive() && getGames().some((g) => isPlayTier(activeTier(g)));
 
   // How to reach the Odds API proxy. Empty => mock-only mode.
   //   "same-origin" (or "/") => Cloudflare Pages Functions at /api/* on this
@@ -1154,12 +1163,12 @@
     // "T3" next to the count pill does not. Shortening also lets all five chips
     // sit on ONE row at 390px instead of wrapping 3+2 with a half-empty second
     // row, which is what made the filter block look unfinished.
-    const FILTER_SHORT = { all: 'All', 1: 'T1', 2: 'T2', 3: 'T3', pass: 'Pass' };
+    const FILTER_SHORT = { all: 'All', play: 'Plays', pass: 'Pass' };
     let tierCounts = null;
     if (isBatter() && !hideTiers) {
       const q = state.searchQuery.trim().toLowerCase();
       const pool = getGames().filter((g) => !q || g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
-      tierCounts = { all: pool.length, 1: 0, 2: 0, 3: 0, pass: 0 };
+      tierCounts = { all: pool.length, play: 0, pass: 0 };
       pool.forEach((g) => { const t = String(activeTier(g)); if (t in tierCounts) tierCounts[t] += 1; });
     }
 
@@ -1320,7 +1329,7 @@
       // "Edge · vs sharp fair" matters: the prices are DK/FD, but the edge is
       // measured against the sharp books, not against the book you bet at.
       // Without the qualifier the number reads as edge-over-DraftKings.
-      ? ['Batter', 'The fade · model vs line', 'Price · DK/FD', 'Edge · vs sharp fair', 'Model P(under)', 'Tier', '']
+      ? ['Batter', 'The fade · model vs line', 'Price · DK/FD', 'Edge · vs sharp fair', 'Model P(under)', 'Call', '']
       : isML()
         ? ['Matchup', 'Team to win', 'Moneyline', 'Line value', 'Win Prob', '', '']
         : isRL()
@@ -1365,7 +1374,7 @@
   function renderBatterSlateSummary() {
     const rows = state.liveBatters;
     if (!rows || !rows.length) { el.slateSummary.hidden = true; return; }
-    const tiered = (g) => ['1', '2', '3'].includes(String(g.tier));
+    const tiered = (g) => isPlayTier(g.tier);
     const plays = rows.filter((g) => tiered(g) && g.odds != null);
     const watching = rows.filter((g) => tiered(g) && g.odds == null);
     const best = plays.reduce((m, g) => (g.edge != null && g.edge > m ? g.edge : m), -Infinity);
@@ -1504,7 +1513,7 @@
     // row map and the toggle button further down.
     const PLAY_FLOOR = 5;
     const playCount = isBatter()
-      ? games.filter((g) => typeof activeTier(g) === 'number').length : 0;
+      ? games.filter((g) => isPlayTier(activeTier(g))).length : 0;
     const foldPasses = playCount >= PLAY_FLOOR;
     const passCount = isBatter() && state.filter !== 'pass' && foldPasses
       ? games.filter((g) => String(activeTier(g)) === 'pass').length : 0;
@@ -2555,7 +2564,7 @@
     // different story from a full slate where no under cleared the bar.
     if (!batters.length) { renderHeroPlaceholder('nolines'); return; }
     const qualifies = (g) => g.side === 'Under' && g.odds != null && g.line != null
-      && typeof g.projVal === 'number' && ['1', '2', '3'].includes(String(g.tier));
+      && typeof g.projVal === 'number' && isPlayTier(g.tier);
     const unders = batters.filter(qualifies);
     const preview = unders.filter((g) => g.status === 'Preview');
     const pool = preview.length ? preview : unders;

@@ -64,7 +64,7 @@ const SHARP_MAX_SPREAD = 0.05;
 // switch are not the same experiment — leaving both as 'sharp-shin' would have
 // blended a 3-slate Poisson sample into the negative-binomial one and made the
 // sharp-fair verdict unattributable to either change.
-const BATTER_MODEL_VER = 'sharp-shin-nb';
+const BATTER_MODEL_VER = 'sharp-shin-nb-evgate';
 // Same idea for the strikeout board, which moved from a DK/FD/MGM consensus fair
 // (circular — two of the three are the books we bet) to the sharp pool with that
 // consensus demoted to a middle fallback rung.
@@ -2918,6 +2918,31 @@ function bestBookMarket(prop, probOver, opts) {
   const bestSet = comparable.length ? comparable : books;
   books.forEach((x) => { x.best = bestSet.includes(x) && x.price === best; });
 
+    // Expected value of the chosen side at the price actually available, from
+    // the model's own probability. This is the number the graded record says
+    // matters: over 4,832 rows, edge (model minus fair) separated winners from
+    // losers about three times worse than EV did.
+    //
+    // EV = p*payout - (1-p). Positive means the price pays more than the model
+    // thinks the outcome is worth.
+    const pPick = over ? pOver : 1 - pOver;
+    const ev = pPick * payoutMult(best) - (1 - pPick);
+
+    // Tiering. When opts.evGate is set the board stops RANKING and only GATES.
+    //
+    // Ranking was dropped because nothing in the record orders the plays. ROI by
+    // EV band is non-monotone (three rises, three falls across bands with 50+
+    // rows), the 5-10% EV band returns -5.0% against +1.7% for 0-2%, and all four
+    // candidate cutoff sets put T1 at or near the worst tier. Edge ordered no
+    // better. A tier that claims T1 > T2 > T3 when the record shows no such
+    // ordering is a confidence display with nothing behind it.
+    //
+    // What the record does support is the gate itself: rows below it returned
+    // -3.1% (p=0.035-0.042, the only cell clearing 0.05), against roughly break
+    // even for rows above. So the board says play or pass, and says nothing it
+    // cannot support about which play is strongest.
+    const gated = opts && opts.evGate != null;
+
   return {
     line: refLine,
     side,
@@ -2927,7 +2952,11 @@ function bestBookMarket(prop, probOver, opts) {
     fairOver: Math.round(fairOver * 1e4) / 1e4, // vig-free market P(over) — for CLV
     fairSrc,            // 'sharp' | 'consensus' | 'exec' | 'exec-1s' — which tier produced the fair
     fairBooks,          // [{ book, over }] de-vigged pool behind the fair (consensus) — null otherwise
-    tier: edgePts >= tiers[0] ? 1 : edgePts >= tiers[1] ? 2 : edgePts >= tiers[2] ? 3 : 'pass',
+    ev: Math.round(ev * 1e4) / 1e4,
+    evPct: round1(ev * 100),
+    tier: gated
+      ? (ev >= opts.evGate ? 'play' : 'pass')
+      : (edgePts >= tiers[0] ? 1 : edgePts >= tiers[1] ? 2 : edgePts >= tiers[2] ? 3 : 'pass'),
     books,              // [{ book, price, line, off, best }]
   };
 }
@@ -2969,6 +2998,14 @@ const BATTER_SHRINK = 0.25;      // keep ~25% of the raw model-vs-market gap
 // T3 stays at 3, so the pass boundary is unchanged: this relabels picks, it does
 // not change which ones get posted. Tier is stamped at log time, so graded
 // history is not relabelled — T1's usable sample builds forward from here.
+// EV gate. A batter under is posted when the price pays more than the model
+// thinks the outcome is worth, and passed otherwise. Zero rather than a positive
+// cushion: the 0-2% EV band was the best-performing band in the record (+1.7%),
+// so requiring a margin above it would discard the rows that did best.
+//
+// BATTER_TIERS is retained only for the K-props path, which still ranks. It no
+// longer touches the batter board.
+const BATTER_EV_GATE = 0;
 const BATTER_TIERS = [5.5, 4, 3];
 // Projection calibration. HISTORY: the projection once ran ~16-17% HIGH (HRR
 // projected 1.9 vs 1.6 actual, TB 1.8 vs 1.5, n=1382), which manufactured losing
@@ -3040,6 +3077,7 @@ function priceBatterProp(prop, lambda, metric) {
   const phi = BATTER_DISPERSION[metric];
   return bestBookMarket(prop, (L) => 1 - negBinomCdf(Math.floor(L), lambda, phi), {
     shrink: BATTER_SHRINK, tiers: BATTER_TIERS, fairPool: SHARP_LABELS,
+    evGate: BATTER_EV_GATE,
   });
 }
 

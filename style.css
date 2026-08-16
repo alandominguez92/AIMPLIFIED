@@ -1462,3 +1462,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    room the batter board never needed. */
 .nfl-at { color:var(--textFaint); font-size:12px; padding:0 6px }
 .mc-head .team-badge { vertical-align:middle }
+
+/* The batter board gates rather than ranks, so its chip says Play. Positive
+   green because it IS our side — unlike the confidence chip on the NFL board,
+   which describes an estimate and deliberately avoids this colour. */
+.tier-chip.play {
+  background:color-mix(in srgb, var(--positive) 16%, transparent);
+  color:var(--positive);
+  border:1px solid color-mix(in srgb, var(--positive) 40%, transparent);
+}
