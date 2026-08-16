@@ -3749,7 +3749,11 @@
   // There is no NFL equivalent to swap in, because nothing NFL has been graded,
   // so it goes away rather than being replaced with a hollow version.
   const MLB_ONLY_NAV = ['#slate', '#record'];
-  const DOC_TITLE = { mlb: 'Aimplified — Tonight’s MLB Slate', nfl: 'Aimplified — NFL Board' };
+  // The MLB title is captured from the document rather than duplicated here.
+  // Written out by hand it drifted by one character -- a curly apostrophe against
+  // the straight one in the markup -- so the tab quietly changed on the first
+  // sport switch and never changed back.
+  const DOC_TITLE = { mlb: document.title, nfl: 'Aimplified — NFL Board' };
 
   function applySportChrome(sport) {
     const nfl = sport === 'nfl';
