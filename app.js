@@ -3606,7 +3606,11 @@
         usage: (r) => (r.market === 'receiving' ? r.rp : r.count),
         time: (r) => Date.parse(r.commence || 0) || null,
       },
-      match: (r, q) => `${r.player} ${r.team} ${r.pos} ${r.game}`.toLowerCase().includes(q),
+      // Deliberately NOT r.game. That string is "DAL @ SEA", so including it made
+      // a search for SEA return every Cowboy in the fixture too -- which
+      // contradicts the placeholder and makes a team search useless for
+      // isolating a team. Player, club and position only.
+      match: (r, q) => `${r.player} ${r.team} ${r.pos}`.toLowerCase().includes(q),
       keep: (r, f) => f === 'all' || String(r.conf) === f,
     },
   };
