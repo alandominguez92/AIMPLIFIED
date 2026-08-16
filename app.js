@@ -3463,7 +3463,6 @@
   // line, no price, no edge and no tier, because none of those exist for a
   // market no book quotes through our feed. Inventing a tier here would be the
   // one dishonest thing this table could do.
-  const NFL_MOBILE_CAP = 15;   // rows kept on a phone before the tail is folded
   const NFL_PROP_COLS = ['Player', 'Projection', '50% range', 'Median', 'Usage', 'Confidence', ''];
 
   async function refreshNflProps() {
@@ -3491,15 +3490,18 @@
       .join('');
     return `<div class="board view-nflprops"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
-      + `<div class="np-rows${state.nflShowAll ? ' show-all' : ''}">${rows.map((r, i) => nflPropRow(r, market, i)).join('')}</div>`
-      + (rows.length > NFL_MOBILE_CAP
-        ? `<button class="np-more" data-action="nfl-showall">${state.nflShowAll
-            ? 'Show top ' + NFL_MOBILE_CAP : 'Show all ' + rows.length + ' players'}</button>`
-        : '')
+      + `<div class="np-rows${state.nflShowAll ? ' show-all' : ''}">${rows.map((r) => nflPropRow(r, market)).join('')}</div>`
+      + (() => {
+        const low = rows.filter((r) => r.conf === 3).length;
+        if (!low) return '';
+        return `<button class="np-more" data-action="nfl-showall">${state.nflShowAll
+          ? 'Hide ' + low + ' low-confidence row' + (low === 1 ? '' : 's')
+          : 'Show ' + low + ' low-confidence row' + (low === 1 ? '' : 's')}</button>`;
+      })()
       + `</div></div>`;
   }
 
-  function nflPropRow(r, market, i) {
+  function nflPropRow(r, market) {
     const id = r.player + '|' + r.market;
     const open = state.nflOpen === id;
     // Usage is a different measurement per market and is labelled as such rather
@@ -3507,8 +3509,10 @@
     const usage = market === 'receiving'
       ? `${r.rp}%<i class="bk-tag">routes</i>`
       : `${r.count}<i class="bk-tag">carries</i>`;
-    // Marked here, hidden by CSS only on a phone -- see .np-tail.
-    const tail = i >= NFL_MOBILE_CAP ? ' np-tail' : '';
+    // Low-confidence rows fold on a phone, the same rule the batter board uses
+    // for its Pass tier: what the model has least faith in gives way, everything
+    // it stands behind stays on screen. Marked here, hidden by CSS only.
+    const tail = r.conf === 3 ? ' np-low' : '';
     const row = `<div class="board-row${open ? ' expanded' : ''}${tail}" data-action="nfl-toggle" data-id="${esc(id)}"
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${esc(r.player)} — toggle breakdown">

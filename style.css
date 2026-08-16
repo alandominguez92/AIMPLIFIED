@@ -1416,11 +1416,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 @media (max-width:640px) {
   .np-more { display:block }
-  /* The tail is marked at render time. nth-of-type would count expanded-detail
-     siblings too -- they are also divs -- so opening a row inside the first
-     fifteen would shift the cut by one. CSS still decides whether to hide, so
-     the cap stays resize-safe without a JS width branch. */
-  .np-rows:not(.show-all) .np-tail { display:none }
+  /* Folds by CONFIDENCE, not by rank -- the same rule the batter board applies
+     to its Pass tier. Marked at render time rather than selected positionally,
+     and CSS decides whether to hide, so it needs no JS width branch. */
+  .np-rows:not(.show-all) .np-low { display:none }
+  .np-rows:not(.show-all) .np-low + .expanded-detail { display:none }
 }
 
 /* ---------------------------------------------------------------------------
