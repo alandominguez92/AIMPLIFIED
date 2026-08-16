@@ -3150,6 +3150,7 @@
       const n = document.querySelector(sel);
       if (n) n.hidden = nfl;
     }
+    applySportChrome(s);
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
     if (el.slateSummary && nfl) el.slateSummary.hidden = true;
     if (nfl && !state.nfl) refreshNfl();          // lazy first load
@@ -3735,6 +3736,34 @@
     return t
       ? `<span class="team-badge tc" style="background:${t[0]};color:${t[1]}">${esc(abbr)}</span>`
       : `<span class="team-badge">${esc(abbr || '')}</span>`;
+  }
+
+  // Chrome that belongs to the MLB product. Hiding the sections was not enough:
+  // the header carried an MLB track record over an NFL board, the tab title said
+  // MLB, and two nav links pointed at sections that are now hidden, so they
+  // scrolled nowhere.
+  //
+  // The CLV chip is the sharpest case. "BATTER UNDERS -28.1u · 55% · 1938 graded"
+  // is a performance claim from a different sport; sitting it above a board that
+  // grades nothing invites the reader to attach it to what they are looking at.
+  // There is no NFL equivalent to swap in, because nothing NFL has been graded,
+  // so it goes away rather than being replaced with a hollow version.
+  const MLB_ONLY_NAV = ['#slate', '#record'];
+  const DOC_TITLE = { mlb: 'Aimplified — Tonight’s MLB Slate', nfl: 'Aimplified — NFL Board' };
+
+  function applySportChrome(sport) {
+    const nfl = sport === 'nfl';
+    document.title = DOC_TITLE[sport] || DOC_TITLE.mlb;
+    const chip = document.getElementById('clvChip');
+    if (chip) chip.hidden = nfl;
+    document.querySelectorAll('.nav-links a').forEach((a) => {
+      const href = a.getAttribute('href');
+      if (MLB_ONLY_NAV.includes(href)) a.hidden = nfl;
+    });
+    // The live-now link is an MLB feed too; it manages its own hidden flag, so
+    // only force it off rather than on.
+    const live = document.getElementById('navLive');
+    if (live && nfl) live.hidden = true;
   }
 
 })();
