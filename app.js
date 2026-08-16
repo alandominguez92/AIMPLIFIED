@@ -1154,7 +1154,11 @@
     // independent of the active tier filter, so you can see the other buckets'
     // sizes while filtered to one. Search-applied so the numbers track what you
     // typed. Only the batter board posts tiers, so only it gets counts.
-    const FILTER_LABEL = { all: 'All', 1: 'Tier 1', 2: 'Tier 2', 3: 'Tier 3', pass: 'Pass' };
+    // Every filter key needs an entry. The fallback below reads the button own
+    // rendered text, which already contains BOTH labels plus the count -- so a
+    // missing key does not degrade, it compounds: Plays became PlaysPlays became
+    // PlaysPlaysPlaysPlays on successive renders.
+    const FILTER_LABEL = { all: 'All', play: 'Plays', pass: 'Pass' };
     // Both labels are rendered and CSS picks one, rather than measuring the
     // viewport here — a JS-chosen label would need a resize listener and would
     // be wrong for the first paint after an orientation change.
@@ -1178,7 +1182,10 @@
       btn.style.display = hideTiers && isTierBtn ? 'none' : '';
       const active = f === state.filter;
       btn.classList.toggle('active', active);
-      const label = FILTER_LABEL[f] || btn.textContent.replace(/\s*\d+$/, '');
+      // Read the long-label span when falling back, never the whole button: once
+      // rendered it holds long + short + count, so reading it back compounds.
+      const priorLong = btn.querySelector(".fl-long");
+      const label = FILTER_LABEL[f] || (priorLong ? priorLong.textContent : btn.textContent);
       const short = FILTER_SHORT[f] || label;
       const labelHtml = `<span class="fl-long">${esc(label)}</span><span class="fl-short">${esc(short)}</span>`;
       if (tierCounts) {
