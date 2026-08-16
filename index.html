@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board46">
+<link rel="stylesheet" href="style.css?v=board47">
 </head>
 <body>
 
@@ -161,6 +161,21 @@
         <span class="nflm-k">Rush yds</span><span class="nflm-t">projection</span></button>
       <button class="nflm" data-action="nfl-view" data-nflview="lines">
         <span class="nflm-k">ML · Spread · Total</span><span class="nflm-t">context</span></button>
+    </div>
+
+    <!-- Same toolbar as the MLB board. The controls are built by app.js because
+         the keys differ per view: the game-line read has an edge, a price and a
+         win probability to sort on, the projection boards have none of those and
+         offer what they actually carry instead. -->
+    <div class="board-toolbar">
+      <div class="board-search">
+        <input type="text" id="nflSearch" data-action="nfl-search" placeholder="Search player or team…" autocomplete="off">
+      </div>
+      <div class="board-controls">
+        <span id="nflFilters"></span>
+        <span class="sort-label">Sort</span>
+        <span class="sort-chips" id="nflSorts"></span>
+      </div>
     </div>
 
     <div class="nfl-strip" id="nflStrip" hidden></div>
@@ -394,6 +409,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=board46"></script>
+<script src="app.js?v=board47"></script>
 </body>
 </html>

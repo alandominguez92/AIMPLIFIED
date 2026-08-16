@@ -112,6 +112,10 @@
     nflView: 'receiving',
     nflProps: null,
     nflShowAll: false,
+    nflFilter: 'all',
+    nflSort: 'proj',
+    nflSortAsc: false,
+    nflSearch: '',
     batterShowPass: false,
     theme: 'dark',
     filter: 'all',
@@ -2956,6 +2960,8 @@
       case 'set-view': setView(target.dataset.view); break;
       case 'set-sport': setSport(target.dataset.sport); break;
       case 'nfl-view': setNflView(target.dataset.nflview); break;
+      case 'nfl-filter': setNflFilter(target.dataset.nflfilter); break;
+      case 'nfl-sort': setNflSort(target.dataset.nflsort); break;
       case 'toggle-pass': state.batterShowPass = !state.batterShowPass; renderBoard(); break;
       case 'nfl-showall': state.nflShowAll = !state.nflShowAll; renderNfl(); break;
       case 'nfl-toggle': {
@@ -3052,6 +3058,13 @@
     if (target.matches('.board-row[data-action="row-click"]')) refocusRow(target.dataset.id);
   });
 
+  {
+    const nq = document.getElementById('nflSearch');
+    if (nq) nq.addEventListener('input', (e) => {
+      state.nflSearch = e.target.value;
+      renderNfl();
+    });
+  }
   el.searchInput.addEventListener('input', (e) => {
     state.searchQuery = e.target.value;
     renderBoard();
@@ -3173,7 +3186,10 @@
 
     const isLines = state.nflView === 'lines';
     const props = (state.nflProps && state.nflProps.rows) || [];
-    const propRows = props.filter((r) => r.market === state.nflView);
+    // Everything the toolbar can act on, before it acts.
+    const base = isLines ? games : props.filter((r) => r.market === state.nflView);
+    renderNflControls(base);
+    const propRows = nflVisibleRows(base);
 
     document.querySelectorAll('.nflm[data-nflview]').forEach((b) =>
       b.classList.toggle('is-on', b.dataset.nflview === state.nflView));
@@ -3196,16 +3212,16 @@
     if (el.nflCount) {
       const wk = games.find((g) => g.week != null);
       el.nflCount.textContent = isLines
-        ? (games.length ? games.length + ' game' + (games.length === 1 ? '' : 's')
+        ? (propRows.length ? propRows.length + ' of ' + games.length + ' game' + (games.length === 1 ? '' : 's')
             + (wk ? ' · week ' + wk.week : '') + ' · game lines only' : '')
-        : (propRows.length ? propRows.length + ' players · ' + state.nflView + ' yards · projection only' : '');
+        : (propRows.length ? propRows.length + ' of ' + base.length + ' players · ' + state.nflView + ' yards · projection only' : '');
     }
     if (el.nflPostable) el.nflPostable.textContent = (d.postable || 0) + ' postable';
 
-    const shown = isLines ? games.length : propRows.length;
+    const shown = propRows.length;
     if (el.nflEmpty) el.nflEmpty.hidden = shown > 0;
     el.nflGrid.innerHTML = shown
-      ? (isLines ? nflTable(games) : nflPropTable(propRows, state.nflView))
+      ? (isLines ? nflTable(propRows) : nflPropTable(propRows, state.nflView))
       : '';
 
     // The standalone strip belongs to the game-line read; a player board is not
@@ -3319,7 +3335,7 @@
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${g.away} at ${g.home} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head"><b>${g.away} @ ${g.home}</b></span>
+          <span class="mc-head">${nflBadge(g.away)}<span class="nfl-at">@</span>${nflBadge(g.home)}</span>
           <span class="matchup-sub">${sub}</span>
         </div>
         <span>${pick}</span>
@@ -3384,6 +3400,11 @@
     if (state.nflView === v) return;
     state.nflView = v;
     state.nflOpen = null;
+    // The two views share no sort keys, so carrying one over would leave the
+    // board sorted by something it cannot measure.
+    state.nflFilter = 'all';
+    state.nflSort = v === 'lines' ? 'edge' : 'proj';
+    state.nflSortAsc = false;
     if (v !== 'lines' && !state.nflProps) refreshNflProps();   // lazy first load
     renderNfl();
   }
@@ -3421,7 +3442,7 @@
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${esc(r.player)} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head"><b>${esc(r.player)}</b> <span class="team-badge">${esc(r.team)}</span></span>
+          <span class="mc-head"><b>${esc(r.player)}</b> ${nflBadge(r.team)}</span>
           <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}</span>
         </div>
         <span class="np-proj">${r.proj}<i>yds</i></span>
@@ -3548,6 +3569,136 @@
         <div class="nfd-foot">Context only — the run line is not graded and not posted.</div>
       </div>`;
     }).join('');
+  }
+
+
+  // -------------------------------------------------------------------------
+  // NFL toolbar — search, filter, sort
+  // -------------------------------------------------------------------------
+  // Same shape and styling as the MLB board, but the keys are per view and are
+  // never borrowed. The game-line read has an edge, a price and a win
+  // probability to sort on; the projection boards have none of those, because
+  // no book quotes the market. Offering Edge and Odds there would ship chips
+  // that sort nothing — the exact bug fixed on the MLB moneyline board, where a
+  // chip now appears only when the metric actually has values.
+  const NFL_VIEW_CFG = {
+    lines: {
+      filters: [['all', 'All'], ['sharp', 'Sharp'], ['mkt', 'MKT']],
+      sorts: [['edge', 'Edge'], ['fair', 'Win Prob'], ['odds', 'Odds'], ['time', 'Time']],
+      // Higher is better for the first three, soonest first for time.
+      metric: {
+        edge: (g) => g.pickValue,
+        fair: (g) => g.pickFair,
+        odds: (g) => (g.pickPrice == null ? null : amProbLocal(g.pickPrice)),
+        time: (g) => Date.parse(g.commence || 0) || null,
+      },
+      match: (g, q) => `${g.away} ${g.home} ${g.awayFull || ''} ${g.homeFull || ''}`.toLowerCase().includes(q),
+      keep: (g, f) => f === 'all' || (f === 'sharp' ? g.fairSrc !== 'MKT' : g.fairSrc === 'MKT'),
+    },
+    props: {
+      // Confidence, not tiers. The board has no price, so it has no tier — see
+      // the confidence chip comment. Labels match the chips exactly.
+      filters: [['all', 'All'], ['1', 'High'], ['2', 'Med'], ['3', 'Low']],
+      sorts: [['proj', 'Projection'], ['p50', 'Median'], ['usage', 'Usage'], ['time', 'Time']],
+      metric: {
+        proj: (r) => r.proj,
+        p50: (r) => r.p50,
+        usage: (r) => (r.market === 'receiving' ? r.rp : r.count),
+        time: (r) => Date.parse(r.commence || 0) || null,
+      },
+      match: (r, q) => `${r.player} ${r.team} ${r.pos} ${r.game}`.toLowerCase().includes(q),
+      keep: (r, f) => f === 'all' || String(r.conf) === f,
+    },
+  };
+  const amProbLocal = (odds) => (typeof odds !== 'number' ? null
+    : odds > 0 ? 100 / (odds + 100) : -odds / (-odds + 100));
+
+  const nflCfg = () => (state.nflView === 'lines' ? NFL_VIEW_CFG.lines : NFL_VIEW_CFG.props);
+
+  // Time reads soonest-first; everything else reads biggest-first. Same default
+  // direction rule the MLB board uses, so a reader moving between them is not
+  // surprised by an inverted list.
+  const nflSortDefaultAsc = (key) => key === 'time';
+
+  function setNflSort(key) {
+    if (state.nflSort === key) state.nflSortAsc = !state.nflSortAsc;
+    else { state.nflSort = key; state.nflSortAsc = nflSortDefaultAsc(key); }
+    renderNfl();
+  }
+  function setNflFilter(f) { state.nflFilter = f; renderNfl(); }
+
+  // Rows the toolbar acts on, in display order.
+  function nflVisibleRows(all) {
+    const cfg = nflCfg();
+    const q = (state.nflSearch || '').trim().toLowerCase();
+    let rows = all.filter((r) => cfg.keep(r, state.nflFilter));
+    if (q) rows = rows.filter((r) => cfg.match(r, q));
+    const get = cfg.metric[state.nflSort] || cfg.metric[cfg.sorts[0][0]];
+    const asc = state.nflSortAsc;
+    return rows.slice().sort((a, b) => {
+      const x = get(a), y = get(b);
+      // A row with no value for the active key sinks, rather than being treated
+      // as zero and jumping to the top of an ascending sort.
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return asc ? x - y : y - x;
+    });
+  }
+
+  function renderNflControls(all) {
+    const cfg = nflCfg();
+    const fEl = document.getElementById('nflFilters');
+    const sEl = document.getElementById('nflSorts');
+    if (fEl) {
+      fEl.innerHTML = cfg.filters.map(([key, label]) => {
+        const n = all.filter((r) => cfg.keep(r, key)).length;
+        const active = state.nflFilter === key ? ' active' : '';
+        const empty = n === 0 && key !== 'all' ? ' chip-empty' : '';
+        return `<button class="filter-btn${active}${empty}" data-action="nfl-filter" data-nflfilter="${key}">`
+          + `${label}<span class="chip-count">${n}</span></button>`;
+      }).join('');
+    }
+    if (sEl) {
+      // Only offer a key something actually carries a value for.
+      sEl.innerHTML = cfg.sorts.filter(([key]) => all.some((r) => cfg.metric[key](r) != null))
+        .map(([key, label]) => {
+          const on = state.nflSort === key;
+          const arrow = on ? `<span class="sort-arrow">${state.nflSortAsc ? '↑' : '↓'}</span>` : '';
+          return `<button class="sort-btn${on ? ' active' : ''}" data-action="nfl-sort" data-nflsort="${key}">`
+            + `${label}${arrow}</button>`;
+        }).join('');
+    }
+    const q = document.getElementById('nflSearch');
+    if (q && q.value !== (state.nflSearch || '')) q.value = state.nflSearch || '';
+  }
+
+
+  // Team colours, same treatment the batter board already gives MLB clubs: a
+  // badge you can pick out without reading it. Each pair is [background, text],
+  // and the text colour is chosen per club for contrast rather than defaulting
+  // to white — several of these grounds (Rams gold, Steelers yellow, Chargers
+  // powder) are unreadable with white on top.
+  const NFL_TEAM_COLORS = {
+    ARI: ['#97233F', '#ffffff'], ATL: ['#A71930', '#ffffff'], BAL: ['#241773', '#ffffff'],
+    BUF: ['#00338D', '#ffffff'], CAR: ['#0085CA', '#111111'], CHI: ['#0B162A', '#C83803'],
+    CIN: ['#FB4F14', '#111111'], CLE: ['#311D00', '#FF3C00'], DAL: ['#041E42', '#869397'],
+    DEN: ['#FB4F14', '#002244'], DET: ['#0076B6', '#ffffff'], GB:  ['#203731', '#FFB612'],
+    HOU: ['#03202F', '#A71930'], IND: ['#002C5F', '#ffffff'], JAX: ['#101820', '#D7A22A'],
+    KC:  ['#E31837', '#ffffff'], LV:  ['#000000', '#A5ACAF'], LAC: ['#0080C6', '#FFC20E'],
+    LA:  ['#003594', '#FFA300'], MIA: ['#008E97', '#FC4C02'], MIN: ['#4F2683', '#FFC62F'],
+    NE:  ['#002244', '#C60C30'], NO:  ['#101820', '#D3BC8D'], NYG: ['#0B2265', '#A71930'],
+    NYJ: ['#125740', '#ffffff'], PHI: ['#004C54', '#A5ACAF'], PIT: ['#101820', '#FFB612'],
+    SF:  ['#AA0000', '#B3995D'], SEA: ['#002244', '#69BE28'], TB:  ['#D50A0A', '#FF7900'],
+    TEN: ['#0C2340', '#4B92DB'], WAS: ['#5A1414', '#FFB612'],
+  };
+  // Falls back to the plain badge rather than an invented colour, so a
+  // relocation or a code we do not know reads as unstyled instead of wrong.
+  function nflBadge(abbr) {
+    const t = NFL_TEAM_COLORS[abbr];
+    return t
+      ? `<span class="team-badge tc" style="background:${t[0]};color:${t[1]}">${esc(abbr)}</span>`
+      : `<span class="team-badge">${esc(abbr || '')}</span>`;
   }
 
 })();

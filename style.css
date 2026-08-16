@@ -1450,3 +1450,15 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .sl-has-fold .sl-full { display:none }
   .sl-has-fold .sl-folded { display:inline }
 }
+
+/* ---------------------------------------------------------------------------
+   NFL toolbar + team badges
+   ---------------------------------------------------------------------------
+   The toolbar reuses .board-toolbar / .filter-btn / .sort-chips wholesale, so
+   only the pieces the MLB board has no equivalent for are defined here.        */
+#nflFilters { display:contents }
+
+/* Both clubs sit in the head cell on the game-line view, so the separator needs
+   room the batter board never needed. */
+.nfl-at { color:var(--textFaint); font-size:12px; padding:0 6px }
+.mc-head .team-badge { vertical-align:middle }
