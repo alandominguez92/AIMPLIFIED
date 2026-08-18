@@ -367,8 +367,16 @@
   // stays on the documented mock layer until premium markets are enabled.
   // ---------------------------------------------------------------------
 
+  // Loading the page with ?nofetch=1 makes every API call it fires dry too.
+  //
+  // Without this the guard covered only hand-made calls to /api/*, and missed the
+  // path that actually burns credits: an uncached page load fans out to four
+  // endpoints, and the batters call alone is markets x regions x games. A guard
+  // that does not cover the main consumer is not a guard.
+  const DRY_RUN = new URLSearchParams(location.search).get('nofetch') === '1';
   async function fetchJson(path) {
-    const resp = await fetch(API_BASE + path, { headers: { accept: 'application/json' } });
+    const p = DRY_RUN ? path + (path.includes('?') ? '&' : '?') + 'nofetch=1' : path;
+    const resp = await fetch(API_BASE + p, { headers: { accept: 'application/json' } });
     const remaining = resp.headers.get('x-requests-remaining');
     if (remaining !== null && remaining !== '') state.quotaRemaining = remaining;
     if (!resp.ok) throw new Error(`${path} -> ${resp.status}`);
@@ -1148,7 +1156,10 @@
           // battable lines — fifteen on the board and the header said none.
           : slateGames().length
             ? `${slateGames().length} game${slateGames().length === 1 ? '' : 's'}`
-              + `<span class="gc-more"> · ${slateStarted() ? 'underway — no lines up' : 'no lines up yet'}</span>`
+              // A feed error outranks both slate readings here for the same reason
+              // it does in the empty state: "no lines up yet" points at the books.
+              + `<span class="gc-more"> · ${state.feedError ? 'odds feed unavailable'
+                : slateStarted() ? 'underway — no lines up' : 'no lines up yet'}</span>`
             : 'no games posted yet')
         : `${RAW_GAMES.length} games<span class="gc-more"> · odds refresh :30</span>`)
       : `${n} ${noun}<span class="gc-more"> · ${qualifier}</span>`;
