@@ -79,7 +79,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
-  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-board', '/api/be-gate', '/api/nfl-props',
+  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-board', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
 export default {
@@ -101,6 +101,35 @@ export default {
     // path — except fair-probe, whose ?market= and ?games= change what is
     // actually being asked. Stripping them there would serve a batter-market
     // result to a strikeout probe and silently answer the wrong question.
+    // ?nofetch=1 — verification mode. Serves whatever is already cached and
+    // NEVER invokes a handler that could call the Odds API.
+    //
+    // Added after a session of repeated visual checks helped exhaust the API
+    // quota: every uncached page load fans out to /api/board, /api/batters,
+    // /api/odds and /api/scores, and the batters call alone is markets x regions
+    // x games — roughly 45 credits on a fifteen-game slate. The board then
+    // blamed the sportsbooks for the outage.
+    //
+    // Deliberately decided HERE rather than inside a fetch wrapper. A
+    // module-level "dry run" flag is shared by every request in the isolate, so
+    // a checking request could suppress fetches for a real viewer arriving at
+    // the same moment. Routing is request-scoped and cannot leak.
+    if (url.searchParams.get('nofetch') === '1') {
+      const dryKey = new Request(url.origin + p);
+      const hit = await caches.default.match(dryKey);
+      if (hit) {
+        const h = new Headers(hit.headers);
+        h.set('x-dry-run', 'cache-hit');
+        return new Response(hit.body, { status: hit.status, headers: h });
+      }
+      // Nothing cached: answer in the shape each route promises, flagged, rather
+      // than 204 — the client should render its normal empty state, not break.
+      const body = p === '/api/batters'
+        ? { rows: [], feedError: { status: 0, code: 'DRY_RUN', message: 'nofetch=1: no upstream call made', kind: 'dry-run' } }
+        : { dryRun: true, note: 'nofetch=1: no upstream call made, and nothing cached for this route' };
+      return cors(json(body, 5));
+    }
+
     if (p === '/api/nfl-ingest') return handleApi(p, env, ctx, url);   // writes; caching it would skip the write
     const cacheKey = new Request(url.origin + p + (p === '/api/fair-probe' ? url.search : ''));
     const cached = await cache.match(cacheKey);
@@ -188,6 +217,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nfl-board') return nflBoard(env, url);
   if (p === '/api/be-gate') return beGate(env, url);
   if (p === '/api/nfl-props') return nflProps(env, url);
+  if (p === '/api/usage') return oddsUsage(env);
 
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
@@ -1013,6 +1043,7 @@ async function batters(env, ctx) {
   let events;
   try {
     const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+    if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, evR));
     if (!evR.ok) return battersPayload([], await feedErrorFrom(evR));
     events = await evR.json();
   } catch (e) {
@@ -1142,6 +1173,7 @@ async function batters(env, ctx) {
       // sources (which sit outside the us region) at the same 1 region-equivalent
       // price, since Odds API bills ceil(books/10) and we ask for 7.
       const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r));
       if (!r.ok) { if (!propsFeedError) propsFeedError = await feedErrorFrom(r); return; }
       const d = await r.json();
       const awayAb = keyAbbr(ev.away_team);
@@ -5411,4 +5443,66 @@ function nflSim(countMean, disp, shape, scale, shift, rnd) {
     p25: q(0.25), p50: q(0.50), p75: q(0.75),
     count: Math.round(countMean * 10) / 10,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Odds API usage, recorded so a burn is visible before it becomes an outage
+// ---------------------------------------------------------------------------
+// The quota ran out with no warning anywhere in the product: nothing tracked how
+// fast credits were going, so the first symptom was an empty board. Every Odds
+// API response carries x-requests-remaining; this stores the latest reading and
+// the day's low-water mark, which is enough to see a burn rate without spending
+// a single extra credit.
+async function ensureUsageSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS odds_usage (
+    day TEXT PRIMARY KEY, remaining INTEGER, low INTEGER, calls INTEGER, updated_at TEXT
+  )`).run();
+}
+// Best-effort and never awaited by a request path: telemetry must not be able to
+// slow down or break the thing it is measuring.
+async function recordOddsUsage(env, res) {
+  try {
+    if (!env || !env.DB || !res || !res.headers) return;
+    const rem = parseInt(res.headers.get('x-requests-remaining') || '', 10);
+    if (!Number.isFinite(rem)) return;
+    await ensureUsageSchema(env.DB);
+    const day = new Date().toISOString().slice(0, 10);
+    await env.DB.prepare(
+      `INSERT INTO odds_usage (day, remaining, low, calls, updated_at) VALUES (?,?,?,1,?)
+       ON CONFLICT(day) DO UPDATE SET
+         remaining = excluded.remaining,
+         low = MIN(low, excluded.remaining),
+         calls = calls + 1,
+         updated_at = excluded.updated_at`
+    ).bind(day, rem, rem, new Date().toISOString()).run();
+  } catch (e) { /* telemetry is never worth an error */ }
+}
+
+// GET /api/usage — reads the stored numbers only. Costs nothing upstream, which
+// is the point: checking the quota must not consume the quota.
+async function oddsUsage(env) {
+  const out = { note: 'read from stored response headers — this endpoint makes no upstream call' };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 30)); }
+  try {
+    await ensureUsageSchema(env.DB);
+    const rows = (await env.DB.prepare(
+      'SELECT day, remaining, low, calls, updated_at FROM odds_usage ORDER BY day DESC LIMIT 14'
+    ).all()).results || [];
+    out.days = rows;
+    if (rows.length >= 2) {
+      // Credits spent per day, from the drop in the low-water mark.
+      out.burn = [];
+      for (let i = 0; i < rows.length - 1; i++) {
+        const spent = rows[i + 1].low - rows[i].low;
+        out.burn.push({ day: rows[i].day, spent, calls: rows[i].calls });
+      }
+    }
+    const latest = rows[0];
+    out.remaining = latest ? latest.remaining : null;
+    out.verdict = !latest ? 'no readings yet'
+      : latest.remaining <= 0 ? 'EXHAUSTED — nothing can be priced'
+      : latest.remaining < 500 ? 'LOW — under 500 credits left'
+      : 'ok';
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return cors(json(out, 30));
 }
