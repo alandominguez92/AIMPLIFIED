@@ -66,6 +66,10 @@
   function projReason(g) {
     if (g.status === 'Live') return 'in play · line closed';
     if (g.status === 'Final') return 'final · line closed';
+    // A projection-only row during a feed outage has no line because we cannot
+    // read one, not because no book has posted. "awaiting line" would blame the
+    // sportsbooks for our outage and imply a price is on its way.
+    if (g.tier === 'model' && state.feedError) return 'no price · feed down';
     if (g.timeMs && g.timeMs - Date.now() > 12 * 3600 * 1000) return 'posts game-day AM';
     return 'awaiting line';
   }
@@ -555,6 +559,10 @@
       if (isBatter()) {
         const ids = new Set(mapped.map((g) => g.id));
         if (state.expandedId && !ids.has(state.expandedId)) state.expandedId = null;
+        // Chrome depends on the rows now: whether the board is priced or
+        // projection-only decides which disclosure sits above it, and that is
+        // only knowable once the payload lands.
+        renderViewChrome();
         renderControls();
         renderBoard();
       }
@@ -1435,7 +1443,10 @@
     if (!rows || !rows.length) { el.slateSummary.hidden = true; return; }
     const tiered = (g) => isPlayTier(g.tier);
     const plays = rows.filter((g) => tiered(g) && g.odds != null);
-    const watching = rows.filter((g) => tiered(g) && g.odds == null);
+    // "Watching" = we have a projection but no line to price it against. That
+    // covers both a tiered row whose book quote dropped out and a projection-only
+    // row from a feed outage — same state, same reason, so it counts the same.
+    const watching = rows.filter((g) => g.odds == null && (tiered(g) || g.tier === 'model'));
     const best = plays.reduce((m, g) => (g.edge != null && g.edge > m ? g.edge : m), -Infinity);
     const bestStr = best > -Infinity ? '+' + best.toFixed(1) + '%' : '—';
     el.slateSummary.innerHTML = `<div class="ss-in">`
@@ -1560,8 +1571,13 @@
     // Same-game correlation: count how many board picks share each game so we can
     // warn when multiple unders ride the same matchup (they hit/miss together).
     // Batter board only — keyed by gamePk, which every batter row carries.
+    // Only priced rows count: the warning is about bets riding the same game, so
+    // on a projection-only board there is nothing to be correlated about, and the
+    // tag would read as a same-game parlay hint over rows that aren't playable.
     const gameCounts = {};
-    if (isBatter()) games.forEach((g) => { if (g.gamePk != null) gameCounts[g.gamePk] = (gameCounts[g.gamePk] || 0) + 1; });
+    if (isBatter()) games.forEach((g) => {
+      if (g.gamePk != null && g.tier !== 'model') gameCounts[g.gamePk] = (gameCounts[g.gamePk] || 0) + 1;
+    });
     renderSlateSummary();
     el.noResults.hidden = games.length !== 0;
     if (!games.length) el.noResults.textContent = emptyBoardMessage();
@@ -2640,7 +2656,15 @@
     const unders = batters.filter(qualifies);
     const preview = unders.filter((g) => g.status === 'Preview');
     const pool = preview.length ? preview : unders;
-    if (!pool.length) { renderHeroPlaceholder('none'); return; }
+    if (!pool.length) {
+      // "No fade meets the bar" claims we looked at prices and none cleared. That
+      // is only true if there were prices to look at. With a projection-only board
+      // nothing could be evaluated, so it gets the same story the empty board got.
+      const anyPriced = batters.some((g) => g.odds != null);
+      renderHeroPlaceholder(anyPriced ? 'none'
+        : state.feedError ? 'feed' : slateStarted() ? 'closed' : 'nolines');
+      return;
+    }
     const f = pool.reduce((m, g) => (!m || (g.edge || 0) > (m.edge || 0) ? g : m), null);
 
     const propLabel = f.marketLabel || 'prop';
@@ -2775,6 +2799,12 @@
     moneyline: ['Context · not plays', 'Our graded record shows <b>no reliable edge in moneylines</b> — a heavy favorite can show a number and still be a bad bet. Win probability is shown as context (model vs. the market), not posted as a play.'],
     runline: ['Context · not plays', 'The run line is <b>not graded and not posted</b> — no track record stands behind it. It is shown so the model’s read on the 1.5 is visible next to the moneyline, and the two can be compared. Treat it as analysis only.'],
   };
+  // True when the batter board is populated but nothing on it carries a price --
+  // the projection survived a feed outage, the pricing did not.
+  function batterModelOnly() {
+    const rows = state.liveBatters;
+    return isBatter() && LIVE_MODE && !!(rows && rows.length) && rows.every((r) => r.tier === 'model');
+  }
   function renderViewChrome() {
     renderEraNote();
     // The tabnote opens "Plays = batter unders only", which describes this tab
@@ -2782,8 +2812,32 @@
     // board the reader is not looking at, directly above a context banner
     // explaining the one they are. The banner is the accurate disclosure there,
     // so the note steps aside rather than both being shown.
-    if (el.tabnote) el.tabnote.hidden = state.boardView !== 'batter';
+    // It also steps aside when nothing is priced: promising "plays" above a board
+    // that has none, and can have none, describes a board that isn't there.
+    if (el.tabnote) el.tabnote.hidden = state.boardView !== 'batter' || batterModelOnly();
     if (!el.kCtxBanner) return;
+    // A priced-out batter board gets the same disclosure the analysis tabs get,
+    // because that is exactly what it has become for as long as the feed is down.
+    if (batterModelOnly()) {
+      // Why there is no price decides who the reader should be waiting on, so the
+      // two causes never share a sentence. A feed outage is ours; an unposted
+      // market is the books', and normal this far from first pitch.
+      const fe = state.feedError;
+      const why = !fe
+        ? 'books haven’t posted two-way batter lines yet'
+        : fe.kind === 'quota' ? 'our data plan is out of credits'
+          : 'we can’t reach the pricing feed';
+      const blame = fe
+        ? ' This is on us, not the sportsbooks.'
+        : ' Nothing is wrong — the market simply isn’t up yet.';
+      el.kCtxBanner.innerHTML = `<span class="ctx-banner-tag">Projections · not plays</span>`
+        + `<span>No book prices right now — ${why}. These are <b>our projections only</b>, `
+        + `shown with tonight’s matchup, first pitch and opposing starter. `
+        + `Edge needs a price to measure against, so <b>no edge is shown and nothing is posted or graded</b> `
+        + `until prices return.${blame}</span>`;
+      el.kCtxBanner.hidden = false;
+      return;
+    }
     const b = CTX_BANNERS[state.boardView];
     if (b) {
       el.kCtxBanner.innerHTML = `<span class="ctx-banner-tag">${b[0]}</span><span>${b[1]}</span>`;

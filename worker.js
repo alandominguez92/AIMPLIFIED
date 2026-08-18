@@ -1037,27 +1037,41 @@ const battersPayload = (rows, feedError) => cors(json({ rows, feedError: feedErr
 async function batters(env, ctx) {
   const season = new Date().getUTCFullYear();
   const key = env && env.ODDS_API_KEY;
-  if (!key) return battersPayload([], { status: 0, code: 'NO_KEY', message: 'ODDS_API_KEY is not configured', kind: 'config' });
 
   // 1) Which events are on, and their batter prop lines (DK/FD), per player.
-  let events;
-  try {
-    const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
-    if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, evR));
-    if (!evR.ok) return battersPayload([], await feedErrorFrom(evR));
-    events = await evR.json();
-  } catch (e) {
-    return battersPayload([], { status: 0, code: 'FETCH_FAILED', message: String((e && e.message) || e), kind: 'upstream' });
+  //
+  // The odds feed supplies PRICES, not the slate. It used to be fetched first
+  // and returned on failure, which meant one 401 blanked a board whose model
+  // half -- lineups, opposing arm, park, projections -- comes from StatsAPI and
+  // was still perfectly healthy. Every other board (K props, ML, run line)
+  // degrades to model-only in that situation; this one went dark. So the fetch
+  // is now non-fatal: record the error, carry on, and price whatever we can.
+  let events = [];
+  let feedError = null;
+  if (!key) {
+    feedError = { status: 0, code: 'NO_KEY', message: 'ODDS_API_KEY is not configured', kind: 'config' };
+  } else {
+    try {
+      const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, evR));
+      if (!evR.ok) feedError = await feedErrorFrom(evR);
+      else {
+        const ev = await evR.json();
+        if (Array.isArray(ev)) events = ev;
+      }
+    } catch (e) {
+      feedError = { status: 0, code: 'FETCH_FAILED', message: String((e && e.message) || e), kind: 'upstream' };
+    }
   }
-  // An empty event list is not an error -- there is genuinely no slate.
-  if (!Array.isArray(events) || !events.length) return battersPayload([], null);
 
   // Map each "AWAY@HOME" to its real MLB gamePk + status, so batter picks can
   // be logged and later graded from the boxscore (needs the gamePk). The same
   // request hydrates posted starting lineups: once a manager's card is up we
   // know who actually plays tonight and where they bat.
   const schedByMatchup = {};
+  const gameByTeamId = {};          // teamId -> tonight's game identity (matchup/time/status)
   const lineupSlotById = {};        // playerId -> batting slot 1-9
+  const lineupById = {};            // playerId -> { name, teamId } for posted starters
   const lineupPostedTeamIds = new Set(); // teams whose lineup is posted
   const oppPPIdByTeamId = {};       // teamId -> the OPPONENT's probable pitcher id
   const oppPPNameByTeamId = {};     // teamId -> that pitcher's name (display/debug)
@@ -1083,12 +1097,32 @@ async function batters(env, ctx) {
           awayScore: numOr(g.teams.away.score, null),
           homeScore: numOr(g.teams.home.score, null),
         };
+        // Same identity the props loop stamps onto a priced player, but keyed by
+        // team so a lineup-seeded batter can find his game without the odds feed.
+        const ident = {
+          matchup: `${away} @ ${home}`,
+          timeMs: Date.parse(g.gameDate) || 0,
+          timeLabel: timeLabelPT(g.gameDate),
+          gamePk: g.gamePk,
+          gameStatus: (g.status && g.status.abstractGameState) || 'Preview',
+          awayScore: numOr(g.teams.away.score, null),
+          homeScore: numOr(g.teams.home.score, null),
+        };
+        if (g.teams.away.team && g.teams.away.team.id) gameByTeamId[g.teams.away.team.id] = ident;
+        if (g.teams.home.team && g.teams.home.team.id) gameByTeamId[g.teams.home.team.id] = ident;
+
         const lp = g.lineups || {};
         [['awayPlayers', g.teams.away.team], ['homePlayers', g.teams.home.team]].forEach(([k, team]) => {
           const arr = lp[k] || [];
           if (!arr.length || !team || !team.id) return;
           lineupPostedTeamIds.add(team.id);
-          arr.forEach((p, i) => { if (p && p.id) lineupSlotById[p.id] = i + 1; });
+          arr.forEach((p, i) => {
+            if (!p || !p.id) return;
+            lineupSlotById[p.id] = i + 1;
+            // Name + team are what the model-only path needs to seed a row when
+            // no book has priced this player.
+            if (p.fullName) lineupById[p.id] = { name: p.fullName, teamId: team.id };
+          });
         });
         // Each team's batters face the OTHER team's probable pitcher; both share
         // the venue. Missing pitcher/venue just leaves that team at neutral.
@@ -1200,9 +1234,16 @@ async function batters(env, ctx) {
       }
     } catch (e) { /* skip this event */ }
   }));
-  // No priced players. If the fetches themselves failed, say so -- otherwise the
-  // board tells readers the books have not posted, which blames the wrong party.
-  if (!Object.keys(byName).length) return battersPayload([], propsFeedError);
+  if (propsFeedError && !feedError) feedError = propsFeedError;
+
+  // No priced players -- but that does not mean nothing is knowable. Everything
+  // the projection needs (batting slot when posted, opposing arm, park, season
+  // rates) comes from StatsAPI, which is independent of the odds feed. The
+  // seeding happens below, once season stats are in hand, because the player
+  // universe has to come from the stats pool when no lineup card is up yet.
+  const modelSeeded = !Object.keys(byName).length;
+  // Nothing priced AND no game on the schedule: genuinely nothing to show.
+  if (modelSeeded && !Object.keys(gameByTeamId).length) return battersPayload([], feedError);
 
   // 2) Season hitting stats for every batter, keyed by name for matching.
   const statByName = {};
@@ -1212,10 +1253,52 @@ async function batters(env, ctx) {
       const d = await r.json();
       ((d.stats || [])[0] || {}).splits?.forEach((s) => {
         const nm = normName((s.player || {}).fullName);
-        if (nm) statByName[nm] = { st: s.stat || {}, id: (s.player || {}).id, team: teamAbbr(s.team), teamId: (s.team || {}).id };
+        // fullName is kept for display: the key is normalized, so it can't be
+        // shown, and the model-only path has no book description to fall back on.
+        if (nm) statByName[nm] = { st: s.stat || {}, id: (s.player || {}).id, name: (s.player || {}).fullName || null, team: teamAbbr(s.team), teamId: (s.team || {}).id };
       });
     }
   } catch (e) { /* projections fall back to rate-only where possible */ }
+
+  // 2a) Model-only seeding. With no book quotes there is no priced player list,
+  // so the universe comes from who is playing tonight instead of who got priced.
+  //
+  // Preference order matters. A posted lineup card is fact, so it wins outright.
+  // Before cards go up -- which is most of the day, since they post ~3h out --
+  // fall back to each club's qualified hitters from the season pool. That is a
+  // projection of who plays, not a claim about it, and it self-corrects: the
+  // moment a card posts, the slot filter in step 3 drops everyone not on it.
+  if (modelSeeded) {
+    const seed = (name, teamId) => {
+      const g = gameByTeamId[teamId];
+      if (!g) return;
+      const nm = normName(name);
+      if (!nm || byName[nm]) return;
+      byName[nm] = {
+        name, matchup: g.matchup, timeMs: g.timeMs, timeLabel: g.timeLabel,
+        gamePk: g.gamePk, gameStatus: g.gameStatus,
+        awayScore: g.awayScore, homeScore: g.homeScore,
+        props: {},               // no book quotes -> no line, no price, no edge
+      };
+    };
+    const posted = Object.keys(lineupById).length > 0;
+    if (posted) {
+      for (const pid of Object.keys(lineupById)) seed(lineupById[pid].name, lineupById[pid].teamId);
+    } else {
+      // Rank each club's hitters by season plate appearances and keep the top 9 --
+      // playing time is the best available predictor of who is in tonight's card.
+      const byTeam = {};
+      for (const nm of Object.keys(statByName)) {
+        const s = statByName[nm];
+        if (!s.teamId || !gameByTeamId[s.teamId]) continue;
+        (byTeam[s.teamId] || (byTeam[s.teamId] = [])).push({ nm, pa: toNum((s.st || {}).plateAppearances) });
+      }
+      for (const teamId of Object.keys(byTeam)) {
+        byTeam[teamId].sort((a, b) => b.pa - a.pa).slice(0, 9)
+          .forEach((x) => seed(statByName[x.nm].name || x.nm, teamId));
+      }
+    }
+  }
 
   // 2b) Platoon splits: each batter's TB / HR / (H+R+RBI) per PA vs LHP and vs
   // RHP, so tonight's projection can lean on how he hits the hand he's facing.
@@ -1334,7 +1417,7 @@ async function batters(env, ctx) {
     const oppPFac = oppP ? { hr: round2(pitcherMult('hr')), tb: round2(pitcherMult('tb')), hrr: round2(pitcherMult('hrr')) } : null;
     draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, facingHand, venue, adj, seasonPA: pa, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
   }
-  if (!draft.length) return battersPayload([], propsFeedError);
+  if (!draft.length) return battersPayload([], feedError);
 
   const pr = (arr, v) => arr.length ? Math.round(arr.filter((x) => x <= v).length / arr.length * 100) : 0;
   const tone = (v) => v >= 66 ? 'cool' : v >= 33 ? 'warm' : 'hot';
@@ -1350,6 +1433,11 @@ async function batters(env, ctx) {
     const unders = priced.filter((x) => x.m.side === 'Under');
     const lead = unders.reduce((best, x) => (!best || x.m.edge > best.m.edge ? x : best), null);
     const expFor = (metric) => round2(b.lambda[metric]);
+    // With no price there is no line to take a side against, so there is no
+    // pick and no edge -- but the projection itself stands on its own, the way
+    // the K board reads "proj 6.3 Ks". Total bases is the continuous metric that
+    // carries the most information, so it headlines.
+    const modelOnly = !priced.length;
     const power = pr(pool.iso, b.iso), slug = pr(pool.slg, b.slg);
     const contact = pr(pool.contact, 1 - b.kpct), disc = pr(pool.disc, b.bbpct);
 
@@ -1381,18 +1469,22 @@ async function batters(env, ctx) {
       seasonPA: b.seasonPA || null,
       oppPitcher: b.oppPName || null,   // tonight's opposing starter
       oppPitcherAdj: b.oppPFac || null, // his contribution alone, per metric
-      pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : '—',
+      pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}`
+        : modelOnly ? `proj ${expFor('tb')} TB` : '—',
       odds: lead ? lead.m.price : null,
       oddsBooks: lead ? lead.m.books : null,
+      // edge = model_prob - fair_prob, and fair comes from de-vigged book prices.
+      // No price, no edge. Null is the honest value; 0 would read as "no lean".
       edge: lead ? lead.m.edge : null,
-      tier: lead ? lead.m.tier : 'pass',
-      interval: lead ? `proj ${expFor(lead.spec.metric)} ${lead.spec.label}` : '—',
+      tier: lead ? lead.m.tier : modelOnly ? 'model' : 'pass',
+      interval: lead ? `proj ${expFor(lead.spec.metric)} ${lead.spec.label}`
+        : modelOnly ? `proj ${expFor('hrr')} H+R+RBI · ${expFor('hr')} HR` : '—',
       // Fields for the fade display: the model-vs-line scale and hit probability.
       side: lead ? lead.m.side : null,
       line: lead ? lead.m.line : null,
-      projVal: lead ? expFor(lead.spec.metric) : null,
-      marketLabel: lead ? lead.spec.label : null,
-      metric: lead ? lead.spec.metric : null,       // hr|tb|hrr — joins to bpicks
+      projVal: lead ? expFor(lead.spec.metric) : modelOnly ? expFor('tb') : null,
+      marketLabel: lead ? lead.spec.label : modelOnly ? 'TB' : null,
+      metric: lead ? lead.spec.metric : modelOnly ? 'tb' : null,  // hr|tb|hrr — joins to bpicks
       modelOver: lead ? lead.m.modelOver : null,
       fairOver: lead ? lead.m.fairOver : null,       // current vig-free P(over) — for since-posted movement
       fairSrc: lead ? lead.m.fairSrc : null,
@@ -1414,9 +1506,17 @@ async function batters(env, ctx) {
 
   // Board rows = under leans only. Logging stays whole-model (every priced
   // market, both sides) so the research record keeps measuring what we DON'T post.
-  const rows = all.filter((r) => r.odds != null)
+  const pricedRows = all.filter((r) => r.odds != null)
     .sort((a, b) => (b.edge || 0) - (a.edge || 0))
     .slice(0, 40);
+  // Nothing priced anywhere: fall back to the model-only view rather than an
+  // empty board. Ranked by projected total bases, since with no line there is no
+  // edge to rank by. Batting order breaks ties -- it is the one ordering that is
+  // real information here and not an artifact of the projection.
+  const rows = pricedRows.length ? pricedRows
+    : all.filter((r) => r.tier === 'model')
+      .sort((a, b) => (b.projVal || 0) - (a.projVal || 0) || (a.lineupSlot || 99) - (b.lineupSlot || 99))
+      .slice(0, 40);
   const logRows = all.filter((r) => r.hasPriced).slice(0, 60);
 
   if (env && env.DB) {
@@ -1456,7 +1556,7 @@ async function batters(env, ctx) {
   // 5 min — batter props are the expensive call. propsFeedError rides along even
   // on a good slate: some events can 401 while others succeed, and a partial
   // slate presented as complete is its own quiet lie.
-  return battersPayload(rows, propsFeedError);
+  return battersPayload(rows, feedError);
 }
 
 function abbrFromName(name) {
