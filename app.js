@@ -125,6 +125,7 @@
     nflView: 'receiving',
     nflProps: null,
     nflShowAll: false,
+    feedError: null,
     nflFilter: 'all',
     nflSort: 'proj',
     nflSortAsc: false,
@@ -514,7 +515,12 @@
   async function refreshBatters() {
     if (!LIVE_MODE) return;
     try {
-      const rows = await fetchJson('/api/batters');
+      // Accepts both shapes. The endpoint now returns { rows, feedError }, but a
+      // worker and a client never deploy in the same instant — treating an array
+      // as invalid would blank the board for the seconds in between.
+      const payload = await fetchJson('/api/batters');
+      const rows = Array.isArray(payload) ? payload : (payload && payload.rows);
+      state.feedError = (payload && !Array.isArray(payload) && payload.feedError) || null;
       if (!Array.isArray(rows)) return;
       // Once a game starts the first-pitch time stops being the useful fact, so
       // the score replaces it — the same swap /api/board already does for the K
@@ -1381,6 +1387,14 @@
     // side we play. We never request the milestone keys, so this describes what
     // books usually do rather than claiming to have checked what is up now.
     if (LIVE_MODE && !boardHasLive()) {
+      // A feed failure is ours, not the books'. Saying "no lines posted yet" over
+      // a 401 points the reader at the wrong party and invites them to wait for
+      // something that is not coming.
+      if (state.feedError) {
+        return state.feedError.kind === 'quota'
+          ? 'Odds feed unavailable — our data plan is out of credits, so nothing can be priced right now. This is on us, not the sportsbooks. The graded record below is unaffected.'
+          : 'Odds feed unavailable — we can’t reach the pricing data right now, so there is nothing to price. This is on us, not the sportsbooks. The graded record below is unaffected.';
+      }
       if (isBatter()) {
         return slateStarted()
           ? 'Batter market closed — tonight’s games are underway or final, so books have pulled the props. Lines return before first pitch tomorrow.'
@@ -2584,6 +2598,8 @@
       'Books haven’t posted two-way batter lines yet. The milestone markets (“2+ Total Bases”) usually go up first, but those quote only the over — we need both sides to strip the vig and find a fair number. Nothing to price until then.'],
     closed: ['Market Closed', 'Tonight’s Games Are Underway',
       'Books pull batter props once a game starts, so there is nothing left to price tonight. The board returns with tomorrow’s slate — the graded record below does not move in the meantime.'],
+    feed: ['Feed Unavailable', 'Odds Feed Is Down',
+      'We can’t reach the pricing data right now, so nothing on tonight’s slate can be priced. This is on us, not the sportsbooks — the graded record below is unaffected and does not move while the feed is out.'],
     none: ['Tonight’s Fades', 'No Fade Meets the Bar Tonight',
       'No batter under clears the bar tonight — so we post nothing. The projections are on the board below; we only lead with a fade when the price is better than the model thinks the outcome is worth.'],
   };
@@ -2604,7 +2620,10 @@
     // different story from a full slate where no under cleared the bar.
     // No batter rows means one of two very different things: the books have not
     // posted yet, or they have already pulled. The slate itself says which.
-    if (!batters.length) { renderHeroPlaceholder(slateStarted() ? 'closed' : 'nolines'); return; }
+    if (!batters.length) {
+      renderHeroPlaceholder(state.feedError ? 'feed' : slateStarted() ? 'closed' : 'nolines');
+      return;
+    }
     const qualifies = (g) => g.side === 'Under' && g.odds != null && g.line != null
       && typeof g.projVal === 'number' && isPlayTier(g.tier);
     const unders = batters.filter(qualifies);

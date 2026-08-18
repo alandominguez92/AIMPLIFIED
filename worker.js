@@ -971,19 +971,55 @@ function parkFactor(venue, metric) {
   return 1 + PARK_WEIGHT * (raw - 1);
 }
 
+// Upstream failure, described rather than swallowed.
+//
+// Every path in batters() used to return a bare [] — a quota exhaustion, a
+// network error and a genuinely empty slate were indistinguishable to the
+// client, so the board blamed the sportsbooks for an outage on our side. It told
+// readers to "check back closer to first pitch" while the feed was returning 401
+// OUT_OF_USAGE_CREDITS.
+//
+// The shape stays backwards-compatible in spirit: rows is still the payload, and
+// feedError is null on the happy path.
+async function feedErrorFrom(res) {
+  let code = null, message = null;
+  try {
+    const body = await res.text();
+    try {
+      const j = JSON.parse(body);
+      code = j.error_code || null;
+      message = j.message || null;
+    } catch (e) { message = body.slice(0, 200); }
+  } catch (e) { /* body already consumed or unreadable */ }
+  return {
+    status: res.status,
+    code,
+    message,
+    // The one distinction the UI acts on: out of credits is ours to fix, an
+    // upstream 5xx is theirs, and both are different from "no lines yet".
+    kind: code === 'OUT_OF_USAGE_CREDITS' || res.status === 401 || res.status === 429
+      ? 'quota'
+      : (res.status >= 500 ? 'upstream' : 'error'),
+  };
+}
+const battersPayload = (rows, feedError) => cors(json({ rows, feedError: feedError || null }, feedError ? 30 : 300));
+
 async function batters(env, ctx) {
   const season = new Date().getUTCFullYear();
   const key = env && env.ODDS_API_KEY;
-  if (!key) return cors(json([], 300));
+  if (!key) return battersPayload([], { status: 0, code: 'NO_KEY', message: 'ODDS_API_KEY is not configured', kind: 'config' });
 
   // 1) Which events are on, and their batter prop lines (DK/FD), per player.
   let events;
   try {
     const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
-    if (!evR.ok) return cors(json([], 300));
+    if (!evR.ok) return battersPayload([], await feedErrorFrom(evR));
     events = await evR.json();
-  } catch (e) { return cors(json([], 300)); }
-  if (!Array.isArray(events) || !events.length) return cors(json([], 300));
+  } catch (e) {
+    return battersPayload([], { status: 0, code: 'FETCH_FAILED', message: String((e && e.message) || e), kind: 'upstream' });
+  }
+  // An empty event list is not an error -- there is genuinely no slate.
+  if (!Array.isArray(events) || !events.length) return battersPayload([], null);
 
   // Map each "AWAY@HOME" to its real MLB gamePk + status, so batter picks can
   // be logged and later graded from the boxscore (needs the gamePk). The same
@@ -1097,13 +1133,16 @@ async function batters(env, ctx) {
   // (batter markets cost more: 3 markets per event vs. 1 for strikeouts).
   const nowB = Date.now();
   const upcomingB = events.filter((ev) => !ev.commence_time || Date.parse(ev.commence_time) > nowB);
+  // A per-event props failure used to return silently, so a whole slate of 401s
+  // looked identical to a slate with no props posted. Keep the first one.
+  let propsFeedError = null;
   await Promise.all(upcomingB.map(async (ev) => {
     try {
       // Explicit bookmaker list rather than `regions=us`: it pulls the sharp fair
       // sources (which sit outside the us region) at the same 1 region-equivalent
       // price, since Odds API bills ceil(books/10) and we ask for 7.
       const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
-      if (!r.ok) return;
+      if (!r.ok) { if (!propsFeedError) propsFeedError = await feedErrorFrom(r); return; }
       const d = await r.json();
       const awayAb = keyAbbr(ev.away_team);
       const homeAb = keyAbbr(ev.home_team);
@@ -1129,7 +1168,9 @@ async function batters(env, ctx) {
       }
     } catch (e) { /* skip this event */ }
   }));
-  if (!Object.keys(byName).length) return cors(json([], 300));
+  // No priced players. If the fetches themselves failed, say so -- otherwise the
+  // board tells readers the books have not posted, which blames the wrong party.
+  if (!Object.keys(byName).length) return battersPayload([], propsFeedError);
 
   // 2) Season hitting stats for every batter, keyed by name for matching.
   const statByName = {};
@@ -1261,7 +1302,7 @@ async function batters(env, ctx) {
     const oppPFac = oppP ? { hr: round2(pitcherMult('hr')), tb: round2(pitcherMult('tb')), hrr: round2(pitcherMult('hrr')) } : null;
     draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, facingHand, venue, adj, seasonPA: pa, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
   }
-  if (!draft.length) return cors(json([], 300));
+  if (!draft.length) return battersPayload([], propsFeedError);
 
   const pr = (arr, v) => arr.length ? Math.round(arr.filter((x) => x <= v).length / arr.length * 100) : 0;
   const tone = (v) => v >= 66 ? 'cool' : v >= 33 ? 'warm' : 'hot';
@@ -1380,7 +1421,10 @@ async function batters(env, ctx) {
     if (ctx && ctx.waitUntil) ctx.waitUntil(write); else await write;
   }
 
-  return cors(json(rows, 300)); // 5 min — batter props are the expensive call
+  // 5 min — batter props are the expensive call. propsFeedError rides along even
+  // on a good slate: some events can 401 while others succeed, and a partial
+  // slate presented as complete is its own quiet lie.
+  return battersPayload(rows, propsFeedError);
 }
 
 function abbrFromName(name) {
