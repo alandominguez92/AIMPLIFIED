@@ -69,7 +69,13 @@
     // A projection-only row during a feed outage has no line because we cannot
     // read one, not because no book has posted. "awaiting line" would blame the
     // sportsbooks for our outage and imply a price is on its way.
-    if (g.tier === 'model' && state.feedError) return 'no price · feed down';
+    //
+    // When the whole board is in that state the banner above says it once, so the
+    // cell holds a quiet dash instead: forty rows repeating one sentence is the
+    // same fact printed forty times, and it crowds out the projection that is the
+    // reason the row is still on screen. A mixed board keeps the per-row reason,
+    // where it distinguishes this row from the priced one above it.
+    if (g.tier === 'model' && state.feedError) return batterModelOnly() ? '—' : 'no price · feed down';
     if (g.timeMs && g.timeMs - Date.now() > 12 * 3600 * 1000) return 'posts game-day AM';
     return 'awaiting line';
   }
@@ -122,6 +128,11 @@
   // STATE
   // ---------------------------------------------------------------------
 
+  // One definition, read by both the poll timer and the banner's countdown. Two
+  // numbers here drift apart and the banner promises a retry that isn't coming.
+  const BATTER_POLL_MS = 300000;
+  const RETRY_COOLDOWN_MS = 30000;
+
   const state = {
     sport: 'mlb',
     nfl: null,
@@ -130,6 +141,13 @@
     nflProps: null,
     nflShowAll: false,
     feedError: null,
+    // When the current outage started, when the next automatic retry lands, and
+    // when a manual retry is allowed again. The banner reports all three, so a
+    // reader can tell a blip from a sustained outage and knows something is
+    // already happening without clicking anything.
+    feedOutageSince: null,
+    feedNextRetry: null,
+    feedRetryAllowedAt: 0,
     nflFilter: 'all',
     nflSort: 'proj',
     nflSortAsc: false,
@@ -533,6 +551,16 @@
       const payload = await fetchJson('/api/batters');
       const rows = Array.isArray(payload) ? payload : (payload && payload.rows);
       state.feedError = (payload && !Array.isArray(payload) && payload.feedError) || null;
+      // Stamp the start of an outage once, not on every poll — otherwise "out for
+      // N min" resets every five minutes and a six-hour outage never reads as one.
+      // A dry run is not an outage: it is us declining to call, so it never starts
+      // the clock.
+      if (state.feedError && state.feedError.kind !== 'dry-run') {
+        if (!state.feedOutageSince) state.feedOutageSince = Date.now();
+      } else {
+        state.feedOutageSince = null;
+      }
+      state.feedNextRetry = Date.now() + BATTER_POLL_MS;
       if (!Array.isArray(rows)) return;
       // Once a game starts the first-pitch time stops being the useful fact, so
       // the score replaces it — the same swap /api/board already does for the K
@@ -2805,6 +2833,24 @@
     const rows = state.liveBatters;
     return isBatter() && LIVE_MODE && !!(rows && rows.length) && rows.every((r) => r.tier === 'model');
   }
+  // "out for 6 min" tells a reader whether this is a blip or a sustained outage —
+  // the same 401 reads very differently at 30 seconds and at three hours.
+  function outageAgeLabel() {
+    if (!state.feedOutageSince) return 'just now';
+    const mins = Math.floor((Date.now() - state.feedOutageSince) / 60000);
+    if (mins < 1) return 'out for <1 min';
+    if (mins < 60) return `out for ${mins} min`;
+    const h = Math.floor(mins / 60);
+    return `out for ${h}h ${mins % 60}m`;
+  }
+  // Saying when the next attempt lands is what makes the Retry button optional
+  // rather than the only way to find out whether anything is happening.
+  function retryCountdownLabel() {
+    const ms = (state.feedNextRetry || 0) - Date.now();
+    if (ms <= 0) return 'retrying…';
+    const s = Math.ceil(ms / 1000);
+    return `auto-retry in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
   function renderViewChrome() {
     renderEraNote();
     // The tabnote opens "Plays = batter unders only", which describes this tab
@@ -2828,17 +2874,40 @@
         : fe.kind === 'quota' ? 'our data plan is out of credits'
           : 'we can’t reach the pricing feed';
       const blame = fe
-        ? ' This is on us, not the sportsbooks.'
-        : ' Nothing is wrong — the market simply isn’t up yet.';
-      el.kCtxBanner.innerHTML = `<span class="ctx-banner-tag">Projections · not plays</span>`
-        + `<span>No book prices right now — ${why}. These are <b>our projections only</b>, `
-        + `shown with tonight’s matchup, first pitch and opposing starter. `
-        + `Edge needs a price to measure against, so <b>no edge is shown and nothing is posted or graded</b> `
-        + `until prices return.${blame}</span>`;
+        ? 'This is on us, not the sportsbooks.'
+        : 'Nothing is wrong — the market simply isn’t up yet.';
+      // Split the board into what survived and what didn't, rather than leading
+      // with the failure. The reader's real question is "is anything here still
+      // worth reading", and the answer is yes — so answer it first.
+      //
+      // NOTE: "every projection below" is only true while nothing can be withdrawn
+      // from the board. When lineup alerts land, a scratched batter's projection is
+      // pulled and this must become "every projection we still have", pointing at
+      // the alert bar. Feed state and lineup state are independent; this sentence
+      // covers one of them and must be revisited when the other exists.
+      const still = 'every projection on the board, its matchup, first pitch and opposing starter';
+      const waiting = 'the edge, the play/pass call, and posting';
+      el.kCtxBanner.className = 'ctx-banner ctx-banner-outage';
+      el.kCtxBanner.innerHTML = `<div class="cb-head">`
+        + `<span class="cb-dot"></span>`
+        + `<b>${fe ? 'Book prices are out — you’re seeing projections only'
+          : 'No lines posted yet — you’re seeing projections only'}</b>`
+        + (fe ? `<span class="cb-age">${outageAgeLabel()}</span>` : '')
+        + `</div>`
+        + `<p class="cb-body">${why.charAt(0).toUpperCase() + why.slice(1)}, so nothing tonight can be `
+        + `measured against a line. <b>Still good below:</b> ${still}. `
+        + `<b>Waiting on prices:</b> ${waiting}. `
+        + `The graded record is unaffected and does not move while this lasts. ${blame}</p>`
+        + (fe ? `<div class="cb-act">`
+          + `<button type="button" class="cb-retry" data-action="feed-retry"${
+            Date.now() < state.feedRetryAllowedAt ? ' disabled' : ''}>Retry now</button>`
+          + `<span class="cb-next">${retryCountdownLabel()}</span>`
+          + `</div>` : '');
       el.kCtxBanner.hidden = false;
       return;
     }
     const b = CTX_BANNERS[state.boardView];
+    el.kCtxBanner.className = 'ctx-banner'; // drop the outage variant if it was on
     if (b) {
       el.kCtxBanner.innerHTML = `<span class="ctx-banner-tag">${b[0]}</span><span>${b[1]}</span>`;
       el.kCtxBanner.hidden = false;
@@ -3098,6 +3167,18 @@
       case 'nfl-filter': setNflFilter(target.dataset.nflfilter); break;
       case 'nfl-sort': setNflSort(target.dataset.nflsort); break;
       case 'toggle-pass': state.batterShowPass = !state.batterShowPass; renderBoard(); break;
+      // Rate-limited on purpose. Every retry is a real upstream call, and the
+      // batter fetch is the expensive one (one request per game, three markets
+      // each). An un-throttled button next to an outage message is an invitation
+      // to hammer the quota that caused the outage.
+      case 'feed-retry': {
+        if (Date.now() < state.feedRetryAllowedAt) break;
+        state.feedRetryAllowedAt = Date.now() + RETRY_COOLDOWN_MS;
+        state.feedNextRetry = Date.now() + BATTER_POLL_MS;
+        renderViewChrome();          // reflect the disabled button immediately
+        refreshBatters();
+        break;
+      }
       case 'nfl-showall': state.nflShowAll = !state.nflShowAll; renderNfl(); break;
       case 'nfl-toggle': {
         const id = target.dataset.id;
@@ -3228,7 +3309,19 @@
     // across viewers, so this doesn't multiply the Odds-API spend. Ongoing polls
     // stay gated to when the tab is actually open.
     refreshBatters();
-    setInterval(() => { if (isBatter()) refreshBatters(); }, 300000);
+    setInterval(() => { if (isBatter()) refreshBatters(); }, BATTER_POLL_MS);
+    // Tick the outage banner's age and countdown. Only touches the two text nodes
+    // — re-rendering the banner every second would fight the Retry button's focus
+    // and disabled state, and it only runs while the banner is actually up.
+    setInterval(() => {
+      if (!el.kCtxBanner || el.kCtxBanner.hidden || !state.feedError) return;
+      const age = el.kCtxBanner.querySelector('.cb-age');
+      const next = el.kCtxBanner.querySelector('.cb-next');
+      if (age) age.textContent = outageAgeLabel();
+      if (next) next.textContent = retryCountdownLabel();
+      const btn = el.kCtxBanner.querySelector('.cb-retry');
+      if (btn) btn.disabled = Date.now() < state.feedRetryAllowedAt;
+    }, 1000);
     // Track record grades finished games on read — refresh every 10 min.
     refreshTrackRecord();
     setInterval(refreshTrackRecord, 600000);

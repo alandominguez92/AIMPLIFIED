@@ -497,6 +497,31 @@ section { padding:44px 0; }
   background:linear-gradient(90deg, color-mix(in srgb, var(--model) 7%, transparent), transparent); }
 .ctx-banner b { color:var(--text); font-weight:600; }
 .ctx-banner-tag { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--model); background:var(--tintModel); border-radius:5px; padding:5px 9px; flex:none; align-self:flex-start; white-space:nowrap; }
+/* Outage variant: a stacked block rather than the tag + prose row, because it
+   carries a heading, a body and an action. Red left edge, not blue — this is a
+   failure on our side, and the model-blue used by the context banners would file
+   it alongside "here is some analysis". */
+.ctx-banner.ctx-banner-outage { display:block; border-left-color:var(--danger);
+  background:linear-gradient(90deg, color-mix(in srgb, var(--danger) 7%, transparent), transparent); }
+.ctx-banner-outage .cb-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+.ctx-banner-outage .cb-head b { font-size:14px; }
+.ctx-banner-outage .cb-dot { width:7px; height:7px; border-radius:50%; background:var(--danger); flex:none; }
+.ctx-banner-outage .cb-age { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--danger);
+  background:color-mix(in srgb, var(--danger) 12%, transparent); border-radius:5px; padding:4px 8px; white-space:nowrap; }
+.ctx-banner-outage .cb-body { margin:0; }
+.ctx-banner-outage .cb-act { display:flex; align-items:center; gap:14px; margin-top:13px; flex-wrap:wrap; }
+.ctx-banner-outage .cb-retry { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent);
+  background:transparent; border:1px solid var(--accent); border-radius:8px;
+  padding:9px 15px; cursor:pointer; min-height:38px; }
+.ctx-banner-outage .cb-retry:hover:not(:disabled) { background:color-mix(in srgb, var(--accent) 12%, transparent); }
+/* Disabled is the cooldown, which is a deliberate throttle rather than a broken
+   control — it stays legible and says why via the countdown beside it. */
+.ctx-banner-outage .cb-retry:disabled { color:var(--textFaint); border-color:var(--border); cursor:default; }
+.ctx-banner-outage .cb-next { font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  font-size:11px; color:var(--textFaint); font-variant-numeric:tabular-nums; }
+
 /* "analysis" chip replaces tier chips on context views */
 .ctx-chip { display:inline-block; font-family:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; font-size:10px; letter-spacing:.08em; color:var(--textDim); border:1px solid var(--borderFaint); border-radius:6px; padding:5px 9px; }
 /* The fade cell: the play, the model-vs-line scale, the note, the two factors.
@@ -950,7 +975,29 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-row > span:not([class]) { grid-area:pick; min-width:0; }
   .board-row > .odds-books, .board-row > .odds-cell, .board-row > .odds-blank { grid-area:odds; align-self:center; }
   .board-row > .edge-cell { grid-area:edge; align-self:center; justify-self:end; text-align:right; }
-  .board-row > .interval-cell { display:none; } /* secondary — still in the expand */
+  /* Secondary on the batter board only, where price and edge lead — still in the
+     expand. Everywhere else this cell IS the board's model number, and hiding it
+     unscoped deleted the one figure each of those boards exists to show:
+     Win Prob on moneyline, the 80% interval on K props, Cover % on the run line,
+     the projection median on NFL props. Scoped positively so a new board keeps
+     its number by default rather than inheriting a rule written for this one. */
+  .board.view-batter .board-row > .interval-cell { display:none; }
+  /* Every other board leads with its model number instead of price and edge.
+     On these boards roughly half the rows have no line at all, so the batter
+     map put the two most-often-empty cells in the largest slots on the one
+     surface we never post. The per-row "analysis" chip goes too: the banner
+     directly above the board already says these are context, and repeating it
+     on every card spends a phone's width to say it a second time. */
+  .board:not(.view-batter) .board-row {
+    grid-template-areas:
+      "matchup  matchup chev"
+      "pick     pick    pick"
+      "interval odds    edge";
+  }
+  .board:not(.view-batter) .board-row > .interval-cell {
+    grid-area:interval; align-self:center; font-size:20px;
+  }
+  .board:not(.view-batter) .board-row > .tier-cell { display:none; }
   .board-row > .tier-cell { grid-area:tier; justify-self:end; align-self:start; }
   .board-row > .chevron { grid-area:chev; justify-self:end; align-self:center; }
   /* The fade bar can use the full card width once it isn't sharing a row. */
