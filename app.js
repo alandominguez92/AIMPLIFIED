@@ -4108,7 +4108,7 @@
   // The record link is a real page now, not an in-page anchor, so it is matched
   // by pathname rather than hash. Both are MLB-only: the NFL board posts nothing
   // and has no graded record to link to.
-  const MLB_ONLY_NAV = ['#slate', '/track-record.html'];
+  const MLB_ONLY_NAV = ['#slate', '/track-record'];
   // The MLB title is captured from the document rather than duplicated here.
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
