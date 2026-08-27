@@ -58,12 +58,20 @@
     if (v === 'lean') return `<span class="tier-chip lean">Lean</span>`;
     if (v === '1' || v === '2' || v === '3') return `<span class="tier-chip t${v}">T${v}</span>`;
     if (v === 'pass') return `<span class="tier-chip pass">Pass</span>`;
+    // Availability, not a verdict — and it reads OUT whether the odds feed is up
+    // or down, because whether he is playing was never a pricing question.
+    if (v === 'out') return `<span class="tier-chip out">Out</span>`;
     return `<span class="tier-dash">—</span>`; // 'model'/projection-only: no line to grade yet
   }
 
   // Honest reason a row has no price/edge, from the game's real status + time.
   // A blank cell should say WHY it's blank, never look broken.
   function projReason(g) {
+    // Availability is checked BEFORE the feed, and before the game state. A
+    // batter who is not in tonight's lineup has no price for a reason that has
+    // nothing to do with the books or the clock, so he must never read
+    // "awaiting line" — that promises a price that is not coming.
+    if (g.pulled) return 'not playing';
     if (g.status === 'Live') return 'in play · line closed';
     if (g.status === 'Final') return 'final · line closed';
     // A projection-only row during a feed outage has no line because we cannot
@@ -290,6 +298,7 @@
     injuryBar: document.getElementById('injuryBar'),
     yesterdayCard: document.getElementById('yesterdayCard'),
     slateSummary: document.getElementById('slateSummary'),
+    lineupAlerts: document.getElementById('lineupAlerts'),
     nflBoard: document.getElementById('nflBoard'),
     nflBannerTag: document.getElementById('nflBannerTag'),
     nflBannerBody: document.getElementById('nflBannerBody'),
@@ -594,9 +603,15 @@
         // projection-only decides which disclosure sits above it, and that is
         // only knowable once the payload lands.
         renderViewChrome();
+        renderLineupAlerts();
         renderControls();
         renderBoard();
       }
+      // The slip renders once at load, from storage, before any board data
+      // exists — so its dead-leg check had nothing to check against and a
+      // scratched leg stayed silent. It re-runs whenever the rows change, since
+      // that is exactly when a starred leg can stop being playable.
+      renderSlip();
     } catch (e) {
       console.warn('Batters refresh failed:', e.message);
     }
@@ -1262,8 +1277,12 @@
     if (isBatter() && !hideTiers) {
       const q = state.searchQuery.trim().toLowerCase();
       const pool = getGames().filter((g) => !q || g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
-      tierCounts = { all: pool.length, play: 0, pass: 0, starred: 0 };
-      pool.forEach((g) => {
+      // The All chip counts rows you can act on. A pulled row still renders,
+      // but including it here would put a number on the chip that the board
+      // cannot deliver.
+      const actionable = pool.filter((g) => !g.pulled);
+      tierCounts = { all: actionable.length, play: 0, pass: 0, starred: 0 };
+      actionable.forEach((g) => {
         const t = String(activeTier(g));
         if (t in tierCounts) tierCounts[t] += 1;
         if (state.slip[legIdFor(g)]) tierCounts.starred += 1;
@@ -1537,18 +1556,22 @@
     const rows = state.liveBatters;
     if (!rows || !rows.length) { el.slateSummary.hidden = true; return; }
     const tiered = (g) => isPlayTier(g.tier);
-    const plays = rows.filter((g) => tiered(g) && g.odds != null);
+    // A pulled batter is not a play and not waiting on a line — he is not
+    // playing. He is counted separately so neither number quietly absorbs him.
+    const live = rows.filter((g) => !g.pulled);
+    const pulledN = rows.length - live.length;
+    const plays = live.filter((g) => tiered(g) && g.odds != null);
     // "Watching" = we have a projection but no line to price it against. That
     // covers both a tiered row whose book quote dropped out and a projection-only
     // row from a feed outage — same state, same reason, so it counts the same.
-    const watching = rows.filter((g) => g.odds == null && (tiered(g) || g.tier === 'model'));
+    const watching = live.filter((g) => g.odds == null && (tiered(g) || g.tier === 'model'));
     const best = plays.reduce((m, g) => (g.edge != null && g.edge > m ? g.edge : m), -Infinity);
     const bestStr = best > -Infinity ? '+' + best.toFixed(1) + '%' : '—';
     el.slateSummary.innerHTML = `<div class="ss-in">`
       + `<span><span class="k">Under plays</span><b style="color:var(--positive)">${plays.length}</b></span>`
       + `<span><span class="k">Best edge</span><b style="color:${best > -Infinity ? 'var(--positive)' : 'var(--textDim)'}">${bestStr}</b></span>`
       + `<span><span class="k">Watching</span><b style="color:var(--model)">${watching.length}</b></span>`
-      + `<span><span class="k">Batters</span><b>${rows.length}</b></span>`
+      + `<span><span class="k">Batters</span><b>${live.length}</b>${pulledN ? `<i class="ss-pulled">${pulledN} pulled</i>` : ''}</span>`
       + `<span class="upd">odds refresh every 5 min</span>`
       + `</div>`;
     el.slateSummary.hidden = false;
@@ -1830,8 +1853,13 @@
       // with it instead of floating in a column of its own.
       const leadingHtml = state.compareMode
         ? `<span class="leading checkbox${isSelected ? ' selected' : ''}" data-action="leading-click" data-id="${g.id}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(g.matchup)} to compare" title="Select to compare">${isSelected ? '\u2713' : ''}</span>`
+        // A pulled row loses its star outright rather than rendering it inert \u2014
+        // the board's rule is that a dead affordance disappears. A dim em-dash
+        // holds the slot so the name column does not shift under it.
         : (isPlayView
-          ? `<span class="leading${isTracked ? ' tracked' : ''}" data-action="leading-click" data-id="${g.id}" role="button" tabindex="0" aria-pressed="${isTracked}" aria-label="Track ${esc(g.matchup)}" title="Track this pick">${isTracked ? '\u2605' : '\u2606'}</span>`
+          ? (g.pulled
+            ? '<span class="leading leading-out" aria-hidden="true">\u2014</span>'
+            : `<span class="leading${isTracked ? ' tracked' : ''}" data-action="leading-click" data-id="${g.id}" role="button" tabindex="0" aria-pressed="${isTracked}" aria-label="Track ${esc(g.matchup)}" title="Track this pick">${isTracked ? '\u2605' : '\u2606'}</span>`)
           : '');
 
       // The four view-specific cells (pick, odds, [edge — shared], detail).
@@ -1876,6 +1904,7 @@
       }
 
       const rowClasses = ['board-row'];
+      if (g.pulled) rowClasses.push('bp-out');
       // Keyed on the row, so a batter's bar fills when he first reaches the
       // board and stays put through every later refresh.
       const rowAnim = barsIn('row:' + g.id);
@@ -2627,6 +2656,19 @@
       return;
     }
 
+    // A leg starred at 3pm can be out of the lineup by 5pm. The slip is the one
+    // place a dead leg costs money, so it says so before the totals rather than
+    // leaving the reader to notice the row greyed out on the board.
+    const pulledIds = new Set(pulledRows().map((r) => legIdFor(r)));
+    const deadLegs = legs.filter((leg) => pulledIds.has(leg.id));
+    const deadHtml = deadLegs.length
+      ? `<div class="slip-dead"><b>${deadLegs.length === 1
+          ? 'One leg is off the board' : deadLegs.length + ' legs are off the board'}</b> — `
+        + `${deadLegs.map((l) => esc(l.title || l.pick || 'that batter')).join(', ')} `
+        + `${deadLegs.length === 1 ? 'is' : 'are'} out of tonight’s lineup. `
+        + `Remove ${deadLegs.length === 1 ? 'it' : 'them'} before you bet the rest.</div>`
+      : '';
+
     const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter' };
     const legHtml = legs.map((leg) => `
       <div class="slip-leg">
@@ -2690,7 +2732,7 @@
           <span class="slip-avg-v ${avgEdge >= 0 ? 'pos' : 'neg'}">${avgEdge > 0 ? '+' : ''}${avgEdge}%</span>
           <span class="slip-avg-note">Each leg is priced on its own — a parlay's true edge is lower after combined vig${withEdge.length > 1 ? ' and any correlation' : ''}.</span>
         </div>` : '';
-    el.slip.innerHTML = `<div class="slip-legs">${legHtml}</div>${avgHtml}${summaryHtml}`;
+    el.slip.innerHTML = `${deadHtml}<div class="slip-legs">${legHtml}</div>${avgHtml}${summaryHtml}`;
 
     const stakeInput = document.getElementById('stakeInput');
     if (stakeInput) stakeInput.addEventListener('change', (e) => setStake(e.target.value));
@@ -3055,6 +3097,7 @@
     if (el.searchInput) el.searchInput.value = '';
     if (v === 'batter' && !battersLive()) refreshBatters(); // lazy first load
     renderViewChrome();
+    renderLineupAlerts();
     renderControls();
     renderBoard();
     renderComparePanel();
@@ -3092,6 +3135,68 @@
     const s = Math.ceil(ms / 1000);
     return `auto-retry in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
+  // ---- Lineup alerts -----------------------------------------------------
+  // A pulled row is one the model can no longer stand behind: his team posted a
+  // card and he is not on it. The bar exists because that row used to vanish, and
+  // a row that disappears silently is worse than one that says why — especially
+  // one already starred.
+  //
+  // Availability is not a pricing question. These render identically whether the
+  // odds feed is up or down, and the copy never mentions prices: a batter who is
+  // not playing is not waiting on a line.
+  function pulledRows() {
+    const rows = state.liveBatters || [];
+    return rows.filter((r) => r.pulled);
+  }
+
+  // Why he is out, from the injuries feed where it knows. Absent from that list
+  // means a late scratch or a rest day — we say "out of the lineup", which is
+  // what the lineup card actually told us, rather than guessing at a reason.
+  function pullReason(row) {
+    const inj = state.liveInjuries || [];
+    const last = String(row.name || '').split(' ').pop().toLowerCase();
+    const hit = inj.find((i) => {
+      const t = String(i.text || '').toLowerCase();
+      return last.length > 2 && t.includes(last) && (!row.team || t.includes(String(row.team).toLowerCase()));
+    });
+    return hit && hit.time ? hit.time : 'Out of lineup';
+  }
+
+  function renderLineupAlerts() {
+    const host = el.lineupAlerts;
+    if (!host) return;
+    const pulled = pulledRows();
+    // Batter board only. OUT holds batters, and the other three boards render
+    // pitchers and games, so no pulled state can reach them. If pitcher
+    // scratches are ever added, every rule here applies there too.
+    if (!isBatter() || !pulled.length) { host.hidden = true; host.innerHTML = ''; return; }
+
+    const n = pulled.length;
+    host.innerHTML = `<div class="la-head">`
+      + `<span class="la-dot"></span>`
+      + `<span class="la-title">Lineup alerts</span>`
+      + `<span class="la-count">${n} row${n === 1 ? '' : 's'} pulled</span>`
+      + `<span class="la-note">not on tonight’s card — these cannot be posted</span>`
+      + `</div>`
+      + pulled.map((r) => {
+        // What the board loses by his absence. wasTier is the only place a
+        // pulled row's former standing is allowed to appear.
+        const was = r.wasEdge != null
+          ? `was a play at +${r.wasEdge.toFixed(1)}%`
+          : r.wasTier === 'pass' ? 'was a pass'
+          : r.wasTier === 'model' ? 'was a projection'
+          : 'pulled from the board';
+        return `<div class="la-row">`
+          + `<span class="la-tag">${esc(pullReason(r))}</span>`
+          + `<span class="la-name">${esc(r.name)}</span>`
+          + `<span class="la-team">${esc(r.team || '')}</span>`
+          + `<span class="la-impact">pulled from the board — ${esc(was)}</span>`
+          + `<button type="button" class="la-view" data-action="alert-view" data-name="${esc(r.name)}">View →</button>`
+          + `</div>`;
+      }).join('');
+    host.hidden = false;
+  }
+
   function renderViewChrome() {
     renderEraNote();
     // The tabnote opens "Plays = batter unders only", which describes this tab
@@ -3412,6 +3517,16 @@
       case 'nfl-filter': setNflFilter(target.dataset.nflfilter); break;
       case 'nfl-sort': setNflSort(target.dataset.nflsort); break;
       case 'toggle-pass': state.batterShowPass = !state.batterShowPass; renderBoard(); break;
+      // Filter, don't scroll. Scroll-to-row breaks when the row is filtered out
+      // of the current view, which is precisely the case an alert creates.
+      case 'alert-view': {
+        state.filter = 'all';
+        state.searchQuery = target.dataset.name || '';
+        if (el.searchInput) el.searchInput.value = state.searchQuery;
+        renderControls();
+        renderBoard();
+        break;
+      }
       // Rate-limited on purpose. Every retry is a real upstream call, and the
       // batter fetch is the expensive one (one request per game, three markets
       // each). An un-throttled button next to an outage message is an invitation

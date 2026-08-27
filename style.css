@@ -1986,3 +1986,70 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .compare-side .stat-v.accent { color:var(--accent); }
 .compare-side .stat-v.positive { color:var(--positive); }
 .compare-side .stat-v.tier { color:var(--accent); letter-spacing:1px; font-size:14px; }
+
+/* =====================================================================
+   LINEUP ALERTS
+   Not a news ticker — it flags rows that are no longer valid. Red, because a
+   row being pulled invalidates something you may have already acted on; this
+   is the one board state that can cost money if missed.
+
+   Single column, deliberately: two columns clipped the impact line on most
+   alerts, and the truncated word was "pulled" — the one thing the alert exists
+   to say. Full width, and the impact line wraps rather than ellipsing.
+   ===================================================================== */
+.lineup-alerts { border:1px solid var(--border); border-left:3px solid var(--danger); border-radius:12px;
+  background:var(--board); margin-bottom:18px; overflow:hidden; }
+.la-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:13px 18px;
+  background:color-mix(in srgb, var(--danger) 6%, transparent); border-bottom:1px solid var(--border); }
+.la-dot { width:7px; height:7px; border-radius:50%; background:var(--danger); flex:none; }
+.la-title { font-family:var(--mono); font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--danger); }
+.la-count { font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--danger); background:color-mix(in srgb, var(--danger) 13%, transparent);
+  border-radius:5px; padding:3px 8px; white-space:nowrap; }
+.la-note { font-size:12px; color:var(--textFaint); }
+
+.la-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:11px 18px; border-bottom:1px solid var(--borderSoft); }
+.la-row:last-child { border-bottom:none; }
+.la-tag { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--danger); border:1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius:4px; padding:2px 6px; white-space:nowrap; flex:none; }
+.la-name { font-size:14px; font-weight:600; color:var(--text); }
+.la-team { font-family:var(--mono); font-size:10.5px; color:var(--textFaint); }
+.la-impact { font-size:12.5px; color:var(--textDim); flex:1 1 auto; min-width:0; text-wrap:pretty; }
+.la-view { font-family:var(--mono); font-size:11px; color:var(--textDim); background:none;
+  border:1px solid var(--border); border-radius:6px; padding:5px 10px; cursor:pointer; white-space:nowrap; flex:none; }
+.la-view:hover { border-color:var(--danger); color:var(--danger); }
+
+/* A pulled row on the board. Greyed as a whole, because every number on it that
+   depended on tonight has already been stripped server-side — the dimming says
+   the row is inert, it is not hiding a value. */
+.board-row.bp-out { opacity:.55; }
+.board-row.bp-out:hover { opacity:.72; }
+.tier-chip.out { color:var(--danger); background:color-mix(in srgb, var(--danger) 12%, transparent);
+  border:1px solid color-mix(in srgb, var(--danger) 34%, transparent); }
+/* The star is gone, not disabled. This holds its 26px so the name column below
+   does not shift under the rows around it. */
+.leading-out { color:var(--textGhost); cursor:default; }
+
+.ss-pulled { display:block; margin-top:2px; font-family:var(--mono); font-size:10px;
+  font-style:normal; color:var(--danger); }
+
+.slip-dead { margin:0 0 12px; border:1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+  border-left:3px solid var(--danger); border-radius:10px;
+  background:color-mix(in srgb, var(--danger) 7%, transparent);
+  padding:12px 15px; font-size:13px; line-height:1.6; color:var(--textDim); text-wrap:pretty; }
+.slip-dead b { color:var(--danger); font-weight:600; }
+
+@media (max-width:640px) {
+  /* The phone keeps the name, the team and a short verdict. The full impact
+     sentence is desktop-only: at 390px there is no width for it, and a batter
+     being out is the only part of this the phone must not lose. */
+  .la-head { padding:11px 14px; gap:8px; }
+  .la-note { display:none; }
+  .la-row { padding:10px 14px; gap:8px; }
+  .la-impact { flex-basis:100%; font-size:12px; }
+  /* 44px, the phone tap-target floor. This is the control that takes you to
+     the affected row, so it must not be the fiddliest thing on the bar. */
+  .la-view { min-height:44px; padding:0 14px; }
+}

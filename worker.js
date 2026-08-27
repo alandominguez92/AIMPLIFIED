@@ -1360,8 +1360,15 @@ async function batters(env, ctx) {
     // pick. If he IS on it, project tonight's PA from his batting slot
     // instead of his historical average (leadoff sees ~a full PA more than
     // the 9-hole). No card posted yet -> behave exactly as before.
+    // He is not starting. Until now that was a `continue`, so the row simply
+    // vanished — including a row someone had already starred, with nothing on
+    // screen to say why it went. It is projected anyway and marked pulled: the
+    // work is local arithmetic and costs no upstream call, and knowing what the
+    // row WOULD have been is the whole content of the alert ("was a play at
+    // +3.4%"). The display fields are stripped at emit, so a pulled row cannot
+    // show a number that assumed plate appearances he will not take.
     const slot = lineupSlotById[match.id] || 0;
-    if (!slot && match.teamId && lineupPostedTeamIds.has(match.teamId)) continue;
+    const pulled = !slot && !!match.teamId && lineupPostedTeamIds.has(match.teamId);
     const expPA = slot ? SLOT_PA[slot - 1] : pa / gp;
     const hr = toNum(st.homeRuns), tb = toNum(st.totalBases);
     const hits = toNum(st.hits), runs = toNum(st.runs), rbi = toNum(st.rbi);
@@ -1415,7 +1422,7 @@ async function batters(env, ctx) {
     // oppPFac = the pitcher-only multiplier per metric, kept separate from the
     // combined `adj` so a projection can be traced back to which factor moved it.
     const oppPFac = oppP ? { hr: round2(pitcherMult('hr')), tb: round2(pitcherMult('tb')), hrr: round2(pitcherMult('hrr')) } : null;
-    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, facingHand, venue, adj, seasonPA: pa, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
+    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, pulled, facingHand, venue, adj, seasonPA: pa, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
   }
   if (!draft.length) return battersPayload([], feedError);
 
@@ -1441,7 +1448,29 @@ async function batters(env, ctx) {
     const power = pr(pool.iso, b.iso), slug = pr(pool.slg, b.slg);
     const contact = pr(pool.contact, 1 - b.kpct), disc = pr(pool.disc, b.bbpct);
 
-    return {
+    // A pulled batter takes no plate appearances, so EVERY number conditioned on
+    // tonight is wrong for him — not just the edge. Blanking one and leaving the
+    // rest asserts a 60% under for someone who will not bat. Stripped here rather
+    // than in the client so the value never crosses the wire: a field the page
+    // must not show is a field the page should not receive.
+    //
+    // Season percentiles survive: they describe the player, not tonight.
+    const pulledOut = (row) => {
+      if (!b.pulled) return row;
+      return Object.assign({}, row, {
+        pick: '—', odds: null, oddsBooks: null, edge: null, interval: '—',
+        side: null, line: null, projVal: null, marketLabel: null, metric: null,
+        modelOver: null, fairOver: null, fairSrc: null, hasPriced: false,
+        moveSincePost: null, tier: 'out',
+        pulled: true,
+        // Kept for the alert bar only — what the board loses by his absence.
+        // Never rendered in the row itself.
+        wasPick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : null,
+        wasEdge: lead ? lead.m.edge : null,
+        wasTier: lead ? lead.m.tier : (priced.length ? 'pass' : 'model'),
+      });
+    };
+    return pulledOut({
       id: 'b' + (b.match.id || b.nm.replace(/\s/g, '')),
       name: shortName(b.rec.name),
       team: b.match.team,
@@ -1494,14 +1523,15 @@ async function batters(env, ctx) {
         const m = b.markets[spec.metric];
         return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, fairSrc: m.fairSrc, fairBooks: m.fairBooks, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
       }),
-      // Real percentile bars from the priced pool.
+      // Real percentile bars from the priced pool. These describe the player's
+      // season, not tonight, so they survive a pull.
       stats: [
         { label: 'Power (ISO)', value: power, tone: tone(power) },
         { label: 'Slugging', value: slug, tone: tone(slug) },
         { label: 'Contact', value: contact, tone: tone(contact) },
         { label: 'Discipline', value: disc, tone: tone(disc) },
       ],
-    };
+    });
   });
 
   // Board rows = under leans only. Logging stays whole-model (every priced
@@ -1513,10 +1543,16 @@ async function batters(env, ctx) {
   // empty board. Ranked by projected total bases, since with no line there is no
   // edge to rank by. Batting order breaks ties -- it is the one ordering that is
   // real information here and not an artifact of the projection.
-  const rows = pricedRows.length ? pricedRows
+  const live = pricedRows.length ? pricedRows
     : all.filter((r) => r.tier === 'model')
       .sort((a, b) => (b.projVal || 0) - (a.projVal || 0) || (a.lineupSlot || 99) - (b.lineupSlot || 99))
       .slice(0, 40);
+  // Pulled rows ride along rather than being filtered out. They carry no price
+  // so the priced filter drops them, but a row that silently disappears is the
+  // problem the alert bar exists to fix — especially one already on someone's
+  // slip. The client sorts by first pitch, so they land back in their own game.
+  // They cannot reach logRows, which gates on hasPriced (false for all of them).
+  const rows = live.concat(all.filter((r) => r.pulled));
   const logRows = all.filter((r) => r.hasPriced).slice(0, 60);
 
   if (env && env.DB) {

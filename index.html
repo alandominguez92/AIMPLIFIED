@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board65">
+<link rel="stylesheet" href="style.css?v=board66">
 </head>
 <body>
 
@@ -176,6 +176,12 @@
       <span class="tracked-pill" id="trackedPill"></span>
       <a class="all soon-link" href="#" aria-disabled="true">Full slate<span class="soon">Soon</span></a>
     </div>
+
+    <!-- Lineup alerts. Not a news ticker: its only job is flagging rows that are
+         no longer valid, so it sits above the market tabs where it is read
+         before the board rather than found after it. Rendered by app.js and
+         hidden entirely when nothing has been pulled. -->
+    <div class="lineup-alerts" id="lineupAlerts" hidden></div>
 
     <div class="board-view">
       <!-- Both label lengths ship and CSS picks one, same as the tier chips:
@@ -396,6 +402,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=board65"></script>
+<script src="app.js?v=board66"></script>
 </body>
 </html>
