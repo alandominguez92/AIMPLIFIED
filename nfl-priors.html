@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aimplified — NFL Priors</title>
+<meta name="description" content="The 2025 usage inputs behind the NFL projections: route participation, target and carry share, efficiency against the league rate, and the 2026 schedule. No model output, no fair line, no price.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0d12'/%3E%3Ctext x='16' y='23' font-family='Archivo,Helvetica,Arial,sans-serif' font-size='21' font-weight='800' text-anchor='middle' fill='%23e8ecf2'%3EA%3C/text%3E%3Ccircle cx='25' cy='9' r='3' fill='%23f2c34d'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Aimplified">
+<meta property="og:title" content="Aimplified — NFL Priors">
+<meta property="og:description" content="The input sheet, not a board. 2025 usage held against the 2026 schedule — with what it can't tell you stated up front.">
+<meta property="og:url" content="https://aimplified.delexe.workers.dev/nfl-priors">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=board64">
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <div class="logo"><a href="/" style="color:inherit;text-decoration:none">AIMPLIFIED<span>.</span></a></div>
+    <nav class="nav-links">
+      <a href="/#slate">Tonight's Slate</a>
+      <a href="/track-record">Track Record</a>
+      <a href="/nfl-priors" class="active" aria-current="page">NFL Priors</a>
+      <a href="#" class="soon-link" aria-disabled="true">Model<span class="soon">Soon</span></a>
+    </nav>
+    <a class="tr-cta" href="/#nflBoard">NFL board →</a>
+    <button class="theme-toggle" data-action="toggle-theme"></button>
+  </div>
+</header>
+
+<main class="wrap tr-main">
+
+  <section class="tr-hero">
+    <div class="eyebrow" id="npEyebrow">reading the priors…</div>
+    <h1>NFL Priors</h1>
+    <p class="sub">This is the input sheet, not a board. Every number here is 2025 play-by-play — how often a
+      player was on the field, what share of his team's work he took, and what he did with it — held against
+      the 2026 schedule. <b>There is no fair line and no price on this page, so there is nothing to post and
+      nothing to grade.</b> It is here so the inputs can be checked before a projection is built on them.</p>
+  </section>
+
+  <div class="tr-strip" id="npStrip"></div>
+
+  <details class="np-limits" open>
+    <summary>
+      <span class="np-dot"></span>
+      <span class="np-sum-title">What these priors can't tell you</span>
+      <span class="np-sum-tag">read before using a number</span>
+    </summary>
+    <div class="np-limit-grid" id="npLimits"></div>
+    <div class="np-limit-foot">Nothing here is coloured for strength. A delta against the league rate renders
+      grey in both directions — above average is not a bet, and this page has no prices to bet into.</div>
+  </details>
+
+  <section class="tr-sec">
+    <div class="tr-sec-head"><h2>2025 usage priors</h2><span class="tr-sub" id="npScope"></span></div>
+
+    <div class="np-toolbar">
+      <span class="np-group"><span class="sort-lead">Pos</span><span class="np-chips" id="npPos"></span></span>
+      <span class="np-group"><span class="sort-lead">Sample</span><span class="np-chips" id="npQual"></span></span>
+      <span class="np-group"><span class="sort-lead">Sort</span><span class="np-chips" id="npSort"></span></span>
+      <span class="np-group np-right">
+        <select id="npTeam" aria-label="Filter by 2026 team"></select>
+        <input type="text" id="npSearch" placeholder="search player" autocomplete="off" aria-label="Search player">
+      </span>
+    </div>
+
+    <div class="tr-table np-table" id="npTable"></div>
+    <div class="np-tablefoot"><span id="npCount"></span><span id="npGuard"></span></div>
+  </section>
+
+  <section class="tr-sec">
+    <div class="tr-sec-head"><h2>2026 schedule</h2><span class="tr-sub" id="npSchedScope"></span></div>
+    <div class="np-weeks" id="npWeeks"></div>
+    <div class="np-weekbanner" id="npWeekBanner" hidden></div>
+    <div class="tr-table np-sched" id="npSched"></div>
+    <div class="np-tablefoot"><span id="npSchedFoot"></span></div>
+  </section>
+
+  <div class="np-prov" id="npProv"></div>
+
+</main>
+
+<footer class="tr-footer">
+  <div class="wrap">
+    <p>Aimplified is a sports analytics product. Nothing here is gambling advice. Projections are model outputs with stated uncertainty — respect the intervals.</p>
+    <nav><a href="/methodology">Methodology</a><a href="/legal">Terms</a><a href="/legal#privacy">Privacy</a><a href="/legal#responsible">Responsible play</a></nav>
+  </div>
+</footer>
+
+<script src="nfl-priors.js?v=board64"></script>
+</body>
+</html>

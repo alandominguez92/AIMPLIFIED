@@ -3562,6 +3562,11 @@
         ;
       if (pre) el.nflBannerBody.innerHTML += ' Preseason starters play a quarter: <b>nothing enters the public '
         + 'record</b>, and preseason snaps and routes never reach the model’s priors.';
+      // The projections above are built on 2025 usage. Anyone entitled to doubt
+      // them is entitled to see the inputs, so the sheet they come from is one
+      // click away rather than something you have to know exists.
+      el.nflBannerBody.innerHTML += ' <a class="nfl-priors-link" href="/nfl-priors">'
+        + 'See the 2025 usage priors behind these numbers →</a>';
     }
     if (el.nflBoardTitle) el.nflBoardTitle.textContent = pre ? 'Preseason Board' : 'NFL Board';
     if (el.nflCount) {

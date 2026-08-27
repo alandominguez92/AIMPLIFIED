@@ -1783,3 +1783,141 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .tr-v { font-size:24px; }
   .tr-big { font-size:28px; }
 }
+
+/* =====================================================================
+   NFL PRIORS PAGE
+   Reuses the track-record shell (.tr-*) and adds only what this page needs.
+   Colour rule, enforceable in review: NO --positive and NO --danger anywhere
+   except the "unrostered" flag. Nothing on this page is a play, so nothing
+   gets a strength colour — a league delta renders grey in both directions,
+   and amber means "this number needs a caveat", never "this number is good".
+   ===================================================================== */
+.np-limits { border:1px solid var(--border); border-radius:14px; background:var(--board); margin-bottom:22px; overflow:hidden; }
+.np-limits > summary { padding:16px 20px; display:flex; align-items:center; gap:11px; cursor:pointer;
+  border-bottom:1px solid var(--border); list-style:none; }
+.np-limits > summary::-webkit-details-marker { display:none; }
+.np-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none; }
+.np-sum-title { font-size:15px; font-weight:700; letter-spacing:-.01em; color:var(--text); }
+.np-sum-tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--textFaint); }
+/* Locked 2x2. A 3x1 leaves a dead cell, and these four caveats are peers —
+   none of them is a footnote to the others. */
+.np-limit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--border); }
+.np-limit { background:var(--board); padding:18px 20px; }
+.np-limit-head { display:flex; align-items:baseline; gap:9px; margin-bottom:8px; }
+.np-limit-n { font-family:var(--mono); font-size:11px; color:var(--accent); font-variant-numeric:tabular-nums; }
+.np-limit-k { font-size:13.5px; font-weight:700; line-height:1.35; color:var(--text); text-wrap:pretty; }
+.np-limit-d { font-size:12.5px; line-height:1.65; color:var(--textDim); text-wrap:pretty; }
+.np-limit-d b { color:var(--text); font-weight:600; }
+.np-limit-foot { padding:13px 20px; background:var(--board3); border-top:1px solid var(--border);
+  font-size:12.5px; line-height:1.7; color:var(--textFaint); text-wrap:pretty; }
+
+.np-toolbar { display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:13px 16px;
+  border:1px solid var(--border); border-bottom:none; border-radius:14px 14px 0 0; background:var(--board3); }
+.np-group { display:inline-flex; align-items:center; gap:8px; }
+.np-right { margin-left:auto; }
+.np-chips { display:inline-flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.np-chip { height:30px; padding:0 11px; border:1px solid var(--border); border-radius:8px; background:var(--board);
+  color:var(--textDim); font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; cursor:pointer; }
+.np-chip:hover { border-color:var(--textFaint); }
+.np-chip.active { border-color:var(--accent); background:var(--tintAccent); color:var(--accent); }
+.np-chip .chip-count { margin-left:6px; color:var(--textFaint); font-variant-numeric:tabular-nums; }
+.np-chip.active .chip-count { color:var(--accent); }
+#npTeam, #npSearch { height:30px; border:1px solid var(--border); border-radius:8px; background:var(--board);
+  color:var(--text); font-family:var(--mono); font-size:11px; padding:0 10px; }
+#npSearch { width:150px; }
+#npTeam { cursor:pointer; }
+
+/* The toolbar sits directly on top of the table, so the table loses its own top
+   corners rather than drawing a second border a pixel below the first. */
+.np-table, .np-sched { border-radius:0 0 14px 14px; }
+.np-table .tr-thead, .np-table .tr-tr { grid-template-columns:minmax(190px,1.7fr) 84px 96px 104px 92px 104px 118px; gap:10px; }
+.np-sched .tr-thead, .np-sched .tr-tr { grid-template-columns:150px minmax(0,1fr) 118px 84px 108px; gap:10px; }
+.np-sched { border-radius:14px; }
+
+.np-p { min-width:0; }
+.np-p-head { display:flex; align-items:center; gap:8px; min-width:0; }
+.np-name { font-size:14px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.np-pos { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; border:1px solid var(--border);
+  border-radius:4px; padding:2px 5px; color:var(--textFaint); flex:none; }
+.np-team { font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--textDim); flex:none; }
+.np-team-moved { color:var(--caution); }
+.np-team-out { color:var(--danger); }
+.np-p-sub { margin-top:5px; display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;
+  font-size:11.5px; color:var(--textFaint); text-wrap:pretty; }
+.np-flag { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+  border-radius:4px; padding:2px 6px; flex:none; }
+.np-flag-moved { color:var(--caution); background:var(--cautionTint); }
+/* The one place this page uses --danger: not a strength reading, a data state. */
+.np-flag-out { color:var(--danger); background:color-mix(in srgb, var(--danger) 12%, transparent); }
+.np-flag-dim { color:var(--textFaint); background:color-mix(in srgb, var(--text) 8%, transparent); border:none; }
+
+/* A share earned in another offence stays amber wherever it appears — the
+   number is real, it just describes a team the player has left. */
+.np-share-moved { color:var(--caution); }
+.np-share-out { color:var(--textDim); }
+.np-dim { color:var(--textGhost); }
+.np-rate { display:inline-block; color:var(--text); }
+/* Grey in both directions, deliberately. Above the league rate is not a bet. */
+.np-rate > i { display:block; margin-top:3px; font-size:10px; font-style:normal; color:var(--textGhost); }
+.np-thin { display:inline-block; color:var(--textGhost); }
+.np-thin > i { display:block; margin-top:3px; font-size:10px; font-style:normal; color:var(--textGhost); }
+.np-sample { font-size:11px; color:var(--textFaint); }
+
+.np-tablefoot { display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-top:11px;
+  font-family:var(--mono); font-size:11px; color:var(--textFaint); }
+.np-empty { padding:32px 20px; text-align:center; }
+.np-empty b { display:block; font-size:14px; color:var(--text); margin-bottom:6px; }
+.np-empty span { font-size:13px; color:var(--textFaint); max-width:52ch; display:inline-block; text-wrap:pretty; }
+
+.np-weeks { display:flex; gap:4px; overflow-x:auto; padding:12px 16px; background:var(--board3);
+  border:1px solid var(--border); border-bottom:none; border-radius:14px 14px 0 0; }
+.np-week { min-width:40px; height:30px; padding:0 8px; border:1px solid var(--border); border-radius:8px;
+  background:var(--board); color:var(--textDim); font-family:var(--mono); font-size:11px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:5px; flex:none; font-variant-numeric:tabular-nums; }
+.np-week:hover { border-color:var(--textFaint); }
+.np-week.active { border-color:var(--accent); background:var(--tintAccent); color:var(--accent); }
+.np-wdot { width:4px; height:4px; border-radius:50%; flex:none; }
+/* Coverage, not quality: filled = the whole week has a number, amber = partial,
+   hollow = the file carries none. No green — a posted line is not a good line. */
+.np-wdot-full { background:var(--textDim); }
+.np-wdot-part { background:var(--caution); }
+.np-wdot-none { background:transparent; border:1px solid var(--borderFaint); }
+.np-weekbanner { padding:13px 18px; background:var(--headTint); border:1px solid var(--border); border-bottom:none;
+  font-size:13px; line-height:1.6; color:var(--textDim); text-wrap:pretty; }
+.np-weekbanner:not([hidden]) + .np-sched { border-radius:0 0 14px 14px; }
+.np-weeks + .np-sched, .np-weeks + .np-weekbanner + .np-sched { border-radius:0 0 14px 14px; }
+
+.np-when { font-family:var(--mono); font-size:11.5px; color:var(--textFaint); font-variant-numeric:tabular-nums; }
+.np-match { display:flex; align-items:center; gap:8px; min-width:0; flex-wrap:wrap; }
+.np-away { font-family:var(--mono); font-size:13px; color:var(--textDim); }
+.np-at { font-size:11px; color:var(--textGhost); }
+.np-home { font-family:var(--mono); font-size:13px; font-weight:600; color:var(--text); }
+.np-venue { font-size:10.5px; color:var(--textFaint); }
+
+.np-tone-caution { color:var(--caution); }
+.np-tone-dim { color:var(--textFaint); }
+
+.np-prov { border:1px solid var(--borderSubtle); border-radius:12px; background:var(--board3);
+  padding:16px 20px; font-size:12.5px; line-height:1.7; color:var(--textFaint); text-wrap:pretty; margin-bottom:22px; }
+.np-prov b { color:var(--textDim); font-weight:600; }
+
+@media (max-width:900px) {
+  /* One column. The four caveats are prose, not data — they reflow rather than
+     scroll, unlike the tables below them. */
+  .np-limit-grid { grid-template-columns:minmax(0,1fr); }
+  .np-toolbar { gap:12px; padding:11px 13px; }
+  .np-right { margin-left:0; width:100%; }
+  #npSearch { flex:1; width:auto; min-width:0; }
+  /* Same rule as the record page: the tables keep their columns and scroll
+     inside themselves. A usage sheet with reflowed columns stops being
+     checkable, which is the only reason this page exists. */
+  .np-table, .np-sched { overflow-x:auto; }
+  .np-table .tr-thead, .np-table .tr-tr { min-width:820px; }
+  .np-sched .tr-thead, .np-sched .tr-tr { min-width:620px; }
+}
+
+/* Link out of the NFL banner to the input sheet. Reads as a continuation of the
+   disclosure it sits in, not as a call to action. */
+.nfl-priors-link { display:inline-block; margin-top:6px; font-family:var(--mono); font-size:11.5px;
+  color:var(--accent); text-decoration:none; border-bottom:1px solid transparent; }
+.nfl-priors-link:hover { border-bottom-color:var(--accent); }
