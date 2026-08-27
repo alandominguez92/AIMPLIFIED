@@ -2008,7 +2008,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   border-radius:5px; padding:3px 8px; white-space:nowrap; }
 .la-note { font-size:12px; color:var(--textFaint); }
 
-.la-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+.la-row { cursor:pointer; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   padding:11px 18px; border-bottom:1px solid var(--borderSoft); }
 .la-row:last-child { border-bottom:none; }
 .la-tag { font-family:var(--mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
@@ -2083,3 +2083,60 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 }
 /* The count still reads clearly at zero — the zero is the message. */
 .filter-btn.chip-stalled .chip-count { opacity:1; }
+
+/* The short verdict is phone-only; desktop keeps the full sentence. */
+.la-short { display:none; }
+.la-more { display:block; width:100%; text-align:left; padding:12px 18px;
+  border:none; border-top:1px solid var(--borderSoft); background:var(--board3);
+  color:var(--textDim); font-family:var(--mono); font-size:11.5px; cursor:pointer; }
+.la-more:hover { color:var(--danger); }
+
+@media (max-width:640px) {
+  /* One line per alert. The full impact sentence needs a second row at 375px,
+     and at ~120px each a dozen alerts became 1.7 screens standing between the
+     reader and the board. Name and team lead, the verdict is right-aligned, and
+     the sentence itself is desktop-only — a batter being out is the part the
+     phone must not lose, not the prose around it. */
+  .la-impact { display:none; }
+  .la-short { display:inline; margin-left:auto; font-family:var(--mono);
+    font-size:11px; color:var(--danger); white-space:nowrap; }
+  .la-row { flex-wrap:nowrap; gap:7px; padding:0 14px; min-height:44px; align-items:center; }
+  .la-tag { display:none; }              /* the bar's heading already says why */
+  .la-name { font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* The whole row is the tap target now, so the button stops competing for width. */
+  .la-view { display:none; }
+  .la-more { min-height:44px; padding:0 14px; }
+}
+
+/* A row that cannot be compared. Dimmed and cursor-blocked rather than hidden,
+   so the exclusion is visible — a missing checkbox would read as a rendering
+   gap, and an ordinary-looking one that ignores taps is worse. */
+.leading.cb-out { opacity:.4; cursor:not-allowed; }
+.leading.cb-out:hover { border-color:var(--border); background:transparent; }
+
+@media (max-width:640px) {
+  /* The star and the compare checkbox were 16px targets on a phone — under half
+     the 44px floor, and they sit inside a row that is itself clickable, so a
+     near-miss silently opened the row instead of tracking the pick. The glyph
+     stays its size; the hit area grows around it. */
+  .board-row .leading {
+    min-width:44px; min-height:44px; margin-left:-10px;
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+}
+
+@media (max-width:640px) {
+  /* 44px touch floor for the primary controls on both new pages. These are the
+     only way to filter or change week, and at 30px they sat inside scrolling
+     rows where a near-miss scrolls the strip instead of selecting. The desktop
+     sizes are unchanged — this is a touch problem, not a layout preference. */
+  .np-chip, .np-week { min-height:44px; }
+  .np-week { min-width:46px; }
+  #npTeam, #npSearch { height:44px; }
+  .tr-scope { min-height:44px; }
+  /* Groups tighten so the taller controls do not push the table off the first
+     screen — the height comes back out of the gaps, not the targets. */
+  .np-toolbar { gap:10px; padding:10px 12px; }
+  .np-group { gap:6px; }
+  .np-chips { gap:5px; }
+}

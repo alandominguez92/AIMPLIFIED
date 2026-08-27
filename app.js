@@ -161,6 +161,7 @@
     nflSortAsc: false,
     nflSearch: '',
     batterShowPass: false,
+    alertsAll: false,
     theme: 'dark',
     filter: 'all',
     sortBy: 'edge',
@@ -1845,12 +1846,18 @@
       const sortName = (sortKey === 'model' ? modelSortLabel() : SORT_LABELS[sortKey] || '').toLowerCase();
       const order = sortName ? ` · sorted by ${sortName}` : '';
       const groupNote = grouped ? ' · grouped by game' : '';
+      // Counted in the same list the numerator comes from, per the rule that a
+      // single "X of Y · Z" string must never mix populations. These rows ARE on
+      // the board, so they are inside the numerator — the suffix says how many of
+      // them can no longer be acted on.
+      const pulledHere = games.filter((g) => g.pulled).length;
+      const pulledNote = pulledHere ? ` · ${pulledHere} pulled` : '';
       shownEl.className = foldActive ? 'sl-has-fold' : '';
       shownEl.innerHTML = total
-        ? `<span class="sl-full">showing ${games.length} of ${total} ${plural(total)}${order}${groupNote}</span>`
+        ? `<span class="sl-full">showing ${games.length} of ${total} ${plural(total)}${pulledNote}${order}${groupNote}</span>`
           + (foldActive
             ? `<span class="sl-folded">showing ${games.length - passCount} of ${total} ${plural(total)}`
-              + ` · ${passCount} pass ${passCount === 1 ? 'row' : 'rows'} folded${groupNote}</span>`
+              + ` · ${passCount} pass ${passCount === 1 ? 'row' : 'rows'} folded${pulledNote}${groupNote}</span>`
             : '')
         : '';
     }
@@ -1907,7 +1914,14 @@
       // renders the star inline with the name — it tracks that pick, so it sits
       // with it instead of floating in a column of its own.
       const leadingHtml = state.compareMode
-        ? `<span class="leading checkbox${isSelected ? ' selected' : ''}" data-action="leading-click" data-id="${g.id}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(g.matchup)} to compare" title="Select to compare">${isSelected ? '\u2713' : ''}</span>`
+        // Compare exists to choose between two candidate bets, and a batter who
+        // is not playing is not a candidate \u2014 the same reasoning that removed his
+        // star. Selectable, he produced a column of dashes beside a real one.
+        // Visibly excluded rather than silently inert: it takes no action and
+        // says why, instead of looking clickable and doing nothing.
+        ? (g.pulled
+          ? `<span class="leading checkbox cb-out" aria-disabled="true" title="Not in tonight's lineup \u2014 nothing to compare"></span>`
+          : `<span class="leading checkbox${isSelected ? ' selected' : ''}" data-action="leading-click" data-id="${g.id}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(g.matchup)} to compare" title="Select to compare">${isSelected ? '\u2713' : ''}</span>`)
         // A pulled row loses its star outright rather than rendering it inert \u2014
         // the board's rule is that a dead affordance disappears. A dim em-dash
         // holds the slot so the name column does not shift under it.
@@ -1988,8 +2002,12 @@
         const duel = starters.slice(0, 2).map((p) => {
           const isPick = g.pick && g.pick.indexOf(p.name) === 0;
           const ht = handTag(p.hand);
-          return `<span class="mp-name${isPick ? ' pick' : ''}">${esc(lastName(p.name))}${ht ? `<span class="mp-hand">${ht}</span>` : ''}</span>`;
-        }).join('<span class="mp-vs">vs</span>');
+          // The spacing between these is done with margins, which the text layer
+          // cannot see: a screen reader read the cell as "HughesRHPvsIrvinRHP",
+          // and so did copy-paste. A real space costs nothing visually and is the
+          // only thing that separates the words for anything that is not looking.
+          return `<span class="mp-name${isPick ? ' pick' : ''}">${esc(lastName(p.name))}${ht ? ` <span class="mp-hand">${ht}</span>` : ''}</span>`;
+        }).join(' <span class="mp-vs">vs</span> ');
         const sub = [g.matchup, g.timeLabel, g.scorePart].filter(Boolean).join(' · ');
         matchupCell = `<div class="matchup-cell">
             <div class="mc-head">${leadingHtml}<span class="mp-duel">${duel}</span></div>
@@ -3227,13 +3245,20 @@
     if (!isBatter() || !pulled.length) { host.hidden = true; host.innerHTML = ''; return; }
 
     const n = pulled.length;
+    // A slate can strand a dozen rows, and at ~120px each that was 1.7 screens of
+    // alerts standing between the reader and the board. The bar's job is to warn,
+    // not to be the page — so it shows a few and folds the rest behind a count.
+    const LA_VISIBLE = 4;
+    const folded = !state.alertsAll && n > LA_VISIBLE;
+    const shown = folded ? pulled.slice(0, LA_VISIBLE) : pulled;
+
     host.innerHTML = `<div class="la-head">`
       + `<span class="la-dot"></span>`
       + `<span class="la-title">Lineup alerts</span>`
       + `<span class="la-count">${n} row${n === 1 ? '' : 's'} pulled</span>`
       + `<span class="la-note">not on tonight’s card — these cannot be posted</span>`
       + `</div>`
-      + pulled.map((r) => {
+      + shown.map((r) => {
         // What the board loses by his absence. wasTier is the only place a
         // pulled row's former standing is allowed to appear.
         const was = r.wasEdge != null
@@ -3241,14 +3266,26 @@
           : r.wasTier === 'pass' ? 'was a pass'
           : r.wasTier === 'model' ? 'was a projection'
           : 'pulled from the board';
-        return `<div class="la-row">`
+        // The row itself carries the action, so the phone can drop the button and
+        // still be tappable — the design's "tapping a line filters the board".
+        // The button stays on desktop, where there is room for an explicit target.
+        return `<div class="la-row" data-action="alert-view" data-name="${esc(r.name)}"`
+          + ` role="button" tabindex="0" aria-label="Filter the board to ${esc(r.name)}">`
           + `<span class="la-tag">${esc(pullReason(r))}</span>`
           + `<span class="la-name">${esc(r.name)}</span>`
           + `<span class="la-team">${esc(r.team || '')}</span>`
           + `<span class="la-impact">pulled from the board — ${esc(was)}</span>`
+          // The phone gets the verdict alone, on the same line. The full sentence
+          // needs a second row at 375px, which is what made the bar enormous.
+          + `<span class="la-short">pulled · ${esc(was.replace(/^was /, 'was '))}</span>`
           + `<button type="button" class="la-view" data-action="alert-view" data-name="${esc(r.name)}">View →</button>`
           + `</div>`;
-      }).join('');
+      }).join('')
+      + (n > LA_VISIBLE
+        ? `<button type="button" class="la-more" data-action="alerts-more">${folded
+            ? `Show ${n - LA_VISIBLE} more pulled row${n - LA_VISIBLE === 1 ? '' : 's'} →`
+            : 'Show fewer'}</button>`
+        : '');
     host.hidden = false;
   }
 
@@ -3464,6 +3501,11 @@
   }
 
   function toggleCompareSelect(id) {
+    // Belt and braces: the checkbox is already inert on a pulled row, but the
+    // action can also be reached by keyboard or a stale click, and a pulled row
+    // in the panel is a column of dashes beside a real one.
+    const row = getGames().find((g) => g.id === id);
+    if (row && row.pulled) return;
     if (state.compareIds.includes(id)) {
       state.compareIds = state.compareIds.filter((x) => x !== id);
     } else if (state.compareIds.length >= 2) {
@@ -3574,6 +3616,10 @@
       case 'toggle-pass': state.batterShowPass = !state.batterShowPass; renderBoard(); break;
       // Filter, don't scroll. Scroll-to-row breaks when the row is filtered out
       // of the current view, which is precisely the case an alert creates.
+      case 'alerts-more':
+        state.alertsAll = !state.alertsAll;
+        renderLineupAlerts();
+        break;
       case 'alert-view': {
         state.filter = 'all';
         state.searchQuery = target.dataset.name || '';
