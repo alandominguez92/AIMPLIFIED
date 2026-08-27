@@ -2930,7 +2930,19 @@ function buildTrackRecord(rows) {
     const wins = rows.filter((r) => r.result === 'win').length;
     const { mean, units, p } = roiSignificance(rets);
     return { [key]: label, n: rows.length, record: `${wins}–${rows.length - wins}`,
+      // Hit rate as well as the W–L string: a rate is comparable across slices of
+      // very different size, which is the whole point of putting them in a table.
+      hit: rows.length ? round1(wins / rows.length * 100) : null,
       units: Math.round(units * 10) / 10, roi: round1(mean * 100), p };
+  };
+  // What each tier label actually meant when it was applied. T1–T3 were bands of
+  // model-vs-market disagreement; `play` is the EV gate that replaced them. Saying
+  // so stops a reader inferring that T1 was ever a confidence ranking.
+  const TIER_SUB = {
+    '1': 'largest model disagreement',
+    '2': 'middle band',
+    '3': 'smallest qualifying edge',
+    play: 'current era — gated on EV, not ranked',
   };
   const groupBy = (rows, fn) => {
     const m = new Map();
@@ -2938,7 +2950,10 @@ function buildTrackRecord(rows) {
     return m;
   };
   const buTierBreakdown = ['1', '2', '3', 'play']
-    .map((t) => { const rs = buRows.filter((r) => String(r.tier) === t); return rs.length ? sliceStats(rs, 'tier', t) : null; })
+    .map((t) => {
+      const rs = buRows.filter((r) => String(r.tier) === t);
+      return rs.length ? Object.assign(sliceStats(rs, 'tier', t), { sub: TIER_SUB[t] || null }) : null;
+    })
     .filter(Boolean);
   // Pricing eras, oldest first. dk-fair priced against the same book we bet, so
   // its "edge" was mechanically DraftKings' hold — it stays on the page because
@@ -2987,13 +3002,30 @@ function buildTrackRecord(rows) {
     ? null
     : Math.round((r.side === 'Over' ? (r.close_over - r.entry_over) : (r.entry_over - r.close_over)) * 1000) / 10;
   const LOG_MAX = 250;
-  const logRowsOut = [...buRows].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, LOG_MAX)
-    .map((r) => ({
-      date: r.date, player: r.player, team: r.team || null,
-      market: MARKET_LABEL[r.market] || r.market || null,
-      line: r.line, side: r.side, price: r.price, tier: r.tier,
-      result: r.result, clv: clvOf(r),
-    }));
+  const toLogRow = (r) => ({
+    date: r.date, player: r.player, team: r.team || null,
+    market: MARKET_LABEL[r.market] || r.market || 'Strikeouts',
+    line: r.line, side: r.side, price: r.price, tier: r.tier,
+    result: r.result, clv: clvOf(r),
+    // Whether this row is part of the record the page's headline describes.
+    posted: r.tier !== 'pass' && (r.market || 'K') !== 'K' && r.side === 'Under',
+  });
+  const newestFirst = (a, b) => String(b.date).localeCompare(String(a.date));
+  const logRowsOut = [...buRows].sort(newestFirst).slice(0, LOG_MAX).map(toLogRow);
+  // The full model log: every graded row, including the K props, the overs and
+  // the passes that are never posted and never counted in any number above. It
+  // exists so the record cannot be accused of showing only its own selection —
+  // but the rows appear beneath headline stats they are not part of, so each one
+  // carries `posted` and the page has to say which population it is showing.
+  const logAllOut = [...graded].sort(newestFirst).slice(0, LOG_MAX).map(toLogRow);
+  const logScope = {
+    postedN: buRows.length,
+    allN: graded.length,
+    // Named exactly. Moneylines live in their own table and are NOT in here;
+    // claiming them would be describing a log we are not rendering.
+    allNote: 'every graded model row — K props, overs and passes included. None of '
+      + 'these are posted, and none are counted in the numbers above.',
+  };
 
   // Current-era edge, for the gated note under the tabs. The record shown on the
   // site spans every pricing era we have ever run, which flatters or punishes the
@@ -3077,6 +3109,8 @@ function buildTrackRecord(rows) {
     buTierBreakdown,
     eraBreakdown,
     log: logRowsOut,
+    logAll: logAllOut,
+    logScope,
     eraEdge,
   };
 }

@@ -14,7 +14,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board66">
+<link rel="stylesheet" href="style.css?v=board67">
 </head>
 <body>
 
@@ -90,7 +90,13 @@
 
   <!-- The log -->
   <section class="tr-sec" id="trLogSec" hidden>
-    <div class="tr-sec-head"><h2>The log</h2><span class="tr-sub" id="trLogSub"></span></div>
+    <div class="tr-sec-head">
+        <h2>The log</h2>
+        <!-- Two populations, not a filter on one: the full log carries rows that
+             are deliberately absent from every number above. -->
+        <div class="tr-scopes" id="trLogScope"></div>
+        <span class="tr-sub" id="trLogSub"></span>
+      </div>
     <div class="tr-logwrap"><div class="tr-log" id="trLog"></div></div>
     <div class="tr-foot" id="trLogFoot"></div>
   </section>
@@ -118,6 +124,6 @@
 <script>
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="track-record.js?v=board66"></script>
+<script src="track-record.js?v=board67"></script>
 </body>
 </html>

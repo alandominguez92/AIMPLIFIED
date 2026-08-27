@@ -82,7 +82,7 @@
     renderTiers(j.buTierBreakdown || []);
     renderEras(j.eraBreakdown || []);
     renderClv(j, bu);
-    renderLog(j.log || [], bu);
+    renderLog(j.log || [], j.logAll || [], bu, j.logScope || { postedN: (j.log||[]).length, allN: (j.logAll||[]).length, allNote: '' });
   }
 
   // ---- Is the edge real? ------------------------------------------------
@@ -136,10 +136,14 @@
   function renderTiers(rows) {
     if (!rows.length) return;
     var TIER_LABEL = { play: 'Play', '1': 'T1', '2': 'T2', '3': 'T3' };
+    // Hit rate rather than the W–L string: these slices differ by an order of
+    // magnitude in size, and a rate is the only column you can read down.
     $('trTierTable').innerHTML = tableHtml(
-      ['Tier', 'Graded', 'Record', 'Units', 'ROI', 'p'],
+      ['Tier', 'Graded', 'Hit', 'Units', 'ROI', 'p'],
       rows.map(function (t) {
-        return ['<b>' + esc(TIER_LABEL[t.tier] || t.tier) + '</b>', t.n.toLocaleString(), esc(t.record),
+        var name = '<div class="tr-era"><b>' + esc(TIER_LABEL[t.tier] || t.tier) + '</b>'
+          + (t.sub ? '<span class="tr-era-note">' + esc(t.sub) + '</span>' : '') + '</div>';
+        return [name, t.n.toLocaleString(), num(t.hit) + '%',
           cellTone(signed(t.units), t.units), cellTone(signed(t.roi) + '%', t.roi),
           t.p == null ? '<span class="tr-dash">—</span>' : num(t.p, 2)];
       }));
@@ -162,7 +166,7 @@
     if (!rows.length) return;
     var TAG_CLASS = { contaminated: 'bad', unknown: 'bad', legacy: 'dim', current: 'good' };
     $('trEraTable').innerHTML = tableHtml(
-      ['Era', 'Graded', 'Record', 'Units', 'ROI', 'p'],
+      ['Era', 'Graded', 'Hit', 'Units', 'ROI', 'p'],
       rows.map(function (e) {
         var tag = e.tag ? '<span class="tr-tag tr-tag-' + (TAG_CLASS[e.tag] || 'dim') + '">' + esc(e.tag) + '</span>' : '';
         var thin = e.thin ? '<span class="tr-tag tr-tag-dim">n too small</span>' : '';
@@ -173,7 +177,7 @@
           : cellTone(signed(e.roi) + '%', e.roi);
         return ['<div class="tr-era"><b>' + esc(e.era) + '</b>' + tag + thin
             + (e.note ? '<span class="tr-era-note">' + esc(e.note) + '</span>' : '') + '</div>',
-          e.n.toLocaleString(), esc(e.record),
+          e.n.toLocaleString(), num(e.hit) + '%',
           e.thin ? '<span class="tone-dim">' + esc(signed(e.units)) + '</span>' : cellTone(signed(e.units), e.units),
           roiCell,
           e.p == null ? '<span class="tr-dash">—</span>' : num(e.p, 2)];
@@ -232,10 +236,45 @@
   }
 
   // ---- The log ----------------------------------------------------------
-  function renderLog(rows, bu) {
+  // Scope is stored so re-rendering after a toggle does not re-fetch. The two
+  // populations are genuinely different records, not a filter on one — which is
+  // exactly why switching has to change the note as well as the rows.
+  var LOG_SCOPE = 'posted';
+  var LOG_DATA = null;
+
+  function renderLogScope() {
+    var host = $('trLogScope');
+    if (!host || !LOG_DATA) return;
+    var opts = [
+      { key: 'posted', label: 'Posted unders', n: LOG_DATA.scope.postedN },
+      { key: 'all', label: 'Full model log', n: LOG_DATA.scope.allN },
+    ];
+    host.innerHTML = opts.map(function (o) {
+      return '<button type="button" class="tr-scope' + (o.key === LOG_SCOPE ? ' active' : '') + '"'
+        + ' data-scope="' + o.key + '">' + esc(o.label)
+        + '<span class="tr-scope-n">' + o.n.toLocaleString() + '</span></button>';
+    }).join('');
+    host.onclick = function (e) {
+      var b = e.target.closest('.tr-scope');
+      if (!b || b.dataset.scope === LOG_SCOPE) return;
+      LOG_SCOPE = b.dataset.scope;
+      renderLogScope();
+      renderLog(LOG_DATA.posted, LOG_DATA.all, LOG_DATA.bu, LOG_DATA.scope);
+    };
+  }
+
+  function renderLog(posted, all, bu, scope) {
+    LOG_DATA = { posted: posted, all: all, bu: bu, scope: scope };
+    var rows = LOG_SCOPE === 'all' ? all : posted;
     if (!rows.length) return;
     var RESULT_TONE = { win: 'good', loss: 'bad', push: 'dim' };
-    $('trLogSub').textContent = 'most recent ' + plural(rows.length, 'graded pick') + ', newest first';
+    // The note carries the warning, because these rows sit under headline stats
+    // they are not part of. Saying "full log" without saying that would let a
+    // reader count a K prop toward a record that never included one.
+    $('trLogSub').textContent = LOG_SCOPE === 'all'
+      ? scope.allNote
+      : 'the posted market — these are the picks every number above describes';
+    renderLogScope();
     $('trLog').innerHTML = tableHtml(
       ['Date', 'Pick', 'Market', 'Price', 'Call', 'Result', 'CLV'],
       rows.map(function (r) {
@@ -247,15 +286,21 @@
           pick,
           esc(r.market || '—'),
           money(r.price),
-          esc(r.tier === 'play' ? 'Play' : 'T' + r.tier),
+          // A row that was never posted says so, rather than borrowing a tier
+          // chip that would imply it was once a candidate.
+          r.posted === false ? '<span class="tr-dash">not posted</span>'
+            : esc(r.tier === 'play' ? 'Play' : 'T' + r.tier),
           '<span class="tone-' + (RESULT_TONE[r.result] || 'dim') + '">' + esc(r.result) + '</span>',
           // Zero CLV is grey, never red: it is "the line did not move", not a loss.
           r.clv == null ? '<span class="tr-dash">—</span>' : cellTone(signed(r.clv) + '%', r.clv),
         ];
       }));
+    var total = LOG_SCOPE === 'all' ? scope.allN : bu.n;
     $('trLogFoot').textContent = 'Graded from the official box score the morning after. '
-      + 'Showing the most recent ' + rows.length + ' of ' + bu.n.toLocaleString()
-      + ' graded picks — the tables above describe the whole sample.';
+      + 'Showing the most recent ' + rows.length + ' of ' + total.toLocaleString()
+      + (LOG_SCOPE === 'all'
+        ? ' graded model rows. Only the posted unders are in the record above.'
+        : ' graded picks — the tables above describe the whole sample.');
     $('trLogSec').hidden = false;
   }
 
