@@ -176,6 +176,25 @@ export default {
 // Costs ~2-3x the close-capture refreshes. Each fires board() + batters(), and
 // batters() is the expensive call, so watch quota before widening further.
 const CLOSE_WINDOW_MIN = 15;
+
+// The cron fires when ANY game is inside the close window, but it was then
+// refreshing the WHOLE slate — every game's props re-fetched so that one game's
+// closing line could be frozen. On a staggered slate that is most of the cost:
+// measured on 2026-08-27 (7 games over 520 minutes, 14 firings) it was 98
+// per-event fetches where 21 would do, so 79% of the cron's spend bought nothing.
+//
+// Scoping the refresh to the games actually closing keeps the window at 15
+// minutes — which is not redundancy, it is what lets a sharp-sourced close
+// survive a later refresh that can only see the execution book — while dropping
+// the fetches that were re-pricing games hours from first pitch.
+const closingSoon = (events, windowMs) => {
+  const now = Date.now();
+  return (Array.isArray(events) ? events : []).filter((ev) => {
+    if (!ev.commence_time) return false;   // no start time -> cannot be closing
+    const t = Date.parse(ev.commence_time);
+    return t > now && (t - now) <= windowMs;
+  });
+};
 async function captureCloses(env, ctx) {
   if (!env || !env.DB) return; // no track-record DB -> nothing to freeze
   let sched;
@@ -194,7 +213,17 @@ async function captureCloses(env, ctx) {
   if (!nearPitch) return; // no close to capture this tick — skip the paid refresh
   // Refresh both boards so strikeout, moneyline (board) and batter (batters)
   // closes all re-log. Their own ctx.waitUntil writes ride on this same ctx.
-  try { await Promise.all([board(env, ctx), batters(env, ctx)]); } catch (e) { /* transient */ }
+  //
+  // closeOnly restricts each to the games inside the window. The close write only
+  // touches rows for games that are about to start, so re-pricing the rest of the
+  // slate produced writes identical to what was already stored — 79% of this
+  // job's per-event fetches, measured across a full slate.
+  try {
+    await Promise.all([
+      board(env, ctx, { closeOnly: windowMs }),
+      batters(env, ctx, { closeOnly: windowMs }),
+    ]);
+  } catch (e) { /* transient */ }
 }
 
 // `url` is threaded through because /api/fair-probe reads ?market= and ?games=
@@ -361,7 +390,7 @@ async function attachSplits(rows, group) {
 // projection. Degrades gracefully (defaults) if a stats feed hiccups; []
 // if the schedule itself fails, so the page uses its Odds-API slate.
 // -------------------------------------------------------------------------
-async function board(env, ctx) {
+async function board(env, ctx, opts) {
   const season = new Date().getUTCFullYear();
   let date = slateDate(); // the site's slate day, in Pacific time
 
@@ -409,12 +438,16 @@ async function board(env, ctx) {
         // lines yet — skip it to avoid burning paid per-event calls overnight
         // (matters now that the board rolls a day ahead into projections).
         const PROP_LEAD_MS = 12 * 3600 * 1000;
-        const upcoming = (Array.isArray(events) ? events : [])
-          .filter((ev) => {
-            if (!ev.commence_time) return true;
-            const t = Date.parse(ev.commence_time);
-            return t > now && (t - now) <= PROP_LEAD_MS;
-          });
+        // Same scoping as batters(): a close-capture pass only needs the games
+        // whose lines are about to vanish, not every game with a posted prop.
+        const upcoming = (opts && opts.closeOnly)
+          ? closingSoon(events, opts.closeOnly)
+          : (Array.isArray(events) ? events : [])
+            .filter((ev) => {
+              if (!ev.commence_time) return true;
+              const t = Date.parse(ev.commence_time);
+              return t > now && (t - now) <= PROP_LEAD_MS;
+            });
         await Promise.all(upcoming.map(async (ev) => {
           try {
             const pr = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=pitcher_strikeouts&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
@@ -1034,7 +1067,7 @@ async function feedErrorFrom(res) {
 }
 const battersPayload = (rows, feedError) => cors(json({ rows, feedError: feedError || null }, feedError ? 30 : 300));
 
-async function batters(env, ctx) {
+async function batters(env, ctx, opts) {
   const season = new Date().getUTCFullYear();
   const key = env && env.ODDS_API_KEY;
 
@@ -1197,7 +1230,11 @@ async function batters(env, ctx) {
   // Skip started games — no pre-game props to fetch, so don't spend the quota
   // (batter markets cost more: 3 markets per event vs. 1 for strikeouts).
   const nowB = Date.now();
-  const upcomingB = events.filter((ev) => !ev.commence_time || Date.parse(ev.commence_time) > nowB);
+  // closeOnly: only the games about to start need their closing line frozen, so
+  // the other dozen are not re-priced to do it.
+  const upcomingB = opts && opts.closeOnly
+    ? closingSoon(events, opts.closeOnly)
+    : events.filter((ev) => !ev.commence_time || Date.parse(ev.commence_time) > nowB);
   // A per-event props failure used to return silently, so a whole slate of 401s
   // looked identical to a slate with no props posted. Keep the first one.
   let propsFeedError = null;
