@@ -577,6 +577,9 @@
         return {
           ...b,
           matchup: b.name,
+          // `matchup` becomes the player, so the game it belongs to would be lost
+          // to the subline string. The group header needs it as a value.
+          gameMatchup: b.matchup,
           subline: [b.matchup, sc || b.timeLabel].filter(Boolean).join(' · '),
           scorePart: sc,
           time: b.timeMs || 0,
@@ -1049,6 +1052,9 @@
       // tabs narrow from there. Other views are unaffected.
       if (isRL() && g.rl == null) return false;
       if (state.filter === 'all') return true;
+      // Starred is a filter over the slip, not over a tier, so it is checked
+      // before the tier comparison — activeTier() would never return 'starred'.
+      if (state.filter === 'starred') return !!state.slip[legIdFor(g)];
       return String(activeTier(g)) === state.filter;
     });
     const q = state.searchQuery.trim().toLowerCase();
@@ -1095,6 +1101,16 @@
     : key === 'model' ? modelProbOf
     : key === 'odds' ? activeOdds
     : activeEdge;
+  // The key the board is ACTUALLY ordered by. state.sortBy is what the reader
+  // last chose, which is not the same thing: when a column empties out — every
+  // edge null during a feed outage — that key stops being offered and the board
+  // falls back to first pitch, while state.sortBy still says 'edge'.
+  //
+  // Three places needed this and each had derived it separately, so the sort chip
+  // could highlight First pitch while the grouping logic read 'edge' and stayed
+  // off. One definition, so the chip, the footer and the grouping cannot disagree
+  // about what order the board is in.
+  const effectiveSortKey = () => availableSortKeys().includes(state.sortBy) ? state.sortBy : 'time';
   const SORT_DEFAULT_DIR = { edge: 'desc', model: 'desc', odds: 'desc', time: 'asc' };
   const sortDir = () => state.sortDir || SORT_DEFAULT_DIR[state.sortBy] || 'desc';
 
@@ -1124,13 +1140,23 @@
   // What the third sort option is called on the active view. Moneyline shows a
   // win probability, not a model P — naming it "Model P" there would describe a
   // column that doesn't exist.
-  const modelSortLabel = () => isML() ? 'Win Prob' : 'Model P';
+  // Each view names the chip after its OWN column, so the two never disagree.
+  // The run line was still saying "Model P" over a column headed Cover %.
+  // K props keeps the generic name on purpose: it sorts on the lead starter's
+  // model probability, not on projected Ks, and calling it "Proj Ks" would name
+  // a different number than the one doing the ordering.
+  const modelSortLabel = () => isML() ? 'Win Prob'
+    : isRL() ? 'Cover %'
+    : isBatter() ? 'P(under)'
+    : 'Model P';
 
   // The sort chip row. One chip per key; the active one shows its direction
   // arrow and, on click, flips it. "Model P" renames to "Win Prob" on the
   // moneyline view, matching that view's own column, so the chip never labels a
   // number the board doesn't show.
-  const SORT_LABELS = { edge: 'Edge', model: null, odds: 'Odds', time: 'Time' };
+  // "First pitch" rather than "Time": the board carries several times (first
+  // pitch, last refresh, the outage countdown) and the chip orders exactly one.
+  const SORT_LABELS = { edge: 'Edge', model: null, odds: 'Odds', time: 'First pitch' };
 
   // Which sort keys are actually meaningful for the board as it stands right now.
   // Edge and Win-Prob/Model-P only exist when the board carries model output, so
@@ -1163,7 +1189,7 @@
     // getFilteredSortedGames force-sorts by time whenever the board isn't
     // modeled, so if the stored key isn't offered here, Time is the real order —
     // highlight it, rather than leaving a hidden key "active" with no chip.
-    const active = keys.includes(state.sortBy) ? state.sortBy : 'time';
+    const active = effectiveSortKey();
     const arrow = sortDir() === 'asc' ? '↑' : '↓';
     host.innerHTML = keys.map((key) => {
       const label = key === 'model' ? modelSortLabel() : SORT_LABELS[key];
@@ -1236,13 +1262,37 @@
     if (isBatter() && !hideTiers) {
       const q = state.searchQuery.trim().toLowerCase();
       const pool = getGames().filter((g) => !q || g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
-      tierCounts = { all: pool.length, play: 0, pass: 0 };
-      pool.forEach((g) => { const t = String(activeTier(g)); if (t in tierCounts) tierCounts[t] += 1; });
+      tierCounts = { all: pool.length, play: 0, pass: 0, starred: 0 };
+      pool.forEach((g) => {
+        const t = String(activeTier(g));
+        if (t in tierCounts) tierCounts[t] += 1;
+        if (state.slip[legIdFor(g)]) tierCounts.starred += 1;
+      });
     }
+    // The star chip appears only once something is starred, and disappears again
+    // when the slip empties — including when the filter is still set to it, which
+    // would otherwise strand the board on an empty view with no way back.
+    const starredN = Object.keys(state.slip).length;
+    if (!starredN && state.filter === 'starred') state.filter = 'all';
 
     document.querySelectorAll('.filter-btn').forEach((btn) => {
       const f = btn.dataset.filter;
       const isTierBtn = f !== 'all';
+      if (f === 'starred') {
+        // Deliberately NOT gated on hideTiers. Tiers hide when the board has no
+        // play/pass call to make — during a feed outage, every row is projection
+        // only — but what you have starred is still yours and still worth
+        // filtering to. Tying the two hid the chip exactly when the board was
+        // least useful to scroll.
+        btn.hidden = !starredN;
+        btn.style.display = btn.hidden ? 'none' : '';
+        // A star needs no abbreviation, so it skips the long/short pair the other
+        // chips carry — rendering both spans printed the glyph twice.
+        btn.classList.toggle('active', state.filter === 'starred');
+        btn.innerHTML = `<span class="fl-star">★</span><span class="chip-count">${starredN}</span>`;
+        btn.setAttribute('aria-label', `Starred, ${starredN}`);
+        return;
+      }
       btn.style.display = hideTiers && isTierBtn ? 'none' : '';
       const active = f === state.filter;
       btn.classList.toggle('active', active);
@@ -1594,6 +1644,52 @@
       + (chips.length ? `<span class="bwhy">${chips.join('')}</span>` : '');
   }
 
+  // One header per game, carrying the facts every row under it shares: the
+  // matchup, first pitch (or the score once it starts), and both starters. Those
+  // were repeating on all forty rows, which is forty copies of four facts and the
+  // reason a phone row needed two lines for its subline.
+  //
+  // Working out which starter is which side: a row stores the arm ITS batter
+  // faces, so that pitcher throws for the opponent. Read against "AWAY @ HOME",
+  // a row whose team is the away side is facing the home starter, and vice
+  // versa. Rows from one side only leave the other starter as a dash rather
+  // than guessing.
+  // Spelled out, not the column shorthand: the pick cell already says "TB", and
+  // repeating the abbreviation under the name explains nothing to a reader who
+  // didn't already know it.
+  const MARKET_NAME = { tb: 'total bases', hrr: 'hits + runs + RBI', hr: 'home runs' };
+
+  function gameGroupHeader(lead, games) {
+    const rows = games.filter((g) => g.gamePk === lead.gamePk);
+    const matchup = lead.gameMatchup || '';
+    const [away, home] = matchup.split('@').map((s) => s.trim());
+    let awayP = null, homeP = null;
+    for (const r of rows) {
+      if (!r.oppPitcher) continue;
+      const hand = r.facingHand ? ` ${r.facingHand}` : '';
+      // r.team faces r.oppPitcher, so that arm belongs to the other club.
+      if (r.team === away) homeP = homeP || r.oppPitcher + hand;
+      else if (r.team === home) awayP = awayP || r.oppPitcher + hand;
+    }
+    const arms = (awayP || homeP)
+      ? `${awayP || '—'} vs ${homeP || '—'}`
+      : '';
+    // Once a game is underway the score is the useful fact, not the start time —
+    // the same swap the row subline already makes.
+    const when = lead.scorePart || lead.timeLabel || '';
+    const n = rows.length;
+    // A group whose rows are all folded away must fold with them, or the phone
+    // shows a header standing over nothing.
+    const allPass = rows.every((r) => String(activeTier(r)) === 'pass');
+    const foldable = allPass && state.filter !== 'pass';
+    return `<div class="game-group${foldable ? ' bp-pass' : ''}" role="presentation">
+        <span class="gg-match">${esc(matchup)}</span>
+        ${when ? `<span class="gg-when">${esc(when)}</span>` : ''}
+        ${arms ? `<span class="gg-arms">${esc(arms)}</span>` : ''}
+        <span class="gg-n">${n} batter${n === 1 ? '' : 's'}</span>
+      </div>`;
+  }
+
   function renderBoard() {
     const games = getFilteredSortedGames();
     // Same-game correlation: count how many board picks share each game so we can
@@ -1614,6 +1710,19 @@
     // bare list can't. Total is the unfiltered pool for the active view.
     // Fold gate, computed before the label so both agree. It is also read by the
     // row map and the toggle button further down.
+    // Grouping is a property of the ORDER, not a display toggle: a header only
+    // means anything when the rows it covers are adjacent. Sorted by first pitch
+    // they are; sorted by edge the same game's batters are scattered down the
+    // board and heading each one would emit a header per row. So it follows the
+    // sort rather than fighting it.
+    //
+    // Batter only. K props, moneyline and the run line are already one row per
+    // game, so a header would restate the row directly beneath it. (The design
+    // groups K props too, but that assumes a row per STARTER; ours is per game.)
+    // Declared here rather than beside the row map because the footer label
+    // below reports it, and that runs first.
+    const grouped = isBatter() && effectiveSortKey() === 'time';
+
     const PLAY_FLOOR = 5;
     const playCount = isBatter()
       ? games.filter((g) => isPlayTier(activeTier(g))).length : 0;
@@ -1633,12 +1742,20 @@
       // fold WOULD apply, which is enough to render both readings and let the
       // media query choose. Without this the footer read "showing 29 of 29" over
       // a board displaying 14.
+      // Name the ordering, and say when rows are grouped. Both are visible in the
+      // toolbar, but the footer is where someone looks to explain a board that
+      // isn't in the order they expected — and grouping is otherwise only
+      // inferable from the headers themselves.
+      const sortKey = effectiveSortKey();
+      const sortName = (sortKey === 'model' ? modelSortLabel() : SORT_LABELS[sortKey] || '').toLowerCase();
+      const order = sortName ? ` · sorted by ${sortName}` : '';
+      const groupNote = grouped ? ' · grouped by game' : '';
       shownEl.className = foldActive ? 'sl-has-fold' : '';
       shownEl.innerHTML = total
-        ? `<span class="sl-full">showing ${games.length} of ${total} ${plural(total)}</span>`
+        ? `<span class="sl-full">showing ${games.length} of ${total} ${plural(total)}${order}${groupNote}</span>`
           + (foldActive
             ? `<span class="sl-folded">showing ${games.length - passCount} of ${total} ${plural(total)}`
-              + ` · ${passCount} pass ${passCount === 1 ? 'row' : 'rows'} folded</span>`
+              + ` · ${passCount} pass ${passCount === 1 ? 'row' : 'rows'} folded${groupNote}</span>`
             : '')
         : '';
     }
@@ -1665,7 +1782,12 @@
       return;
     }
 
-    el.boardRows.innerHTML = games.map((g) => {
+    el.boardRows.innerHTML = games.map((g, i) => {
+      // Emitted ahead of the row it belongs to, so it inherits the row's place
+      // in the sorted list instead of needing a second pass.
+      const groupHtml = grouped && (i === 0 || games[i - 1].gamePk !== g.gamePk)
+        ? gameGroupHeader(g, games)
+        : '';
       const ml = g.ml || {};
       const isTracked = !!state.slip[legIdFor(g)];
       const isSelected = state.compareIds.includes(g.id);
@@ -1786,9 +1908,13 @@
             : ` <span class="team-badge">${esc(g.team)}</span>`;
         }
         const corrTag = corrN >= 2 ? `<span class="corr-tag" title="Correlated: these unders share one game and tend to hit or miss together">${corrN} in this game</span>` : '';
+        // Under a group header the subline would repeat the header verbatim, so
+        // the line goes to the market instead — which the row otherwise only
+        // states inside its pick, in shorthand.
+        const sub = grouped ? MARKET_NAME[g.metric] || '' : g.subline;
         matchupCell = `<div class="matchup-cell">
             <span class="mc-head">${leadingHtml}<b>${esc(g.matchup)}</b>${teamBadge}</span>
-            <span class="matchup-sub">${esc(g.subline)}</span>
+            ${sub ? `<span class="matchup-sub">${esc(sub)}</span>` : ''}
             ${weatherHtml}${corrTag}
           </div>`;
       }
@@ -1965,7 +2091,7 @@
         }
       }
 
-      return rowHtml + detailHtml;
+      return groupHtml + rowHtml + detailHtml;
     }).join('');
 
     // Pass-fold plumbing, set after the rows exist. The container class drives

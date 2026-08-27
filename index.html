@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=board61">
+<link rel="stylesheet" href="style.css?v=board62">
 </head>
 <body>
 
@@ -209,6 +209,10 @@
       </div>
 
       <div class="board-controls">
+        <!-- Both groups are labelled. Bare chips left it ambiguous which row was
+             filtering the board and which was ordering it, and the two do very
+             different things to what you are looking at. -->
+        <span class="filter-group"><span class="sort-lead">Show</span><span class="filter-chips">
       <button class="filter-btn" data-action="set-filter" data-filter="all">All</button>
       <!-- One tab, not three. The board gates rather than ranks: over 4,832
            graded rows ROI does not rise with EV, and every candidate cutoff set
@@ -216,6 +220,11 @@
            something the record does not support. -->
       <button class="filter-btn" data-action="set-filter" data-filter="play">Plays</button>
       <button class="filter-btn" data-action="set-filter" data-filter="pass">Pass</button>
+      <!-- Starred filters to what you have already tracked. Hidden until the
+           slip has something in it, per the board's rule that a dead affordance
+           disappears rather than sitting greyed out. -->
+      <button class="filter-btn" data-action="set-filter" data-filter="starred" id="starredFilterBtn" hidden>&#9733;</button>
+        </span></span>
         <span class="toolbar-div" id="toolbarDiv" aria-hidden="true"></span>
         <span class="sort-group" id="sortGroup"><span class="sort-lead">Sort</span><span class="sort-chips" id="sortChips"></span></span>
         <button class="compare-btn" data-action="toggle-compare-mode" id="compareModeBtn"></button>
@@ -387,6 +396,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=board61"></script>
+<script src="app.js?v=board62"></script>
 </body>
 </html>

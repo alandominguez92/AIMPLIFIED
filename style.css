@@ -653,6 +653,10 @@ section { padding:44px 0; }
 .filter-btn { display:inline-flex; align-items:center; justify-content:center; }
 /* Live count per tier chip. Neutral by default; on the active (gold) chip it
    flips to dark-on-gold so it stays legible. Empty buckets dim via .chip-empty. */
+/* The star chip carries a glyph where the others carry a word, so it keeps the
+   gold it has on a tracked row — the chip and the row star are the same idea. */
+.filter-btn .fl-star { color:var(--accent); font-size:13px; line-height:1; }
+.filter-btn.active .fl-star { color:var(--onAccent); }
 .filter-btn .chip-count { margin-left:8px; min-width:20px; height:20px; padding:0 6px; display:inline-flex; align-items:center; justify-content:center; border-radius:6px; background:color-mix(in srgb, var(--text) 9%, transparent); color:var(--textDim); font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:0; }
 /* Two labels ship in the markup; CSS picks one. Desktop shows "Tier 1", phones
    show "T1" — see the FILTER_SHORT comment in app.js for why this is not done
@@ -662,6 +666,10 @@ section { padding:44px 0; }
 .filter-btn.chip-empty { opacity:.5; }
 /* Sort chip group. "Sort" lead label, then one chip per key; the active chip
    goes solid gold like the tier filter, with its direction arrow. */
+/* Mirrors .sort-group exactly, so the two labelled groups read as a pair rather
+   than one labelled row next to a loose set of buttons. */
+.filter-group { display:inline-flex; align-items:center; gap:8px; }
+.filter-chips { display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .sort-group { display:inline-flex; align-items:center; gap:8px; }
 .sort-lead { font-family:var(--mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--textFaint); }
 /* Sort is a segmented control, not loose chips — one enclosed box with the
@@ -699,6 +707,27 @@ section { padding:44px 0; }
 .board-head-row { display:grid; grid-template-columns:var(--bcols); gap:16px; padding:14px 22px; background:var(--headTint); border-bottom:1px solid var(--border); }
 .col-label { font-family:var(--mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--textDim); font-weight:500; }
 .col-label.center { text-align:center; }
+
+/* Game group header. Sits on the sunken surface so it reads as a divider rather
+   than a row — it is not clickable and carries no number of its own, so it must
+   not look like something you can open. */
+.game-group { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  padding:10px 22px; background:var(--board3);
+  border-top:1px solid var(--border); border-bottom:1px solid var(--borderSoft);
+  font-family:var(--mono); font-size:11.5px; }
+.game-group:first-child { border-top:none; }
+.game-group .gg-match { color:var(--text); font-weight:600; letter-spacing:.04em; }
+.game-group .gg-when { color:var(--textDim); font-variant-numeric:tabular-nums; }
+/* The starters are context for every row beneath, not a headline — quieter than
+   the matchup so the eye lands on the game first. */
+.game-group .gg-arms { color:var(--textFaint); }
+.game-group .gg-n { margin-left:auto; color:var(--textGhost); white-space:nowrap; }
+@media (max-width:900px) {
+  /* The arms are the first thing to go: at 375px the header would wrap to two
+     lines and start costing more height than the sublines it replaced. */
+  .game-group { padding:9px 16px; gap:9px; font-size:11px; }
+  .game-group .gg-arms { display:none; }
+}
 
 .board-row { display:grid; grid-template-columns:var(--bcols); gap:16px; padding:18px 22px; border-bottom:1px solid var(--borderSoft); align-items:center; cursor:pointer; background:transparent;
   border-left:3px solid transparent; transition:background .16s ease, border-left-color .16s ease; }
