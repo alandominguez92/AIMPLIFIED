@@ -2839,19 +2839,29 @@ function buildTrackRecord(rows) {
   // table and the era table can never be computed off slightly different filters.
   const buRows = graded.filter((r) => r.tier !== 'pass'
     && (r.market || 'K') !== 'K' && r.side === 'Under');
-  let buW = 0, buL = 0, buU = 0, buPriceSum = 0, buPriceN = 0;
+  let buW = 0, buL = 0, buU = 0;
+  const buPrices = [], buBreakEvens = [];
   for (const r of buRows) {
     if (r.result === 'win') buW++; else buL++;
     buU += profitUnits(r.result, r.price);
-    if (typeof r.price === 'number') { buPriceSum += r.price; buPriceN++; }
+    if (typeof r.price !== 'number') continue;
+    buPrices.push(r.price);
+    // Break-even for ONE bet at ONE price: the win rate that price alone demands.
+    const payout = r.price > 0 ? r.price / 100 : 100 / Math.abs(r.price);
+    buBreakEvens.push(100 / (1 + payout));
   }
   const buN = buW + buL;
-  // The price is what decides how often we have to be right. Averaging it turns
-  // the hit rate from a number you either trust or don't into arithmetic anyone
-  // can check: break-even is implied by the price alone, with no model in it.
-  const avgPrice = buPriceN ? Math.round(buPriceSum / buPriceN) : null;
-  const breakEven = avgPrice != null
-    ? round1(100 * Math.abs(avgPrice) / (Math.abs(avgPrice) + 100)) : null;
+  // DO NOT average American odds. They are not linear and these straddle zero
+  // (−205 to +138), so the mean is a number with no meaning: taking it and
+  // deriving one break-even gave 46.8% where the correctly weighted figure is
+  // 54.6% — a 13-point error, all of it flattering. The honest statistic is the
+  // mean of the PER-BET break-evens, which is what the portfolio actually has to
+  // clear. The median price is reported alongside as a plain description of a
+  // typical price, and is not used in any calculation.
+  const breakEven = buBreakEvens.length
+    ? round1(buBreakEvens.reduce((s, x) => s + x, 0) / buBreakEvens.length) : null;
+  const medianPrice = buPrices.length
+    ? [...buPrices].sort((a, b) => a - b)[Math.floor((buPrices.length - 1) / 2)] : null;
   // 95% interval on the hit rate. Without it a point estimate above break-even
   // reads as a proven edge, which at this sample size it is not.
   let ci = null;
@@ -2865,10 +2875,15 @@ function buildTrackRecord(rows) {
     winRate: round1(buW / buN * 100),
     roi: round1(buU / buN * 100),
     units: Math.round(buU * 10) / 10,
-    avgPrice, breakEven, ci,
-    // Stated rather than left to the reader to infer from two numbers that are
-    // 0.7 points apart. Null when the interval cannot be formed.
+    medianPrice, breakEven, ci,
+    // Stated rather than left to the reader to infer from two numbers barely a
+    // point apart. Null means the interval contains break-even — "we cannot yet
+    // tell", which is a different claim from "no edge" and must read differently.
     beatsBreakEven: ci && breakEven != null ? (ci.lo > breakEven ? true : ci.hi < breakEven ? false : null) : null,
+    // The bottom line, and the only figure here that already accounts for every
+    // price correctly. Hit rate against a break-even is a useful sanity check;
+    // ROI is what the record actually returned, so it carries its own test.
+    roiP: roiSignificance(buRows.map((r) => profitUnits(r.result, r.price))).p,
   } : null;
 
   // Slice the same rows two ways for the record page's tables. Both carry a
