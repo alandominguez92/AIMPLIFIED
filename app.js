@@ -1102,7 +1102,7 @@
     // to Time. It was also redundant: cmpBy already falls back to byTime when a
     // metric is null on BOTH rows, so a genuinely empty column still degrades to
     // first-pitch order without a special case.
-    games = [...games].sort(cmpBy(sortMetric(state.sortBy), sortDir()));
+    games = [...games].sort(cmpBy(sortMetric(effectiveSortKey()), sortDir()));
     return games;
   }
 
@@ -1127,7 +1127,11 @@
   // about what order the board is in.
   const effectiveSortKey = () => availableSortKeys().includes(state.sortBy) ? state.sortBy : 'time';
   const SORT_DEFAULT_DIR = { edge: 'desc', model: 'desc', odds: 'desc', time: 'asc' };
-  const sortDir = () => state.sortDir || SORT_DEFAULT_DIR[state.sortBy] || 'desc';
+  // Resolved against the key actually in effect, not the one last chosen. With
+  // the feed down state.sortBy stays 'edge' (default desc) while the board is
+  // really ordered by first pitch ascending, so the chip drew a down arrow over
+  // an ascending list — the arrow contradicted the rows beneath it.
+  const sortDir = () => state.sortDir || SORT_DEFAULT_DIR[effectiveSortKey()] || 'desc';
 
   // The model's probability for the side each view leans, 0-100, or null when
   // nothing is priced. Deliberately mirrors what the row's own detail column
@@ -1197,6 +1201,29 @@
     return keys;
   }
 
+  // A key this board would normally offer, that today has no values to order by.
+  // Two different situations were being treated as one:
+  //
+  //   permanently inapplicable  the run line has no rows at all, so Compare can
+  //                             never do anything — the control disappears
+  //   temporarily unavailable   the odds feed is down, so Edge has nothing to
+  //                             sort — the control stays, and says why
+  //
+  // Removing the second reads as the board losing a feature. Someone who used
+  // Edge yesterday sees it gone with no explanation, and the missing control is
+  // itself the thing needing an explanation.
+  function unavailableSortKeys() {
+    if (!state.feedError || !isBatter()) return [];
+    const have = availableSortKeys();
+    // Only price-derived keys go missing in an outage. Model P survives on the
+    // moneyline board because win probability does not need a price.
+    return ['edge', 'odds'].filter((k) => !have.includes(k));
+  }
+  const SORT_UNAVAILABLE_WHY = {
+    edge: 'Edge needs prices — the odds feed is out',
+    odds: 'No prices to sort by — the odds feed is out',
+  };
+
   function renderSortChips() {
     const host = document.getElementById('sortChips');
     if (!host) return;
@@ -1206,12 +1233,19 @@
     // highlight it, rather than leaving a hidden key "active" with no chip.
     const active = effectiveSortKey();
     const arrow = sortDir() === 'asc' ? '↑' : '↓';
+    const dead = unavailableSortKeys();
     host.innerHTML = keys.map((key) => {
       const label = key === 'model' ? modelSortLabel() : SORT_LABELS[key];
       const on = key === active;
       return `<button class="sort-btn${on ? ' active' : ''}" data-action="set-sort" data-sort="${key}"`
         + `${on ? ' aria-pressed="true"' : ''}>${esc(label)}${on ? ` <span class="sort-arrow">${arrow}</span>` : ''}</button>`;
-    }).join('');
+    }).concat(dead.map((key) => {
+      // Present, inert, and carrying its own reason. Not focusable, because a
+      // keyboard user should not land on a control that cannot act.
+      const why = SORT_UNAVAILABLE_WHY[key] || 'unavailable right now';
+      return `<button class="sort-btn sort-dead" disabled tabindex="-1" title="${esc(why)}"`
+        + ` aria-label="${esc(SORT_LABELS[key] + ' — ' + why)}">${esc(SORT_LABELS[key])}</button>`;
+    })).join('');
   }
 
   function renderControls() {
@@ -1253,6 +1287,12 @@
     // Tier filters grade PLAYS, and only the batter board posts plays — so hide
     // them on the context views (a "Tier 1 moneyline" is not a recommendation).
     const hideTiers = hideModelControls || !isBatter();
+    // Same distinction as the sort chips. On a context board the play/pass
+    // filters are permanently inapplicable and disappear. On the batter board
+    // during an outage they are temporarily empty — a play/pass call needs a
+    // price — so they stay, at zero, saying so. Vanishing there reads as the
+    // board having lost the feature rather than the feed having gone.
+    const tiersOnlyStalled = isBatter() && hideModelControls && !!state.feedError;
 
     // Live counts per tier chip — how many of tonight's plays fall in each
     // bucket, given the current search. Counted off the real board and kept
@@ -1274,7 +1314,9 @@
     // row, which is what made the filter block look unfinished.
     const FILTER_SHORT = { all: 'All', play: 'Plays', pass: 'Pass' };
     let tierCounts = null;
-    if (isBatter() && !hideTiers) {
+    // Counted while stalled too, so the chips can show a real zero rather than
+    // an empty control. Zero plays is information; a blank chip is not.
+    if (isBatter() && (!hideTiers || tiersOnlyStalled)) {
       const q = state.searchQuery.trim().toLowerCase();
       const pool = getGames().filter((g) => !q || g.matchup.toLowerCase().includes(q) || (g.subline || '').toLowerCase().includes(q));
       // The All chip counts rows you can act on. A pulled row still renders,
@@ -1312,7 +1354,20 @@
         btn.setAttribute('aria-label', `Starred, ${starredN}`);
         return;
       }
-      btn.style.display = hideTiers && isTierBtn ? 'none' : '';
+      // Temporarily empty vs permanently inapplicable, same rule as the sorts:
+      // on a context board the play/pass chips disappear, but during an outage
+      // on the batter board they stay at zero and carry the reason.
+      const stalled = isTierBtn && tiersOnlyStalled;
+      btn.style.display = (hideTiers && isTierBtn && !stalled) ? 'none' : '';
+      btn.disabled = stalled;
+      if (stalled) {
+        btn.tabIndex = -1;
+        btn.title = 'A play or pass call needs a price — the odds feed is out';
+      } else {
+        btn.removeAttribute('tabindex');
+        btn.removeAttribute('title');
+      }
+      btn.classList.toggle('chip-stalled', stalled);
       const active = f === state.filter;
       btn.classList.toggle('active', active);
       // Read the long-label span when falling back, never the whole button: once

@@ -2069,3 +2069,17 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .tr-scopes { width:100%; }
   .tr-scope { flex:1; justify-content:center; min-height:40px; }
 }
+
+/* A control that is temporarily out of data, as opposed to one that never
+   applies here. It stays on screen, legible, inert, and carries its reason in a
+   title — because a control vanishing is itself the thing that needs explaining
+   when a reader used it yesterday. Permanently inapplicable controls still
+   disappear; that rule is unchanged. */
+.sort-btn.sort-dead, .filter-btn.chip-stalled {
+  opacity:.45; cursor:default; border-style:dashed;
+}
+.sort-btn.sort-dead:hover, .filter-btn.chip-stalled:hover {
+  border-color:var(--border); color:var(--textDim);
+}
+/* The count still reads clearly at zero — the zero is the message. */
+.filter-btn.chip-stalled .chip-count { opacity:1; }
