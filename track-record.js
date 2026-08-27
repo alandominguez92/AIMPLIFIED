@@ -278,9 +278,14 @@
     $('trLog').innerHTML = tableHtml(
       ['Date', 'Pick', 'Market', 'Price', 'Call', 'Result', 'CLV'],
       rows.map(function (r) {
-        var pick = '<b>' + esc(r.player || '—') + '</b>'
-          + (r.team ? ' <span class="tr-team">' + esc(r.team) + '</span>' : '')
-          + '<span class="tr-line">' + esc(r.side) + ' ' + esc(r.line) + '</span>';
+        // Strikeout rows are keyed by game, not by player, so they carry a team
+        // and no pitcher name. "— BAL" reads as missing data; "BAL starter" says
+        // what the row actually is. A dash is for a value we expected and lack.
+        var who = r.player
+          ? '<b>' + esc(r.player) + '</b>'
+            + (r.team ? ' <span class="tr-team">' + esc(r.team) + '</span>' : '')
+          : (r.team ? '<b>' + esc(r.team) + ' starter</b>' : '<span class="tr-dash">—</span>');
+        var pick = who + '<span class="tr-line">' + esc(r.side) + ' ' + esc(r.line) + '</span>';
         return [
           '<span class="tr-date">' + esc(r.date) + '</span>',
           pick,
