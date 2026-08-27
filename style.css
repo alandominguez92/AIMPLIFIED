@@ -917,21 +917,20 @@ section { padding:44px 0; }
 .no-results { padding:32px 16px; text-align:center; color:var(--textDim); font-size:14px; }
 
 /* ---------- compare panel ---------- */
-.compare-panel { margin-top:22px; background:var(--board); border:1px solid var(--accent); border-radius:8px; overflow:hidden; }
-.compare-panel-head { display:flex; align-items:center; gap:10px; padding:14px 20px; border-bottom:1px solid var(--border); }
-.compare-panel-head .title { font-family:var(--sans); font-weight:700; font-size:15px; text-transform:uppercase; letter-spacing:.01em; }
-.compare-panel-head .clear-btn { margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--textDim); background:none; border:1px solid var(--border); border-radius:5px; padding:5px 10px; cursor:pointer; }
-.compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); }
-.compare-side { background:var(--board); padding:22px 24px; }
-.compare-side .name { font-family:var(--sans); font-weight:700; font-size:18px; text-transform:uppercase; letter-spacing:-.015em; }
-.compare-side .sub { color:var(--textDim); font-size:12.5px; margin-top:2px; }
-.compare-side .stats-row { display:flex; gap:22px; margin-top:16px; }
-.compare-side .stat-k { font-size:11px; color:var(--textDim); text-transform:uppercase; letter-spacing:.08em; }
-.compare-side .stat-v { font-family:var(--mono); font-weight:600; font-size:14px; margin-top:4px; }
-.compare-side .stat-v.big { font-size:18px; }
-.compare-side .stat-v.accent { color:var(--accent); }
-.compare-side .stat-v.positive { color:var(--positive); }
-.compare-side .stat-v.tier { color:var(--accent); letter-spacing:1px; font-size:14px; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---------- hitters / pitchers grid ---------- */
 .hitters-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:20px; }
@@ -1921,3 +1920,69 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .nfl-priors-link { display:inline-block; margin-top:6px; font-family:var(--mono); font-size:11.5px;
   color:var(--accent); text-decoration:none; border-bottom:1px solid transparent; }
 .nfl-priors-link:hover { border-bottom-color:var(--accent); }
+
+/* =====================================================================
+   COMPARE PANEL
+   One label, two values across — the question is "which of these two", and
+   that is a reading across a row. Two stacked cards each repeating the labels
+   make the reader hold one number in their head while they hunt for its pair.
+   ===================================================================== */
+.cmp { margin-top:22px; border:1px solid var(--accent); border-radius:12px; background:var(--board); overflow:hidden; }
+.cmp-head { display:flex; align-items:baseline; gap:11px; padding:14px 20px;
+  border-bottom:1px solid var(--border); background:var(--board3); }
+.cmp-title { font-family:var(--sans); font-weight:700; font-size:15px; letter-spacing:-.01em; color:var(--text); }
+.cmp-sub { font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--textFaint); }
+.cmp-clear { margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--textDim);
+  background:none; border:1px solid var(--border); border-radius:6px; padding:6px 11px; cursor:pointer; }
+.cmp-clear:hover { border-color:var(--textFaint); color:var(--text); }
+
+.cmp-names, .cmp-row { display:grid; grid-template-columns:130px 1fr 1fr; gap:14px; padding:11px 20px; align-items:baseline; }
+.cmp-names { padding-top:16px; padding-bottom:14px; border-bottom:1px solid var(--border); align-items:end; }
+.cmp-name { display:block; min-width:0; }
+.cmp-name b { display:block; font-size:16px; font-weight:700; letter-spacing:-.01em; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cmp-name i { display:block; margin-top:3px; font-family:var(--mono); font-size:11px; font-style:normal; color:var(--textFaint); }
+.cmp-row { border-bottom:1px solid var(--borderSoft); }
+.cmp-row:last-of-type { border-bottom:none; }
+.cmp-k { font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--textFaint); }
+.cmp-v { font-family:var(--mono); font-size:14px; font-variant-numeric:tabular-nums; color:var(--text); min-width:0; }
+/* Tone follows the board's own convention. Only the batter board posts, so only
+   it gets strength colour; zero renders neutral, never red. */
+.cmp-good { color:var(--positive); }
+.cmp-bad { color:var(--danger); }
+.cmp-model { color:var(--model); }
+.cmp-none { color:var(--textGhost); }
+.cmp-foot { padding:13px 20px; background:var(--board3); border-top:1px solid var(--border);
+  font-size:12.5px; line-height:1.65; color:var(--textFaint); text-wrap:pretty; }
+
+@media (max-width:640px) {
+  /* Stacked: the label takes its own line and the two values sit side by side
+     beneath it, so a 358px phone never has to fit three tabular numbers across
+     — which is the reason the cap is two rows and not three. */
+  .cmp-names, .cmp-row { grid-template-columns:1fr 1fr; gap:10px 14px; padding:11px 15px; }
+  .cmp-row > .cmp-k, .cmp-names > .cmp-k { grid-column:1 / -1; margin-bottom:-4px; }
+  .cmp-names > .cmp-k { display:none; }
+  .cmp-name b { font-size:14px; }
+  .cmp-v { font-size:13px; }
+  .cmp-head { padding:12px 15px; }
+  .cmp-foot { padding:12px 15px; }
+}
+
+/* Leaders compare panels (Hitters / Pitchers) still render through this older
+   shell. The board compare panel moved to .cmp-*; these rules stay because two
+   other surfaces depend on them, and retiring them blanked both. */
+.compare-panel { margin-top:22px; background:var(--board); border:1px solid var(--accent); border-radius:8px; overflow:hidden; }
+.compare-panel-head { display:flex; align-items:center; gap:10px; padding:14px 20px; border-bottom:1px solid var(--border); }
+.compare-panel-head .title { font-family:var(--sans); font-weight:700; font-size:15px; text-transform:uppercase; letter-spacing:.01em; }
+.compare-panel-head .clear-btn { margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--textDim); background:none; border:1px solid var(--border); border-radius:5px; padding:5px 10px; cursor:pointer; }
+.compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); }
+.compare-side { background:var(--board); padding:22px 24px; }
+.compare-side .name { font-family:var(--sans); font-weight:700; font-size:18px; text-transform:uppercase; letter-spacing:-.015em; }
+.compare-side .sub { color:var(--textDim); font-size:12.5px; margin-top:2px; }
+.compare-side .stats-row { display:flex; gap:22px; margin-top:16px; }
+.compare-side .stat-k { font-size:11px; color:var(--textDim); text-transform:uppercase; letter-spacing:.08em; }
+.compare-side .stat-v { font-family:var(--mono); font-weight:600; font-size:14px; margin-top:4px; }
+.compare-side .stat-v.big { font-size:18px; }
+.compare-side .stat-v.accent { color:var(--accent); }
+.compare-side .stat-v.positive { color:var(--positive); }
+.compare-side .stat-v.tier { color:var(--accent); letter-spacing:1px; font-size:14px; }

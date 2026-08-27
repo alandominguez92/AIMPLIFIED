@@ -1329,10 +1329,27 @@
     const toolbarDiv = document.getElementById('toolbarDiv');
     if (toolbarDiv) toolbarDiv.style.display = (!hideTiers && anyGames) ? '' : 'none';
 
+    // The run line has no rows to select until books hang the 1.5, so the button
+    // would be a control that does nothing — and this board's own rule is that a
+    // dead affordance disappears rather than sitting greyed out. Two rows are
+    // also the minimum for a comparison, so a one-row board hides it too.
+    const canCompare = !isRL() && getFilteredSortedGames().length >= 2;
+    el.compareModeBtn.hidden = !canCompare;
+    if (!canCompare && state.compareMode) {
+      // Leaving compare mode armed on a board that cannot show it would strand
+      // the checkboxes on the next board that can.
+      state.compareMode = false;
+      state.compareIds = [];
+    }
     el.compareModeBtn.textContent = state.compareMode ? 'Exit Compare' : 'Compare';
     el.compareModeBtn.classList.toggle('active', state.compareMode);
     el.compareHint.classList.toggle('visible', state.compareMode);
-    el.compareHint.textContent = `Compare mode — pick up to 2 games to compare side-by-side (${state.compareIds.length}/2 selected)`;
+    const cmpNoun = VIEW_NOUN[state.boardView] || 'two rows';
+    el.compareHint.textContent = state.compareIds.length >= 2
+      // Say what a third tap does before it happens, rather than letting a
+      // selection vanish and leaving the reader to work out which one went.
+      ? `Compare mode — ${cmpNoun} selected. Tapping a third replaces the one you picked first.`
+      : `Compare mode — pick ${cmpNoun} to compare side by side (${state.compareIds.length}/2 selected)`;
 
     el.hitterCompareModeBtn.textContent = state.hitterCompareMode ? 'Exit Compare' : 'Compare';
     el.hitterCompareModeBtn.classList.toggle('active', state.hitterCompareMode);
@@ -2115,43 +2132,133 @@
 
 
 
+  // ---- Compare -----------------------------------------------------------
+  // A stat label appears ONCE with both values beside it, rather than two cards
+  // each repeating the labels. The question the panel answers is "which of these
+  // two", and that is a reading across a row — two independent cards make the
+  // reader hold one number in their head while they find its counterpart.
+  //
+  // Each row is [label, render] where render returns { text, tone }. tone drives
+  // colour and follows the board's own convention: only the batter board gets
+  // strength colour, because it is the only one that posts. `plain` means grey
+  // whatever the sign.
+  const cmpDash = { text: '—', tone: 'none' };
+  const cmpPct = (v, tone) => v == null ? cmpDash : { text: (v > 0 ? '+' : '') + v.toFixed(1) + '%', tone };
+  const cmpMoney = (v) => v == null ? cmpDash : { text: v > 0 ? '+' + v : String(v), tone: 'plain' };
+
+  function compareRows() {
+    if (isML()) {
+      // Nothing here is a play, so nothing is coloured for strength — a losing
+      // moneyline must not be able to render as green "value".
+      return [
+        ['Lean', (g) => ({ text: (g.ml && g.ml.pick) || '—', tone: 'plain' })],
+        ['Win prob', (g) => (g.ml && g.ml.winProb != null) ? { text: g.ml.winProb + '%', tone: 'model' } : cmpDash],
+        ['Moneyline', (g) => cmpMoney(g.ml && g.ml.price)],
+        ['Line value', (g) => cmpPct(g.ml && g.ml.edge, 'plain')],
+        ['Starters', (g) => ({ text: g.subline ? String(g.subline).split('·')[0].trim() : '—', tone: 'plain' })],
+        ['First pitch', (g) => ({ text: g.timeLabel || timeFromSubline(g), tone: 'plain' })],
+      ];
+    }
+    if (isBatter()) {
+      return [
+        ['Pick', (g) => ({ text: g.pick || '—', tone: 'plain' })],
+        ['Edge', (g) => cmpPct(activeEdge(g), 'strength')],
+        ['Model P(under)', (g) => typeof g.modelOver === 'number'
+          ? { text: (Math.round((100 - g.modelOver) * 10) / 10) + '%', tone: 'model' } : cmpDash],
+        ['Price', (g) => cmpMoney(g.odds)],
+        ['Projection', (g) => g.projVal != null
+          ? { text: g.projVal + (g.marketLabel ? ' ' + g.marketLabel : ''), tone: 'model' } : cmpDash],
+        // The gap between the line and the projection, which is the thing the
+        // fade actually rests on. Positive = the line sits above our number.
+        ['Cushion', (g) => (g.line != null && g.projVal != null)
+          ? { text: (Math.round((g.line - g.projVal) * 100) / 100).toFixed(2), tone: 'strength',
+              signed: g.line - g.projVal } : cmpDash],
+        ['Call', (g) => ({ text: null, html: tierChip(activeTier(g)), tone: 'plain' })],
+        ['Game', (g) => ({ text: g.gameMatchup || '—', tone: 'plain' })],
+      ];
+    }
+    // K props — informational, so the model number is blue and no cell is green.
+    return [
+      ['Projection', (g) => ({ text: g.pick || '—', tone: 'model' })],
+      ['80% range', (g) => ({ text: g.interval || '—', tone: 'plain' })],
+      ['Price', (g) => cmpMoney(g.odds)],
+      ['Edge', (g) => cmpPct(activeEdge(g), 'plain')],
+      ['Matchup', (g) => ({ text: g.matchup || '—', tone: 'plain' })],
+      ['First pitch', (g) => ({ text: g.timeLabel || timeFromSubline(g), tone: 'plain' })],
+    ];
+  }
+
+  // The board rows carry their time inside the subline for the context views.
+  const timeFromSubline = (g) => {
+    const parts = String(g.subline || '').split('·').map((s) => s.trim());
+    return parts.length > 1 ? parts[parts.length - 1] : '—';
+  };
+
+  function cmpCell(cell) {
+    if (!cell) return '<span class="cmp-v">—</span>';
+    if (cell.html) return `<span class="cmp-v">${cell.html}</span>`;
+    const t = cell.text;
+    if (t == null || t === '—') return '<span class="cmp-v cmp-none">—</span>';
+    let cls = 'cmp-v';
+    if (cell.tone === 'model') cls += ' cmp-model';
+    else if (cell.tone === 'strength') {
+      // Zero is grey, never red. A zero edge is not a negative edge.
+      const n = cell.signed != null ? cell.signed : parseFloat(String(t));
+      cls += Number.isFinite(n) && n !== 0 ? (n > 0 ? ' cmp-good' : ' cmp-bad') : ' cmp-none';
+    }
+    return `<span class="${cls}">${esc(t)}</span>`;
+  }
+
   function renderComparePanel() {
     const showPanel = state.compareMode && state.compareIds.length === 2;
     if (!showPanel) { el.comparePanel.innerHTML = ''; return; }
-    const compareGames = getGames().filter((g) => state.compareIds.includes(g.id));
-    const sidesHtml = compareGames.map((g) => {
-      const ml = g.ml || {};
-      const pick = isML() ? (ml.pick || '—') : g.pick;
-      const edgeVal = activeEdge(g);
-      const tierVal = activeTier(g);
-      const hasEdge = edgeVal != null;
-      const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
-      const edgeColor = !hasEdge ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
-      const third = isML()
-        ? `<div><div class="stat-k">Win prob</div><div class="stat-v" style="color:var(--model)">${ml.winProb != null ? ml.winProb + '%' : '—'}</div></div>`
-        : `<div><div class="stat-k">Tier</div><div class="stat-v tier">${tierChip(tierVal)}</div></div>`;
-      return `
-        <div class="compare-side">
-          <div class="name">${esc(g.matchup)}</div>
-          <div class="sub">${esc(g.subline)}</div>
-          <div class="stats-row">
-            <div><div class="stat-k">Pick</div><div class="stat-v">${esc(pick)}</div></div>
-            <div><div class="stat-k">Edge</div><div class="stat-v" style="color:${edgeColor}">${esc(edgeLabel)}</div></div>
-            ${third}
-          </div>
-        </div>
-      `;
-    }).join('');
+    // Preserve the order the reader picked them in, rather than board order —
+    // the left column should be the one they chose first.
+    const byId = {};
+    getGames().forEach((g) => { byId[g.id] = g; });
+    const picked = state.compareIds.map((id) => byId[id]).filter(Boolean);
+    if (picked.length !== 2) { el.comparePanel.innerHTML = ''; return; }
+
+    const rows = compareRows();
+    const nameOf = (g) => isBatter() ? g.matchup : g.matchup;
+    const subOf = (g) => isBatter() ? (g.gameMatchup || g.subline) : g.subline;
+
     el.comparePanel.innerHTML = `
-      <div class="compare-panel">
-        <div class="compare-panel-head">
-          <span class="title">Side-by-side comparison</span>
-          <button class="clear-btn" data-action="clear-compare">Clear</button>
+      <div class="cmp">
+        <div class="cmp-head">
+          <span class="cmp-title">Compare</span>
+          <span class="cmp-sub">${esc(VIEW_NOUN[state.boardView] || 'rows')}</span>
+          <button class="cmp-clear" data-action="clear-compare">Clear</button>
         </div>
-        <div class="compare-grid">${sidesHtml}</div>
+        <div class="cmp-names">
+          <span class="cmp-k"></span>
+          ${picked.map((g) => `<span class="cmp-name"><b>${esc(nameOf(g))}</b><i>${esc(subOf(g))}</i></span>`).join('')}
+        </div>
+        ${rows.map(([label, fn]) => [label, picked.map(fn)])
+          // A row where BOTH sides are absent compares nothing. During a feed
+          // outage that is five of eight rows — the panel becomes a column of
+          // dashes and the two numbers that do differ get lost in it. Dropped
+          // rather than dimmed: the board's banner already says why there is no
+          // price, so repeating it once per row adds height and no information.
+          .filter(([, cells]) => cells.some((c) => c && (c.html || (c.text != null && c.text !== '—'))))
+          .map(([label, cells]) => `
+          <div class="cmp-row">
+            <span class="cmp-k">${esc(label)}</span>
+            ${cells.map(cmpCell).join('')}
+          </div>`).join('')}
+        <div class="cmp-foot">${esc(COMPARE_FOOT[state.boardView] || COMPARE_FOOT.batter)}</div>
       </div>
     `;
   }
+
+  const VIEW_NOUN = { batter: 'two batters', kprops: 'two starters', moneyline: 'two games' };
+  // Scoped per board so the note never promises something that board does not do.
+  const COMPARE_FOOT = {
+    batter: 'Both rows are priced the same way, so the numbers are directly comparable. '
+      + 'Cushion is the line minus our projection — a bigger cushion is more room for the batter to beat us and still miss.',
+    kprops: 'Context only. Neither of these is posted or graded, whatever the edge column says.',
+    moneyline: 'Context only. Our graded record shows no reliable edge in moneylines, so this compares two reads, not two bets.',
+  };
 
   function renderHittersGrid() {
     if (!getHitters().length) {
@@ -2938,6 +3045,14 @@
     state.filter = 'all';       // tiers differ between views
     state.expandedId = null;
     state.compareIds = [];
+    // Sort and search are scoped to the board too. A stored sort key can be
+    // meaningless on the next view, and a search for a batter's name matches
+    // nothing on a board of games — leaving either in place makes the new tab
+    // open filtered or reordered for reasons the reader cannot see.
+    state.sortBy = 'time';
+    state.sortDir = null;
+    state.searchQuery = '';
+    if (el.searchInput) el.searchInput.value = '';
     if (v === 'batter' && !battersLive()) refreshBatters(); // lazy first load
     renderViewChrome();
     renderControls();
@@ -3179,6 +3294,10 @@
   function toggleCompareMode() {
     state.compareMode = !state.compareMode;
     state.compareIds = [];
+    // An expanded row and compare mode fight for the same screen: the panel
+    // renders below the board, and a 400px detail panel between the rows you are
+    // choosing between defeats the comparison. Entering compare closes it.
+    state.expandedId = null;
     renderControls();
     renderBoard();
     renderComparePanel();
