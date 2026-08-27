@@ -2910,6 +2910,9 @@ function buildTrackRecord(rows) {
   // Chronological, not by size or by result — the table is a history, and
   // sorting eras by ROI would put the contaminated one wherever it happened to
   // land rather than where it belongs in the story.
+  // Below this an era's ROI is not a result. Matches the threshold the hit-rate
+  // interval uses, so the page applies one standard for "enough to say anything".
+  const ERA_MIN_N = 30;
   const ERA_ORDER = ['(untagged)', 'exec', 'sharp-split', 'sharp'];
   // Keyed on the fair_src values the database actually holds. Two of these carry
   // a warning, and the reason is the same in both cases: the era with the best
@@ -2931,7 +2934,13 @@ function buildTrackRecord(rows) {
       // `warn` drives the caveat on the page. Carried per era rather than
       // inferred from the tag, so a new era added later has to make the call
       // deliberately instead of defaulting to un-caveated.
-      return { ...s, tag: meta.tag, note: meta.note, warn: !!meta.warn };
+      //
+      // `thin` is the other way an era row misleads: sharp-split returns +14.7%,
+      // the best number in the table, on seven picks. That is noise wearing a
+      // percentage sign, and it tops the ordering exactly because small samples
+      // produce extreme values. Anything under the threshold is flagged so the
+      // page can refuse to treat it as a result.
+      return { ...s, tag: meta.tag, note: meta.note, warn: !!meta.warn, thin: s.n < ERA_MIN_N };
     })
     .sort((a, b) => (ERA_ORDER.indexOf(a.era) - ERA_ORDER.indexOf(b.era)) || b.n - a.n);
 
