@@ -2910,17 +2910,28 @@ function buildTrackRecord(rows) {
   // Chronological, not by size or by result — the table is a history, and
   // sorting eras by ROI would put the contaminated one wherever it happened to
   // land rather than where it belongs in the story.
-  const ERA_ORDER = ['dk-fair', 'mkt', 'sharp'];
+  const ERA_ORDER = ['(untagged)', 'exec', 'sharp-split', 'sharp'];
+  // Keyed on the fair_src values the database actually holds. Two of these carry
+  // a warning, and the reason is the same in both cases: the era with the best
+  // return is not the era with the best evidence.
   const ERA_META = {
-    'dk-fair': { label: 'dk-fair', tag: 'contaminated', note: 'Fair line and price both from DraftKings — the edge was the book’s hold, not a read on the market.' },
-    'mkt': { label: 'mkt', tag: 'legacy', note: 'Fair from a broad book median. Superseded, but priced against something other than the book we bet.' },
-    'sharp': { label: 'sharp', tag: 'current', note: 'Fair from the Shin de-vigged sharp pool, independent of the execution book.' },
+    '(untagged)': { tag: 'unknown', warn: true,
+      note: 'Posted before the fair source was recorded, so how these were priced cannot be reconstructed. The strongest return on this page sits here, on the rows we can say the least about.' },
+    'exec': { tag: 'contaminated', warn: true,
+      note: 'Fair line and price both came from the execution book, so the “edge” was mechanically that book’s hold rather than a read on the market. Kept because deleting a bad era flatters the record.' },
+    'sharp-split': { tag: 'legacy',
+      note: 'A short transitional sample while the sharp pool was being split from the execution book. Too small to carry weight either way.' },
+    'sharp': { tag: 'current',
+      note: 'Fair from the Shin de-vigged sharp pool, independent of the book we bet at. This is what ships tonight.' },
   };
   const eraBreakdown = [...groupBy(buRows, (r) => r.fair_src || '(untagged)').entries()]
     .map(([k, rs]) => {
       const s = sliceStats(rs, 'era', k);
       const meta = ERA_META[k] || { tag: null, note: null };
-      return { ...s, tag: meta.tag, note: meta.note };
+      // `warn` drives the caveat on the page. Carried per era rather than
+      // inferred from the tag, so a new era added later has to make the call
+      // deliberately instead of defaulting to un-caveated.
+      return { ...s, tag: meta.tag, note: meta.note, warn: !!meta.warn };
     })
     .sort((a, b) => (ERA_ORDER.indexOf(a.era) - ERA_ORDER.indexOf(b.era)) || b.n - a.n);
 
