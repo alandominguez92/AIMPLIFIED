@@ -2834,20 +2834,95 @@ function buildTrackRecord(rows) {
   // that transfers to any platform; units/ROI are flat-stake sportsbook basis.
   // Same tier='pass' exclusion as every other breakdown above: a pass means the
   // model found no edge, so it was never a play and can't count toward the record.
-  let buW = 0, buL = 0, buU = 0;
-  for (const r of graded) {
-    if (r.tier === 'pass') continue;
-    if ((r.market || 'K') === 'K' || r.side !== 'Under') continue;
+  // One pass, one population. Everything the record page shows about posted
+  // unders is derived from THIS array, so the headline, the interval, the tier
+  // table and the era table can never be computed off slightly different filters.
+  const buRows = graded.filter((r) => r.tier !== 'pass'
+    && (r.market || 'K') !== 'K' && r.side === 'Under');
+  let buW = 0, buL = 0, buU = 0, buPriceSum = 0, buPriceN = 0;
+  for (const r of buRows) {
     if (r.result === 'win') buW++; else buL++;
     buU += profitUnits(r.result, r.price);
+    if (typeof r.price === 'number') { buPriceSum += r.price; buPriceN++; }
   }
   const buN = buW + buL;
+  // The price is what decides how often we have to be right. Averaging it turns
+  // the hit rate from a number you either trust or don't into arithmetic anyone
+  // can check: break-even is implied by the price alone, with no model in it.
+  const avgPrice = buPriceN ? Math.round(buPriceSum / buPriceN) : null;
+  const breakEven = avgPrice != null
+    ? round1(100 * Math.abs(avgPrice) / (Math.abs(avgPrice) + 100)) : null;
+  // 95% interval on the hit rate. Without it a point estimate above break-even
+  // reads as a proven edge, which at this sample size it is not.
+  let ci = null;
+  if (buN >= 30) {
+    const pHat = buW / buN;
+    const se = Math.sqrt(pHat * (1 - pHat) / buN) * 100;
+    ci = { lo: round1(buW / buN * 100 - 1.96 * se), hi: round1(buW / buN * 100 + 1.96 * se), se: round1(se) };
+  }
   const batterUnders = buN > 0 ? {
     n: buN, record: `${buW}–${buL}`,
     winRate: round1(buW / buN * 100),
     roi: round1(buU / buN * 100),
     units: Math.round(buU * 10) / 10,
+    avgPrice, breakEven, ci,
+    // Stated rather than left to the reader to infer from two numbers that are
+    // 0.7 points apart. Null when the interval cannot be formed.
+    beatsBreakEven: ci && breakEven != null ? (ci.lo > breakEven ? true : ci.hi < breakEven ? false : null) : null,
   } : null;
+
+  // Slice the same rows two ways for the record page's tables. Both carry a
+  // p-value, because a tier or era ordering that no test supports is a ranking
+  // the record does not justify — and the page says so out loud.
+  const sliceStats = (rows, key, label) => {
+    const rets = rows.map((r) => profitUnits(r.result, r.price));
+    const wins = rows.filter((r) => r.result === 'win').length;
+    const { mean, units, p } = roiSignificance(rets);
+    return { [key]: label, n: rows.length, record: `${wins}–${rows.length - wins}`,
+      units: Math.round(units * 10) / 10, roi: round1(mean * 100), p };
+  };
+  const groupBy = (rows, fn) => {
+    const m = new Map();
+    for (const r of rows) { const k = fn(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); }
+    return m;
+  };
+  const buTierBreakdown = ['1', '2', '3', 'play']
+    .map((t) => { const rs = buRows.filter((r) => String(r.tier) === t); return rs.length ? sliceStats(rs, 'tier', t) : null; })
+    .filter(Boolean);
+  // Pricing eras, oldest first. dk-fair priced against the same book we bet, so
+  // its "edge" was mechanically DraftKings' hold — it stays on the page because
+  // deleting a bad era flatters the record.
+  // Chronological, not by size or by result — the table is a history, and
+  // sorting eras by ROI would put the contaminated one wherever it happened to
+  // land rather than where it belongs in the story.
+  const ERA_ORDER = ['dk-fair', 'mkt', 'sharp'];
+  const ERA_META = {
+    'dk-fair': { label: 'dk-fair', tag: 'contaminated', note: 'Fair line and price both from DraftKings — the edge was the book’s hold, not a read on the market.' },
+    'mkt': { label: 'mkt', tag: 'legacy', note: 'Fair from a broad book median. Superseded, but priced against something other than the book we bet.' },
+    'sharp': { label: 'sharp', tag: 'current', note: 'Fair from the Shin de-vigged sharp pool, independent of the execution book.' },
+  };
+  const eraBreakdown = [...groupBy(buRows, (r) => r.fair_src || '(untagged)').entries()]
+    .map(([k, rs]) => {
+      const s = sliceStats(rs, 'era', k);
+      const meta = ERA_META[k] || { tag: null, note: null };
+      return { ...s, tag: meta.tag, note: meta.note };
+    })
+    .sort((a, b) => (ERA_ORDER.indexOf(a.era) - ERA_ORDER.indexOf(b.era)) || b.n - a.n);
+
+  // The log. Capped rather than paged: the page is an audit surface, not a
+  // database browser, and the summary tables above already describe the whole
+  // sample. Newest first so the most recent grading is the first thing checkable.
+  const clvOf = (r) => (r.close_over == null || r.entry_over == null || (r.close_line != null && r.line != null && r.close_line !== r.line))
+    ? null
+    : Math.round((r.side === 'Over' ? (r.close_over - r.entry_over) : (r.entry_over - r.close_over)) * 1000) / 10;
+  const LOG_MAX = 250;
+  const logRowsOut = [...buRows].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, LOG_MAX)
+    .map((r) => ({
+      date: r.date, player: r.player, team: r.team || null,
+      market: MARKET_LABEL[r.market] || r.market || null,
+      line: r.line, side: r.side, price: r.price, tier: r.tier,
+      result: r.result, clv: clvOf(r),
+    }));
 
   // Current-era edge, for the gated note under the tabs. The record shown on the
   // site spans every pricing era we have ever run, which flatters or punishes the
@@ -2870,17 +2945,7 @@ function buildTrackRecord(rows) {
   const eraN = eraW + eraL;
   let eraEdge = null;
   if (eraN > 0) {
-    const mean = eraRet.reduce((s, x) => s + x, 0) / eraN;
-    let p = null, t = null;
-    if (eraN >= 2) {
-      const sd = Math.sqrt(eraRet.reduce((s, x) => s + (x - mean) * (x - mean), 0) / (eraN - 1));
-      // Epsilon rather than >0: an all-identical slice leaves float dust that
-      // would divide out to a spuriously enormous t.
-      if (sd > 1e-9) {
-        t = mean / (sd / Math.sqrt(eraN));
-        p = Math.round(2 * (1 - normCdf(Math.abs(t))) * 1e4) / 1e4;
-      }
-    }
+    const { mean, p } = roiSignificance(eraRet);
     // Established only when the test clears AND the edge is positive. A
     // significant NEGATIVE ROI is not an edge, and must never open the gate.
     const established = p != null && p < 0.05 && mean > 0;
@@ -2938,6 +3003,9 @@ function buildTrackRecord(rows) {
     calibrationSummary,
     calibrationByTier,
     batterUnders,
+    buTierBreakdown,
+    eraBreakdown,
+    log: logRowsOut,
     eraEdge,
   };
 }
@@ -3363,6 +3431,27 @@ function weatherK(wx) {
 }
 
 // Standard normal CDF (Abramowitz & Stegun 7.1.26 erf approximation).
+// Two-sided t-test on a series of per-bet profits, asking whether the mean
+// return differs from zero. Every "is this slice actually profitable" question
+// on the record page runs through here — overall, per tier, per pricing era — so
+// they cannot answer it three slightly different ways.
+//
+// Returns p:null rather than a number when the sample cannot support the test,
+// which the caller must render as "not enough data" instead of "not significant".
+// Those are different claims: one is silence, the other is evidence of absence.
+function roiSignificance(returns) {
+  const n = returns.length;
+  const sum = returns.reduce((s, x) => s + x, 0);
+  const mean = n ? sum / n : 0;
+  if (n < 2) return { n, mean, units: sum, p: null };
+  const sd = Math.sqrt(returns.reduce((s, x) => s + (x - mean) * (x - mean), 0) / (n - 1));
+  // Epsilon rather than >0: an all-identical slice leaves float dust that would
+  // divide out to a spuriously enormous t.
+  if (!(sd > 1e-9)) return { n, mean, units: sum, p: null };
+  const t = mean / (sd / Math.sqrt(n));
+  return { n, mean, units: sum, t, p: Math.round(2 * (1 - normCdf(Math.abs(t))) * 1e4) / 1e4 };
+}
+
 function normCdf(z) {
   const t = 1 / (1 + 0.2316419 * Math.abs(z));
   const d = 0.3989422804014327 * Math.exp(-z * z / 2);
