@@ -1653,3 +1653,133 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   color:var(--model);
   border:1px solid color-mix(in srgb, var(--model) 38%, transparent);
 }
+
+/* =====================================================================
+   TRACK RECORD PAGE
+   Built entirely on the tokens — no literal colour below this line, so a theme
+   change reaches this page without a second pass. Numbers are mono and
+   right-aligned, prose is Archivo, per the board's own convention.
+   ===================================================================== */
+.tr-main { padding-bottom:60px; }
+.tr-cta { font-family:var(--mono); font-size:11.5px; letter-spacing:.06em; color:var(--textDim);
+  border:1px solid var(--border); border-radius:999px; padding:8px 13px; white-space:nowrap; text-decoration:none; }
+.tr-cta:hover { border-color:var(--textFaint); color:var(--text); }
+.nav-links a.active { color:var(--text); }
+
+.tr-hero { padding:36px 0 24px; }
+.tr-hero h1 { font-size:46px; line-height:1; font-weight:800; letter-spacing:-.02em; text-transform:uppercase; margin:0 0 14px; }
+.tr-hero .sub { max-width:64ch; font-size:15.5px; line-height:1.6; color:var(--textDim); text-wrap:pretty; }
+.tr-hero .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin-bottom:14px; }
+
+/* A 1px gap over a border-coloured ground draws the hairlines between cells,
+   which is why the strip has no doubled borders at its corners. */
+.tr-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:1px;
+  background:var(--border); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:18px; }
+.tr-cell { background:var(--board); padding:18px 20px; }
+.tr-k { font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--textFaint); margin-bottom:9px; }
+.tr-v { font-family:var(--mono); font-size:28px; font-weight:600; letter-spacing:-.01em; font-variant-numeric:tabular-nums; color:var(--text); }
+.tr-n { margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--textFaint); text-wrap:pretty; }
+
+.tr-card { border:1px solid var(--border); border-radius:14px; background:var(--board); margin-bottom:18px; overflow:hidden; }
+.tr-card-head { padding:15px 20px; border-bottom:1px solid var(--border); background:var(--board3); }
+.tr-card-body { padding:18px 20px; font-size:13.5px; line-height:1.65; color:var(--textDim); text-wrap:pretty; }
+.tr-card-body p { margin:0 0 12px; }
+.tr-card-body p:last-child { margin-bottom:0; }
+.tr-card-body b { color:var(--text); font-weight:600; }
+.tr-kicker { font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); }
+.tr-kicker-clv { color:var(--clv); }
+.tr-kicker-caution { color:var(--caution); }
+.tr-big { font-family:var(--mono); font-size:34px; font-weight:600; font-variant-numeric:tabular-nums; margin-bottom:10px; }
+.tr-ol { margin:0; padding-left:20px; }
+.tr-ol li { margin-bottom:9px; }
+.tr-note { font-size:12.5px; line-height:1.6; color:var(--textFaint); text-wrap:pretty; }
+
+/* Confidence-interval graphic. The domain is computed in JS, so the only thing
+   fixed here is the geometry. */
+.ci { position:relative; height:58px; margin:22px 0 10px; }
+.ci-axis { position:absolute; top:26px; left:0; right:0; height:6px; background:var(--trackBg); border-radius:3px; }
+.ci-band { position:absolute; top:0; bottom:0; background:color-mix(in srgb, var(--model) 34%, transparent); border-radius:3px; }
+.ci-mark { position:absolute; top:-6px; bottom:-6px; width:2px; background:var(--model); }
+.ci-be { position:absolute; top:-9px; bottom:-9px; width:1px; background:var(--danger); }
+.ci-lab { position:absolute; transform:translateX(-50%); font-family:var(--mono); font-size:10.5px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.ci-lab-be { top:0; color:var(--danger); }
+.ci-lab-us { bottom:0; color:var(--model); }
+.ci-ticks { position:absolute; top:38px; left:0; right:0; display:flex; justify-content:space-between;
+  font-family:var(--mono); font-size:10px; color:var(--textGhost); }
+
+.tr-sec { margin-bottom:18px; }
+.tr-sec-head { display:flex; align-items:baseline; gap:14px; margin-bottom:12px; flex-wrap:wrap; }
+.tr-sec-head h2 { font-size:22px; font-weight:800; letter-spacing:-.01em; text-transform:uppercase; margin:0; }
+.tr-sub { font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--textFaint); }
+
+.tr-table, .tr-log { border:1px solid var(--border); border-radius:14px; background:var(--board); overflow:hidden; }
+.tr-thead, .tr-tr { display:grid; gap:13px; padding:12px 20px; align-items:center; }
+.tr-table .tr-thead, .tr-table .tr-tr { grid-template-columns:minmax(150px,1.6fr) 88px 96px 88px 88px 68px; }
+.tr-log .tr-thead, .tr-log .tr-tr { grid-template-columns:96px minmax(160px,1.5fr) minmax(96px,1fr) 76px 66px 74px 74px; }
+.tr-thead { background:var(--headTint); border-bottom:1px solid var(--border);
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--textDim); }
+.tr-tr { border-bottom:1px solid var(--borderSoft); font-size:13.5px; }
+.tr-tr:last-child { border-bottom:none; }
+/* Numbers right-align in mono with tabular figures so the columns read as
+   columns; the first cell is prose and stays left. */
+.tr-r { text-align:right; font-family:var(--mono); font-size:13px; font-variant-numeric:tabular-nums; }
+.tr-dash { color:var(--textGhost); }
+.tone-good { color:var(--positive); }
+.tone-bad { color:var(--danger); }
+.tone-dim { color:var(--textDim); }
+.tone-model { color:var(--model); }
+.row-contaminated { background:color-mix(in srgb, var(--danger) 5%, transparent); }
+
+.tr-era { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.tr-era-note { flex-basis:100%; font-size:11.5px; line-height:1.5; color:var(--textFaint); text-wrap:pretty; }
+.tr-tag { font-family:var(--mono); font-size:9px; letter-spacing:.1em; text-transform:uppercase; border-radius:4px; padding:2px 6px; }
+.tr-tag-good { color:var(--positive); background:color-mix(in srgb, var(--positive) 12%, transparent); }
+.tr-tag-bad { color:var(--danger); background:color-mix(in srgb, var(--danger) 12%, transparent); }
+.tr-tag-dim { color:var(--textFaint); background:color-mix(in srgb, var(--text) 8%, transparent); }
+
+.tr-foot { margin-top:11px; font-size:12.5px; line-height:1.65; color:var(--textFaint); text-wrap:pretty; }
+.tr-pill { font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  border-radius:5px; padding:3px 7px; margin-right:8px; white-space:nowrap; }
+.tr-pill-caution { color:var(--caution); background:var(--cautionTint); }
+.tr-pill-danger { color:var(--danger); background:color-mix(in srgb, var(--danger) 12%, transparent); }
+.tr-pill-model { color:var(--model); background:var(--tintModel); }
+
+.tr-two { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; margin-bottom:18px; }
+.tr-two .tr-card { margin-bottom:0; }
+.tr-team { font-family:var(--mono); font-size:10px; color:var(--textFaint); margin-left:5px; }
+.tr-line { display:block; font-family:var(--mono); font-size:11px; color:var(--textFaint); margin-top:3px; }
+.tr-date { font-family:var(--mono); font-size:11.5px; color:var(--textFaint); font-variant-numeric:tabular-nums; }
+.tr-logwrap { overflow-x:auto; }
+.tr-err { border:1px solid var(--border); border-left:3px solid var(--danger); border-radius:12px;
+  background:var(--board); padding:18px 20px; font-size:13.5px; line-height:1.65; color:var(--textDim); text-wrap:pretty; }
+
+.tr-limits { border:1px solid var(--border); border-left:3px solid var(--caution); border-radius:12px;
+  background:var(--board); padding:18px 22px; margin-bottom:22px; }
+.tr-limits ul { margin:12px 0 0; padding-left:20px; }
+.tr-limits li { font-size:13px; line-height:1.65; color:var(--textDim); margin-bottom:8px; text-wrap:pretty; }
+.tr-limits b { color:var(--text); font-weight:600; }
+
+.tr-footer { border-top:1px solid var(--border); padding:26px 0 40px; }
+.tr-footer p { font-size:12.5px; line-height:1.7; color:var(--textFaint); max-width:78ch; text-wrap:pretty; }
+.tr-footer nav { margin-top:12px; display:flex; gap:18px; flex-wrap:wrap; }
+.tr-footer nav a { font-family:var(--mono); font-size:11.5px; color:var(--textDim); text-decoration:none; }
+.tr-footer nav a:hover { color:var(--accent); }
+
+@media (max-width:900px) {
+  .tr-hero h1 { font-size:34px; }
+  .tr-hero { padding:26px 0 18px; }
+  .tr-cta { display:none; }
+  /* The tables keep their columns and scroll inside their own container rather
+     than reflowing — a graded log with re-flowed columns stops being auditable,
+     which is the only thing this page is for. */
+  /* Both containers carry overflow:hidden to clip their own border-radius, which
+     also clips the columns — the log lost its CLV column entirely at 375px, with
+     no way to reach it. overflow-x:auto restores the scroll; y stays hidden so
+     the rounded corners still clip. */
+  .tr-table, .tr-log { overflow-x:auto; }
+  .tr-table .tr-thead, .tr-table .tr-tr { min-width:620px; }
+  .tr-log .tr-thead, .tr-log .tr-tr { min-width:660px; }
+  .tr-thead, .tr-tr { padding:11px 14px; gap:10px; }
+  .tr-v { font-size:24px; }
+  .tr-big { font-size:28px; }
+}
