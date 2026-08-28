@@ -2140,3 +2140,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .np-group { gap:6px; }
   .np-chips { gap:5px; }
 }
+
+/* Cell-level source labels. The design never leaves a number or an absence
+   unexplained at the cell — the banner carries the story once, but a reader
+   scrolling forty rows should not have to hold it in their head. */
+.cell-src { display:block; margin-top:2px; font-family:var(--mono); font-size:9.5px;
+  font-style:normal; letter-spacing:.1em; text-transform:uppercase; color:var(--textGhost); }
+.tier-chip.noprice { color:var(--textFaint); background:color-mix(in srgb, var(--text) 7%, transparent);
+  border:1px solid var(--border); }

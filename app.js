@@ -61,7 +61,11 @@
     // Availability, not a verdict — and it reads OUT whether the odds feed is up
     // or down, because whether he is playing was never a pricing question.
     if (v === 'out') return `<span class="tier-chip out">Out</span>`;
-    return `<span class="tier-dash">—</span>`; // 'model'/projection-only: no line to grade yet
+    // Projection-only. A dash here made the Call column look like a value we
+    // failed to compute; "no price" names the thing that is actually missing, and
+    // reads the same whether the feed is out or the book simply has not posted.
+    if (v === 'model') return `<span class="tier-chip noprice">No price</span>`;
+    return `<span class="tier-dash">—</span>`;
   }
 
   // Honest reason a row has no price/edge, from the game's real status + time.
@@ -78,11 +82,11 @@
     // read one, not because no book has posted. "awaiting line" would blame the
     // sportsbooks for our outage and imply a price is on its way.
     //
-    // When the whole board is in that state the banner above says it once, so the
-    // cell holds a quiet dash instead: forty rows repeating one sentence is the
-    // same fact printed forty times, and it crowds out the projection that is the
-    // reason the row is still on screen. A mixed board keeps the per-row reason,
-    // where it distinguishes this row from the priced one above it.
+    // The PRICE cell stays a bare dash here: there is no price, and "needs price"
+    // written into the price column says the price needs a price. The label
+    // belongs on Edge, which is the cell that cannot be computed without one —
+    // see the edge cell below. Repeating the full outage sentence on forty rows
+    // printed one fact forty times, so it is not that either.
     if (g.tier === 'model' && state.feedError) return batterModelOnly() ? '—' : 'no price · feed down';
     if (g.timeMs && g.timeMs - Date.now() > 12 * 3600 * 1000) return 'posts game-day AM';
     return 'awaiting line';
@@ -1959,7 +1963,12 @@
           ? `<span class="odds-cell mono closed">${esc(money(g.odds))}<span class="closed-tag">closed</span></span>`
           : (priced ? oddsBooksCell(g, money) : `<span class="odds-blank">${esc(projReason(g))}</span>`);
         const pUnder = typeof g.modelOver === 'number' ? Math.round((100 - g.modelOver) * 10) / 10 : null;
-        detailCell = `<span class="interval-cell" style="color:var(--model)">${pUnder != null ? pUnder + '%' : esc(g.interval)}</span>`;
+        // The percentage carries a source label. It is the one number on the row
+        // that is ours rather than the market's, and unlabelled beside a price and
+        // an edge it reads as just another quoted figure.
+        detailCell = `<span class="interval-cell" style="color:var(--model)">`
+          + `${pUnder != null ? pUnder + '%' : esc(g.interval)}`
+          + `${pUnder != null ? '<i class="cell-src">model</i>' : ''}</span>`;
       } else {
         pickCell = esc(g.pick);
         // Reason only when truly projection-only: no edge AND no price. An
@@ -2043,7 +2052,13 @@
           ${matchupCell}
           <span>${pickCell}</span>
           ${oddsCell}
-          <span class="edge-cell" style="color:${edgeColor}">${esc(edgeLabel)}${fairSrcTag(g)}</span>
+          <span class="edge-cell" style="color:${edgeColor}">${esc(edgeLabel)}${
+            // Edge is the cell a missing price actually breaks: it is model
+            // probability minus the de-vigged fair, and there is no fair without
+            // a quote. Saying so here, once per row and in two words, is what
+            // stops the dash reading as a value we failed to compute.
+            !hasEdge && isBatter() && g.tier === 'model'
+              ? '<i class="cell-src">needs price</i>' : fairSrcTag(g)}</span>
           ${detailCell}
           <span class="tier-cell">${isPlayView ? tierChip(tierVal) : '<span class="ctx-chip">analysis</span>'}</span>
           <span class="chevron">${isExpanded ? '▲' : '▼'}</span>
