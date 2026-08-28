@@ -2148,3 +2148,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   font-style:normal; letter-spacing:.1em; text-transform:uppercase; color:var(--textGhost); }
 .tier-chip.noprice { color:var(--textFaint); background:color-mix(in srgb, var(--text) 7%, transparent);
   border:1px solid var(--border); }
+
+/* The fade cell's three values. "cushion" is the one being bet, so it carries the
+   weight; "over line" is the same figure with the sign against us and reads in
+   --danger, since a projection above the line means there is no cushion at all. */
+.bw-cush .u { color:var(--positive); }
+.bw-cush .o { color:var(--danger); }
+/* A withdrawn projection states itself instead of leaving the headline blank. */
+.bw-out { color:var(--textGhost); font-style:normal; }

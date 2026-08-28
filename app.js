@@ -168,7 +168,11 @@
     alertsAll: false,
     theme: 'dark',
     filter: 'all',
-    sortBy: 'edge',
+    // First pitch, not edge. The board's default view is a slate you read game
+    // by game — grouping only applies in time order, so defaulting to edge meant
+    // it never arrived grouped. Edge is one chip away for anyone hunting the
+    // biggest number.
+    sortBy: 'time',
     sortDir: null, // null = the key's natural default (see SORT_DEFAULT_DIR)
     expandedId: null,
     tracked: {},
@@ -1708,11 +1712,25 @@
     return `<span class="fsrc${sharp ? ' sharp' : ''}" title="${esc(title)}">${sharp ? 'sharp' : 'mkt'}</span>`;
   }
 
+  // "U 1.5 TB" -> "Under 1.5 TB". The board's own shorthand is fine in a column
+  // header but not as the row's headline, where it is the first thing read.
+  const MARKET_FULL = { TB: 'TB', HR: 'HR', 'H+R+RBI': 'H+R+RBI' };
+  function spellPick(p) {
+    if (!p) return '';
+    return String(p).replace(/^U /, 'Under ').replace(/^O /, 'Over ');
+  }
+
   function whyUnderCue(g) {
     const cushion = Math.round((g.line - g.projVal) * 100) / 100;
+    // Three labelled numbers rather than a sentence: what we project, what the
+    // book hung, and the gap. A reader comparing rows is comparing the gap, and
+    // in prose it was the hardest of the three to find. "over line" when the
+    // projection sits above it — the fade has no cushion at all there.
     const cushTxt = cushion > 0
-      ? `model <b>${g.projVal}</b> · <b class="u">${cushion} under</b> the ${g.line} line${cushion < 0.4 ? ' — thin' : ''}`
-      : `model <b>${g.projVal}</b> · right at the ${g.line} line`;
+      ? `proj <b>${g.projVal}</b> · line ${g.line} · <b class="u">${cushion} cushion</b>`
+      : cushion < 0
+        ? `proj <b>${g.projVal}</b> · line ${g.line} · <b class="o">${Math.abs(cushion)} over line</b>`
+        : `proj <b>${g.projVal}</b> · line ${g.line} · right on the line`;
     // The note is prose (what the model thinks); the two factors below it are
     // chips (what moved it). Splitting them stops the row reading as one long
     // mono sentence and lets the eye find the arrows.
@@ -1800,7 +1818,7 @@
     // tag would read as a same-game parlay hint over rows that aren't playable.
     const gameCounts = {};
     if (isBatter()) games.forEach((g) => {
-      if (g.gamePk != null && g.tier !== 'model') gameCounts[g.gamePk] = (gameCounts[g.gamePk] || 0) + 1;
+      if (g.gamePk != null && g.tier !== 'model' && !g.pulled) gameCounts[g.gamePk] = (gameCounts[g.gamePk] || 0) + 1;
     });
     renderSlateSummary();
     el.noResults.hidden = games.length !== 0;
@@ -1856,9 +1874,15 @@
       // them can no longer be acted on.
       const pulledHere = games.filter((g) => g.pulled).length;
       const pulledNote = pulledHere ? ` · ${pulledHere} pulled` : '';
+      // How much of tonight the board is actually showing. "11 of 11 batters" on
+      // its own reads as the whole slate; "4 of 9 games" says it is not.
+      const gamesShown = new Set(games.map((g) => g.gamePk).filter((x) => x != null)).size;
+      const gamesTotal = slateGames().length;
+      const gameNote = (isBatter() && gamesShown && gamesTotal)
+        ? ` · ${gamesShown} of ${gamesTotal} games on the slate` : '';
       shownEl.className = foldActive ? 'sl-has-fold' : '';
       shownEl.innerHTML = total
-        ? `<span class="sl-full">showing ${games.length} of ${total} ${plural(total)}${pulledNote}${order}${groupNote}</span>`
+        ? `<span class="sl-full">showing ${games.length} of ${total} ${plural(total)}${pulledNote}${gameNote}${order}${groupNote}</span>`
           + (foldActive
             ? `<span class="sl-folded">showing ${games.length - passCount} of ${total} ${plural(total)}`
               + ` · ${passCount} pass ${passCount === 1 ? 'row' : 'rows'} folded${pulledNote}${groupNote}</span>`
@@ -1946,14 +1970,22 @@
         detailCell = `<span class="interval-cell" style="color:var(--model)">${ml.winProb != null ? ml.winProb + '%' : '—'}</span>`;
       } else if (isBatter()) {
         // The fade cell: pick + mini model-vs-line scale + cushion, all real fields.
-        pickCell = esc(g.pick);
-        if (g.line != null && g.projVal != null) {
+        pickCell = esc(spellPick(g.pick));
+        if (g.pulled) {
+          // This cell is the row's headline, so a pulled row states what happened
+          // rather than going blank: the projection is not missing, it was
+          // withdrawn, and those read very differently to someone scanning.
+          pickCell = `<span class="fade-pick">${esc(spellPick(g.wasPick) || '—')}</span>`
+            + `<span class="bw-cush bw-out">out of the lineup · projection withdrawn</span>`;
+        } else if (g.line != null && g.projVal != null) {
           const axisMax = g.line <= 1 ? 2 : Math.max(4, Math.ceil(g.line + 1.5));
           const pct = (v) => Math.max(3, Math.min(97, v / axisMax * 100));
           const lp = pct(g.line), mp = pct(g.projVal);
           // Fill runs to where the model lands; the tick marks the posted line.
           // The gap between them IS the cushion — the thing being bet.
-          pickCell = `<span class="fade-pick">${esc(g.pick)}</span>`
+          // Spelled out. "U 1.5 TB" is shorthand that only a returning reader
+          // decodes, and this is the row's headline.
+          pickCell = `<span class="fade-pick">${esc(spellPick(g.pick))}</span>`
             + `<span class="bmini"><span class="uz" style="width:${mp}%"></span>`
             + `<span class="tick" style="left:${lp}%"></span></span>`
             + whyUnderCue(g);
@@ -2039,7 +2071,11 @@
         // Under a group header the subline would repeat the header verbatim, so
         // the line goes to the market instead — which the row otherwise only
         // states inside its pick, in shorthand.
-        const sub = grouped ? MARKET_NAME[g.metric] || '' : g.subline;
+        // Always the market, never the matchup. Grouped, the game is in the
+        // header above; ungrouped, repeating "COL @ WSH · 7:04 AM PT" on every
+        // row spends the line on something the reader already scrolled past.
+        // What changes row to row is which market this batter is being faded in.
+        const sub = MARKET_NAME[g.metric] || MARKET_NAME[g.wasMetric] || g.marketLabel || '';
         matchupCell = `<div class="matchup-cell">
             <span class="mc-head">${leadingHtml}<b>${esc(g.matchup)}</b>${teamBadge}</span>
             ${sub ? `<span class="matchup-sub">${esc(sub)}</span>` : ''}

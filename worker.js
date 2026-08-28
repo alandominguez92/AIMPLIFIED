@@ -1505,6 +1505,10 @@ async function batters(env, ctx, opts) {
         wasPick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}` : null,
         wasEdge: lead ? lead.m.edge : null,
         wasTier: lead ? lead.m.tier : (priced.length ? 'pass' : 'model'),
+        // Which market he was being faded in. Not conditioned on tonight — he is
+        // a total-bases bat whether or not he plays — so the row can still say
+        // what it was about instead of leaving the subline blank.
+        wasMetric: lead ? lead.spec.metric : (row.metric || null),
       });
     };
     return pulledOut({
