@@ -2156,3 +2156,18 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .bw-cush .o { color:var(--danger); }
 /* A withdrawn projection states itself instead of leaving the headline blank. */
 .bw-out { color:var(--textGhost); font-style:normal; }
+
+/* One price line instead of one per book. The full book list lives in the
+   expanded row, so this keeps only what is actionable at a glance: the number
+   and where to get it. */
+.bk.one { display:inline-flex; align-items:baseline; gap:6px; white-space:nowrap; }
+.bk.one .bk-price { font-size:14px; }
+.bk.one .bk-name { font-size:10px; color:var(--textFaint); letter-spacing:.06em; }
+.bk-more { font-family:var(--mono); font-size:9.5px; color:var(--textGhost);
+  border:1px solid var(--border); border-radius:4px; padding:1px 4px; }
+
+/* The adjustments, now in the panel rather than the row. Labelled, because out
+   of the row's context "vs RHP Kent" needs to say what it is doing there. */
+.bwhy-panel { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
+.bwhy-k { font-family:var(--mono); font-size:9.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--textFaint); }

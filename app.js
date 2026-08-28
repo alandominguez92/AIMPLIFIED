@@ -1502,14 +1502,21 @@
     if (!Array.isArray(books) || !books.length) {
       return `<span class="odds-cell mono">${esc(money(g.odds))}</span>`;
     }
-    const rows = books.map((b) => {
-      const lineTag = b.off && b.line != null ? `<span class="bk-line">${esc(String(b.line))}</span>` : '';
-      return `<span class="bk${b.best ? ' best' : ''}">
-        <span class="bk-name">${esc(b.book)}</span>${lineTag}
-        <span class="bk-price">${esc(money(b.price))}</span>
-        <span class="bk-chk">✓</span>
+    // One line, not one per book. Every book is already listed per market in the
+    // expanded panel, so stacking them here repeated information that was one
+    // click away and cost 47px on every row — the largest single contributor to
+    // a row nearly twice the design's height.
+    //
+    // The book tag stays. A bare price is the one thing a reader cannot act on:
+    // it says what to take but not where, and the two books rarely agree.
+    const best = books.reduce((m, b) => (!m || b.best ? b : m), null) || books[0];
+    const others = books.filter((b) => b !== best).length;
+    const lineTag = best.off && best.line != null ? `<span class="bk-line">${esc(String(best.line))}</span>` : '';
+    const rows = `<span class="bk best one">
+        <span class="bk-price">${esc(money(best.price))}</span>
+        <span class="bk-name">${esc(best.book)}</span>${lineTag}
+        ${others ? `<span class="bk-more" title="Every book is listed in the expanded row">+${others}</span>` : ''}
       </span>`;
-    }).join('');
     // Line movement since the pick posted (batter board only; the field only
     // exists there). Arrow + text carry the sign, so it reads without colour.
     const move = (isBatter() && typeof g.moveSincePost === 'number') ? moveCaption(g.moveSincePost) : '';
@@ -1758,8 +1765,34 @@
       const short = String(g.park).replace(/ (Park|Stadium|Field|Ballpark)$/i, '');
       chips.push(`<span class="bw-chip">${esc(short)}${arrow}</span>`);
     }
-    return `<span class="bw-cush">${cushTxt}</span>`
-      + (chips.length ? `<span class="bwhy">${chips.join('')}</span>` : '');
+    return `<span class="bw-cush">${cushTxt}</span>`;
+  }
+
+  // The same two adjustments, for the expanded panel. They moved out of the row
+  // because they answer a different question: the row's numbers are for
+  // comparing forty batters, these explain one. Reasoning belongs where you have
+  // already chosen a name — and 21px per row was 840px of park factors on a scan.
+  function adjustChips(g) {
+    const chips = [];
+    const hand = g.facingHand === 'L' ? 'LHP' : g.facingHand === 'R' ? 'RHP' : null;
+    const metric = LABEL_METRIC[g.marketLabel];
+    const arrowFor = (v) => v == null ? ''
+      : v < 0.98 ? ' <span class="bw-dn">↓</span>'
+      : v > 1.02 ? ' <span class="bw-up">↑</span>' : '';
+    if (hand || g.oppPitcher) {
+      const pa = g.oppPitcherAdj && metric ? g.oppPitcherAdj[metric] : null;
+      const last = g.oppPitcher ? String(g.oppPitcher).split(' ').slice(-1)[0] : null;
+      const who = [hand, last].filter(Boolean).join(' ');
+      chips.push(`<span class="bw-chip">vs ${esc(who)}${arrowFor(pa)}</span>`);
+    }
+    if (g.park) {
+      const a = g.adj && metric ? g.adj[metric] : null;
+      const short = String(g.park).replace(/ (Park|Stadium|Field|Ballpark)$/i, '');
+      chips.push(`<span class="bw-chip">${esc(short)}${arrowFor(a)}</span>`);
+    }
+    return chips.length
+      ? `<div class="bwhy bwhy-panel"><span class="bwhy-k">Adjusted for</span>${chips.join('')}</div>`
+      : '';
   }
 
   // One header per game, carrying the facts every row under it shares: the
@@ -2142,6 +2175,7 @@
           <div class="bm-table">${bm}${noLine}</div>
           <details class="pctl"${window.innerWidth > 640 ? ' open' : ''}><summary>Season percentiles (vs. priced pool)</summary>${statsHtml}</details>
           <details class="method"${window.innerWidth > 640 ? ' open' : ''}><summary>How this projection is built</summary>
+          ${adjustChips(g)}
           <p class="expanded-note">Projection: season rate × expected PAs, adjusted for the <b>opposing starter</b>, the <b>hand</b> he throws and the <b>ballpark</b>, then spread with a <b>negative binomial</b> — real batter outcomes are more dispersed than a Poisson allows. Edge = model P(under) vs. the <b>fair line</b> — the Shin de-vigged median across the sharp books (Pinnacle, novig, ProphetX), never the book you bet at. The model is regressed toward that fair line while it builds a track record, so edges stay conservative until results justify more.</p>
           </details>
         </div>`;
