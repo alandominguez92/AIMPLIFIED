@@ -51,7 +51,11 @@
     // The batter board no longer ranks — nothing in the graded record orders the
     // plays, so it says play or pass and stops there. K props and the run line
     // still rank, and keep the numeric chips.
-    if (v === 'play') return `<span class="tier-chip play">Play</span>`;
+    // "is-play", not "play": a bare .play rule elsewhere styles the video
+    // player's button (56px, border-radius 50%), and this chip was inheriting it
+    // — every Play call on the board rendered as a circle, and set the row's
+    // height while doing it. Scoped so a generic class name cannot reach it.
+    if (v === 'play') return `<span class="tier-chip is-play">Play</span>`;
     // The run line stops ranking too, but it posts nothing, so its positive case
     // is a lean rather than a play -- calling it Play would contradict that
     // board own banner, which says it is not posted and not graded.
@@ -2100,7 +2104,14 @@
             ? ` <span class="team-badge tc" style="background:${tc[0]};color:${tc[1]}">${esc(g.team)}</span>`
             : ` <span class="team-badge">${esc(g.team)}</span>`;
         }
-        const corrTag = corrN >= 2 ? `<span class="corr-tag" title="Correlated: these unders share one game and tend to hit or miss together">${corrN} in this game</span>` : '';
+        // Folded into the subline rather than given a line of its own. It fires
+        // on roughly seven rows in ten — most games have more than one qualifying
+        // batter — so as a block it was 23px of warning on nearly every row,
+        // which is wallpaper rather than a warning. Inline it still says the
+        // thing, and the row keeps the design's height.
+        const corrTag = corrN >= 2
+          ? `<span class="corr-inline" title="Correlated: these unders share one game and tend to hit or miss together"> · ${corrN} in this game</span>`
+          : '';
         // Under a group header the subline would repeat the header verbatim, so
         // the line goes to the market instead — which the row otherwise only
         // states inside its pick, in shorthand.
@@ -2111,8 +2122,8 @@
         const sub = MARKET_NAME[g.metric] || MARKET_NAME[g.wasMetric] || g.marketLabel || '';
         matchupCell = `<div class="matchup-cell">
             <span class="mc-head">${leadingHtml}<b>${esc(g.matchup)}</b>${teamBadge}</span>
-            ${sub ? `<span class="matchup-sub">${esc(sub)}</span>` : ''}
-            ${weatherHtml}${corrTag}
+            ${sub || corrTag ? `<span class="matchup-sub">${esc(sub)}${corrTag}</span>` : ''}
+            ${weatherHtml}
           </div>`;
       }
 

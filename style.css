@@ -623,14 +623,18 @@ section { padding:44px 0; }
 .ctx-chip { display:inline-block; font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--textDim); border:1px solid var(--borderFaint); border-radius:6px; padding:5px 9px; }
 /* The fade cell: the play, the model-vs-line scale, the note, the two factors.
    Fill = where the model lands, tick = the posted line; the gap is the cushion. */
-.fade-pick { display:block; font-size:15px; font-weight:700; letter-spacing:-.01em; color:var(--accent); }
-.bmini { display:block; position:relative; height:6px; border-radius:3px; background:var(--board2); margin-top:9px; max-width:300px; }
+/* The fade cell's three elements, measured against the design: a 13.5px
+   headline on a tight line, the bar, and the numbers. The emphasis in this cell
+   comes from the bar and the figures under it, not from the size of the words —
+   a 15px headline on a 22.5px line was 8px of leading doing nothing. */
+.fade-pick { display:block; font-size:13.5px; line-height:1.12; font-weight:700; letter-spacing:-.01em; color:var(--accent); }
+.bmini { display:block; position:relative; height:5px; border-radius:3px; background:var(--board2); margin-top:7px; margin-bottom:6px; max-width:300px; }
 .bmini .uz { position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:linear-gradient(90deg, var(--model), color-mix(in srgb, var(--model) 55%, white)); }
 .bmini .tick { position:absolute; top:-4px; bottom:-4px; width:2px; border-radius:1px; background:var(--text); }
 .bcushion { display:block; margin-top:5px; font-family:var(--mono); font-size:11px; color:var(--textDim); }
 .bcushion b { color:var(--model); font-weight:600; }
 /* Model note, then the factors that moved it as chips. */
-.bw-cush { display:block; margin-top:9px; font-family:var(--mono); font-size:11px; line-height:1.4; color:var(--textDim); }
+.bw-cush { display:block; margin-top:0; font-family:var(--mono); font-size:10.5px; line-height:1.3; color:var(--textDim); }
 .bw-cush b { color:var(--text); font-weight:600; }
 .bw-cush b.u { color:var(--positive); }
 .bwhy { display:flex; flex-wrap:wrap; gap:6px 8px; margin-top:8px; max-width:340px; }
@@ -704,7 +708,7 @@ section { padding:44px 0; }
 .board.view-moneyline { --bcols:1.7fr 1fr .9fr 1fr .9fr 76px 34px; }
 .board-inner { min-width:0; }
 .board-cols { display:grid; grid-template-columns:var(--bcols); }
-.board-head-row { display:grid; grid-template-columns:var(--bcols); gap:16px; padding:14px 22px; background:var(--headTint); border-bottom:1px solid var(--border); }
+.board-head-row { display:grid; grid-template-columns:var(--bcols); gap:13px; padding:12px 20px; background:var(--headTint); border-bottom:1px solid var(--border); }
 .col-label { font-family:var(--mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--textDim); font-weight:500; }
 .col-label.center { text-align:center; }
 
@@ -729,7 +733,7 @@ section { padding:44px 0; }
   .game-group .gg-arms { display:none; }
 }
 
-.board-row { display:grid; grid-template-columns:var(--bcols); gap:16px; padding:18px 22px; border-bottom:1px solid var(--borderSoft); align-items:center; cursor:pointer; background:transparent;
+.board-row { display:grid; grid-template-columns:var(--bcols); gap:13px; padding:13px 20px; border-bottom:1px solid var(--borderSoft); align-items:center; cursor:pointer; background:transparent;
   border-left:3px solid transparent; transition:background .16s ease, border-left-color .16s ease; }
 .board-row:hover { background:color-mix(in srgb, var(--text) 4%, transparent); }
 .board-row.selected { background:var(--selectedBg); border-left-color:var(--accent); }
@@ -815,7 +819,10 @@ section { padding:44px 0; }
 
 /* Tier heat chip — T1 brightest (strongest lean) → T3 muted → Pass outline.
    Encodes our confidence ranking; readable at a glance, replaces the stars. */
-.tier-chip { display:inline-block; font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.02em; border-radius:6px; padding:5px 9px; white-space:nowrap; }
+/* line-height:1 is load-bearing. As an inline-block the chip inherited the
+   cell's leading — 56px of box around an 11px word, which made the Call column
+   the tallest thing in every priced row and set the row's height on its own. */
+.tier-chip { display:inline-block; line-height:1; font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.02em; border-radius:6px; padding:5px 9px; white-space:nowrap; }
 .tier-chip.t1 { background:var(--accentFill); color:var(--onAccent); }
 .tier-chip.t2 { background:var(--tintAccent); color:var(--accent); }
 .tier-chip.t3 { background:color-mix(in srgb, var(--textDim) 12%, transparent); color:var(--textDim); }
@@ -1638,7 +1645,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* The batter board gates rather than ranks, so its chip says Play. Positive
    green because it IS our side — unlike the confidence chip on the NFL board,
    which describes an estimate and deliberately avoids this colour. */
-.tier-chip.play {
+.tier-chip.is-play {
   background:color-mix(in srgb, var(--positive) 16%, transparent);
   color:var(--positive);
   border:1px solid color-mix(in srgb, var(--positive) 40%, transparent);
@@ -2171,3 +2178,14 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .bwhy-panel { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
 .bwhy-k { font-family:var(--mono); font-size:9.5px; letter-spacing:.12em;
   text-transform:uppercase; color:var(--textFaint); }
+
+/* Same-game correlation, inline. It keeps the accent so it still reads as a
+   flag, but shares the subline rather than claiming a row of its own — it fires
+   on most rows, and a warning that is always on stops being one. */
+.corr-inline { color:var(--accentDim); white-space:nowrap; }
+
+/* Leading, not size. Edge is the number this board exists to show, so it keeps
+   its 20px — but 1.5 line-height on a single-line figure was 10px of space above
+   and below a number that never wraps. Same for the probability beside it. */
+.board-row > .edge-cell { line-height:1.15; }
+.board-row > .interval-cell { line-height:1.15; }
