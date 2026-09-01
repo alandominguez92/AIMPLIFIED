@@ -220,6 +220,7 @@
   const isML = () => state.boardView === 'moneyline';
   const isBatter = () => state.boardView === 'batter';
   const isRL = () => state.boardView === 'runline';
+  const isK = () => state.boardView === 'kprops';
   const battersLive = () => !!(state.liveBatters && state.liveBatters.length);
   // Whether the active view's feed hasn't returned yet (vs. returned empty).
   const isFeedLoading = () => (isBatter() ? state.liveBatters : state.liveBoard) === null;
@@ -1125,7 +1126,22 @@
   const activeOdds = (g) => isML() ? (g.ml ? g.ml.price : null)
     : isRL() ? (g.rl ? g.rl.price : null)
     : (typeof g.odds === 'number' ? g.odds : null);
-  const sortMetric = (key) => key === 'time' ? (g) => g.time
+  // Projected strikeouts for the starter the row headlines. Deliberately not
+  // the higher of the two arms or an average: the row shows one pitcher's
+  // number, and a sort must order by the figure a reader can see. Falls back to
+  // the larger projection only when the headline cannot be matched to an arm.
+  const kProjOf = (g) => {
+    // projRows, not pitchers: refreshBoard renames the API's `pitchers` on the
+    // way in, and reading the API's name here made the chip silently unavailable
+    // because every row measured null.
+    const ps = Array.isArray(g.projRows) ? g.projRows : [];
+    if (!ps.length) return null;
+    const lead = ps.find((p) => p && p.name && String(g.pick || '').startsWith(p.name))
+      || ps.reduce((m, p) => (!m || (p.proj || 0) > (m.proj || 0) ? p : m), null);
+    return lead && typeof lead.proj === 'number' ? lead.proj : null;
+  };
+  const sortMetric = (key) => key === 'ks' ? kProjOf
+    : key === 'time' ? (g) => g.time
     : key === 'model' ? modelProbOf
     : key === 'odds' ? activeOdds
     : activeEdge;
@@ -1139,7 +1155,7 @@
   // off. One definition, so the chip, the footer and the grouping cannot disagree
   // about what order the board is in.
   const effectiveSortKey = () => availableSortKeys().includes(state.sortBy) ? state.sortBy : 'time';
-  const SORT_DEFAULT_DIR = { edge: 'desc', model: 'desc', odds: 'desc', time: 'asc' };
+  const SORT_DEFAULT_DIR = { edge: 'desc', model: 'desc', odds: 'desc', ks: 'desc', time: 'asc' };
   // Resolved against the key actually in effect, not the one last chosen. With
   // the feed down state.sortBy stays 'edge' (default desc) while the board is
   // really ordered by first pitch ascending, so the chip drew a down arrow over
@@ -1188,7 +1204,7 @@
   // number the board doesn't show.
   // "First pitch" rather than "Time": the board carries several times (first
   // pitch, last refresh, the outage countdown) and the chip orders exactly one.
-  const SORT_LABELS = { edge: 'Edge', model: null, odds: 'Odds', time: 'First pitch' };
+  const SORT_LABELS = { edge: 'Edge', model: null, odds: 'Odds', ks: 'Proj Ks', time: 'First pitch' };
 
   // Which sort keys are actually meaningful for the board as it stands right now.
   // Edge and Win-Prob/Model-P only exist when the board carries model output, so
@@ -1207,10 +1223,16 @@
     // priced under the T3 cutoff (all tier:'pass'), Edge and Win Prob vanished
     // from the sort even though every row displayed both. Whether a pick is
     // worth betting and whether a column can be ordered are different questions.
+    // First pitch leads. It is the default order and the only key every board
+    // always has, so it is the one chip whose position never moves — the others
+    // appear and disappear with the data behind them.
+    keys.push('time');
+    // K props only: every other board's rows carry no pitcher projection, so
+    // the chip would order by all-null there.
+    if (isK() && has('ks')) keys.push('ks');
     if (has('edge')) keys.push('edge');
     if (has('model')) keys.push('model');
     if (has('odds')) keys.push('odds');
-    keys.push('time');
     return keys;
   }
 
