@@ -24,10 +24,17 @@ and the only way to see its NORMAL state ever.
 
 ```
 node outageserver.mjs                    # outage: odds 401, projections only
-HEALTHY=1 node outageserver.mjs          # synthetic props — priced rows, edges, play/pass
+HEALTHY=1 node outageserver.mjs          # synthetic feed — priced rows, edges, play/pass
 PREGAME=1 node outageserver.mjs          # rewrite today's slate to Preview a few hours out
 CARDS=1   node outageserver.mjs          # post a 9-man lineup card -> pulled rows
 ```
+
+`HEALTHY=1` prices all three MLB boards, not just batters: batter total bases,
+`pitcher_strikeouts`, and a league-wide `h2h`. It covered only batters until the
+K-props and moneyline bars needed a line to draw a tick against — without the
+other two feeds every row on those boards reads "awaiting line", so their priced
+state (market column, edge, tier, and the tick itself) was unreachable locally
+and the tick branch could ship having never rendered once.
 
 Combine them. `HEALTHY=1 PREGAME=1 CARDS=1` is the full board: priced rows,
 grouped by game, with lineup alerts firing. Two bugs were only ever visible in

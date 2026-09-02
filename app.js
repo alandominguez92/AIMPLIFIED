@@ -1731,6 +1731,25 @@
     WSH: ['#AB0003', '#ffffff'], WSN: ['#AB0003', '#ffffff'],
   };
 
+  // One badge, three boards. The batter row grew this inline, then the K-props
+  // duel and the moneyline matchup both needed the same chip; a third copy of
+  // the colour lookup is how one of them ends up drifting. An unknown code
+  // renders unstyled rather than wrong — same posture as nflBadge.
+  const mlbBadge = (abbr) => {
+    if (!abbr) return '';
+    const t = TEAM_COLORS[abbr];
+    return t
+      ? `<span class="team-badge tc" style="background:${t[0]};color:${t[1]}">${esc(abbr)}</span>`
+      : `<span class="team-badge">${esc(abbr)}</span>`;
+  };
+
+  // Fixed, not per-row. Every K-props row is the SAME market, and grouped by
+  // game the reader is comparing one starter's bar against another's — a
+  // per-row axis (which is right on the batter board, where each row is a
+  // different market) would make 4 Ks and 8 Ks draw the same length. 12 covers
+  // the realistic range of a starter's projection and posted line with headroom.
+  const K_AXIS_MAX = 12;
+
   // Which tier of book produced the fair line this edge was measured against.
   // Shown on BOTH outcomes on purpose: "sharp" means an independent sharp
   // consensus priced it, "mkt" means no sharp book quoted this exact number and
@@ -2022,7 +2041,27 @@
       const money = (v) => v == null ? '—' : (v > 0 ? '+' + v : String(v));
       let pickCell, oddsCell, detailCell;
       if (isML()) {
-        pickCell = esc(ml.pick || '—');
+        // Same grammar as the batter bar: the fill is where OUR number lands,
+        // the tick is the market's. Note winProb is the fair (sharp de-vigged)
+        // price, not the model — modelProb is ours — so reading winProb as the
+        // fill would have drawn the market against itself and shown no gap ever.
+        const mlModel = ml.teamAbbr && ml.homeAbbr
+          ? (ml.teamAbbr === ml.homeAbbr ? ml.homeModelProb : ml.awayModelProb)
+          : null;
+        // With no book priced, fair falls back to the model and the two numbers
+        // are the same figure. A tick sitting exactly on the fill would claim a
+        // market read that does not exist, so it is omitted rather than faked.
+        const mlFair = (ml.fairSource && ml.fairSource !== 'model' && ml.winProb != null) ? ml.winProb : null;
+        pickCell = `<span class="ctx-pick">${esc(ml.pick || '—')}</span>`;
+        if (typeof mlModel === 'number') {
+          const clamp = (v) => Math.max(3, Math.min(97, v));
+          pickCell += `<span class="bmini"><span class="uz" style="width:${clamp(mlModel)}%"></span>`
+            + (mlFair != null ? `<span class="tick" style="left:${clamp(mlFair)}%"></span>` : '')
+            + `</span>`
+            + `<span class="bw-cush">model <b>${mlModel}%</b> to win`
+            + (mlFair != null ? ` · tick: market <b>${mlFair}%</b> de-vigged` : ' · no market priced')
+            + `</span>`;
+        }
         oddsCell = ml.price != null
           ? `<span class="odds-cell mono">${esc(money(ml.price))}</span>`
           : `<span class="odds-blank">${esc(projReason(g))}</span>`;
@@ -2062,6 +2101,31 @@
           + `${pUnder != null ? '<i class="cell-src">model</i>' : ''}</span>`;
       } else {
         pickCell = esc(g.pick);
+        // K props only. The run line shares this branch and has no arm to
+        // project, so a bar here would be drawn from fields it never carries.
+        if (isK()) {
+          const ps = Array.isArray(g.projRows) ? g.projRows : [];
+          // Same lead-arm rule as kProjOf: the row's headline names one pitcher,
+          // and the bar has to be the number the headline just said.
+          const lead = ps.find((p) => p && p.name && String(g.pick || '').startsWith(p.name))
+            || ps.reduce((m, p) => (!m || (p.proj || 0) > (m.proj || 0) ? p : m), null);
+          if (lead && typeof lead.proj === 'number') {
+            const line = lead.market && lead.market.line != null ? lead.market.line : null;
+            const pct = (v) => Math.max(3, Math.min(97, v / K_AXIS_MAX * 100));
+            const gap = line != null ? Math.round((lead.proj - line) * 10) / 10 : null;
+            pickCell = `<span class="ctx-pick">${esc(g.pick)}</span>`
+              + `<span class="bmini"><span class="uz" style="width:${pct(lead.proj)}%"></span>`
+              + (line != null ? `<span class="tick" style="left:${pct(line)}%"></span>` : '')
+              + `</span>`
+              + (gap != null
+                // Deliberately uncoloured. On the batter board green/red on this
+                // line means value for/against the bet; here the board posts no
+                // bet, so tinting a direction would read as a call we are not
+                // making. Which way the model leans is the whole message.
+                ? `<span class="bw-cush">line ${line} · model <b>${Math.abs(gap)} ${gap >= 0 ? 'over' : 'under'}</b> the line</span>`
+                : '');
+          }
+        }
         // Reason only when truly projection-only: no edge AND no price. An
         // evaluated Pass (has an edge) still shows its price, never "awaiting line".
         const priced = hasEdge || g.odds != null || (Array.isArray(g.oddsBooks) && g.oddsBooks.length);
@@ -2106,7 +2170,10 @@
           // cannot see: a screen reader read the cell as "HughesRHPvsIrvinRHP",
           // and so did copy-paste. A real space costs nothing visually and is the
           // only thing that separates the words for anything that is not looking.
-          return `<span class="mp-name${isPick ? ' pick' : ''}">${esc(lastName(p.name))}${ht ? ` <span class="mp-hand">${ht}</span>` : ''}</span>`;
+          // The club badge, same chip the batter board uses. Two surnames and two
+          // hand tags do not say who is the home arm; on a slate grouped by game
+          // the side is the thing you are actually reading for.
+          return `<span class="mp-name${isPick ? ' pick' : ''}">${esc(lastName(p.name))}${ht ? ` <span class="mp-hand">${ht}</span>` : ''}${p.team ? ' ' + mlbBadge(p.team) : ''}</span>`;
         }).join(' <span class="mp-vs">vs</span> ');
         const sub = [g.matchup, g.timeLabel, g.scorePart].filter(Boolean).join(' · ');
         matchupCell = `<div class="matchup-cell">
@@ -2119,13 +2186,7 @@
         // he plays for. Badge it so you can tell at a glance which side he's on
         // without knowing the player. (Other views reuse this branch without a
         // per-player team, so the badge only shows when g.team is present.)
-        let teamBadge = '';
-        if (isBatter() && g.team) {
-          const tc = TEAM_COLORS[g.team];
-          teamBadge = tc
-            ? ` <span class="team-badge tc" style="background:${tc[0]};color:${tc[1]}">${esc(g.team)}</span>`
-            : ` <span class="team-badge">${esc(g.team)}</span>`;
-        }
+        const teamBadge = (isBatter() && g.team) ? ' ' + mlbBadge(g.team) : '';
         // Folded into the subline rather than given a line of its own. It fires
         // on roughly seven rows in ten — most games have more than one qualifying
         // batter — so as a block it was 23px of warning on nearly every row,
@@ -2142,8 +2203,15 @@
         // row spends the line on something the reader already scrolled past.
         // What changes row to row is which market this batter is being faded in.
         const sub = MARKET_NAME[g.metric] || MARKET_NAME[g.wasMetric] || g.marketLabel || '';
+        // Moneyline leads with the two clubs, badged, the way the NFL board
+        // already does — the row IS the matchup, so the teams are the headline
+        // rather than a string to parse. Falls back to the plain matchup when
+        // the ml object has no abbreviations to badge.
+        const mlHead = (isML() && ml && ml.awayAbbr && ml.homeAbbr)
+          ? `${mlbBadge(ml.awayAbbr)}<span class="at-sep">@</span>${mlbBadge(ml.homeAbbr)}`
+          : `<b>${esc(g.matchup)}</b>`;
         matchupCell = `<div class="matchup-cell">
-            <span class="mc-head">${leadingHtml}<b>${esc(g.matchup)}</b>${teamBadge}</span>
+            <span class="mc-head">${leadingHtml}${mlHead}${teamBadge}</span>
             ${sub || corrTag ? `<span class="matchup-sub">${esc(sub)}${corrTag}</span>` : ''}
             ${weatherHtml}
           </div>`;
@@ -4180,7 +4248,7 @@
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${g.away} at ${g.home} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head">${nflBadge(g.away)}<span class="nfl-at">@</span>${nflBadge(g.home)}</span>
+          <span class="mc-head">${nflBadge(g.away)}<span class="at-sep">@</span>${nflBadge(g.home)}</span>
           <span class="matchup-sub">${sub}</span>
         </div>
         <span>${pick}</span>

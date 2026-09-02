@@ -628,6 +628,11 @@ section { padding:44px 0; }
    comes from the bar and the figures under it, not from the size of the words —
    a 15px headline on a 22.5px line was 8px of leading doing nothing. */
 .fade-pick { display:block; font-size:13.5px; line-height:1.12; font-weight:700; letter-spacing:-.01em; color:var(--accent); }
+/* The context boards' headline. Same shape as .fade-pick, deliberately NOT its
+   colour: accent is the play colour, and K props and the moneyline are posted
+   as analysis we do not bet. Tinting them accent would say "play" on a row the
+   page's own banner says is not one. */
+.ctx-pick { display:block; font-size:13.5px; line-height:1.12; font-weight:700; letter-spacing:-.01em; color:var(--text); }
 .bmini { display:block; position:relative; height:5px; border-radius:3px; background:var(--board2); margin-top:7px; margin-bottom:6px; max-width:300px; }
 .bmini .uz { position:absolute; left:0; top:0; bottom:0; border-radius:3px; background:linear-gradient(90deg, var(--model), color-mix(in srgb, var(--model) 55%, white)); }
 .bmini .tick { position:absolute; top:-4px; bottom:-4px; width:2px; border-radius:1px; background:var(--text); }
@@ -1206,7 +1211,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board-foot { font-size:10px; }
   .board-row { padding:14px 14px 16px; row-gap:10px; }
   .board-row .matchup-cell > b { font-size:15px; }
-  .fade-pick { font-size:14px; }
+  .fade-pick, .ctx-pick { font-size:14px; }
   .board-row .edge-cell { font-size:18px; }
 
   /* Expanded panel: reclaim the whitespace, not the content.
@@ -1638,8 +1643,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 #nflFilters { display:contents }
 
 /* Both clubs sit in the head cell on the game-line view, so the separator needs
-   room the batter board never needed. */
-.nfl-at { color:var(--textFaint); font-size:12px; padding:0 6px }
+   room the batter board never needed. Named for the job, not the sport: the MLB
+   moneyline row uses it too, and a class called nfl-at sitting on a baseball row
+   is a false lead for whoever greps it next. */
+.at-sep { color:var(--textFaint); font-size:12px; padding:0 6px }
 .mc-head .team-badge { vertical-align:middle }
 
 /* The batter board gates rather than ranks, so its chip says Play. Positive

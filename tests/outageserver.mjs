@@ -26,11 +26,11 @@ const CARDS = process.env.CARDS === '1';
 // Books price twelve hitters per club; with CARDS=1 the card names nine, so the
 // other three become pulled rows and the alert bar has real content.
 const HEALTHY = process.env.HEALTHY === '1';
-const oddsFixture = { events: [], props: {} };
+const oddsFixture = { events: [], props: {}, ks: {}, h2h: [] };
 
 async function buildOddsFixture() {
   const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const sch = await (await realFetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${day}&hydrate=team`)).json();
+  const sch = await (await realFetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${day}&hydrate=team,probablePitcher`)).json();
   const games = (((sch.dates || [])[0] || {}).games || []);
   const now = Date.now();
   for (const [i, g] of games.entries()) {
@@ -51,6 +51,34 @@ async function buildOddsFixture() {
         { name: 'Under', description: n, point: 1.5, price: key === 'draftkings' ? -105 : -112 },
       ])) }] });
     oddsFixture.props[id] = { bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig'].map(bk) };
+
+    // Strikeouts. Without these the K board has no priced state at all: every
+    // row reads "awaiting line", so the market column, the edge, the tier and
+    // the line tick on the projection bar are all unreachable. 4.5 sits near a
+    // typical starter's projection, so the slate lands on both sides of it.
+    const arms = ['away', 'home']
+      .map((sd) => (g.teams[sd].probablePitcher || {}).fullName)
+      .filter(Boolean);
+    if (arms.length) {
+      const kbk = (key) => ({ key, markets: [{ key: 'pitcher_strikeouts',
+        outcomes: arms.flatMap((n) => ([
+          { name: 'Over', description: n, point: 4.5, price: key === 'draftkings' ? -110 : -105 },
+          { name: 'Under', description: n, point: 4.5, price: key === 'draftkings' ? -110 : -115 },
+        ])) }] });
+      oddsFixture.ks[id] = { bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig'].map(kbk) };
+    }
+
+    // Moneyline, league-wide shape (not per-event). The home side is priced a
+    // little short of the model so the win-probability bar's tick sits off its
+    // fill — with both numbers equal the tick is suppressed by design and the
+    // priced branch never renders.
+    const mlbk = (key) => ({ key, markets: [{ key: 'h2h', outcomes: [
+      { name: g.teams.home.team.name, price: key === 'pinnacle' ? -145 : -150 },
+      { name: g.teams.away.team.name, price: key === 'pinnacle' ? +128 : +125 },
+    ] }] });
+    oddsFixture.h2h.push({ id, commence_time: new Date(now + (90 + i * 25) * 60000).toISOString(),
+      home_team: g.teams.home.team.name, away_team: g.teams.away.team.name,
+      bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig'].map(mlbk) });
   }
   console.log('healthy fixture: ' + games.length + ' games, ' + Object.keys(oddsFixture.props).length + ' priced');
 }
@@ -63,7 +91,18 @@ globalThis.fetch = async (u, o) => {
       const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json' } });
       if (url.includes('/events?')) return J(oddsFixture.events);
       const m = url.match(/\/events\/(ev\d+)\/odds/);
-      return J(m && oddsFixture.props[m[1]] ? oddsFixture.props[m[1]] : { bookmakers: [] });
+      if (m) {
+        // One endpoint, two feeds: the board asks for strikeouts and for the
+        // batter markets on the same per-event path and tells them apart only
+        // by the markets= parameter.
+        const store = url.includes('markets=pitcher_strikeouts') ? oddsFixture.ks : oddsFixture.props;
+        return J(store[m[1]] || { bookmakers: [] });
+      }
+      // League-wide /odds — h2h and the run line. Unmatched, this fell through
+      // to the per-event branch and returned an empty book list, which is why
+      // every moneyline row said "awaiting line" on a HEALTHY board.
+      if (url.includes('/odds?')) return J(oddsFixture.h2h);
+      return J({ bookmakers: [] });
     }
     return new Response(JSON.stringify({ message: 'Usage quota has been reached' }), {
       status: 401, headers: { 'content-type': 'application/json' },
