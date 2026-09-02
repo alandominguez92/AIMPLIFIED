@@ -28,10 +28,31 @@ const CARDS = process.env.CARDS === '1';
 const HEALTHY = process.env.HEALTHY === '1';
 const oddsFixture = { events: [], props: {}, ks: {}, h2h: [] };
 
+// Same day the board will be on. worker.js rolls a day ahead once every game
+// today is Final, and the fixture has to roll with it or the two end up priced
+// off different slates. That mismatch is near-invisible from the batter board,
+// which is why it survived: batter props join on ROSTER names and the same
+// clubs play both days, so they keep matching. Strikeouts join on the STARTER's
+// name (propByName[normName(pp.fullName)]), and the starters turn over
+// completely, so every K row silently read "awaiting line" instead.
+// PREGAME rewrites each game to Preview, so the board never rolls -- and the
+// fixture must not roll either, or it would desync in the other direction.
+const slateDay = (offset) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' })
+  .format(new Date(Date.now() + offset * 86400000));
+const slateGames = async (d) => {
+  const sch = await (await realFetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${d}&hydrate=team,probablePitcher`)).json();
+  return (((sch.dates || [])[0] || {}).games || []);
+};
+
 async function buildOddsFixture() {
-  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  const sch = await (await realFetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${day}&hydrate=team,probablePitcher`)).json();
-  const games = (((sch.dates || [])[0] || {}).games || []);
+  let day = slateDay(0);
+  let games = await slateGames(day);
+  const allFinal = games.length > 0 && games.every((g) => (g.status || {}).abstractGameState === 'Final');
+  if (!PREGAME && (!games.length || allFinal)) {
+    const nextDay = slateDay(1);
+    const nextGames = await slateGames(nextDay);
+    if (nextGames.length) { day = nextDay; games = nextGames; }
+  }
   const now = Date.now();
   for (const [i, g] of games.entries()) {
     const id = 'ev' + g.gamePk;
@@ -80,7 +101,13 @@ async function buildOddsFixture() {
       home_team: g.teams.home.team.name, away_team: g.teams.away.team.name,
       bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig'].map(mlbk) });
   }
-  console.log('healthy fixture: ' + games.length + ' games, ' + Object.keys(oddsFixture.props).length + ' priced');
+  // Counted per board, not once. A single "priced" number was the props count,
+  // so a fixture that priced no strikeouts at all still reported a healthy line
+  // and the K board's "awaiting line" rows looked like a UI bug.
+  console.log(`healthy fixture: ${day} · ${games.length} games`
+    + ` · props ${Object.keys(oddsFixture.props).length}`
+    + ` · ks ${Object.keys(oddsFixture.ks).length}`
+    + ` · h2h ${oddsFixture.h2h.length}`);
 }
 if (HEALTHY) await buildOddsFixture();
 
