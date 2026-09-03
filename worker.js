@@ -800,7 +800,9 @@ async function board(env, ctx, opts) {
     }
   }
 
-  return cors(json(rows, 300)); // 5 min — props are the expensive part
+  // 5 min near first pitch, 15 while the slate is still hours out — see
+  // BOARD_TTL_NEAR. Props are the expensive part, and they do not move overnight.
+  return cors(json(rows, ttlForSoonest(soonestStart(rows, 'timeMs'))));
 }
 
 // Moneyline for one game. Fair line = Pinnacle's de-vigged probability (the
@@ -1099,7 +1101,46 @@ async function feedErrorFrom(res) {
       : (res.status >= 500 ? 'upstream' : 'error'),
   };
 }
-const battersPayload = (rows, feedError) => cors(json({ rows, feedError: feedError || null }, feedError ? 30 : 300));
+// Cache-Control seconds for a board payload, and the freshness window for the
+// shared line store below — deliberately the same number, so the two layers
+// cannot expire out of step and re-fetch twice per window.
+//
+// A flat 300 was set when the board was only ever looked at near first pitch.
+// It is the wrong number for the hours before that: a prop line hours from a
+// start barely moves, but every 300s window still bought the whole slate again.
+// The close is NOT captured through this cache — the cron calls board() and
+// batters() directly with closeOnly — so lengthening the far window cannot cost
+// a closing line, and the near window is left exactly where it was rather than
+// tightened, so nothing about the last three hours changes.
+const BOARD_TTL_NEAR = 300;
+const BOARD_TTL_FAR = 900;
+const TTL_FAR_MS = 3 * 3600 * 1000;
+// `soonest` is the nearest FUTURE start, so a slate already underway returns
+// null and holds the near TTL: those rows carry live status and scores, which
+// is the one time a stale board is actually wrong rather than merely old.
+function ttlForSoonest(soonestMs) {
+  if (soonestMs == null) return BOARD_TTL_NEAR;
+  return (soonestMs - Date.now()) > TTL_FAR_MS ? BOARD_TTL_FAR : BOARD_TTL_NEAR;
+}
+function soonestStart(rows, field) {
+  const now = Date.now();
+  let soonest = null;
+  for (const r of (Array.isArray(rows) ? rows : [])) {
+    const t = r && typeof r[field] === 'number' ? r[field]
+      : (r && r[field] ? Date.parse(r[field]) : NaN);
+    if (Number.isFinite(t) && t > now && (soonest == null || t < soonest)) soonest = t;
+  }
+  return soonest;
+}
+// ttlSec is passed in by batters() so the response and the shared line store
+// expire on the same number. Derived from the slate's soonest start rather than
+// the finished rows, because a board that priced nothing still knows perfectly
+// well when the next first pitch is — and falling back to the near TTL there
+// would re-buy an empty slate every five minutes.
+const battersPayload = (rows, feedError, ttlSec) => cors(json(
+  { rows, feedError: feedError || null },
+  feedError ? 30 : (ttlSec || ttlForSoonest(soonestStart(rows, 'timeMs'))),
+));
 
 async function batters(env, ctx, opts) {
   const season = new Date().getUTCFullYear();
@@ -1282,7 +1323,52 @@ async function batters(env, ctx, opts) {
   // A per-event props failure used to return silently, so a whole slate of 401s
   // looked identical to a slate with no props posted. Keep the first one.
   let propsFeedError = null;
-  await Promise.all(upcomingB.map(async (ev) => {
+
+  // Has another colo already bought this window's lines? (see feed_cache.) The
+  // store is keyed by the markets actually requested, so changing that list can
+  // never serve lines for a market mix the board is no longer asking for.
+  //
+  // closeOnly is deliberately excluded: freezing a closing line is the one job
+  // that must see the live book, never a copy bought minutes ago.
+  const boardTtlSec = ttlForSoonest(soonestStart(upcomingB, 'commence_time'));
+  const linesTtlMs = boardTtlSec * 1000;
+  const feedKey = `batter_lines:${slateDate()}:${marketKeys}`;
+  const useStore = !!(env && env.DB) && !(opts && opts.closeOnly);
+  let doFetch = true;
+  let seeded = null;
+  if (useStore) {
+    const hit = await loadFeedCache(env.DB, feedKey);
+    if (hit.present && hit.ageMs < linesTtlMs) {
+      doFetch = false; seeded = hit.data;          // fresh — nobody pays
+    } else if (await claimFeedRefresh(env.DB, feedKey, linesTtlMs)) {
+      doFetch = true;                              // we own this window's refresh
+    } else if (hit.present) {
+      doFetch = false; seeded = hit.data;          // someone else is refreshing; serve what we have
+    }
+    // Cold store AND we lost the claim: fall through and fetch. Paying twice
+    // once beats opening the board empty.
+  }
+  if (seeded) {
+    for (const [nm, s] of Object.entries(seeded)) {
+      if (!s || !s.props) continue;
+      // The same window the fetch path applies. Without it a stored line would
+      // outlive its game and quote a price on something already underway.
+      const t = s.timeMs || 0;
+      if (!(t > nowB && (t - nowB) <= PROP_LEAD_MS)) continue;
+      // Status and score are re-derived from tonight's schedule rather than
+      // stored: the lines are what was bought, but a score read from cache
+      // would be wrong the moment the game moves.
+      const sc = schedByMatchup[`${s.awayAb}@${s.homeAb}`] || null;
+      byName[nm] = {
+        name: s.name, matchup: `${s.awayAb} @ ${s.homeAb}`,
+        timeMs: t, timeLabel: s.timeLabel,
+        gamePk: sc ? sc.gamePk : null, gameStatus: sc ? sc.status : 'Preview',
+        awayScore: sc ? sc.awayScore : null, homeScore: sc ? sc.homeScore : null,
+        props: s.props,
+      };
+    }
+  }
+  await Promise.all((doFetch ? upcomingB : []).map(async (ev) => {
     try {
       // Explicit bookmaker list rather than `regions=us`: it pulls the sharp fair
       // sources (which sit outside the us region) at the same 1 region-equivalent
@@ -1304,7 +1390,7 @@ async function batters(env, ctx, opts) {
           for (const oc of (mk.outcomes || [])) {
             const nm = normName(oc.description);
             if (!nm) continue;
-            const rec = byName[nm] || (byName[nm] = { name: oc.description, matchup, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), gamePk: sched ? sched.gamePk : null, gameStatus: sched ? sched.status : 'Preview', awayScore: sched ? sched.awayScore : null, homeScore: sched ? sched.homeScore : null, props: {} });
+            const rec = byName[nm] || (byName[nm] = { name: oc.description, matchup, awayAb, homeAb, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), gamePk: sched ? sched.gamePk : null, gameStatus: sched ? sched.status : 'Preview', awayScore: sched ? sched.awayScore : null, homeScore: sched ? sched.homeScore : null, props: {} });
             const mp = rec.props[spec.metric] || (rec.props[spec.metric] = {});
             const b = mp[label] || (mp[label] = {});
             if (oc.point != null) b.point = oc.point;
@@ -1317,6 +1403,19 @@ async function batters(env, ctx, opts) {
   }));
   if (propsFeedError && !feedError) feedError = propsFeedError;
 
+  // Publish what we just bought so the next colo does not buy it again. Only on
+  // a clean fetch that actually produced lines: caching a slate emptied by a 401
+  // would spread the outage to every colo for the rest of the window, and the
+  // whole point of the store is that one colo's bad luck is not everyone's.
+  if (doFetch && useStore && !propsFeedError && Object.keys(byName).length) {
+    const toStore = {};
+    for (const [nm, r] of Object.entries(byName)) {
+      toStore[nm] = { name: r.name, awayAb: r.awayAb, homeAb: r.homeAb, timeMs: r.timeMs, timeLabel: r.timeLabel, props: r.props };
+    }
+    const w = saveFeedCache(env.DB, feedKey, toStore);
+    if (ctx && ctx.waitUntil) ctx.waitUntil(w); else await w;
+  }
+
   // No priced players -- but that does not mean nothing is knowable. Everything
   // the projection needs (batting slot when posted, opposing arm, park, season
   // rates) comes from StatsAPI, which is independent of the odds feed. The
@@ -1324,7 +1423,7 @@ async function batters(env, ctx, opts) {
   // universe has to come from the stats pool when no lineup card is up yet.
   const modelSeeded = !Object.keys(byName).length;
   // Nothing priced AND no game on the schedule: genuinely nothing to show.
-  if (modelSeeded && !Object.keys(gameByTeamId).length) return battersPayload([], feedError);
+  if (modelSeeded && !Object.keys(gameByTeamId).length) return battersPayload([], feedError, boardTtlSec);
 
   // 2) Season hitting stats for every batter, keyed by name for matching.
   const statByName = {};
@@ -1505,7 +1604,7 @@ async function batters(env, ctx, opts) {
     const oppPFac = oppP ? { hr: round2(pitcherMult('hr')), tb: round2(pitcherMult('tb')), hrr: round2(pitcherMult('hrr')) } : null;
     draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, pulled, facingHand, venue, adj, seasonPA: pa, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
   }
-  if (!draft.length) return battersPayload([], feedError);
+  if (!draft.length) return battersPayload([], feedError, boardTtlSec);
 
   const pr = (arr, v) => arr.length ? Math.round(arr.filter((x) => x <= v).length / arr.length * 100) : 0;
   const tone = (v) => v >= 66 ? 'cool' : v >= 33 ? 'warm' : 'hot';
@@ -1677,7 +1776,7 @@ async function batters(env, ctx, opts) {
   // 5 min — batter props are the expensive call. propsFeedError rides along even
   // on a good slate: some events can 401 while others succeed, and a partial
   // slate presented as complete is its own quiet lie.
-  return battersPayload(rows, feedError);
+  return battersPayload(rows, feedError, boardTtlSec);
 }
 
 function abbrFromName(name) {
@@ -2031,6 +2130,74 @@ async function savePropLines(db, date, propByName) {
       ).bind(date, name, JSON.stringify(rec), now));
     if (stmts.length) await db.batch(stmts);
   } catch (e) { /* persistence is best-effort; never break the board */ }
+}
+
+// -------------------------------------------------------------------------
+// Shared feed cache (D1) — one paid refresh per window for the WHOLE site.
+//
+// caches.default is per-colo. Every Cloudflare colo that serves a viewer keeps
+// its own copy, so the site was buying the same slate once per colo per TTL:
+// the quota cost scaled with how geographically spread the traffic was, which
+// is not a number anyone was choosing. D1 is global, so a line bought by the
+// first colo to ask is visible to all the others.
+//
+// This caches the PAID part only — the book lines — not the computed board.
+// Re-running the model is free CPU and the payload is ~154KB, most of it
+// projections, percentile bars and season stats that D1 has no reason to hold.
+// The per-colo cache still fronts this and still absorbs the repeat viewers;
+// this layer only decides whether a colo miss has to spend credits.
+//
+// Reuses the prop_lines pattern, but keyed as one blob rather than a row per
+// player: ~150 batters would be a 150-statement batch on every refresh, where
+// the lines together are ~60KB as a single row.
+async function ensureFeedCacheSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS feed_cache (
+    key TEXT PRIMARY KEY, data TEXT, updated_at INTEGER, claimed_until INTEGER
+  )`).run();
+}
+// Returns { data, ageMs, present } — data is whatever was stored, parsed.
+async function loadFeedCache(db, key) {
+  try {
+    await ensureFeedCacheSchema(db);
+    const row = await db.prepare('SELECT data, updated_at FROM feed_cache WHERE key=?').bind(key).first();
+    if (!row || !row.data) return { data: null, ageMs: Infinity, present: false };
+    return { data: JSON.parse(row.data), ageMs: Date.now() - (row.updated_at || 0), present: true };
+  } catch (e) { return { data: null, ageMs: Infinity, present: false }; }
+}
+// Single-flight. Two colos can miss the same window at the same instant; without
+// this they would both pay. The UPDATE is conditional on the claim having
+// lapsed, so exactly one of them sees changes>0 and does the fetch — the other
+// serves the stale lines it already loaded rather than queueing behind it.
+//
+// The claim is a lease, not a lock: it expires on its own, so a refresh that
+// dies mid-flight costs one stale window and not a wedged feed.
+async function claimFeedRefresh(db, key, leaseMs) {
+  try {
+    await ensureFeedCacheSchema(db);
+    const now = Date.now();
+    await db.prepare(
+      'INSERT OR IGNORE INTO feed_cache (key, data, updated_at, claimed_until) VALUES (?,NULL,0,0)'
+    ).bind(key).run();
+    const res = await db.prepare(
+      'UPDATE feed_cache SET claimed_until=? WHERE key=? AND claimed_until<=?'
+    ).bind(now + leaseMs, key, now).run();
+    // Only a positively-reported zero means someone else owns the window. If the
+    // driver does not report changes at all we must claim it, not concede it:
+    // conceding on an unknown would make a present-but-stale store serve the
+    // same lines forever, since nobody would ever win the right to refresh.
+    // Guessing wrong this way costs one duplicate fetch; the other way is a
+    // board frozen on yesterday's prices.
+    const changes = (res && res.meta && typeof res.meta.changes === 'number') ? res.meta.changes : null;
+    return changes == null ? true : changes > 0;
+  } catch (e) { return true; } // D1 unavailable -> behave exactly as before it existed
+}
+async function saveFeedCache(db, key, data) {
+  try {
+    await ensureFeedCacheSchema(db);
+    await db.prepare(
+      'INSERT OR REPLACE INTO feed_cache (key, data, updated_at, claimed_until) VALUES (?,?,?,0)'
+    ).bind(key, JSON.stringify(data), Date.now()).run();
+  } catch (e) { /* best-effort; a failed write just means the next colo pays */ }
 }
 
 // Run lines (spreads) persist the same way — snapshot the DK/FD + Pinnacle
