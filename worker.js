@@ -177,6 +177,25 @@ export default {
 // batters() is the expensive call, so watch quota before widening further.
 const CLOSE_WINDOW_MIN = 15;
 
+// Props post the morning of game day, so a game more than ~12h out has no lines
+// yet — pricing it spends a paid per-event call to receive an empty book list.
+//
+// board() has gated its strikeout fetch on this since the board started rolling
+// a day ahead into projections. batters() never did: it asked /events with no
+// upper bound and priced everything with a future start, which in season is
+// today's slate PLUS tomorrow's once books post it. That is the expensive call
+// (three markets per event against strikeouts' one), so the ungated path was
+// the costly one, and it was silently paying double through the evening.
+//
+// Hoisted to module scope so the two cannot drift apart again, and applied to
+// the /events request itself as commenceTimeTo — bounding the list upstream is
+// strictly better than fetching it whole and discarding half locally.
+const PROP_LEAD_MS = 12 * 3600 * 1000;
+// Odds API wants ISO8601 with no sub-second part; toISOString always emits ms.
+const oddsTime = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+const eventsUrl = (key) => `${ODDS}/events?apiKey=${key}&dateFormat=iso`
+  + `&commenceTimeTo=${oddsTime(Date.now() + PROP_LEAD_MS)}`;
+
 // The cron fires when ANY game is inside the close window, but it was then
 // refreshing the WHOLE slate — every game's props re-fetched so that one game's
 // closing line could be frozen. On a staggered slate that is most of the cost:
@@ -427,17 +446,15 @@ async function board(env, ctx, opts) {
   const key = env && env.ODDS_API_KEY;
   if (key) {
     try {
-      const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      const evR = await fetch(eventsUrl(key), { headers: { accept: 'application/json' } });
       if (evR.ok) {
         const events = await evR.json();
         // Only price games that haven't started — a live game's pre-game prop is
         // gone, so the per-event call just burns Odds API quota for nothing. This
         // trims calls exactly through the afternoon/evening as games go live.
         const now = Date.now();
-        // Props post the morning of game day, so a game more than ~12h out has no
-        // lines yet — skip it to avoid burning paid per-event calls overnight
-        // (matters now that the board rolls a day ahead into projections).
-        const PROP_LEAD_MS = 12 * 3600 * 1000;
+        // Kept alongside the upstream commenceTimeTo bound: that one cannot
+        // express "already started", which is the other half of this filter.
         // Same scoping as batters(): a close-capture pass only needs the games
         // whose lines are about to vanish, not every game with a posted prop.
         const upcoming = (opts && opts.closeOnly)
@@ -965,10 +982,27 @@ function runLine(home, away, rlPair, pinPair, modelHomeWin) {
 // stats across the priced pool. Empty [] on any trouble so the tab degrades.
 // -------------------------------------------------------------------------
 const BATTER_MARKETS = [
-  { key: 'batter_home_runs', label: 'HR', metric: 'hr' },
+  // fetch:false = still modelled and still shown, just not bought. Home runs
+  // have never once cleared pricing: across 8,552 graded rows the market never
+  // appears in byMarket, byMarketUnder or projBiasByMarket, because a 0.5 line
+  // at a long price cannot pass the EV gate. Every per-event call was buying a
+  // third market whose only use was to be discarded -- a third of the board's
+  // single largest quota line item.
+  //
+  // Kept in this list rather than deleted, because the list is also what the
+  // expand panel renders from (batterMarkets, below): dropping the entry would
+  // have removed the visible "no line posted -- HR proj 0.3" row, which is fed
+  // by lambda.hr off season stats and costs no quota at all. With no book data
+  // the market prices to null exactly as it already does today, so the row is
+  // unchanged.
+  { key: 'batter_home_runs', label: 'HR', metric: 'hr', fetch: false },
   { key: 'batter_total_bases', label: 'TB', metric: 'tb' },
   { key: 'batter_hits_runs_rbis', label: 'H+R+RBI', metric: 'hrr' },
 ];
+// The markets actually requested from the paid per-event endpoint. Billing is
+// markets x region-equivalents per event, so this length is a direct multiplier
+// on the biggest line item in the account.
+const FETCHED_BATTER_MARKETS = BATTER_MARKETS.filter((m) => m.fetch !== false);
 
 // ---- Opponent-context tunables for the batter projection ----
 // Everything here defaults to NEUTRAL (×1.0) when data is missing, so a failed
@@ -1085,7 +1119,7 @@ async function batters(env, ctx, opts) {
     feedError = { status: 0, code: 'NO_KEY', message: 'ODDS_API_KEY is not configured', kind: 'config' };
   } else {
     try {
-      const evR = await fetch(`${ODDS}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      const evR = await fetch(eventsUrl(key), { headers: { accept: 'application/json' } });
       if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, evR));
       if (!evR.ok) feedError = await feedErrorFrom(evR);
       else {
@@ -1225,16 +1259,26 @@ async function batters(env, ctx, opts) {
     } catch (e) { /* no hands/quality -> both stay neutral */ }
   }
 
-  const marketKeys = BATTER_MARKETS.map((m) => m.key).join(',');
+  const marketKeys = FETCHED_BATTER_MARKETS.map((m) => m.key).join(',');
   const byName = {}; // normName -> { name, matchup, timeMs, timeLabel, props:{metric:{DK,FD}} }
   // Skip started games — no pre-game props to fetch, so don't spend the quota
   // (batter markets cost more: 3 markets per event vs. 1 for strikeouts).
   const nowB = Date.now();
   // closeOnly: only the games about to start need their closing line frozen, so
   // the other dozen are not re-priced to do it.
+  // The same PROP_LEAD_MS gate board() applies to strikeouts. This path was the
+  // one without it, and it is the costly one: three markets per event, so every
+  // game beyond the lead window was three credits spent to receive a book list
+  // no one has posted yet. Overnight the board rolls a day ahead and shows
+  // projections; that is the designed behaviour, and prices now fill in on the
+  // same schedule the strikeout board has always used.
   const upcomingB = opts && opts.closeOnly
     ? closingSoon(events, opts.closeOnly)
-    : events.filter((ev) => !ev.commence_time || Date.parse(ev.commence_time) > nowB);
+    : events.filter((ev) => {
+      if (!ev.commence_time) return true;
+      const t = Date.parse(ev.commence_time);
+      return t > nowB && (t - nowB) <= PROP_LEAD_MS;
+    });
   // A per-event props failure used to return silently, so a whole slate of 401s
   // looked identical to a slate with no props posted. Keep the first one.
   let propsFeedError = null;
