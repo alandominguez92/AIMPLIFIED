@@ -272,7 +272,7 @@ async function handleApi(p, env, ctx, url) {
   const upstream = p === '/api/odds'
     ? `${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h,totals&oddsFormat=american&dateFormat=iso`
     : `${ODDS}/scores?apiKey=${key}&daysFrom=1&dateFormat=iso`;
-  return proxy(upstream);
+  return proxy(upstream, env, ctx, p === '/api/odds' ? 'api:odds' : 'api:scores');
 }
 
 // -------------------------------------------------------------------------
@@ -447,6 +447,7 @@ async function board(env, ctx, opts) {
   if (key) {
     try {
       const evR = await fetch(eventsUrl(key), { headers: { accept: 'application/json' } });
+      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, evR, 'board:events'));
       if (evR.ok) {
         const events = await evR.json();
         // Only price games that haven't started — a live game's pre-game prop is
@@ -468,6 +469,7 @@ async function board(env, ctx, opts) {
         await Promise.all(upcoming.map(async (ev) => {
           try {
             const pr = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=pitcher_strikeouts&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+            if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, pr, 'board:kprops'));
             if (!pr.ok) return;
             const pd = await pr.json();
             for (const bm of (pd.bookmakers || [])) {
@@ -580,6 +582,7 @@ async function board(env, ctx, opts) {
   if (key) {
     try {
       const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h,spreads&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r, 'board:h2h+runline'));
       if (r.ok) {
         const events = await r.json();
         // Best moneyline price for a team name across a set of bookmakers.
@@ -1161,7 +1164,7 @@ async function batters(env, ctx, opts) {
   } else {
     try {
       const evR = await fetch(eventsUrl(key), { headers: { accept: 'application/json' } });
-      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, evR));
+      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, evR, 'batters:events'));
       if (!evR.ok) feedError = await feedErrorFrom(evR);
       else {
         const ev = await evR.json();
@@ -1374,7 +1377,7 @@ async function batters(env, ctx, opts) {
       // sources (which sit outside the us region) at the same 1 region-equivalent
       // price, since Odds API bills ceil(books/10) and we ask for 7.
       const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
-      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r));
+      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r, 'batters:props'));
       if (!r.ok) { if (!propsFeedError) propsFeedError = await feedErrorFrom(r); return; }
       const d = await r.json();
       const awayAb = keyAbbr(ev.away_team);
@@ -2359,6 +2362,9 @@ async function ingestNflLines(env, opts) {
       `https://api.the-odds-api.com/v4/sports/${sp.key}/odds?apiKey=${key}&bookmakers=${NFL_BOOKS.join(',')}&markets=${NFL_GAME_MARKETS}`
       + '&oddsFormat=american&dateFormat=iso',
       { headers: { accept: 'application/json' } });
+    // Awaited, not deferred: ingestNflLines has no ctx to hand a background
+    // promise to, and `ctx` here would be an unbound reference inside a try.
+    await recordOddsUsage(env, r, 'nfl:game-markets');
     out.httpStatus = r.status;
     out.creditsUsed = r.headers.get('x-requests-last');
     out.creditsRemaining = r.headers.get('x-requests-remaining');
@@ -4733,6 +4739,7 @@ async function fairProbe(env, reqUrl) {
   try {
     // The events list is free (no markets requested) — pick one upcoming game.
     const evR = await fetch(`${base}/events?apiKey=${key}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+    await recordOddsUsage(env, evR, 'debug:fair-probe');
     const events = await evR.json();
     const now = Date.now();
     // ?games=N samples N upcoming games instead of one. Coverage varies by game
@@ -4769,6 +4776,7 @@ async function fairProbe(env, reqUrl) {
       const url = `${base}/events/${e.id}/odds?apiKey=${key}&bookmakers=${allBooks.join(',')}`
         + `&markets=${markets.join(',')}&oddsFormat=american&dateFormat=iso`;
       const r = await fetch(url, { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, 'debug:fair-probe');
       out.httpStatus = r.status;
       out.creditsUsed = r.headers.get('x-requests-last') || out.creditsUsed || null;
       out.creditsRemaining = r.headers.get('x-requests-remaining') || null;
@@ -4930,6 +4938,7 @@ async function mlDebug(env) {
       // Pull h2h (moneyline) AND spreads (the run line) so this endpoint can
       // explain both an empty Moneyline board and an empty Run Line board.
       const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h,spreads&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, 'debug:ml-debug');
       out.odds.status = r.status;
       const events = await r.json();
       const hasMarket = (bk, k) => (bk.markets || []).some((m) => m.key === k);
@@ -5331,10 +5340,17 @@ const TEAM_ABBR_BY_NAME = {
 // -------------------------------------------------------------------------
 // Shared helpers
 // -------------------------------------------------------------------------
-async function proxy(upstream) {
+async function proxy(upstream, env, ctx, route) {
   let r;
   try {
     r = await fetch(upstream, { headers: { accept: 'application/json' } });
+    // /api/odds and /api/scores are paid calls like any other. They were the two
+    // spenders with no meter on them at all, so they could never show up in the
+    // ledger no matter how much they cost.
+    if (route && env) {
+      const rec = recordOddsUsage(env, r, route);
+      if (ctx && ctx.waitUntil) ctx.waitUntil(rec); else await rec;
+    }
   } catch (e) {
     return err('upstream fetch failed: ' + e, 502);
   }
@@ -6003,24 +6019,58 @@ async function ensureUsageSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS odds_usage (
     day TEXT PRIMARY KEY, remaining INTEGER, low INTEGER, calls INTEGER, updated_at TEXT
   )`).run();
+  // Per-route attribution. The day table says how much went out; this says what
+  // bought it, which is the question you actually need answered when the bill is
+  // twice what it should be. Without it the split between the batter board, the
+  // strikeout board and the league-wide calls could only be inferred from the
+  // billing arithmetic in the source, and inferring it got the ratio wrong.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS odds_route (
+    day TEXT, route TEXT, credits INTEGER, calls INTEGER, blind INTEGER, updated_at TEXT,
+    PRIMARY KEY (day, route)
+  )`).run();
 }
 // Best-effort and never awaited by a request path: telemetry must not be able to
 // slow down or break the thing it is measuring.
-async function recordOddsUsage(env, res) {
+//
+// `route` names the CALL SITE, not the URL — two call sites can hit the same
+// endpoint for different reasons and cost different amounts, and it is the
+// reason that gets changed when the spend is wrong.
+//
+// Credits come from x-requests-last, the exact cost the API charges for that one
+// call. Deriving it instead from the drop in x-requests-remaining would be wrong
+// under any concurrency, and the per-event fetches are all issued in parallel.
+// A response without the header is counted as `blind`: not silently folded into
+// the total as a zero, because a route that looks free is exactly the kind of
+// wrong number this table exists to prevent.
+async function recordOddsUsage(env, res, route) {
   try {
     if (!env || !env.DB || !res || !res.headers) return;
     const rem = parseInt(res.headers.get('x-requests-remaining') || '', 10);
+    const last = parseInt(res.headers.get('x-requests-last') || '', 10);
     if (!Number.isFinite(rem)) return;
     await ensureUsageSchema(env.DB);
-    const day = new Date().toISOString().slice(0, 10);
-    await env.DB.prepare(
-      `INSERT INTO odds_usage (day, remaining, low, calls, updated_at) VALUES (?,?,?,1,?)
-       ON CONFLICT(day) DO UPDATE SET
-         remaining = excluded.remaining,
-         low = MIN(low, excluded.remaining),
-         calls = calls + 1,
-         updated_at = excluded.updated_at`
-    ).bind(day, rem, rem, new Date().toISOString()).run();
+    const now = new Date().toISOString();
+    const day = now.slice(0, 10);
+    const cost = Number.isFinite(last) ? last : 0;
+    const blind = Number.isFinite(last) ? 0 : 1;
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO odds_usage (day, remaining, low, calls, updated_at) VALUES (?,?,?,1,?)
+         ON CONFLICT(day) DO UPDATE SET
+           remaining = excluded.remaining,
+           low = MIN(low, excluded.remaining),
+           calls = calls + 1,
+           updated_at = excluded.updated_at`
+      ).bind(day, rem, rem, now),
+      env.DB.prepare(
+        `INSERT INTO odds_route (day, route, credits, calls, blind, updated_at) VALUES (?,?,?,1,?,?)
+         ON CONFLICT(day, route) DO UPDATE SET
+           credits = credits + excluded.credits,
+           calls = calls + 1,
+           blind = blind + excluded.blind,
+           updated_at = excluded.updated_at`
+      ).bind(day, route || 'unattributed', cost, blind, now),
+    ]);
   } catch (e) { /* telemetry is never worth an error */ }
 }
 
@@ -6043,6 +6093,37 @@ async function oddsUsage(env) {
         out.burn.push({ day: rows[i].day, spent, calls: rows[i].calls });
       }
     }
+    // Per-route attribution: what bought the credits, not just how many went.
+    const rr = (await env.DB.prepare(
+      'SELECT day, route, credits, calls, blind FROM odds_route ORDER BY day DESC, credits DESC LIMIT 200'
+    ).all()).results || [];
+    const byDay = {};
+    for (const r of rr) (byDay[r.day] = byDay[r.day] || []).push(
+      { route: r.route, credits: r.credits, calls: r.calls, blind: r.blind }
+    );
+    out.routes = byDay;
+
+    // Reconciliation. The route table sums what each call REPORTED spending
+    // (x-requests-last); the burn is what the quota counter actually dropped by.
+    // They agree only if every paid call site is metered — so a gap is the
+    // ledger telling you it is incomplete, which is the failure mode that made
+    // the old `calls` number so misleading (it counted two call sites out of
+    // ten and still looked like a total).
+    const spentByDay = {};
+    for (let i = 0; i < rows.length - 1; i++) spentByDay[rows[i].day] = rows[i + 1].low - rows[i].low;
+    out.reconcile = Object.keys(byDay).sort().reverse().map((day) => {
+      const metered = byDay[day].reduce((s, r) => s + (r.credits || 0), 0);
+      const blind = byDay[day].reduce((s, r) => s + (r.blind || 0), 0);
+      const spent = spentByDay[day];
+      // A day still in progress has no closing low to difference against, so it
+      // reports metered-only rather than a gap that is really just "not over yet".
+      if (typeof spent !== 'number' || spent < 0) return { day, metered, blind, spent: null, note: 'day not closed — no burn to compare' };
+      return { day, metered, blind, spent, unattributed: spent - metered,
+        note: Math.abs(spent - metered) <= Math.max(20, spent * 0.05)
+          ? 'ledger accounts for the burn'
+          : 'GAP — some spend is not attributed to any route' };
+    });
+
     const latest = rows[0];
     out.remaining = latest ? latest.remaining : null;
     out.verdict = !latest ? 'no readings yet'
