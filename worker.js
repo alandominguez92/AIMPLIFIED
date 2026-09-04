@@ -13,6 +13,28 @@ const STATS = 'https://statsapi.mlb.com/api/v1';
 // confident and edges too large. Use an overdispersed spread, and regress the
 // projection modestly toward the (sharp) market line to temper model error.
 const DISPERSION = 1.55;   // Var(K) / mean at the game level
+
+// ---- Hits allowed by the starter (projection only — nothing is priced or bet) --
+// Same shape as the strikeout model, swapping the pitcher's K/9 for his H/9 and
+// the opponent's K/PA for its H/PA. All three constants were measured on 220
+// completed starts rather than assumed; refit them the way the K side does.
+const HITS_DISPERSION = 1.21;  // Var(H) / mean at the game level — hits are tighter than Ks (1.55)
+// Innings of league-average prior mixed into a pitcher's own H/9. MAE is nearly
+// flat from 15 to 180 IP (1.925 -> 1.997), so this was NOT chosen on accuracy —
+// it was chosen on the tail. Unregressed, one arm with a handful of innings
+// projected 13.1 hits off an H/9 of 15.3, which against any real line would read
+// as an enormous edge and be pure sample noise. At 60 the worst projection on
+// the same starts is 7.6.
+const H_PRIOR_IP = 60;
+// League H/9, the mean a short sample regresses toward. Hardcoded like the other
+// baselines: deriving it live would need a second teams/stats call, and the
+// hitting call already made supplies the opponent side for free.
+const LG_H9_BASE = 8.32;
+// The raw model projected +0.41 hits per start too many, which on its own made it
+// lean over on 78% of starts against a real over rate of 56%. This zeroes that.
+// Fitted on season rates that include the graded starts, so it is optimistic and
+// should be refit from proj_log once real out-of-sample rows accumulate.
+const H_PROJ_CAL = 0.923;
 // Calibration audit (214 graded K picks): aggregate is well-calibrated
 // (predicted 63.1% over, actual 61.4%) but Tier 1 overstates — predicted 69.4%,
 // hit 62.1% (~7pt gap). Classic optimizer's curse: the biggest model-vs-market
@@ -510,6 +532,9 @@ async function board(env, ctx, opts) {
           const st = sp ? sp.stat : {};
           pmap[pl.id] = {
             k9: toNum(st.strikeoutsPer9Inn),
+            // Read straight off the API the same way k9 is, rather than derived
+            // from hits/IP, so the two rates cannot disagree about innings.
+            h9: toNum(st.hitsPer9Inn),
             ip: toNum(st.inningsPitched),
             gs: toNum(st.gamesStarted),
             era: (st.era == null || st.era === '') ? null : String(st.era),
@@ -534,8 +559,10 @@ async function board(env, ctx, opts) {
     } catch (e) { /* neutral weather for this game */ }
   }));
 
-  // Team strikeout rate + league baseline (one call).
-  const teamK = {}; let lgSO = 0, lgPA = 0;
+  // Team strikeout rate + league baseline (one call). The same response carries
+  // hits, so the opponent context for the hits model rides along at no cost —
+  // a second call would have bought a number already in this one.
+  const teamK = {}; const teamH = {}; let lgSO = 0, lgPA = 0, lgHit = 0;
   try {
     const r = await fetch(`${STATS}/teams/stats?season=${season}&sportId=1&group=hitting&stats=season`, { headers: { accept: 'application/json' } });
     if (r.ok) {
@@ -544,12 +571,13 @@ async function board(env, ctx, opts) {
       splits.forEach((sp) => {
         const st = sp.stat || {};
         const id = sp.team && sp.team.id;
-        const so = toNum(st.strikeOuts), pa = toNum(st.plateAppearances);
-        if (id && pa > 0) { teamK[id] = so / pa; lgSO += so; lgPA += pa; }
+        const so = toNum(st.strikeOuts), pa = toNum(st.plateAppearances), hit = toNum(st.hits);
+        if (id && pa > 0) { teamK[id] = so / pa; teamH[id] = hit / pa; lgSO += so; lgPA += pa; lgHit += hit; }
       });
     }
   } catch (e) { /* opponent adjustment falls back to neutral */ }
   const lgK = lgPA > 0 ? lgSO / lgPA : 0.222;
+  const lgHrate = lgPA > 0 ? lgHit / lgPA : 0.2166;
 
   // Team win% (for the moneyline model) — one standings call.
   const teamWL = {};
@@ -672,6 +700,22 @@ async function board(env, ctx, opts) {
       const projK = (k9 * expIP / 9) * (lgK > 0 ? oppK / lgK : 1) * parkK * wxK;
       const sd = Math.sqrt(Math.max(projK, 1) * DISPERSION);
 
+      // Hits allowed, same shape. Projection only — no line is bought for this
+      // market and nothing here is priced, tiered or posted.
+      //
+      // The pitcher's own H/9 is regressed toward league on the innings behind
+      // it, so a short sample cannot carry a full-strength rate (see H_PRIOR_IP).
+      // No park or weather term: PARK_K_FACTOR is a strikeout table and
+      // PARK_FACTORS carries hr/tb, and neither is a hits factor — applying the
+      // wrong one would move every projection in a direction nobody measured, so
+      // this stays deliberately under-adjusted instead.
+      const oppH = teamH[oppTeam.id] || lgHrate;
+      const h9raw = st.h9 > 0 ? st.h9 : LG_H9_BASE;
+      const ipSeen = st.ip > 0 ? st.ip : 0;
+      const h9 = (h9raw * ipSeen + LG_H9_BASE * H_PRIOR_IP) / (ipSeen + H_PRIOR_IP);
+      const projH = (h9 * expIP / 9) * (lgHrate > 0 ? oppH / lgHrate : 1) * H_PROJ_CAL;
+      const sdH = Math.sqrt(Math.max(projH, 1) * HITS_DISPERSION);
+
       // Market: price the projection against the DK/FD strikeout lines, taking
       // the better of the two prices for the chosen side. When the live prop is
       // gone (book pulled it), fall back to the persisted closing line and mark
@@ -694,6 +738,15 @@ async function board(env, ctx, opts) {
         proj: round1(projK),
         lo: round1(Math.max(0, projK - 1.28 * sd)),
         hi: round1(projK + 1.28 * sd),
+        // Hits allowed. `h9` is the REGRESSED rate actually used, not the raw
+        // season number — showing the raw one next to a projection built from
+        // the shrunk one would make the arithmetic look wrong.
+        h9: round1(h9),
+        h9raw: round1(h9raw),
+        projH: round1(projH),
+        loH: round1(Math.max(0, projH - 1.28 * sdH)),
+        hiH: round1(projH + 1.28 * sdH),
+        oppHpct: Math.round(oppH * 1000) / 10,
         oppKpct: Math.round(oppK * 1000) / 10,
         parkK: Math.round(parkK * 1000) / 1000,
         park: homeAbbr,
@@ -768,6 +821,12 @@ async function board(env, ctx, opts) {
     if (ctx && ctx.waitUntil) ctx.waitUntil(write);
     const writeMl = logMlPicks(env.DB, rows, date).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(writeMl);
+
+    // Hits-allowed projections. Nothing here is a pick — this is the accuracy
+    // record that has to exist before deciding whether the market is worth
+    // buying lines for.
+    const writeProj = saveProjLog(env.DB, date, rows).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(writeProj);
 
     // Snapshot tonight's live strikeout props so the closing line survives the
     // book pulling the market (only entries we fetched live this window).
@@ -2107,6 +2166,44 @@ async function saveMlLines(db, date, pairs) {
 // game starts and the book pulls the market, the snapshot lets the board keep
 // showing the CLOSING line + edge (marked closed, not bettable) instead of
 // going blank. Stored as the raw book-price object so it reprices identically.
+// -------------------------------------------------------------------------
+// proj_log — projection accuracy for markets that are NOT bet.
+//
+// The picks table can only measure a projection that was priced against a line,
+// so a market with no line bought is invisible to it. Hits allowed is exactly
+// that: projected every slate, never posted. This records the number that was
+// projected before first pitch and the number the pitcher actually gave up, so
+// the model can be judged on a real out-of-sample record before anyone pays for
+// a line to price it against.
+// -------------------------------------------------------------------------
+async function ensureProjLogSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS proj_log (
+    date TEXT, game_id TEXT, pitcher_id INTEGER, market TEXT,
+    proj REAL, actual INTEGER, updated_at INTEGER,
+    PRIMARY KEY (date, game_id, pitcher_id, market)
+  )`).run();
+}
+// Written once per slate render. INSERT OR IGNORE, never REPLACE: the value being
+// judged is what the model said BEFORE the game, and a later pass re-projecting
+// the same start with newer season rates would quietly overwrite the prediction
+// with a better-informed one and flatter the record.
+async function saveProjLog(db, date, rows) {
+  try {
+    await ensureProjLogSchema(db);
+    const now = Date.now();
+    const stmts = [];
+    for (const g of rows) {
+      for (const p of (g.pitchers || [])) {
+        if (!p || p.id == null || typeof p.projH !== 'number') continue;
+        stmts.push(db.prepare(
+          'INSERT OR IGNORE INTO proj_log (date, game_id, pitcher_id, market, proj, actual, updated_at) VALUES (?,?,?,?,?,NULL,?)'
+        ).bind(date, String(g.id), p.id, 'H', p.projH, now));
+      }
+    }
+    for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  } catch (e) { /* best-effort; a missed slate is a gap in the record, not a bug */ }
+}
+
 async function ensurePropSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS prop_lines (
     date TEXT, name TEXT, data TEXT, updated_at INTEGER,
@@ -2806,6 +2903,18 @@ async function gradeUngraded(env) {
       box = await r.json();
     } catch (e) { continue; }
     const kById = pitcherKsFromBox(box);
+
+    // Grade the hits projections off the SAME boxscore. Separate from the picks
+    // loop below because these are not picks: there is no side, no line and no
+    // result — only a number that was predicted and a number that happened.
+    try {
+      const hById = pitcherHitsFromBox(box);
+      const hStmts = Object.keys(hById).map((pid) => db.prepare(
+        'UPDATE proj_log SET actual=?, updated_at=? WHERE game_id=? AND pitcher_id=? AND market=? AND actual IS NULL'
+      ).bind(hById[pid], Date.now(), String(g.game_id), Number(pid), 'H'));
+      if (hStmts.length) await db.batch(hStmts);
+    } catch (e) { /* the projection record is not worth failing a grading pass */ }
+
     const picks = (await db.prepare('SELECT * FROM picks WHERE game_id=? AND result IS NULL').bind(g.game_id).all()).results || [];
     const stmts = [];
     for (const p of picks) {
@@ -3002,6 +3111,25 @@ function buildMlRecord(rows) {
   };
 }
 
+// Hits allowed, from the boxscore already fetched to grade strikeouts — so
+// grading the hits projection costs no extra request. Same shape and the same
+// zero-is-not-null care: a starter who allowed no hits carries hits: 0, which
+// must survive as 0 rather than being read as "did not pitch".
+function pitcherHitsFromBox(box) {
+  const out = {};
+  ['away', 'home'].forEach((side) => {
+    const players = ((box.teams || {})[side] || {}).players || {};
+    Object.keys(players).forEach((key) => {
+      const pl = players[key];
+      const id = pl.person && pl.person.id;
+      const p = pl.stats && pl.stats.pitching;
+      // Only starters: proj_log holds projections for probable starters, and a
+      // reliever's hits would grade a projection that was never made.
+      if (id != null && p && p.gamesStarted && p.hits != null && p.hits !== '') out[id] = toNum(p.hits);
+    });
+  });
+  return out;
+}
 function pitcherKsFromBox(box) {
   const out = {};
   ['away', 'home'].forEach((side) => {
@@ -3878,9 +4006,37 @@ async function edgeDebug(env) {
     const overUnder = {};
     for (const m of markets) overUnder[m] = { Over: summarize(rows.filter((r) => r.market === m && r.side === 'Over')), Under: summarize(rows.filter((r) => r.market === m && r.side === 'Under')) };
 
+    // Hits-allowed projection accuracy. Not a betting record — there is no line
+    // and no side — so it reports error, not ROI. This is the number that decides
+    // whether the market is worth buying lines for at all.
+    let hitsProj = { n: 0, note: 'no graded hits projections yet' };
+    try {
+      await ensureProjLogSchema(env.DB);
+      const hr = (await env.DB.prepare(
+        "SELECT proj, actual FROM proj_log WHERE market='H' AND actual IS NOT NULL"
+      ).all()).results || [];
+      if (hr.length) {
+        const n = hr.length;
+        const mp = hr.reduce((s, r) => s + r.proj, 0) / n;
+        const ma = hr.reduce((s, r) => s + r.actual, 0) / n;
+        const mae = hr.reduce((s, r) => s + Math.abs(r.proj - r.actual), 0) / n;
+        const varA = hr.reduce((s, r) => s + (r.actual - ma) ** 2, 0) / n;
+        hitsProj = {
+          n, meanProj: round2(mp), meanActual: round2(ma),
+          bias: round2(mp - ma), mae: round2(mae),
+          dispersion: ma > 0 ? round2(varA / ma) : null,
+          // Out-of-sample, unlike the constants: these rows were projected before
+          // the game and graded after, so a bias here is real and H_PROJ_CAL
+          // should be refit against it rather than against the fitted sample.
+          read: 'bias>0 = projections run high. Compare dispersion with HITS_DISPERSION (1.21) and refit if it has drifted.',
+        };
+      }
+    } catch (e) { hitsProj = { n: 0, error: String(e && e.message || e) }; }
+
     return cors(json({
       n: rows.length,
       projBiasK: biasN ? round1(biasSum / biasN) : null,
+      hitsProj,
       overallCLV: summarize(rows).avgCLV,
       edgeBuckets_all: byEdge(rows),
       edgeBuckets_K: byEdge(rows.filter((r) => r.market === 'K')),
