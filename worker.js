@@ -289,12 +289,61 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nfl-props') return nflProps(env, url);
   if (p === '/api/usage') return oddsUsage(env);
 
+  // Scores come from StatsAPI, which is free and authoritative for MLB. They
+  // used to be bought from the Odds API for 2 credits a call, 1,102 times on
+  // 2026-09-04 — 29% of that day's entire quota spend, for a scoreboard.
+  if (p === '/api/scores') return mlbScores();
+
   const key = env.ODDS_API_KEY;
   if (!key) return err('ODDS_API_KEY is not configured', 500);
-  const upstream = p === '/api/odds'
-    ? `${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h,totals&oddsFormat=american&dateFormat=iso`
-    : `${ODDS}/scores?apiKey=${key}&daysFrom=1&dateFormat=iso`;
-  return proxy(upstream, env, ctx, p === '/api/odds' ? 'api:odds' : 'api:scores');
+  // 300s, not 30. The ticker polls this every 60 seconds, so a 30-second TTL
+  // had already expired by the time the next poll arrived and the shared cache
+  // never once absorbed a request — every poll bought a fresh call. The number
+  // this feeds is a moneyline label on a ticker; it does not move in 5 minutes.
+  return proxy(`${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h,totals&oddsFormat=american&dateFormat=iso`,
+    env, ctx, 'api:odds', 300);
+}
+
+// -------------------------------------------------------------------------
+// /api/scores — tonight's scoreboard, from StatsAPI rather than the paid feed.
+// Shaped exactly like the Odds API /scores response it replaces (id,
+// commence_time, completed, home_team, away_team, scores[]) so the client did
+// not have to change to read it.
+//
+// The one field that cannot be preserved is `id`: an Odds API event id has no
+// StatsAPI equivalent. The client matched odds to scores on it, so that lookup
+// moved to home_team, which both feeds spell the same way.
+// -------------------------------------------------------------------------
+async function mlbScores() {
+  try {
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}&hydrate=team,linescore`,
+      { headers: { accept: 'application/json' } });
+    if (!r.ok) return cors(json([], 30));
+    const d = await r.json();
+    const games = (((d.dates || [])[0] || {}).games) || [];
+    const rows = games.map((g) => {
+      const away = g.teams.away, home = g.teams.home;
+      const ls = g.linescore || {};
+      const state = (g.status && g.status.abstractGameState) || 'Preview';
+      const aR = numOr(away.score, ls.teams && ls.teams.away && ls.teams.away.runs);
+      const hR = numOr(home.score, ls.teams && ls.teams.home && ls.teams.home.runs);
+      // A 0-0 game in progress is a real score; only a game that has not started
+      // gets an empty array, which is how the client tells "no score yet" from
+      // "nobody has scored". Matching the Odds API's own behaviour here.
+      const hasScore = (state === 'Live' || state === 'Final') && aR != null && hR != null;
+      return {
+        id: 'g' + g.gamePk,
+        commence_time: g.gameDate,
+        completed: state === 'Final',
+        home_team: home.team.name,
+        away_team: away.team.name,
+        scores: hasScore
+          ? [{ name: away.team.name, score: String(aR) }, { name: home.team.name, score: String(hR) }]
+          : [],
+      };
+    });
+    return cors(json(rows, 30));   // free upstream, so freshness costs nothing
+  } catch (e) { return cors(json([], 30)); }
 }
 
 // -------------------------------------------------------------------------
@@ -5496,13 +5545,13 @@ const TEAM_ABBR_BY_NAME = {
 // -------------------------------------------------------------------------
 // Shared helpers
 // -------------------------------------------------------------------------
-async function proxy(upstream, env, ctx, route) {
+async function proxy(upstream, env, ctx, route, maxAge) {
   let r;
   try {
     r = await fetch(upstream, { headers: { accept: 'application/json' } });
-    // /api/odds and /api/scores are paid calls like any other. They were the two
-    // spenders with no meter on them at all, so they could never show up in the
-    // ledger no matter how much they cost.
+    // A paid call like any other. This was one of two spenders with no meter on
+    // it at all, so it could never show up in the ledger no matter what it cost
+    // -- and it turned out to be 29% of a day's quota.
     if (route && env) {
       const rec = recordOddsUsage(env, r, route);
       if (ctx && ctx.waitUntil) ctx.waitUntil(rec); else await rec;
@@ -5515,7 +5564,10 @@ async function proxy(upstream, env, ctx, route) {
     status: r.status,
     headers: {
       'content-type': 'application/json',
-      'cache-control': 'public, max-age=30',
+      // Caller-set, because 30 was shorter than the poll interval of the only
+      // thing that reads this -- a TTL that expires before the next request is
+      // a cache that can never be hit.
+      'cache-control': `public, max-age=${maxAge || 30}`,
       'x-requests-remaining': r.headers.get('x-requests-remaining') || '',
       'x-requests-used': r.headers.get('x-requests-used') || '',
     },

@@ -444,20 +444,33 @@
 
   async function refreshLiveData() {
     if (!LIVE_MODE) return;
+    // The score ticker was removed from the layout. renderTicker already returns
+    // immediately without #ticker, and state.liveTicker is read nowhere else —
+    // so this whole poll was filling a variable nothing displays. On 2026-09-04
+    // it spent 2,204 Odds API credits, 29% of that day's entire quota, once a
+    // minute, on a UI element that does not exist.
+    //
+    // Guarded rather than deleted: putting #ticker back in the layout should
+    // bring its feed back with it, not require someone to rediscover this.
+    if (!el.ticker) return;
     try {
       const [scores, odds] = await Promise.all([
         fetchJson('/api/scores').catch(() => []),
         fetchJson('/api/odds').catch(() => []),
       ]);
-      const oddsById = {};
-      (Array.isArray(odds) ? odds : []).forEach((e) => { oddsById[e.id] = e; });
+      // Keyed on home_team, not id. /api/scores is now served from StatsAPI,
+      // whose game ids have nothing to do with Odds API event ids, so an id
+      // lookup silently missed every row and every ticker entry lost its price.
+      // Both feeds spell the team the same way.
+      const oddsByHome = {};
+      (Array.isArray(odds) ? odds : []).forEach((e) => { oddsByHome[e.home_team] = e; });
 
       const source = Array.isArray(scores) && scores.length ? scores
         : (Array.isArray(odds) ? odds : []);
 
       const ticker = source.map((e) => {
         const away = e.away_team, home = e.home_team;
-        const oddsEvent = oddsById[e.id] || e;
+        const oddsEvent = oddsByHome[e.home_team] || e;
         const ml = homeMoneyline(oddsEvent);
         const hasScore = Array.isArray(e.scores) && e.scores.length;
         return {
@@ -483,14 +496,19 @@
   async function refreshBoard() {
     if (!LIVE_MODE) return;
     try {
-      const [apiBoard, scores, odds] = await Promise.all([
-        fetchJson('/api/board').catch(() => []),
+      // /api/board first, alone. scores and odds are ONLY read by the fallback
+      // below, so fetching them alongside bought two paid Odds API calls every
+      // five minutes and threw both away whenever the board came back healthy —
+      // which is almost always. They are now fetched only when actually needed.
+      const apiBoard = await fetchJson('/api/board').catch(() => []);
+      const haveBoard = Array.isArray(apiBoard) && apiBoard.length;
+      const [scores, odds] = haveBoard ? [[], []] : await Promise.all([
         fetchJson('/api/scores').catch(() => []),
         fetchJson('/api/odds').catch(() => []),
       ]);
 
       let board = [];
-      if (Array.isArray(apiBoard) && apiBoard.length) {
+      if (haveBoard) {
         board = apiBoard.map((b) => {
           const names = b.pitcherNames && b.pitcherNames.length ? b.pitcherNames.join(' v. ') : 'Pitchers TBD';
           const scorePart = b.score ? `${b.status === 'Final' ? 'Final' : 'Live'} ${b.score}` : '';

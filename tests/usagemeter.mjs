@@ -149,6 +149,34 @@ const env0 = { ODDS_API_KEY: 'k' };
 }
 
 {
+  // /api/scores is served from StatsAPI now. It used to be proxied from the paid
+  // feed at 2 credits a call, 1,102 times on 2026-09-04 — 29% of that day's whole
+  // quota, for a scoreboard MLB gives away. Asserted rather than trusted because
+  // the regression is invisible: it would still return correct scores.
+  const { db, routes } = makeDb();
+  let oddsCalls = 0;
+  const prevFetch = globalThis.fetch;
+  globalThis.fetch = async (u, o) => {
+    if (String(u).includes('api.the-odds-api.com')) oddsCalls++;
+    return prevFetch(u, o);
+  };
+  const r = await mod.default.fetch(new Request('https://x/api/scores'), { ...env0, DB: db }, ctx);
+  await settle();
+  globalThis.fetch = prevFetch;
+  const body = await r.json();
+
+  console.log('\n-- /api/scores costs nothing --');
+  ok(oddsCalls === 0, `no Odds API call is made to build the scoreboard (${oddsCalls})`);
+  ok([...routes.values()].length === 0, 'and nothing is billed to any route');
+  ok(Array.isArray(body), 'it still answers with an array');
+  if (body.length) {
+    const k = Object.keys(body[0]).sort().join(',');
+    ok(k === 'away_team,commence_time,completed,home_team,id,scores',
+      `and keeps the shape the client reads (${k})`);
+  }
+}
+
+{
   // A response with no x-requests-last must not be silently counted as free.
   sendCostHeader = false;
   const { db, routes } = makeDb();
