@@ -120,7 +120,28 @@ const arms = rows.flatMap((r) => r.pitchers || []);
 const byId = Object.fromEntries(arms.map((a) => [a.id, a]));
 const ace = byId[901], small = byId[902];
 
-console.log('-- the model matches its own arithmetic --');
+// The grading pass fetches a boxscore per game, and it decides WHICH games from
+// a SQL query. That query originally read the picks table alone, which coupled
+// hits grading to there being an ungraded K pick: a game with no priced K prop
+// never appeared, and any game dropped out for good the moment its picks graded
+// or voided. proj_log writes a row for every probable starter, so the surviving
+// sample would have been "games the book priced" — the wrong population to judge
+// a projection on, and wrong in a way no output would ever show.
+//
+// Asserted on the source because the failure is an absence: nothing errors, the
+// rows just stay NULL forever.
+{
+  const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
+  const fn = src.slice(src.indexOf('async function gradeUngraded('));
+  const head = fn.slice(0, fn.indexOf('if (!rows.length) return;'));
+  console.log('-- grading is driven by projections, not only by picks --');
+  ok(/FROM proj_log WHERE actual IS NULL/.test(head),
+    'the game list includes games with an ungraded projection');
+  ok(/FROM picks WHERE result IS NULL/.test(head),
+    'and still includes games with an ungraded pick');
+}
+
+console.log('\n-- the model matches its own arithmetic --');
 ok(!!ace && !!small, 'both starters projected');
 ok(ace && near(ace.projH, expect(5.5, 180, 30), 0.12),
   `long sample: projH ${ace && ace.projH} vs expected ${expect(5.5, 180, 30).toFixed(2)}`);

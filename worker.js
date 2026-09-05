@@ -2908,7 +2908,20 @@ function isAbandoned(g) {
 async function gradeUngraded(env) {
   const db = env.DB;
   const today = slateDate();
-  const rows = (await db.prepare('SELECT DISTINCT game_id, date FROM picks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
+  // Games needing a boxscore: those with an ungraded PICK, and those with an
+  // ungraded PROJECTION. The second half is not optional. proj_log writes a row
+  // for every probable starter, but picks only exist where a market was priced,
+  // so driving this off picks alone would silently never grade the projections
+  // for any game that had no priced K prop — and would drop the rest the moment
+  // their picks graded or voided, since the game then leaves the pending pool
+  // for good. The surviving sample would be "games the book priced", which is
+  // exactly the wrong population to judge a projection on.
+  await ensureProjLogSchema(db);
+  const rows = (await db.prepare(
+    `SELECT DISTINCT game_id, date FROM picks WHERE result IS NULL AND date < ?
+     UNION
+     SELECT DISTINCT game_id, date FROM proj_log WHERE actual IS NULL AND date < ?`
+  ).bind(today, today).all()).results || [];
   if (!rows.length) return;
 
   // Only grade games that are actually Final (never a live/postponed one).
@@ -4064,6 +4077,20 @@ async function edgeDebug(env) {
       const hr = (await env.DB.prepare(
         "SELECT proj, actual FROM proj_log WHERE market='H' AND actual IS NOT NULL"
       ).all()).results || [];
+      // Rows written but not yet graded. Reported separately because n=0 has two
+      // very different causes — nothing projected yet (broken write path) versus
+      // nothing final yet (working, just early) — and without this the endpoint
+      // cannot tell them apart. Grading only runs on slate dates before today,
+      // so a full slate sits pending until the Pacific date rolls over.
+      const pend = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM proj_log WHERE market='H' AND actual IS NULL"
+      ).first();
+      const pending = (pend && pend.n) || 0;
+      if (!hr.length) {
+        hitsProj = pending
+          ? { n: 0, pending, note: `${pending} projections logged, none graded yet — grading runs once the slate date rolls over` }
+          : { n: 0, pending: 0, note: 'no hits projections logged yet' };
+      }
       if (hr.length) {
         const n = hr.length;
         const mp = hr.reduce((s, r) => s + r.proj, 0) / n;
@@ -4071,7 +4098,7 @@ async function edgeDebug(env) {
         const mae = hr.reduce((s, r) => s + Math.abs(r.proj - r.actual), 0) / n;
         const varA = hr.reduce((s, r) => s + (r.actual - ma) ** 2, 0) / n;
         hitsProj = {
-          n, meanProj: round2(mp), meanActual: round2(ma),
+          n, pending, meanProj: round2(mp), meanActual: round2(ma),
           bias: round2(mp - ma), mae: round2(mae),
           dispersion: ma > 0 ? round2(varA / ma) : null,
           // Out-of-sample, unlike the constants: these rows were projected before
