@@ -4306,6 +4306,39 @@ async function batterDebug(env) {
     const byPricePosted = priceOrder.filter((k) => pricePostedMap[k])
       .map((k) => ({ price: k, ...summarize(pricePostedMap[k]) }));
 
+    // Price band x MARKET and price band x ERA, posted plays only.
+    //
+    // These exist to attack a specific result rather than to browse. The
+    // -114..+105 band came back at -12.4% ROI on the posted board while every
+    // other band was break-even or better, and that bucket was picked AFTER
+    // seeing the numbers — which is exactly how a curve-fitted filter gets
+    // born. One lucky slice shows up in one cell; a real effect shows up in
+    // BOTH markets and BOTH pricing eras. If it only lives in one, it is noise
+    // wearing a p-value.
+    //
+    // Cells under 20 picks are dropped: at that size ROI is dominated by a
+    // handful of results and reading a sign off it is self-deception.
+    const crossPrice = (keyFn, label) => {
+      const m = groupBy(posted, (r) => `${priceLabel(r.price)}|${keyFn(r)}`);
+      return Object.keys(m)
+        .map((k) => {
+          const i = k.indexOf('|');
+          return { price: k.slice(0, i), [label]: k.slice(i + 1), ...summarize(m[k]) };
+        })
+        .filter((x) => x.n >= 20)
+        .sort((a, b) => priceOrder.indexOf(a.price) - priceOrder.indexOf(b.price)
+          || String(a[label]).localeCompare(String(b[label])));
+    };
+    const byPriceMarket = crossPrice((r) => String(r.market || '?').toUpperCase(), 'market');
+    const byPriceEra = crossPrice((r) => r.model_ver || 'dk-fair', 'era');
+    // The counterfactual the split is really asking about. REPORTED, NOT
+    // APPLIED: no filter is in force, and it should not become one until the
+    // two splits above say the effect is real in both markets and both eras.
+    const byPriceExclNearEven = {
+      ...summarize(posted.filter((r) => priceLabel(r.price) !== '-114..+105')),
+      note: 'posted plays EXCLUDING the -114..+105 band — a counterfactual, not a live filter',
+    };
+
     const tierMap = groupBy(posted, (r) => String(r.tier || '?'));
     const byTier = ['1', '2', '3'].filter((k) => tierMap[k])
       .map((k) => ({ tier: k, ...summarize(tierMap[k]) }));
@@ -4657,6 +4690,9 @@ async function batterDebug(env) {
       byMonth,
       byPrice,
       byPricePosted,
+      byPriceMarket,
+      byPriceEra,
+      byPriceExclNearEven,
       byModelProb,
       byModelProbPosted,
       byMarket,
