@@ -300,7 +300,11 @@ async function handleApi(p, env, ctx, url) {
   // had already expired by the time the next poll arrived and the shared cache
   // never once absorbed a request — every poll bought a fresh call. The number
   // this feeds is a moneyline label on a ticker; it does not move in 5 minutes.
-  return proxy(`${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h,totals&oddsFormat=american&dateFormat=iso`,
+  // h2h only. `totals` was requested for years and read by nothing: the sole
+  // consumer of this endpoint is homeMoneyline(), which looks up the h2h market
+  // and nothing else. Billing is per market, so that second market doubled the
+  // call's cost to buy a number no code path has ever opened.
+  return proxy(`${ODDS}/odds?apiKey=${key}&regions=us&markets=h2h&oddsFormat=american&dateFormat=iso`,
     env, ctx, 'api:odds', 300);
 }
 
@@ -648,9 +652,26 @@ async function board(env, ctx, opts) {
     return (r.w + 10) / (r.w + r.l + 20); // shrink toward .500
   };
 
-  // Real moneylines + run lines — one call across US (DraftKings/FanDuel, the
-  // books we bet) and EU (Pinnacle, the sharp reference we price value against).
-  // Adding `spreads` (the run line) to the same call costs no extra quota.
+  // Real moneylines + run lines, in one call.
+  //
+  // Requested BY BOOK KEY rather than by region. The Odds API bills
+  // markets x region-equivalents, and an explicit bookmaker list costs
+  // ceil(books/10) = 1, where `regions=us,eu` costs 2 — so this halves the call
+  // (4 credits -> 2) while returning identical prices. The batter prop path has
+  // always done it this way; this one had not, and the per-route ledger put the
+  // difference at ~300 credits a day.
+  //
+  // The old comment here claimed adding `spreads` cost no extra quota. It does:
+  // billing is per market, and the ledger measured this call at exactly 4
+  // credits = 2 markets x 2 regions. The run line was never free, it was just
+  // never itemised.
+  //
+  // Only the three books actually consumed below are requested. Every reader is
+  // filtered by key (dkfd = BOOKS, pin = REF_BOOK), so naming more would change
+  // nothing except the size of the response. Widening this to the SHARP_BOOKS
+  // pool for a median fair line costs the same 1 region-equivalent, but that
+  // changes what the model calls fair, so it stays a separate decision.
+  const ML_BOOKS = [...Object.keys(BOOKS), REF_BOOK].join(',');
   const mlByHome = {};   // DK/FD best price per side — what you'd actually bet
   const mlBookPairs = {}; // per-book {book,home,away} — real quotes, for de-vigging
   const pinByHome = {};  // Pinnacle price per side — the sharp fair line
@@ -658,7 +679,7 @@ async function board(env, ctx, opts) {
   const pinRlByHome = {}; // Pinnacle run-line price+point per side (sharp fair)
   if (key) {
     try {
-      const r = await fetch(`${ODDS}/odds?apiKey=${key}&regions=us,eu&markets=h2h,spreads&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&bookmakers=${ML_BOOKS}&markets=h2h,spreads&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r, 'board:h2h+runline'));
       if (r.ok) {
         const events = await r.json();
