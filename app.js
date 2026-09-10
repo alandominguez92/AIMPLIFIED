@@ -4112,14 +4112,19 @@
 
     if (el.nflBannerTag) el.nflBannerTag.textContent = pre ? 'Preseason · context only' : 'Context · not plays';
     if (el.nflBannerBody) {
+      // Both halves of this used to say no book quoted NFL player props. That was
+      // true when it was written on 2026-08-14 and stopped being true on
+      // 2026-09-09, when the coverage re-probe came back VIABLE — Pinnacle, novig
+      // and prophetx all quoting two-sided. The board was then rendering "line
+      // 90.5 · 4 sharp" directly beneath a sentence saying no line existed.
+      // A banner that contradicts the rows under it is worse than no banner.
       el.nflBannerBody.innerHTML = isLines
-        ? 'No book quotes <b>NFL player props</b> yet, so nothing here is postable. Below is the game-line '
-          + 'read — spread, total and implied team totals — priced against the sharp pool where two or more '
-          + 'sharp books agree.'
-        : 'These are <b>projections, not plays</b>. No book quotes NFL yardage props through our feed, so '
-          + 'there is no line to price against and nothing here is graded. <b>Passing yards are not shown</b>: '
-          + 'backtested over two seasons the outcome landed below the projected mean only 42% and 49% of the '
-          + 'time, so the skew this model trades on is not there.'
+        ? 'The game-line read — spread, total and implied team totals — priced against the sharp pool '
+          + 'where two or more sharp books agree. <b>Context, not plays</b>: nothing on this board is postable.'
+        : 'These are <b>projections, not plays</b>. Lines are now quoted and captured, but nothing here is '
+          + 'priced or graded yet — the bar shows where the model sits <b>against the market</b>, not value. '
+          + '<b>Passing yards are not shown</b>: backtested over two seasons the outcome landed below the '
+          + 'projected mean only 42% and 49% of the time, so the skew this model trades on is not there.'
         ;
       if (pre) el.nflBannerBody.innerHTML += ' Preseason starters play a quarter: <b>nothing enters the public '
         + 'record</b>, and preseason snaps and routes never reach the model’s priors.';
