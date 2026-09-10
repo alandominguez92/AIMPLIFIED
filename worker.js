@@ -101,7 +101,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
-  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
 export default {
@@ -285,6 +285,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/batter-debug') return batterDebug(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
+  if (p === '/api/nfl-compare') return nflCompare(env, url);
   if (p === '/api/nfl-capture') {
     const o = await ingestNflProps(env, {
       sport: url.searchParams.get('sport') || 'nfl',
@@ -5967,6 +5968,133 @@ const NFL_ABBR = {
 const nflAbbr = (n) => NFL_ABBR[n] || n || '';
 const NFL_GAMELINE_POOL = ['pinnacle', 'lowvig', 'betonlineag'];
 const NFL_EXEC = ['draftkings', 'fanduel', 'betmgm', 'betrivers', 'williamhill_us'];
+// Sharp candidates for PLAYER PROPS, which is not the same list as the game
+// lines. The 2026-09-09 probe found lowvig and betonlineag quote game lines but
+// return nothing on props, while novig and prophetx only appear when asked for
+// by key. Counted, not pooled: prophetx came back with a booksum of 0.70-0.76,
+// which is below 1.0 and therefore not a real two-sided quote — unmatched
+// exchange orders at week 1. It is reported so the thin coverage is visible,
+// and deliberately not de-vigged into a fair number yet.
+const NFL_PROPS_SHARP = ['pinnacle', 'novig', 'prophetx', 'lowvig', 'betonlineag'];
+
+// -------------------------------------------------------------------------
+// /api/nfl-compare — the frozen projection next to the line that was captured
+// with it.
+//
+// This is a READER. It computes no fair line, no edge percentage, no tier, and
+// posts nothing. The gap it reports is the model DISAGREEING with the market,
+// which is not the same thing as value: the 58.9-61.8% under-mean the model was
+// built on was measured against our own mean, never against a posted line, so
+// calling the gap an edge would assert exactly the thing that has not been shown.
+//
+// It exists so the projections are legible and gradeable. Until nfl_proj.actual
+// is filled from box scores, "does the model beat the line" stays open.
+// -------------------------------------------------------------------------
+const NFL_PROJ_TO_ODDS = { receiving: 'player_reception_yds', rushing: 'player_rush_yds' };
+async function nflCompare(env, url) {
+  const out = {
+    note: 'frozen projection vs the captured market line — NOT a price. No fair line, no edge, no tier, nothing posted.',
+    gapMeans: 'proj minus line, in yards. A model/market disagreement, not value.',
+    rows: [], games: 0,
+  };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 60)); }
+  try {
+    await ensureNflSchema(env.DB);
+    const all = url && url.searchParams && url.searchParams.get('all') === '1';
+    const nowIso = new Date().toISOString();
+    const projs = (await env.DB.prepare(
+      `SELECT event_id, player, market, team, pos, game, commence, proj, p25, p50, p75, conf, actual
+         FROM nfl_proj WHERE season=2026 ${all ? '' : 'AND commence > ?'} ORDER BY commence, proj DESC`
+    ).bind(...(all ? [] : [nowIso])).all()).results || [];
+    if (!projs.length) { out.note += ' (no frozen projections for upcoming games — run /api/nfl-capture)'; return cors(json(out, 60)); }
+
+    const eventIds = [...new Set(projs.map((r) => r.event_id))];
+    out.games = eventIds.length;
+
+    // Latest quote per (event, market, player, point, book). captured_at is in
+    // the primary key so the table holds the full move history; only the most
+    // recent snapshot is the current line.
+    const latest = new Map();
+    for (let i = 0; i < eventIds.length; i += 20) {
+      const chunk = eventIds.slice(i, i + 20);
+      const q = await env.DB.prepare(
+        'SELECT event_id, market, player, point, book, over, under, captured_at FROM nfl_lines'
+        + ' WHERE event_id IN (' + chunk.map(() => '?').join(',') + ')'
+        + " AND market IN ('player_reception_yds','player_rush_yds')"
+      ).bind(...chunk).all();
+      for (const r of (q.results || [])) {
+        const k = `${r.event_id}|${r.market}|${r.player}|${r.point}|${r.book}`;
+        const prev = latest.get(k);
+        if (!prev || String(prev.captured_at) < String(r.captured_at)) latest.set(k, r);
+      }
+    }
+    // Regroup by (event, market, player) so each player's book quotes sit together.
+    const byPlayer = new Map();
+    for (const r of latest.values()) {
+      // normName is what the MLB prop matching uses, so a feed spelling like
+      // "A.J. Brown" joins the priors' "AJ Brown" instead of silently missing.
+      const k = `${r.event_id}|${r.market}|${normName(r.player)}`;
+      let bucket = byPlayer.get(k);
+      if (!bucket) { bucket = []; byPlayer.set(k, bucket); }
+      bucket.push(r);
+    }
+
+    for (const p of projs) {
+      const oddsMkt = NFL_PROJ_TO_ODDS[p.market];
+      const quotes = oddsMkt ? (byPlayer.get(`${p.event_id}|${oddsMkt}|${normName(p.player)}`) || []) : [];
+      const row = {
+        player: p.player, pos: p.pos, team: p.team, game: p.game, commence: p.commence,
+        market: p.market, proj: p.proj, p25: p.p25, p50: p.p50, p75: p.p75, conf: p.conf,
+        actual: p.actual,
+      };
+      if (!quotes.length) {
+        // Named explicitly rather than left null: "no book quoted him" and "the
+        // capture missed him" are different problems and only one is ours.
+        row.line = null; row.lineStatus = 'no captured quote for this player/market';
+        out.rows.push(row); continue;
+      }
+      // The main line is the point the most books agree on. Taking the first
+      // book's number instead would let one outlier alternate line stand in for
+      // the market.
+      const byPoint = {};
+      for (const q of quotes) byPoint[q.point] = (byPoint[q.point] || 0) + 1;
+      const line = Number(Object.keys(byPoint).sort((a, b) => byPoint[b] - byPoint[a] || Number(a) - Number(b))[0]);
+      const atLine = quotes.filter((q) => Number(q.point) === line);
+      const best = (side) => {
+        let price = null, book = null;
+        for (const q of atLine) {
+          if (!NFL_EXEC.includes(q.book)) continue;
+          const v = q[side];
+          if (typeof v !== 'number') continue;
+          if (price == null || payoutMult(v) > payoutMult(price)) { price = v; book = q.book; }
+        }
+        return { price, book };
+      };
+      const o = best('over'), u = best('under');
+      const sharp = [...new Set(atLine.filter((q) => NFL_PROPS_SHARP.includes(q.book)
+        && typeof q.over === 'number' && typeof q.under === 'number').map((q) => q.book))];
+      row.line = line;
+      row.gap = round1(p.proj - line);
+      row.overPrice = o.price; row.overBook = o.book;
+      row.underPrice = u.price; row.underBook = u.book;
+      row.books = atLine.length;
+      row.sharpN = sharp.length;
+      row.sharpBooks = sharp;
+      // Whether a fair line COULD be built here under the two-book rule. Not
+      // whether one was — none is.
+      row.priceable = sharp.length >= 2;
+      out.rows.push(row);
+    }
+    const withLine = out.rows.filter((r) => r.line != null);
+    out.summary = {
+      projections: out.rows.length,
+      matchedToALine: withLine.length,
+      priceableUnderTwoBookRule: withLine.filter((r) => r.priceable).length,
+      note: 'matchedToALine < projections usually means the book has not quoted that player, not that the capture failed',
+    };
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return cors(json(out, 60));
+}
 
 // Split so the projection endpoint can reuse the same slate without re-querying
 // D1 or re-deriving fair from scratch. nflBoard is now only the response wrapper.
