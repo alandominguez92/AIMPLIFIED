@@ -101,7 +101,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
-  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
 export default {
@@ -153,7 +153,7 @@ export default {
     }
 
     // Both write; caching either would serve a stale body and skip the write.
-    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture') return handleApi(p, env, ctx, url);
+    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade') return handleApi(p, env, ctx, url);
     const cacheKey = new Request(url.origin + p + (p === '/api/fair-probe' ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -286,6 +286,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-compare') return nflCompare(env, url);
+  if (p === '/api/nfl-grade') return nflGrade(env, url);
   if (p === '/api/nfl-capture') {
     const o = await ingestNflProps(env, {
       sport: url.searchParams.get('sport') || 'nfl',
@@ -5991,6 +5992,146 @@ const NFL_PROPS_SHARP = ['pinnacle', 'novig', 'prophetx', 'lowvig', 'betonlineag
 // is filled from box scores, "does the model beat the line" stays open.
 // -------------------------------------------------------------------------
 const NFL_PROJ_TO_ODDS = { receiving: 'player_reception_yds', rushing: 'player_rush_yds' };
+
+// -------------------------------------------------------------------------
+// /api/nfl-grade — fill nfl_proj.actual from the box score. Costs nothing: the
+// stats come from ESPN, not the paid odds feed.
+//
+// The distinction that matters is DNP versus zero. On 2026-09-09 three of ten
+// projections were for players who recorded nothing — a 55.3-yard rushing
+// projection for an inactive player is a guaranteed loss if it is ever posted,
+// and averaging it in as a 0 would slander a model that was never given a
+// chance to be wrong. But a player who dressed and gained nothing IS a real
+// zero and has to count.
+//
+// They are told apart by whether the player appears ANYWHERE in his team's box
+// score: present in some category but absent from receiving means he played and
+// caught nothing; absent entirely means he did not play. Same rule the MLB side
+// uses for a pitcher who struck nobody out.
+//
+// A graded DNP is stored as graded_at SET and actual NULL, so it leaves the
+// pending pool without ever being scored. Ungraded rows have both NULL.
+// -------------------------------------------------------------------------
+const ESPN_NFL = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
+async function nflGrade(env, url) {
+  const out = { note: 'fills nfl_proj.actual from ESPN box scores — no Odds API call, no credits',
+    pending: 0, events: 0, graded: 0, dnp: 0, unmatched: [], errors: [] };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 30)); }
+  try {
+    await ensureNflSchema(env.DB);
+    // A 5-hour buffer after kickoff: an NFL game runs ~3h10m, and grading a
+    // game still in progress would freeze a partial stat line as the result.
+    const cutoff = new Date(Date.now() - 5 * 3600 * 1000).toISOString();
+    const pend = (await env.DB.prepare(
+      `SELECT event_id, player, market, game, commence FROM nfl_proj
+        WHERE graded_at IS NULL AND commence IS NOT NULL AND commence < ? ORDER BY commence`
+    ).bind(cutoff).all()).results || [];
+    out.pending = pend.length;
+    if (!pend.length) { out.note += ' (nothing pending)'; return cors(json(out, 30)); }
+
+    // Full team names, not abbreviations. ESPN and nflverse disagree on several
+    // codes (LA/LAR, WAS/WSH), and a silent abbreviation mismatch would look
+    // exactly like a game nobody played.
+    const evIds = [...new Set(pend.map((r) => r.event_id))];
+    const names = new Map();
+    for (let i = 0; i < evIds.length; i += 20) {
+      const chunk = evIds.slice(i, i + 20);
+      const q = await env.DB.prepare(
+        'SELECT DISTINCT event_id, home, away, commence FROM nfl_lines WHERE event_id IN ('
+        + chunk.map(() => '?').join(',') + ')'
+      ).bind(...chunk).all();
+      for (const r of (q.results || [])) if (r.home && r.away) names.set(r.event_id, r);
+    }
+
+    const dayCache = new Map();
+    const scoreboard = async (yyyymmdd) => {
+      if (dayCache.has(yyyymmdd)) return dayCache.get(yyyymmdd);
+      let d = null;
+      try {
+        const r = await fetch(`${ESPN_NFL}/scoreboard?dates=${yyyymmdd}`, { headers: { accept: 'application/json' } });
+        if (r.ok) d = await r.json();
+      } catch (e) { out.errors.push('scoreboard ' + yyyymmdd + ': ' + String((e && e.message) || e)); }
+      dayCache.set(yyyymmdd, d);
+      return d;
+    };
+
+    const stmts = [];
+    const byEvent = {};
+    for (const r of pend) (byEvent[r.event_id] = byEvent[r.event_id] || []).push(r);
+
+    for (const [evId, rows] of Object.entries(byEvent)) {
+      const meta = names.get(evId);
+      if (!meta) { out.unmatched.push({ event: evId, why: 'no nfl_lines row to read team names from' }); continue; }
+      // Kickoff is stored in UTC; a Sunday 13:00 ET game is already the next day
+      // in UTC for late windows, so both days are tried rather than assuming.
+      const t = Date.parse(meta.commence || rows[0].commence);
+      const days = [new Date(t), new Date(t - 864e5)].map((d) => d.toISOString().slice(0, 10).replace(/-/g, ''));
+      let espnId = null, final = false;
+      for (const day of days) {
+        const sb = await scoreboard(day);
+        for (const e of ((sb && sb.events) || [])) {
+          const comp = (e.competitions || [])[0] || {};
+          const nm = (comp.competitors || []).map((c) => (c.team || {}).displayName);
+          if (nm.includes(meta.home) && nm.includes(meta.away)) {
+            espnId = e.id;
+            final = (((comp.status || {}).type || {}).name) === 'STATUS_FINAL';
+          }
+        }
+        if (espnId) break;
+      }
+      if (!espnId) { out.unmatched.push({ event: evId, game: `${meta.away} @ ${meta.home}`, why: 'no ESPN event matched' }); continue; }
+      // Not final yet: leave it pending rather than grading a partial line.
+      if (!final) { out.unmatched.push({ event: evId, game: `${meta.away} @ ${meta.home}`, why: 'not final yet' }); continue; }
+      out.events++;
+
+      let sum;
+      try {
+        const r = await fetch(`${ESPN_NFL}/summary?event=${espnId}`, { headers: { accept: 'application/json' } });
+        if (!r.ok) { out.errors.push(`summary ${espnId}: ${r.status}`); continue; }
+        sum = await r.json();
+      } catch (e) { out.errors.push(`summary ${espnId}: ${String((e && e.message) || e)}`); continue; }
+
+      // yardsBy[market][normName] = yards ; played = every name in the box score
+      const yardsBy = { receiving: {}, rushing: {} };
+      const played = new Set();
+      for (const team of ((sum.boxscore || {}).players || [])) {
+        for (const cat of (team.statistics || [])) {
+          const labels = (cat.labels || []).map((l) => String(l).toUpperCase());
+          const yi = labels.indexOf('YDS');
+          for (const a of (cat.athletes || [])) {
+            const nm = normName(((a.athlete || {}).displayName) || '');
+            if (!nm) continue;
+            played.add(nm);
+            const bucket = yardsBy[cat.name];
+            if (!bucket || yi < 0) continue;
+            const v = Number((a.stats || [])[yi]);
+            if (Number.isFinite(v)) bucket[nm] = v;
+          }
+        }
+      }
+
+      const stamp = new Date().toISOString();
+      for (const row of rows) {
+        const nm = normName(row.player);
+        const bucket = yardsBy[row.market];
+        let actual = null;
+        if (bucket && Object.prototype.hasOwnProperty.call(bucket, nm)) actual = bucket[nm];
+        else if (played.has(nm)) actual = 0;   // dressed, recorded nothing in this market
+        // else: absent from the whole box score -> DNP, actual stays NULL
+        if (actual == null) out.dnp++; else out.graded++;
+        stmts.push(env.DB.prepare(
+          'UPDATE nfl_proj SET actual=?, graded_at=? WHERE event_id=? AND player=? AND market=? AND graded_at IS NULL'
+        ).bind(actual, stamp, row.event_id, row.player, row.market));
+      }
+    }
+
+    for (let i = 0; i < stmts.length; i += 50) {
+      try { await env.DB.batch(stmts.slice(i, i + 50)); }
+      catch (e) { out.errors.push('write: ' + String((e && e.message) || e)); }
+    }
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return cors(json(out, 30));
+}
 async function nflCompare(env, url) {
   const out = {
     note: 'frozen projection vs the captured market line — NOT a price. No fair line, no edge, no tier, nothing posted.',
@@ -6092,6 +6233,40 @@ async function nflCompare(env, url) {
       priceableUnderTwoBookRule: withLine.filter((r) => r.priceable).length,
       note: 'matchedToALine < projections usually means the book has not quoted that player, not that the capture failed',
     };
+
+    // The verdict block. Once rows are graded this settles the question the gap
+    // alone cannot: the model sits ~3.4 yards above the market on average, and
+    // that is either the model running hot or the market shading lines below the
+    // mean. Whichever predicts the ACTUAL better is the one telling the truth.
+    //
+    // modelMae vs lineMae is the whole test. If the line predicts outcomes more
+    // accurately than the projection does, the gap is model error and there is
+    // nothing to bet. Only if the model wins is the disagreement worth pricing.
+    //
+    // underMeanRate is the number the backtest reported (58.9-61.8%).
+    // underLineRate is the one that would actually pay. They are not the same
+    // statistic and the difference between them is exactly the bias above.
+    const g = withLine.filter((r) => typeof r.actual === 'number');
+    if (g.length) {
+      const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+      const mae = (f) => mean(g.map((r) => Math.abs(f(r) - r.actual)));
+      out.graded = {
+        n: g.length,
+        meanActual: round1(mean(g.map((r) => r.actual))),
+        meanProj: round1(mean(g.map((r) => r.proj))),
+        meanLine: round1(mean(g.map((r) => r.line))),
+        modelMae: round1(mae((r) => r.proj)),
+        lineMae: round1(mae((r) => r.line)),
+        underMeanRate: round1(g.filter((r) => r.actual < r.proj).length / g.length * 100),
+        underLineRate: round1(g.filter((r) => r.actual < r.line).length / g.length * 100),
+        read: 'modelMae < lineMae = the projection beats the market and the gap is worth pricing. '
+          + 'modelMae > lineMae = the model runs hot and the gap is its own error. '
+          + 'underMeanRate is what the backtest measured; underLineRate is what would actually pay.',
+      };
+      out.graded.verdict = out.graded.modelMae < out.graded.lineMae
+        ? 'model predicts actuals better than the line — gap may be real'
+        : 'the LINE predicts actuals better than the model — the gap is model error, do not price it';
+    }
   } catch (e) { out.error = String((e && e.message) || e); }
   return cors(json(out, 60));
 }
