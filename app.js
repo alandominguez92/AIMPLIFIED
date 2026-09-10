@@ -4360,13 +4360,20 @@
         fetchJson('/api/nfl-props'),
         fetchJson('/api/nfl-compare').catch(() => null),
       ]);
+      // Keyed by GAME as well as player and market. The board spans a 10-day
+      // horizon, so it carries two weeks at once, and six players appeared twice
+      // in week 1 alone -- Detroit and Buffalo meet in week 2, so their skill
+      // players hold a row in each. Without the game in the key the week-1 line
+      // was stamped onto the week-2 projection: a real line displayed against a
+      // projection it has nothing to do with.
+      const lineKey = (r) => `${r.player}|${r.market}|${r.game}`;
       const lines = new Map();
       for (const r of ((cmp && cmp.rows) || [])) {
-        if (r && r.line != null) lines.set(r.player + '|' + r.market, r);
+        if (r && r.line != null) lines.set(lineKey(r), r);
       }
       const rows = (d && Array.isArray(d.rows)) ? d.rows : [];
       for (const r of rows) {
-        const m = lines.get(r.player + '|' + r.market);
+        const m = lines.get(lineKey(r));
         if (!m) continue;
         r.line = m.line;
         r.sharpN = m.sharpN;
