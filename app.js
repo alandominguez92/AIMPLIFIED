@@ -296,6 +296,35 @@
     return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // The model-vs-market bar, in one place instead of four.
+  //
+  // The grammar is identical on every board and every sport: the FILL is OUR
+  // number, the TICK is the MARKET's, and the distance between them is the
+  // disagreement. That is the entire reason the bar exists — which is why a
+  // board must never fill to the market's own number. Doing that draws the
+  // market against itself and renders a zero gap on every row, however healthy
+  // the underlying data is.
+  //
+  // `axisPct` maps a value onto the axis, and the choice of axis is a real
+  // decision rather than a detail. Boards where every row is the SAME market
+  // (strikeouts, NFL receiving yards) pass a SHARED axis, so one row's bar can
+  // honestly be compared against another's. Boards where each row carries its
+  // own line (batter props, where 0.5 HR and 1.5 total bases sit side by side)
+  // pass a per-row axis, because comparing those lengths would be meaningless.
+  //
+  // The tick is OMITTED, never faked, when no market number exists. A tick
+  // resting exactly on the fill would claim a market read that was never posted.
+  //
+  // Clamping lives here so it cannot drift between callers: a fill at 0 or 100%
+  // would otherwise vanish into the rail and read as missing data rather than as
+  // an extreme.
+  function miniBar(fill, tick, axisPct) {
+    const c = (v) => Math.max(3, Math.min(97, axisPct(v)));
+    return `<span class="bmini"><span class="uz" style="width:${c(fill)}%"></span>`
+      + (tick != null ? `<span class="tick" style="left:${c(tick)}%"></span>` : '')
+      + '</span>';
+  }
+
   // ---------------------------------------------------------------------
   // DOM refs
   // ---------------------------------------------------------------------
@@ -2072,10 +2101,8 @@
         const mlFair = (ml.fairSource && ml.fairSource !== 'model' && ml.winProb != null) ? ml.winProb : null;
         pickCell = `<span class="ctx-pick">${esc(ml.pick || '—')}</span>`;
         if (typeof mlModel === 'number') {
-          const clamp = (v) => Math.max(3, Math.min(97, v));
-          pickCell += `<span class="bmini"><span class="uz" style="width:${clamp(mlModel)}%"></span>`
-            + (mlFair != null ? `<span class="tick" style="left:${clamp(mlFair)}%"></span>` : '')
-            + `</span>`
+          // Win probabilities are already percentages, so the axis is identity.
+          pickCell += miniBar(mlModel, mlFair, (v) => v)
             + `<span class="bw-cush">model <b>${mlModel}%</b> to win`
             + (mlFair != null ? ` · tick: market <b>${mlFair}%</b> de-vigged` : ' · no market priced')
             + `</span>`;
@@ -2095,15 +2122,13 @@
             + `<span class="bw-cush bw-out">out of the lineup · projection withdrawn</span>`;
         } else if (g.line != null && g.projVal != null) {
           const axisMax = g.line <= 1 ? 2 : Math.max(4, Math.ceil(g.line + 1.5));
-          const pct = (v) => Math.max(3, Math.min(97, v / axisMax * 100));
-          const lp = pct(g.line), mp = pct(g.projVal);
+          const axisPct = (v) => v / axisMax * 100;
           // Fill runs to where the model lands; the tick marks the posted line.
           // The gap between them IS the cushion — the thing being bet.
           // Spelled out. "U 1.5 TB" is shorthand that only a returning reader
           // decodes, and this is the row's headline.
           pickCell = `<span class="fade-pick">${esc(spellPick(g.pick))}</span>`
-            + `<span class="bmini"><span class="uz" style="width:${mp}%"></span>`
-            + `<span class="tick" style="left:${lp}%"></span></span>`
+            + miniBar(g.projVal, g.line, axisPct)
             + whyUnderCue(g);
         }
         const priced = hasEdge || g.odds != null || (Array.isArray(g.oddsBooks) && g.oddsBooks.length);
@@ -2129,12 +2154,9 @@
             || ps.reduce((m, p) => (!m || (p.proj || 0) > (m.proj || 0) ? p : m), null);
           if (lead && typeof lead.proj === 'number') {
             const line = lead.market && lead.market.line != null ? lead.market.line : null;
-            const pct = (v) => Math.max(3, Math.min(97, v / K_AXIS_MAX * 100));
             const gap = line != null ? Math.round((lead.proj - line) * 10) / 10 : null;
             pickCell = `<span class="ctx-pick">${esc(g.pick)}</span>`
-              + `<span class="bmini"><span class="uz" style="width:${pct(lead.proj)}%"></span>`
-              + (line != null ? `<span class="tick" style="left:${pct(line)}%"></span>` : '')
-              + `</span>`
+              + miniBar(lead.proj, line, (v) => v / K_AXIS_MAX * 100)
               + (gap != null
                 // Deliberately uncoloured. On the batter board green/red on this
                 // line means value for/against the bet; here the board posts no
@@ -4316,10 +4338,41 @@
   // one dishonest thing this table could do.
   const NFL_PROP_COLS = ['Player', 'Projection', '50% range', 'Median', 'Usage', 'Confidence', ''];
 
+  // Shared axes, one per market, so a bar in one row can honestly be compared
+  // with the bar in the next — every row on this board is the same market, the
+  // same call the strikeout board makes with K_AXIS_MAX. Sized to cover a real
+  // slate's projections and posted lines with headroom: the top receiving
+  // projection seen so far is ~126 and the top rushing line ~66.
+  const NFL_YARD_AXIS = { receiving: 150, rushing: 120 };
+
   async function refreshNflProps() {
     if (!LIVE_MODE) return;
     try {
-      const d = await fetchJson('/api/nfl-props');
+      // Two calls, merged. /api/nfl-props is the projection source of truth and
+      // carries the usage fields the row needs; /api/nfl-compare carries the
+      // captured market line. Merging beats switching wholesale, because
+      // nfl-compare reads FROZEN projections and would silently drop usage.
+      //
+      // The line is taken but the gap is not: compare's gap is measured against
+      // the frozen projection, and this board draws the live one. Recomputing it
+      // here keeps the bar and its caption describing the same two numbers.
+      const [d, cmp] = await Promise.all([
+        fetchJson('/api/nfl-props'),
+        fetchJson('/api/nfl-compare').catch(() => null),
+      ]);
+      const lines = new Map();
+      for (const r of ((cmp && cmp.rows) || [])) {
+        if (r && r.line != null) lines.set(r.player + '|' + r.market, r);
+      }
+      const rows = (d && Array.isArray(d.rows)) ? d.rows : [];
+      for (const r of rows) {
+        const m = lines.get(r.player + '|' + r.market);
+        if (!m) continue;
+        r.line = m.line;
+        r.sharpN = m.sharpN;
+        r.underPrice = m.underPrice;
+        r.underBook = m.underBook;
+      }
       state.nflProps = (d && Array.isArray(d.rows)) ? d : { rows: [], error: 'empty' };
     } catch (e) {
       state.nflProps = { rows: [], error: 'unreachable' };
@@ -4357,6 +4410,27 @@
       + `</div></div>`;
   }
 
+  // The same bar the MLB boards draw: fill is our projection, tick is the
+  // posted line, and the space between them is the disagreement.
+  //
+  // Uncoloured on purpose, exactly as on the strikeout and moneyline boards.
+  // Green/red on the batter board means value for or against a bet we are
+  // actually making; this board posts nothing, so tinting a direction would read
+  // as a call that has not been earned. Which way the model leans is the message.
+  //
+  // The gap is emphatically NOT an edge. The model currently sits ~3.4 yards
+  // above the market on average (+8.1 where confidence is highest), and whether
+  // that is the market shading lines or the model running hot is unresolved
+  // until the graded record says so. The caption says "vs line", never "value".
+  function nflPropBar(r, market) {
+    if (r.line == null || typeof r.proj !== 'number') return '';
+    const axis = NFL_YARD_AXIS[market] || NFL_YARD_AXIS.receiving;
+    const gap = Math.round((r.proj - r.line) * 10) / 10;
+    const sharp = r.sharpN != null ? ` · ${r.sharpN} sharp` : '';
+    return miniBar(r.proj, r.line, (v) => v / axis * 100)
+      + `<span class="bw-cush">line ${r.line} · model <b>${Math.abs(gap)} ${gap >= 0 ? 'over' : 'under'}</b> vs line${sharp}</span>`;
+  }
+
   function nflPropRow(r, market) {
     const id = r.player + '|' + r.market;
     const open = state.nflOpen === id;
@@ -4375,6 +4449,7 @@
         <div class="matchup-cell">
           <span class="mc-head"><b>${esc(r.player)}</b> ${nflBadge(r.team)}</span>
           <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}</span>
+          ${nflPropBar(r, market)}
         </div>
         <span class="np-proj">${r.proj}<i>yds</i></span>
         <span class="np-range">${r.p25} – ${r.p75}</span>
