@@ -1696,6 +1696,14 @@
   // from the K-props base rows — the flagship market — and only in live mode.
   // Slate summary for the Under Plays board: a play is a tiered under with a
   // live price; tiered rows still waiting on a line are "watching".
+  // The slate summary describes the MLB board -- under plays, best edge, batter
+  // counts. setSport() hides it when the reader switches to NFL, but the MLB
+  // feeds keep polling in the background, and both renderers used to set
+  // hidden=false unconditionally when they finished. The next batter refresh
+  // therefore un-hid it, and "Under plays 6 - Batters 40" reappeared above an
+  // NFL board a few minutes after switching. Nothing errored; the numbers were
+  // simply about a sport the reader was no longer looking at.
+  const slateSummaryVisible = () => state.sport !== 'nfl';
   function renderBatterSlateSummary() {
     const rows = state.liveBatters;
     if (!rows || !rows.length) { el.slateSummary.hidden = true; return; }
@@ -1718,7 +1726,7 @@
       + `<span><span class="k">Batters</span><b>${live.length}</b>${pulledN ? `<i class="ss-pulled">${pulledN} pulled</i>` : ''}</span>`
       + `<span class="upd">odds refresh every 5 min</span>`
       + `</div>`;
-    el.slateSummary.hidden = false;
+    el.slateSummary.hidden = !slateSummaryVisible();
   }
 
   function renderSlateSummary() {
@@ -1742,7 +1750,7 @@
       + `<span><span class="k">Slate</span><b>${rows.length} game${rows.length === 1 ? '' : 's'}</b></span>`
       + `<span class="upd">odds refresh every 5 min</span>`
       + `</div>`;
-    el.slateSummary.hidden = false;
+    el.slateSummary.hidden = !slateSummaryVisible();
   }
 
   // The "Why Under" cue under each pick: the model's cushion (its real reason to
