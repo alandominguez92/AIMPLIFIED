@@ -101,7 +101,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
-  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-board', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
 export default {
@@ -152,7 +152,8 @@ export default {
       return cors(json(body, 5));
     }
 
-    if (p === '/api/nfl-ingest') return handleApi(p, env, ctx, url);   // writes; caching it would skip the write
+    // Both write; caching either would serve a stale body and skip the write.
+    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture') return handleApi(p, env, ctx, url);
     const cacheKey = new Request(url.origin + p + (p === '/api/fair-probe' ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -284,6 +285,13 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/batter-debug') return batterDebug(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
+  if (p === '/api/nfl-capture') {
+    const o = await ingestNflProps(env, {
+      sport: url.searchParams.get('sport') || 'nfl',
+      dry: url.searchParams.get('dry') === '1',
+    }, url);
+    return cors(json(o, 10));
+  }
   if (p === '/api/nfl-board') return nflBoard(env, url);
   if (p === '/api/be-gate') return beGate(env, url);
   if (p === '/api/nfl-props') return nflProps(env, url);
@@ -2473,6 +2481,25 @@ async function ensureNflSchema(db) {
   // which would make the record silently disagree with what was published -- a
   // change from the live gamebook value writes a row here and the pick keeps
   // both numbers.
+  // The projection as it stood BEFORE kickoff, frozen.
+  //
+  // /api/nfl-props recomputes from the current board every call, so a projection
+  // only exists for as long as the request that made it. On 2026-09-09 the model
+  // called Jaxon Smith-Njigba 126.2 (he had 122) and TreVeyon Henderson 55.3 (he
+  // did not play) — and neither number survived the night. Nothing could be
+  // graded, because nothing had been written down.
+  //
+  // INSERT OR IGNORE, never REPLACE: the row being judged is what the model said
+  // before the game. A later capture re-projecting the same game off a moved
+  // spread would quietly overwrite the forecast with a better-informed one.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nfl_proj (
+    season INTEGER, week INTEGER, event_id TEXT, player TEXT, market TEXT,
+    team TEXT, pos TEXT, game TEXT, commence TEXT,
+    proj REAL, p25 REAL, p50 REAL, p75 REAL, conf INTEGER,
+    actual REAL, captured_at TEXT, graded_at TEXT,
+    PRIMARY KEY (season, event_id, player, market)
+  )`).run();
+
   await db.prepare(`CREATE TABLE IF NOT EXISTS npick_corrections (
     pick_id TEXT, was REAL, now_val REAL, was_result TEXT, now_result TEXT,
     noticed_at TEXT,
@@ -2499,6 +2526,19 @@ const NFL_SPORTS = {
   nflpre: { key: 'americanfootball_nfl_preseason', seasonType: 'PRE' },
 };
 const NFL_GAME_MARKETS = 'h2h,spreads,totals';
+// The player markets worth capturing, and only those.
+//
+// `player_anytime_td` is deliberately absent: the 2026-09-09 coverage probe
+// found 57 players quoted and `twoSided: 0`, so there is no under side to
+// de-vig and no fair line can be built from it. Paying for a market that cannot
+// be priced is the mistake this whole capture exists to avoid.
+//
+// Passing is absent for a different reason: the model is not allowed to post it.
+// Backtested under-mean was 42.0% (2024) and 49.5% (2025) — never above 50 —
+// because passing yards sum ~20 completions and the CLT flattens the right skew
+// the thesis trades on. Capturing lines for a market we will not price would be
+// spending to build a dataset with no question attached to it.
+const NFL_PROP_MARKETS = 'player_reception_yds,player_rush_yds,player_receptions';
 // Books are named explicitly rather than pulled by region. Three reasons, all
 // found by dry-running the live payload: regions=us,eu returned 23 books, 13 of
 // them European retail we will never price against; it billed 6 credits where a
@@ -2514,6 +2554,174 @@ const NFL_BOOKS = [
 // would bury the slate we actually price in months of untouched future games.
 // Ten days covers a full Tue-to-Mon game week with room either side.
 const NFL_HORIZON_DAYS = 10;
+
+// -------------------------------------------------------------------------
+// /api/nfl-capture — snapshot player prop lines, and freeze the projection.
+//
+// This CAPTURES, it does not PRICE. No fair line is computed, no edge, no tier,
+// nothing is posted. The Worker's only job here is to write down what the market
+// said and what the model said, at a moment before kickoff.
+//
+// It exists because NFL prop lines are perishable in a way MLB's were not. The
+// hits-allowed question was settled for free off StatsAPI game logs, months
+// after the fact — NFL prop lines cannot be reconstructed later at any price on
+// this plan, so the capture is the one part that is genuinely urgent and the
+// pricing is the part that is not.
+//
+// Cost: markets x ceil(books/10) per event = 3 x 1 = 3 credits a game, ~48 for a
+// full Sunday. That is a research log, not a board: it wants one or two sweeps a
+// day near kickoff, not the 5-minute cadence a live board would need.
+// -------------------------------------------------------------------------
+async function ingestNflProps(env, opts, reqUrl) {
+  const sp = NFL_SPORTS[(opts && opts.sport) || 'nfl'];
+  const out = { sport: (opts && opts.sport) || 'nfl', seasonType: sp && sp.seasonType,
+    events: 0, eventsPriced: 0, wrote: 0, unchanged: 0, projFrozen: 0, markets: {}, credits: 0, errors: [] };
+  if (!sp) { out.errors.push('unknown sport'); return out; }
+  const key = env && env.ODDS_API_KEY;
+  if (!key) { out.errors.push('ODDS_API_KEY not configured'); return out; }
+  if (!env.DB) { out.errors.push('no DB binding'); return out; }
+  await ensureNflSchema(env.DB);
+  await nflSchedule(env);
+  const dry = !!(opts && opts.dry);
+
+  // The event list is free (0 credits), so it is safe to ask for it every sweep.
+  let events = [];
+  try {
+    const evR = await fetch(`https://api.the-odds-api.com/v4/sports/${sp.key}/events?apiKey=${key}&dateFormat=iso`,
+      { headers: { accept: 'application/json' } });
+    await recordOddsUsage(env, evR, 'nfl:events');
+    if (!evR.ok) { out.errors.push('events: ' + (await evR.text()).slice(0, 160)); return out; }
+    events = await evR.json();
+  } catch (e) { out.errors.push('events: ' + String((e && e.message) || e)); return out; }
+  if (!Array.isArray(events)) { out.errors.push('unexpected events payload'); return out; }
+
+  const now = Date.now();
+  const horizon = now + NFL_HORIZON_DAYS * 864e5;
+  // Started games only ever cost money: the pre-game line is already gone, and a
+  // live number is not what the model is being judged against.
+  const upcoming = events.filter((e) => {
+    const t = Date.parse(e.commence_time);
+    return isFinite(t) && t > now && t <= horizon;
+  });
+  out.events = upcoming.length;
+  if (!upcoming.length) { out.note = 'no upcoming events inside the horizon'; return out; }
+
+  // Same change-detection the game-line ingest uses: captured_at is in the
+  // primary key, so writing unconditionally would store a near-identical
+  // snapshot every sweep. Append only on a real move.
+  const cur = new Map();
+  const lineKey = (ev, mkt, who, pt, bk) =>
+    ev + '|' + mkt + '|' + (who == null ? '' : who) + '|' + (pt == null ? '' : pt) + '|' + bk;
+  try {
+    const ids = upcoming.map((e) => e.id);
+    for (let i = 0; i < ids.length; i += 40) {
+      const chunk = ids.slice(i, i + 40);
+      const q = await env.DB.prepare(
+        'SELECT event_id, market, player, point, book, over, under, captured_at FROM nfl_lines'
+        + ' WHERE event_id IN (' + chunk.map(() => '?').join(',') + ')'
+      ).bind(...chunk).all();
+      for (const r of (q.results || [])) {
+        const k = lineKey(r.event_id, r.market, r.player, r.point, r.book);
+        const prev = cur.get(k);
+        if (!prev || String(prev.captured_at) < String(r.captured_at)) cur.set(k, r);
+      }
+    }
+  } catch (e) { out.errors.push('readCurrent: ' + String((e && e.message) || e)); }
+  const same = (k, ov, un) => {
+    const p = cur.get(k);
+    if (!p) return false;
+    const eq = (a, c) => (a == null && c == null) || Number(a) === Number(c);
+    return eq(p.over, ov) && eq(p.under, un);
+  };
+
+  const stamp = new Date().toISOString();
+  const stmts = [];
+  for (const ev of upcoming) {
+    let d;
+    try {
+      const r = await fetch(
+        `https://api.the-odds-api.com/v4/sports/${sp.key}/events/${ev.id}/odds`
+        + `?apiKey=${key}&bookmakers=${NFL_BOOKS.join(',')}&markets=${NFL_PROP_MARKETS}`
+        + '&oddsFormat=american&dateFormat=iso',
+        { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, 'nfl:props');
+      const used = parseInt(r.headers.get('x-requests-last') || '', 10);
+      if (Number.isFinite(used)) out.credits += used;
+      if (!r.ok) { out.errors.push(`${ev.id}: ${r.status}`); continue; }
+      d = await r.json();
+    } catch (e) { out.errors.push(`${ev.id}: ${String((e && e.message) || e)}`); continue; }
+
+    const wk = sp.seasonType === 'REG' ? nflWeekOf(ev.commence_time) : null;
+    let priced = false;
+    for (const bm of (d.bookmakers || [])) {
+      for (const mk of (bm.markets || [])) {
+        // A prop outcome names the SIDE in `name` and the PLAYER in
+        // `description` — the opposite of the team markets, where the selection
+        // is the name. Pairing the two sides per (player, point) is what makes a
+        // row de-viggable later.
+        const byPlayer = new Map();
+        for (const o of (mk.outcomes || [])) {
+          const who = o.description;
+          if (!who) continue;
+          const k = who + '|' + (o.point == null ? '' : o.point);
+          const cell = byPlayer.get(k) || { player: who, point: o.point == null ? null : o.point, over: null, under: null };
+          if (o.name === 'Over') cell.over = o.price;
+          else if (o.name === 'Under') cell.under = o.price;
+          byPlayer.set(k, cell);
+        }
+        for (const c of byPlayer.values()) {
+          priced = true;
+          out.markets[mk.key] = (out.markets[mk.key] || 0) + 1;
+          const k = lineKey(ev.id, mk.key, c.player, c.point, bm.key);
+          if (same(k, c.over, c.under)) { out.unchanged++; continue; }
+          stmts.push(env.DB.prepare(
+            `INSERT OR REPLACE INTO nfl_lines
+             (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          ).bind(2026, wk, sp.seasonType, ev.id, ev.commence_time || null, ev.home_team || null, ev.away_team || null,
+            mk.key, null, c.player, c.point, bm.key, c.over, c.under, stamp));
+        }
+      }
+    }
+    if (priced) out.eventsPriced++;
+  }
+  out.wrote = stmts.length;
+
+  // Freeze the projections for the same slate. Calling the handler and reading
+  // its body keeps one definition of the model rather than a second copy that
+  // could drift away from what the board serves.
+  let projRows = [];
+  try {
+    const pr = await nflProps(env, reqUrl);
+    const pd = await pr.json();
+    projRows = pd.rows || [];
+  } catch (e) { out.errors.push('projections: ' + String((e && e.message) || e)); }
+  const evByMatch = new Map();
+  for (const e of upcoming) evByMatch.set(`${nflAbbr(e.away_team)} @ ${nflAbbr(e.home_team)}`, e);
+  const projStmts = [];
+  for (const r of projRows) {
+    const e = evByMatch.get(r.game);
+    if (!e || typeof r.proj !== 'number') continue;
+    projStmts.push(env.DB.prepare(
+      `INSERT OR IGNORE INTO nfl_proj
+       (season, week, event_id, player, market, team, pos, game, commence, proj, p25, p50, p75, conf, actual, captured_at, graded_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,NULL)`
+    ).bind(2026, sp.seasonType === 'REG' ? nflWeekOf(e.commence_time) : null, e.id, r.player, r.market,
+      r.team || null, r.pos || null, r.game || null, r.commence || null,
+      r.proj, r.p25 ?? null, r.p50 ?? null, r.p75 ?? null, r.conf ?? null, stamp));
+  }
+  out.projFrozen = projStmts.length;
+
+  if (dry) { out.dryRun = true; return out; }
+  for (const batch of [stmts, projStmts]) {
+    for (let i = 0; i < batch.length; i += 50) {
+      try { await env.DB.batch(batch.slice(i, i + 50)); }
+      catch (e) { out.errors.push('write: ' + String((e && e.message) || e)); }
+    }
+  }
+  return out;
+}
+
 async function ingestNflLines(env, opts) {
   const sp = NFL_SPORTS[(opts && opts.sport) || 'nfl'];
   if (!sp) return { wrote: 0, errors: [`unknown sport; expected one of ${Object.keys(NFL_SPORTS).join(', ')}`] };
