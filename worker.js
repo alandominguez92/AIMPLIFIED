@@ -6048,8 +6048,16 @@ async function nflGrade(env, url) {
       if (dayCache.has(yyyymmdd)) return dayCache.get(yyyymmdd);
       let d = null;
       try {
-        const r = await fetch(`${ESPN_NFL}/scoreboard?dates=${yyyymmdd}`, { headers: { accept: 'application/json' } });
+        // A User-Agent is sent deliberately. ESPN serves this endpoint happily to
+        // a browser and can refuse a datacenter request that arrives without one,
+        // which is invisible from a laptop and total from a Worker.
+        const r = await fetch(`${ESPN_NFL}/scoreboard?dates=${yyyymmdd}`,
+          { headers: { accept: 'application/json', 'user-agent': 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)' } });
+        // A non-OK response used to set nothing and record nothing, so an ESPN
+        // refusal came back as "no ESPN event matched" -- indistinguishable from
+        // a game that was never played. Status is captured either way.
         if (r.ok) d = await r.json();
+        else out.errors.push(`scoreboard ${yyyymmdd}: HTTP ${r.status}`);
       } catch (e) { out.errors.push('scoreboard ' + yyyymmdd + ': ' + String((e && e.message) || e)); }
       dayCache.set(yyyymmdd, d);
       return d;
@@ -6086,7 +6094,8 @@ async function nflGrade(env, url) {
 
       let sum;
       try {
-        const r = await fetch(`${ESPN_NFL}/summary?event=${espnId}`, { headers: { accept: 'application/json' } });
+        const r = await fetch(`${ESPN_NFL}/summary?event=${espnId}`,
+          { headers: { accept: 'application/json', 'user-agent': 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)' } });
         if (!r.ok) { out.errors.push(`summary ${espnId}: ${r.status}`); continue; }
         sum = await r.json();
       } catch (e) { out.errors.push(`summary ${espnId}: ${String((e && e.message) || e)}`); continue; }
