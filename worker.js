@@ -2002,7 +2002,8 @@ async function liveNow(env) {
     cards.push(liveCard({
       id: 'lp' + p.game_id + p.pitcher_id, pid: 'p' + p.pitcher_id, name: p.pitcher, team: p.team, pos: 'P',
       stat: st.k, label: 'K', line: p.line, side: p.side, m,
-      note: `${st.pitches} pitches · ${st.ip} IP`, progress: st.outs / (EXP_IP * 3), pitches: st.pitches, edge: p.edge,
+      note: `${st.pitches} pitches · ${st.ip} IP${st.done ? ' · pulled' : ''}`,
+      progress: st.outs / (EXP_IP * 3), pitches: st.pitches, done: st.done, edge: p.edge,
     }));
   }
   for (const p of bpicks) {
@@ -2034,7 +2035,7 @@ async function liveNow(env) {
 }
 
 function liveCard(o) {
-  const state = liveState(o.stat, o.line, o.side, o.progress, o.pos, o.pitches);
+  const state = liveState(o.stat, o.line, o.side, o.progress, o.pos, o.pitches, o.done);
   const scale = Math.max(o.line * 1.7, o.stat + 0.5, o.line + 1);
   return {
     id: o.id, name: o.name, team: o.team, pos: o.pos,
@@ -2050,12 +2051,13 @@ function liveCard(o) {
 // cashing = already cleared the number; live = still on track / chances remain;
 // cooling = trending to miss. Pitchers read off K pace (Ks accrue steadily);
 // batters read off at-bats remaining (hits are lumpy, so pace is noisy early).
-function liveState(stat, line, side, progress, type, pitches) {
+function liveState(stat, line, side, progress, type, pitches, done) {
   const oppFrac = 1 - progress;              // fraction of the start / plate appearances left
   const pace = stat / Math.max(progress, 0.2);
   if (side === 'Over') {
     if (stat > line) return 'cashing';
     if (type === 'P') {
+      if (done) return 'cooling';                    // out of the game and short — it cannot move
       if ((pitches || 0) >= 105) return 'cooling';   // near the pitch limit and still short
       return pace >= line ? 'live' : 'cooling';
     }
@@ -2064,24 +2066,36 @@ function liveState(stat, line, side, progress, type, pitches) {
   }
   // Under
   if (stat > line) return 'cooling';         // already over the number
-  if (type === 'P') return pace <= line ? 'live' : 'cooling';
+  // Out of the game and still under it: the Under is settled, not merely on pace.
+  if (type === 'P') return done ? 'cashing' : (pace <= line ? 'live' : 'cooling');
   return oppFrac < 0.3 ? 'cashing' : 'live'; // held under with few at-bats left = nearly there
 }
 
 function pitchingLive(box, pid) {
-  let s = null;
+  let s = null, order = null;
   ['away', 'home'].forEach((side) => {
-    const players = ((box.teams || {})[side] || {}).players || {};
+    const team = (box.teams || {})[side] || {};
+    const players = team.players || {};
     Object.keys(players).forEach((k) => {
       const pl = players[k];
-      if (pl.person && pl.person.id === pid && pl.stats && pl.stats.pitching && Object.keys(pl.stats.pitching).length) s = pl.stats.pitching;
+      if (pl.person && pl.person.id === pid && pl.stats && pl.stats.pitching && Object.keys(pl.stats.pitching).length) {
+        s = pl.stats.pitching;
+        order = Array.isArray(team.pitchers) ? team.pitchers : null;
+      }
     });
   });
   if (!s) return null;
   const ip = String(s.inningsPitched || '0.0');
   const [whole, frac] = ip.split('.');
   const outs = (parseInt(whole, 10) || 0) * 3 + (parseInt(frac, 10) || 0);
-  return { k: toNum(s.strikeOuts), outs, pitches: toNum(s.numberOfPitches != null ? s.numberOfPitches : s.pitchesThrown), ip };
+  // teams[side].pitchers lists the arms used in order, so a pitcher is still in
+  // the game only if he is the last one. Without this a starter lifted in the
+  // 3rd keeps pacing toward his number all night: the pitch-count check only
+  // catches arms that reach 105, never one pulled early. Unknown order leaves
+  // him in, so a missing field degrades to the old behaviour rather than
+  // declaring every pitcher done.
+  const done = !!(order && order.length && Number(order[order.length - 1]) !== Number(pid));
+  return { k: toNum(s.strikeOuts), outs, pitches: toNum(s.numberOfPitches != null ? s.numberOfPitches : s.pitchesThrown), ip, done };
 }
 
 function battingLive(box, pid, market) {
