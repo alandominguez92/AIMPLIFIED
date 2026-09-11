@@ -4075,7 +4075,15 @@
     }
     applySportChrome(s);
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
-    if (el.slateSummary && nfl) el.slateSummary.hidden = true;
+    // Hiding on the way out was only half of it. Coming BACK to MLB left the
+    // strip hidden until the next batter poll happened to re-render it, which
+    // can be minutes -- so the board you switched to was missing its own summary
+    // for no reason a reader could see. renderSlateSummary is the existing
+    // dispatcher and correctly leaves it hidden when there is nothing to show.
+    if (el.slateSummary) {
+      if (nfl) el.slateSummary.hidden = true;
+      else renderSlateSummary();
+    }
     if (nfl && !state.nfl) refreshNfl();          // lazy first load
     if (nfl && state.nflView !== 'lines' && !state.nflProps) refreshNflProps();
     window.scrollTo({ top: 0, behavior: 'smooth' });
