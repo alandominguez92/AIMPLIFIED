@@ -6770,6 +6770,53 @@ function nflConfidence(market, p, q) {
 }
 
 // GET /api/nfl-props — projections for the ingested slate.
+// -------------------------------------------------------------------------
+// Injury gate. One free fetch of nflverse's league-wide weekly report.
+//
+// Week 1 is the argument for it: the board projected TreVeyon Henderson for 55.3
+// rushing yards and he did not play. He was listed Out with an ankle three days
+// earlier. A projection for a player who will not take the field is not a weak
+// projection, it is a guaranteed loss the moment anything is posted on it.
+//
+// Scope, stated honestly: this catches INJURY absences, not healthy scratches.
+// Of week 1's three no-shows it would have caught one — Henderson — while
+// Charbonnet and Boutte never appeared on a report at all. Worth having, not a
+// complete solution, and it should not be described as one.
+//
+// Out and Doubtful gate. Questionable does NOT: most Questionable players play,
+// and dropping them would throw away more signal than it saves.
+const NFLVERSE_INJURIES = 'https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_2026.csv';
+async function nflInjuryGate() {
+  const gated = new Set();
+  try {
+    const r = await fetch(NFLVERSE_INJURIES, { headers: { accept: 'text/csv' } });
+    if (!r.ok) return { gated, error: `HTTP ${r.status}` };
+    const text = await r.text();
+    // Split on a plain newline rather than a regex literal. The CR/LF escapes
+    // in one are easy to mangle when this file is edited programmatically, and
+    // a broken regex throws at MODULE LOAD, taking every route down with it,
+    // not just this one. trim() removes the stray carriage return.
+    const lines = text.split(String.fromCharCode(10))
+      .map(function (l) { return l.trim(); })
+      .filter(Boolean);
+    if (lines.length < 2) return { gated, error: 'empty file' };
+    const cols = lines[0].split(',');
+    const iWk = cols.indexOf('week'), iTm = cols.indexOf('team');
+    const iNm = cols.indexOf('full_name'), iSt = cols.indexOf('report_status');
+    if (iWk < 0 || iTm < 0 || iNm < 0 || iSt < 0) return { gated, error: 'unexpected columns' };
+    let n = 0;
+    for (let i = 1; i < lines.length; i++) {
+      // The report carries injury descriptions, which contain commas. Only the
+      // four columns needed are read, and they all sit before any free text.
+      const f = lines[i].split(',');
+      const st = (f[iSt] || '').trim();
+      if (st !== 'Out' && st !== 'Doubtful') continue;
+      gated.add(`${(f[iWk] || '').trim()}|${(f[iTm] || '').trim()}|${normName(f[iNm] || '')}`);
+      n++;
+    }
+    return { gated, n };
+  } catch (e) { return { gated, error: String((e && e.message) || e) }; }
+}
 async function nflProps(env, url) {
   const out = { markets: ['receiving', 'rushing'], excluded: {
     passing: 'not posted — under-mean was 42.0% (2024) and 49.5% (2025); '
@@ -6784,6 +6831,14 @@ async function nflProps(env, url) {
     const board = await nflBoardGames(env, url);
     out.games = board.length;
     out.seasonType = board.seasonType;
+
+    // Injury gate, loaded once per request. Its outcome is REPORTED, not silent:
+    // a gate that quietly removes players is indistinguishable from a model that
+    // never knew about them, and the difference matters when the board is short.
+    const inj = await nflInjuryGate();
+    out.injuryGate = inj.error
+      ? { active: false, error: inj.error, note: 'report unavailable — NOBODY was gated, projections include injured players' }
+      : { active: true, listedOutOrDoubtful: inj.n, gated: [], note: 'Out and Doubtful are dropped; Questionable is not, because most Questionable players play' };
 
     const byTeam = {};
     for (const [pid, p] of Object.entries(pri.players)) {
@@ -6804,7 +6859,18 @@ async function nflProps(env, url) {
         const passRate = Math.min(0.72, Math.max(0.45, pri.league.passRate + NFL_SCRIPT_COEF * spread));
         const teamPass = plays * passRate, teamRush = plays * (1 - passRate);
 
+        const wk = g.week != null ? String(g.week) : '';
         for (const p of roster) {
+          // Gated before any projection is built, so an Out player cannot reach
+          // the board, the frozen record, or a captured line.
+          // p.n, not p.name — the priors store the display name as `n` (see
+          // nflRow). p.name is undefined, which would have normalised to '' and
+          // matched nothing, leaving a gate that reported itself active while
+          // gating nobody.
+          if (inj.gated.has(`${wk}|${abbr}|${normName(p.n || '')}`)) {
+            if (out.injuryGate.gated) out.injuryGate.gated.push({ player: p.n, team: abbr, week: wk });
+            continue;
+          }
           const seed = (p.pid.length * 7919 + abbr.charCodeAt(0) * 104729 + Math.round(g.total * 10)) | 0;
 
           // Receiving carries the route-participation gate, as backtested.
