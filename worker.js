@@ -6017,6 +6017,33 @@ async function nflGrade(env, url) {
   const out = { note: 'fills nfl_proj.actual from ESPN box scores — no Odds API call, no credits',
     pending: 0, events: 0, graded: 0, dnp: 0, unmatched: [], errors: [] };
   if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 30)); }
+
+  // ?probe=1 — which box-score hosts will actually answer a Worker?
+  // site.api.espn.com returns 403 from Cloudflare while serving a laptop the
+  // same URL, so "which source can this code reach" is a real question that
+  // cannot be answered from a dev machine. Read-only, no DB, no credits.
+  if (url && url.searchParams && url.searchParams.get('probe') === '1') {
+    const UA = 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)';
+    const cands = [
+      ['site.api', `${ESPN_NFL}/scoreboard?dates=20260910`],
+      ['cdn.espn', 'https://cdn.espn.com/core/nfl/scoreboard?xhr=1&dates=20260910'],
+      ['sports.core', 'https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events?dates=20260910'],
+      ['github', 'https://raw.githubusercontent.com/nflverse/nflverse-data/master/README.md'],
+    ];
+    const res = {};
+    for (const [name, u] of cands) {
+      for (const withUa of [true, false]) {
+        const tag = name + (withUa ? '' : ' (no UA)');
+        try {
+          const r = await fetch(u, { headers: withUa ? { accept: 'application/json', 'user-agent': UA } : { accept: 'application/json' } });
+          const body = r.ok ? await r.text() : '';
+          res[tag] = { status: r.status, bytes: body.length };
+        } catch (e) { res[tag] = { error: String((e && e.message) || e) }; }
+      }
+    }
+    return cors(json({ probe: 'box-score host reachability from the Worker', results: res }, 30));
+  }
+
   try {
     await ensureNflSchema(env.DB);
     // A 5-hour buffer after kickoff: an NFL game runs ~3h10m, and grading a
