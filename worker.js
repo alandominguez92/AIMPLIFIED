@@ -6012,7 +6012,13 @@ const NFL_PROJ_TO_ODDS = { receiving: 'player_reception_yds', rushing: 'player_r
 // A graded DNP is stored as graded_at SET and actual NULL, so it leaves the
 // pending pool without ever being scored. Ungraded rows have both NULL.
 // -------------------------------------------------------------------------
-const ESPN_NFL = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
+// cdn.espn.com, NOT site.api.espn.com. The site.api host returns 403 to a
+// Cloudflare Worker with or without a User-Agent while serving the identical URL
+// to a laptop, which made the first grading run report "no ESPN event matched" —
+// a refusal wearing the costume of a game nobody played. Confirmed by asking the
+// Worker itself (/api/nfl-grade?probe=1): site.api 403, cdn.espn 200.
+const ESPN_CDN = 'https://cdn.espn.com/core/nfl';
+const ESPN_UA = 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)';
 async function nflGrade(env, url) {
   const out = { note: 'fills nfl_proj.actual from ESPN box scores — no Odds API call, no credits',
     pending: 0, events: 0, graded: 0, dnp: 0, unmatched: [], errors: [] };
@@ -6025,7 +6031,7 @@ async function nflGrade(env, url) {
   if (url && url.searchParams && url.searchParams.get('probe') === '1') {
     const UA = 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)';
     const cands = [
-      ['site.api', `${ESPN_NFL}/scoreboard?dates=20260910`],
+      ['site.api', 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?dates=20260910'],
       ['cdn.espn', 'https://cdn.espn.com/core/nfl/scoreboard?xhr=1&dates=20260910'],
       ['sports.core', 'https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events?dates=20260910'],
       ['github', 'https://raw.githubusercontent.com/nflverse/nflverse-data/master/README.md'],
@@ -6078,8 +6084,8 @@ async function nflGrade(env, url) {
         // A User-Agent is sent deliberately. ESPN serves this endpoint happily to
         // a browser and can refuse a datacenter request that arrives without one,
         // which is invisible from a laptop and total from a Worker.
-        const r = await fetch(`${ESPN_NFL}/scoreboard?dates=${yyyymmdd}`,
-          { headers: { accept: 'application/json', 'user-agent': 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)' } });
+        const r = await fetch(`${ESPN_CDN}/scoreboard?xhr=1&dates=${yyyymmdd}`,
+          { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
         // A non-OK response used to set nothing and record nothing, so an ESPN
         // refusal came back as "no ESPN event matched" -- indistinguishable from
         // a game that was never played. Status is captured either way.
@@ -6104,7 +6110,12 @@ async function nflGrade(env, url) {
       let espnId = null, final = false;
       for (const day of days) {
         const sb = await scoreboard(day);
-        for (const e of ((sb && sb.events) || [])) {
+        // The CDN nests the scoreboard under content.sbData; the bare .events
+        // shape is kept as a fallback so a future host swap does not silently
+        // grade nothing.
+        const evs = (sb && sb.content && sb.content.sbData && sb.content.sbData.events)
+          || (sb && sb.events) || [];
+        for (const e of evs) {
           const comp = (e.competitions || [])[0] || {};
           const nm = (comp.competitors || []).map((c) => (c.team || {}).displayName);
           if (nm.includes(meta.home) && nm.includes(meta.away)) {
@@ -6121,16 +6132,17 @@ async function nflGrade(env, url) {
 
       let sum;
       try {
-        const r = await fetch(`${ESPN_NFL}/summary?event=${espnId}`,
-          { headers: { accept: 'application/json', 'user-agent': 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)' } });
-        if (!r.ok) { out.errors.push(`summary ${espnId}: ${r.status}`); continue; }
+        const r = await fetch(`${ESPN_CDN}/boxscore?xhr=1&gameId=${espnId}`,
+          { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+        if (!r.ok) { out.errors.push(`boxscore ${espnId}: HTTP ${r.status}`); continue; }
         sum = await r.json();
       } catch (e) { out.errors.push(`summary ${espnId}: ${String((e && e.message) || e)}`); continue; }
 
       // yardsBy[market][normName] = yards ; played = every name in the box score
       const yardsBy = { receiving: {}, rushing: {} };
       const played = new Set();
-      for (const team of ((sum.boxscore || {}).players || [])) {
+      const box = (sum.gamepackageJSON && sum.gamepackageJSON.boxscore) || sum.boxscore || {};
+      for (const team of (box.players || [])) {
         for (const cat of (team.statistics || [])) {
           const labels = (cat.labels || []).map((l) => String(l).toUpperCase());
           const yi = labels.indexOf('YDS');
