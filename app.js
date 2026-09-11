@@ -4413,6 +4413,35 @@
     renderNfl();
   }
 
+  // The injury gate, made visible. The MLB board already does this for batters
+  // who are not on tonight's card -- it names them and says what they were worth
+  // rather than quietly shortening the list -- and a gate the reader cannot
+  // audit is the same silent-absence problem in a new place.
+  //
+  // The unavailable case is louder than the active one on purpose. A gate that
+  // failed to load means injured players ARE on the board, which is the exact
+  // opposite of what the existence of a gate implies to someone reading it.
+  function nflGatedBlock() {
+    const g = (state.nflProps && state.nflProps.injuryGate) || null;
+    if (!g) return '';
+    if (!g.active) {
+      return `<div class="nfl-gate nfl-gate-off"><div class="nfl-gate-h">Injury gate unavailable</div>`
+        + `<div class="nfl-gate-sub">${esc(g.error || 'report not reachable')} — nobody was withheld, `
+        + `so players listed Out may still appear below.</div></div>`;
+    }
+    const rows = g.gated || [];
+    if (!rows.length) return '';
+    return `<div class="nfl-gate">`
+      + `<div class="nfl-gate-h">Injury gate — ${rows.length} projection${rows.length === 1 ? '' : 's'} withheld</div>`
+      + `<div class="nfl-gate-sub">listed Out or Doubtful on this week's report. A projection for a player `
+      + `who will not take the field is not a weak number, it is a certain loss the moment anything is posted on it.</div>`
+      + rows.map((r) => `<div class="nfl-gate-r"><b>${esc(r.player)}</b> ${nflBadge(r.team)}`
+        + `<span class="nfl-gate-pos">${esc(r.pos || '')}</span>`
+        + `<span class="bw-out">${esc(r.status)}${r.injury ? ' (' + esc(r.injury) + ')' : ''}`
+        + `${r.game ? ' · ' + esc(r.game) : ''} — projection withdrawn</span></div>`).join('')
+      + `</div>`;
+  }
+
   function nflPropTable(rows, market) {
     const head = NFL_PROP_COLS
       .map((c) => (c ? `<span class="col-label">${c}</span>` : '<span></span>'))
@@ -4420,6 +4449,7 @@
     return `<div class="board view-nflprops"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div class="np-rows${state.nflShowAll ? ' show-all' : ''}">${rows.map((r) => nflPropRow(r, market)).join('')}</div>`
+      + nflGatedBlock()
       + (() => {
         const low = rows.filter((r) => r.conf === 3).length;
         if (!low) return '';

@@ -6787,7 +6787,7 @@ function nflConfidence(market, p, q) {
 // and dropping them would throw away more signal than it saves.
 const NFLVERSE_INJURIES = 'https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_2026.csv';
 async function nflInjuryGate() {
-  const gated = new Set();
+  const gated = new Map();   // key -> { status, injury, player }
   try {
     const r = await fetch(NFLVERSE_INJURIES, { headers: { accept: 'text/csv' } });
     if (!r.ok) return { gated, error: `HTTP ${r.status}` };
@@ -6803,18 +6803,28 @@ async function nflInjuryGate() {
     const cols = lines[0].split(',');
     const iWk = cols.indexOf('week'), iTm = cols.indexOf('team');
     const iNm = cols.indexOf('full_name'), iSt = cols.indexOf('report_status');
+    const iInj = cols.indexOf('report_primary_injury');
     if (iWk < 0 || iTm < 0 || iNm < 0 || iSt < 0) return { gated, error: 'unexpected columns' };
-    let n = 0;
+    let n = 0, skew = 0;
     for (let i = 1; i < lines.length; i++) {
-      // The report carries injury descriptions, which contain commas. Only the
-      // four columns needed are read, and they all sit before any free text.
       const f = lines[i].split(',');
+      // Split on commas with no quote handling, which the file currently allows:
+      // no quoted fields, and no injury description containing a comma. If that
+      // ever changes the columns shift and the wrong player gets gated, so a row
+      // whose field count disagrees with the header is skipped and counted
+      // rather than parsed into nonsense.
+      if (f.length !== cols.length) { skew++; continue; }
       const st = (f[iSt] || '').trim();
       if (st !== 'Out' && st !== 'Doubtful') continue;
-      gated.add(`${(f[iWk] || '').trim()}|${(f[iTm] || '').trim()}|${normName(f[iNm] || '')}`);
+      const key = `${(f[iWk] || '').trim()}|${(f[iTm] || '').trim()}|${normName(f[iNm] || '')}`;
+      gated.set(key, {
+        status: st,
+        injury: iInj >= 0 ? (f[iInj] || '').trim() : '',
+        player: (f[iNm] || '').trim(),
+      });
       n++;
     }
-    return { gated, n };
+    return { gated, n, skew };
   } catch (e) { return { gated, error: String((e && e.message) || e) }; }
 }
 async function nflProps(env, url) {
@@ -6838,7 +6848,8 @@ async function nflProps(env, url) {
     const inj = await nflInjuryGate();
     out.injuryGate = inj.error
       ? { active: false, error: inj.error, note: 'report unavailable — NOBODY was gated, projections include injured players' }
-      : { active: true, listedOutOrDoubtful: inj.n, gated: [], note: 'Out and Doubtful are dropped; Questionable is not, because most Questionable players play' };
+      : { active: true, listedOutOrDoubtful: inj.n, rowsSkipped: inj.skew || 0, gated: [],
+          note: 'Out and Doubtful are dropped; Questionable is not, because most Questionable players play' };
 
     const byTeam = {};
     for (const [pid, p] of Object.entries(pri.players)) {
@@ -6867,8 +6878,19 @@ async function nflProps(env, url) {
           // nflRow). p.name is undefined, which would have normalised to '' and
           // matched nothing, leaving a gate that reported itself active while
           // gating nobody.
-          if (inj.gated.has(`${wk}|${abbr}|${normName(p.n || '')}`)) {
-            if (out.injuryGate.gated) out.injuryGate.gated.push({ player: p.n, team: abbr, week: wk });
+          const hit = inj.gated.get(`${wk}|${abbr}|${normName(p.n || '')}`);
+          if (hit) {
+            // Recorded with the designation and the injury, because the board
+            // has to be able to SAY why a player vanished. A silent drop is
+            // indistinguishable from a model that never knew him, which is the
+            // failure this gate was built to end, not to repeat.
+            if (out.injuryGate.gated) {
+              out.injuryGate.gated.push({
+                player: p.n, team: abbr, week: wk, pos: p.pos || null,
+                status: hit.status, injury: hit.injury || null,
+                game: `${g.away} @ ${g.home}`,
+              });
+            }
             continue;
           }
           const seed = (p.pid.length * 7919 + abbr.charCodeAt(0) * 104729 + Math.round(g.total * 10)) | 0;

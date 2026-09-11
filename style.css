@@ -2196,3 +2196,16 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    and below a number that never wraps. Same for the probability beside it. */
 .board-row > .edge-cell { line-height:1.15; }
 .board-row > .interval-cell { line-height:1.15; }
+
+/* Injury gate on the NFL projection board. Deliberately quiet: a withheld
+   projection is information, not an alert, and it sits under the board rather
+   than above it so it never pushes the rows anyone came to read off screen. */
+.nfl-gate { margin:14px 0 2px; padding:12px 14px; border-radius:10px; background:var(--board2); border:1px solid var(--borderSoft); }
+.nfl-gate-h { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); margin-bottom:4px; }
+.nfl-gate-sub { font-size:12px; color:var(--textGhost); margin-bottom:10px; max-width:70ch; }
+.nfl-gate-r { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:5px 0; font-size:13px; }
+.nfl-gate-pos { color:var(--textDim); font-size:12px; }
+/* The unavailable state is the one that matters: it means injured players are
+   still on the board, so it is tinted rather than ghosted. */
+.nfl-gate-off { border-color:color-mix(in srgb, var(--warm) 45%, var(--borderSoft)); }
+.nfl-gate-off .nfl-gate-h { color:var(--warm); }
