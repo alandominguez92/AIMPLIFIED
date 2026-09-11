@@ -96,6 +96,10 @@ const K_MODEL_VER = 'k-sharp-shin';
 // two sides instead of the best-of pair. fair_source is logged alongside so
 // a Pinnacle-priced pick is distinguishable from a soft-book fallback.
 const ML_MODEL_VER = 'ml-shin';
+// Stamped on every run-line row so eras stay separable, exactly as the other
+// tables do. 'rl-shin' is the regime this starts in: cover% from the model,
+// fair from Pinnacle's de-vigged spread, edge measured against it.
+const RL_MODEL_VER = 'rl-shin';
 
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
@@ -900,6 +904,10 @@ async function board(env, ctx, opts) {
     const write = logPicks(env.DB, rows, date).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(write);
     const writeMl = logMlPicks(env.DB, rows, date).catch(() => {});
+    // The run line rides the same pass. It posts nothing either; logging is what
+    // makes "no track record stands behind it" a temporary statement.
+    const writeRl = logRlPicks(env.DB, rows, date).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(writeRl);
     if (ctx && ctx.waitUntil) ctx.waitUntil(writeMl);
 
     // Hits-allowed projections. Nothing here is a pick — this is the accuracy
@@ -2110,6 +2118,7 @@ async function trackRecord(env) {
     await gradeBatterPicks(env);
     await backfillBatterGrades(env);
     await gradeMlPicks(env);
+    await gradeRlPicks(env);
     const kres = await env.DB.prepare('SELECT * FROM picks').all();
     const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
     // Normalize both feeds to one row shape: pitcher picks are market 'K' with
@@ -2125,6 +2134,14 @@ async function trackRecord(env) {
       mlRows = mlres.results || [];
       out.ml = buildMlRecord(mlRows);
     } catch (e) { /* ML record is additive — never break the props track record */ }
+    try {
+      // Reuses buildMlRecord: an rlpicks row is shaped the same as an mlpicks
+      // row for every field the record needs (result, entry/close price, tier,
+      // edge), so a second aggregator would be a copy that could drift.
+      const rlres = await env.DB.prepare('SELECT * FROM rlpicks').all();
+      out.rl = buildMlRecord(rlres.results || []);
+      out.rl.note = 'run line, graded against the posted +/-1.5 from the final score. Logged and graded, still not posted.';
+    } catch (e) { /* additive */ }
     out.recent = buildRecent(unified, mlRows);
     return cors(json(out, 120));
   } catch (e) {
@@ -2383,6 +2400,114 @@ async function saveFeedCache(db, key, data) {
 // Run lines (spreads) persist the same way — snapshot the DK/FD + Pinnacle
 // spread pairs per game while offered, so the closing run line survives the
 // book pulling the spread market once the game starts (shown closed, not bettable).
+// -------------------------------------------------------------------------
+// Run-line picks: log, then grade. Deliberately a sibling of the moneyline
+// path rather than a new shape -- same table columns, same INSERT OR IGNORE
+// entry with a refreshed close, same score source.
+//
+// The board has been saying "not graded and not posted -- no track record
+// stands behind it" since it shipped. That was true and it was permanent: the
+// LINES were persisted but the model's READ never was, so there was nothing a
+// grader could have scored. Nothing here posts anything; it makes the run line
+// measurable so the banner can eventually stop being true by evidence rather
+// than by assertion.
+// -------------------------------------------------------------------------
+async function ensureRlPickSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS rlpicks (
+    date TEXT, game_id TEXT, team TEXT, opp TEXT, is_home INTEGER,
+    point REAL, side TEXT, tier TEXT, cover_pct INTEGER, edge REAL,
+    entry_price INTEGER, close_price INTEGER,
+    result TEXT, team_score INTEGER, opp_score INTEGER,
+    model_ver TEXT, fair_source TEXT,
+    PRIMARY KEY (date, game_id)
+  )`).run();
+}
+async function logRlPicks(db, rows, date) {
+  await ensureRlPickSchema(db);
+  const stmts = [];
+  for (const r of rows) {
+    if (r.status !== 'Preview') continue;
+    const rl = r.rl;
+    if (!rl || rl.price == null || rl.point == null || !rl.teamAbbr) continue;
+    const isHome = rl.teamAbbr === rl.homeAbbr ? 1 : 0;
+    const opp = isHome ? rl.awayAbbr : rl.homeAbbr;
+    const cover = isHome ? rl.homeCoverPct : rl.awayCoverPct;
+    stmts.push(db.prepare(
+      `INSERT OR IGNORE INTO rlpicks (date,game_id,team,opp,is_home,point,side,tier,cover_pct,edge,entry_price,close_price,model_ver,fair_source)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(date, r.id, rl.teamAbbr, opp || '', isHome, rl.point, rl.side || null,
+      String(rl.tier), cover ?? null, rl.edge ?? null, rl.price, rl.price, RL_MODEL_VER, rl.fairSource ?? null));
+    // Close refreshed only while the logged side is still the pick, so a
+    // mid-day flip to the other team cannot overwrite our entry side's close.
+    stmts.push(db.prepare(
+      'UPDATE rlpicks SET close_price=?, edge=?, tier=?, cover_pct=? WHERE date=? AND game_id=? AND team=? AND point=?'
+    ).bind(rl.price, rl.edge ?? null, String(rl.tier), cover ?? null, date, r.id, rl.teamAbbr, rl.point));
+  }
+  if (stmts.length) await db.batch(stmts);
+}
+
+// Graded off the final score against the posted number: the bet wins when the
+// margin plus the point is positive. At +/-1.5 a push is arithmetically
+// impossible, but it is handled rather than assumed away -- the same
+// defensiveness the moneyline grader applies to equal scores in a sport with no
+// ties.
+async function gradeRlPicks(env) {
+  const db = env.DB;
+  await ensureRlPickSchema(db);
+  const today = slateDate();
+  const rows = (await db.prepare('SELECT * FROM rlpicks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
+  if (!rows.length) return;
+  const byDate = {};
+  for (const r of rows) (byDate[r.date] = byDate[r.date] || []).push(r);
+  for (const d of Object.keys(byDate)) {
+    let games = [];
+    try {
+      const r = await fetch(`${STATS}/schedule?sportId=1&date=${d}&hydrate=linescore,team`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      games = (((await r.json()).dates || [])[0] || {}).games || [];
+    } catch (e) { continue; }
+    const scoreByGame = {};
+    for (const g of games) {
+      if (((g.status || {}).abstractGameState) !== 'Final') continue;
+      const ls = g.linescore || {};
+      const homeR = numOr((ls.teams && ls.teams.home && ls.teams.home.runs), g.teams.home.score);
+      const awayR = numOr((ls.teams && ls.teams.away && ls.teams.away.runs), g.teams.away.score);
+      if (homeR == null || awayR == null) continue;
+      scoreByGame['g' + g.gamePk] = { homeR, awayR };
+    }
+    // A game replayed on another date never lands in this date's map, so the
+    // row would be skipped on every pass forever. Same rescue and same void the
+    // other three graders use.
+    const missing = byDate[d].filter((p) => !scoreByGame[p.game_id]).map((p) => p.game_id);
+    if (missing.length) {
+      const byPk = await gamesByPk(missing);
+      const voids = [];
+      for (const [gid, g] of Object.entries(byPk)) {
+        if (g.state === 'Final' && g.homeR != null && g.awayR != null) scoreByGame[gid] = { homeR: g.homeR, awayR: g.awayR };
+        else if (isAbandoned(g)) voids.push(gid);
+      }
+      if (voids.length) {
+        try {
+          await db.batch(voids.map((gid) => db.prepare(
+            "UPDATE rlpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)));
+        } catch (e) { /* retry next pass */ }
+      }
+    }
+    const stmts = [];
+    for (const p of byDate[d]) {
+      const sc = scoreByGame[p.game_id];
+      if (!sc) continue;
+      const teamR = p.is_home ? sc.homeR : sc.awayR;
+      const oppR = p.is_home ? sc.awayR : sc.homeR;
+      const adj = (teamR - oppR) + Number(p.point);
+      const result = adj === 0 ? 'push' : (adj > 0 ? 'win' : 'loss');
+      stmts.push(db.prepare('UPDATE rlpicks SET result=?, team_score=?, opp_score=? WHERE date=? AND game_id=?')
+        .bind(result, teamR, oppR, p.date, p.game_id));
+    }
+    if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* skip */ } }
+  }
+}
+
 async function ensureRlSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS rl_lines (
     date TEXT, game_id TEXT, data TEXT, updated_at INTEGER,
