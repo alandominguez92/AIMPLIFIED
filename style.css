@@ -1409,11 +1409,20 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 @media (max-width:900px) {
   .board-row:not(.expanded) .matchup-sub,
   .board-row:not(.expanded) .corr-tag,
-  .board-row:not(.expanded) .bmini,
   .board-row:not(.expanded) .bw-cush,
   .board-row:not(.expanded) .bwhy,
   .board-row:not(.expanded) .bk-move,
   .board-row:not(.expanded) .fsrc { display:none }
+
+  /* The bar stays. It was collapsed with the rest of the sub-lines, which cost
+     the phone the one thing on the row that is read rather than parsed: where
+     our number sits against the market's. The sentence under it -- "proj 0.95 ·
+     line 1.5 · 0.55 cushion" -- is the same fact in words and stays in the
+     expand, so this buys the model read for 14px of row height (measured on all
+     three boards at 375px) instead of a whole text line.
+     It draws only where a projection and a line both exist, so pulled and
+     unpriced rows are untouched and stay two lines. */
+  .board-row:not(.expanded) .bmini { margin-top:8px; margin-bottom:0; height:6px }
 
   /* Tighter shell. The row carries two lines instead of five, so the generous
      desktop padding reads as a gap rather than as breathing room. */

@@ -25,6 +25,12 @@ const arm = (id, name, gs, ip, pitches, k) => [`ID${id}`, {
   person: { id, fullName: name },
   stats: { pitching: { gamesStarted: gs, inningsPitched: ip, numberOfPitches: pitches, strikeOuts: k } },
 }];
+// hits/runs/rbi drive the H+R+RBI market; atBats drives how much of the night
+// is gone, which is what the batter states read off.
+const bat = (id, name, h, r, rbi, ab) => [`ID${id}`, {
+  person: { id, fullName: name },
+  stats: { batting: { hits: h, doubles: 0, triples: 0, homeRuns: 0, runs: r, rbi, atBats: ab } },
+}];
 const box = { teams: {
   away: {
     pitchers: [696062, 694753, 699008],
@@ -32,11 +38,17 @@ const box = { teams: {
       arm(696062, 'Wilber Dotel', 1, '2.0', 38, 1),
       arm(694753, 'Khristian Curtis', 0, '3.0', 62, 0),
       arm(699008, 'Antwone Kelly', 0, '1.0', 17, 0),
+      bat(693304, 'Nick Gonzales', 0, 0, 0, 2),
+      bat(669707, 'Jared Triolo', 0, 0, 0, 3),
+      bat(664040, 'Brandon Lowe', 0, 0, 0, 0),
     ]),
   },
   home: {
     pitchers: [684007],
-    players: Object.fromEntries([arm(684007, 'Shota Imanaga', 1, '6.0', 100, 4)]),
+    players: Object.fromEntries([
+      arm(684007, 'Shota Imanaga', 1, '6.0', 100, 4),
+      bat(683737, 'Michael Busch', 2, 2, 3, 4),
+    ]),
   },
 } };
 
@@ -64,9 +76,24 @@ const picks = [
   { date, game_id: GID, pitcher_id: 699008, pitcher: 'A. Kelly', team: 'PIT', line: 1.5, side: 'Under', edge: 2 },
   { date, game_id: GID, pitcher_id: 684007, pitcher: 'S. Imanaga', team: 'CHC', line: 5.5, side: 'Over', edge: 5 },
 ];
+// The four batters are the ranking cases. Gonzales and Triolo both sit on a raw
+// stat of 0 -- identical fill -- but Gonzales is winning his Under and Triolo is
+// losing his Over. Lowe has not batted at all. Busch has run an Under to 7,
+// which is a settled loss and used to sort FIRST inside cooling.
+const bpicks = [
+  // Edges run the WRONG way on purpose. All three carry fill 0, so the old sort
+  // fell straight through to model edge, and these values make it order them
+  // Lowe, Triolo, Gonzales -- the exact reverse of what the pick states deserve.
+  // With equal edges the old code preserved insertion order and happened to look
+  // right, so the assertions below passed without guarding anything.
+  { date, game_id: GID, player_id: 693304, player: 'N. Gonzales', team: 'PIT', market: 'hrr', line: 1.5, side: 'Under', edge: 3 },
+  { date, game_id: GID, player_id: 669707, player: 'J. Triolo', team: 'PIT', market: 'hrr', line: 0.5, side: 'Over', edge: 5 },
+  { date, game_id: GID, player_id: 664040, player: 'B. Lowe', team: 'PIT', market: 'hrr', line: 0.5, side: 'Over', edge: 9 },
+  { date, game_id: GID, player_id: 683737, player: 'M. Busch', team: 'CHC', market: 'hrr', line: 1.5, side: 'Under', edge: 6 },
+];
 const db = { prepare: (sql) => ({
   bind: () => ({
-    all: async () => ({ results: /FROM picks/i.test(sql) ? picks : [] }),
+    all: async () => ({ results: /FROM bpicks/i.test(sql) ? bpicks : (/FROM picks/i.test(sql) ? picks : []) }),
     run: async () => ({ meta: { changes: 0 } }), first: async () => null,
   }),
   all: async () => ({ results: [] }), run: async () => ({ meta: { changes: 0 } }), first: async () => null,
@@ -110,9 +137,33 @@ ok(i && i.state === 'cooling',
   `4 K against Over 5.5 through 6: ${i && i.state} — pace, not the new rule`);
 
 console.log('\n-- ranking puts the dead pick below the live one --');
-const iD = cards.findIndex((x) => x.name === 'W. Dotel');
-const iI = cards.findIndex((x) => x.name === 'S. Imanaga');
+const at = (n) => cards.findIndex((x) => x.name === n);
+const iD = at('W. Dotel'), iI = at('S. Imanaga');
 ok(iI < iD, `Imanaga (${iI}) ranks above the pulled Dotel (${iD})`);
+
+// The Under orientation. Both of these show a raw stat of 0, so they carried
+// the same fill and the old sort could only break the tie on model edge -- which
+// it did, by putting the losing Over first. Nothing about that was visible: two
+// cards reading 0, in an order that meant nothing.
+console.log('\n-- a pick is ranked by how it is doing, not by how big the number is --');
+const iG = at('N. Gonzales'), iT = at('J. Triolo');
+ok(cards[iG] && cards[iG].fill === cards[iT].fill,
+  `both sit at fill ${cards[iG] && cards[iG].fill} -- the old sort key could not tell them apart`);
+ok(iG < iT, `0 against Under 1.5 (${iG}) outranks 0 against Over 0.5 (${iT})`);
+
+console.log('\n-- a settled loss does not lead the cooling group --');
+const iB = at('M. Busch');
+ok(cards[iB] && cards[iB].state === 'cooling', '7 H+R+RBI against Under 1.5 is cooling');
+ok(cards[iB] && cards[iB].fill >= cards[iD].fill,
+  `it also carries the BIGGER fill (${cards[iB] && cards[iB].fill} vs ${cards[iD].fill}), which is why it used to sort first`);
+ok(iB > iD && iB > iI, `now last of the cooling cards (${iB})`);
+ok(iB === cards.length - 1, 'and last on the board');
+
+console.log('\n-- a player who has not batted yet does not hold a slot --');
+const iL = at('B. Lowe');
+ok(cards[iL] && cards[iL].note === '0-for-0', 'Lowe has had no at-bat');
+ok(iL > iT, `he ranks below Triolo (${iL} vs ${iT}) despite the identical 0 and the same line`);
+ok(cards.every((c) => c._started === undefined), 'the ranking field is not leaked to the client');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

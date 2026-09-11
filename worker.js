@@ -2004,6 +2004,7 @@ async function liveNow(env) {
       stat: st.k, label: 'K', line: p.line, side: p.side, m,
       note: `${st.pitches} pitches · ${st.ip} IP${st.done ? ' · pulled' : ''}`,
       progress: st.outs / (EXP_IP * 3), pitches: st.pitches, done: st.done, edge: p.edge,
+      started: st.outs > 0 || st.pitches > 0,
     }));
   }
   for (const p of bpicks) {
@@ -2015,6 +2016,9 @@ async function liveNow(env) {
       id: 'lb' + p.game_id + p.player_id + p.market, pid: 'b' + p.player_id, name: p.player, team: p.team, pos: 'B',
       stat: st.val, label: MARKET_SHORT[p.market] || p.market, line: p.line, side: p.side, m,
       note: st.note, progress: st.ab / EXP_AB, edge: p.edge,
+      // A walk leaves at-bats at 0 but can still put a run on the H+R+RBI line,
+      // so the stat counts as having batted too.
+      started: st.ab > 0 || st.val > 0,
     }));
   }
 
@@ -2025,12 +2029,25 @@ async function liveNow(env) {
     const ex = byPid.get(c._pid);
     if (!ex || c.fill > ex.fill || (c.fill === ex.fill && c._edge > ex._edge)) byPid.set(c._pid, c);
   }
-  // Rank: cashing (the fun ones) first, then live, then cooling; within a state
-  // put the players with the most going on (higher fill) up top.
+  // Rank: cashing (the fun ones) first, then live, then cooling. Within a state,
+  // order by how the PICK is doing rather than by how big the number is.
+  // Ranking on fill sorted the raw stat, which is upside down for an Under: a
+  // batter held to 0 against Under 1.5 is winning and sorted last, while one who
+  // has run to 7 is a settled loss and sorted first. `cushion` is signed the
+  // same way for both sides -- positive means on the right side of the number --
+  // and divided by the line so a 6.5-strikeout prop and a 0.5 to-hit prop are
+  // compared on the same scale instead of in raw units.
   const order = { cashing: 0, live: 1, cooling: 2 };
+  const cushion = (c) => (c.side === 'Under' ? c.line - c.stat : c.stat - c.line) / Math.max(c.line, 0.5);
   const ranked = [...byPid.values()].sort((a, b) =>
-    (order[a.state] - order[b.state]) || (b.fill - a.fill) || (b._edge - a._edge));
-  const out = ranked.slice(0, 9).map(({ _pid, _edge, ...c }) => c);
+    (order[a.state] - order[b.state])
+    // Someone who has not come to the plate or thrown a pitch has nothing to
+    // show yet. He keeps his card, but he should not hold a slot above a player
+    // who does -- with nine slots and a full slate those are the ones that get cut.
+    || (b._started - a._started)
+    || (cushion(b) - cushion(a))
+    || (b._edge - a._edge));
+  const out = ranked.slice(0, 9).map(({ _pid, _edge, _started, ...c }) => c);
   return cors(json(out, 30)); // 30s — live data
 }
 
@@ -2044,7 +2061,7 @@ function liveCard(o) {
     inning: o.m.inning, note: o.note, state,
     fill: Math.round(Math.min(100, Math.max(0, o.stat / scale * 100))),
     tick: Math.round(Math.min(100, o.line / scale * 100)),
-    _pid: o.pid, _edge: o.edge || 0,
+    _pid: o.pid, _edge: o.edge || 0, _started: o.started ? 1 : 0,
   };
 }
 
