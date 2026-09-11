@@ -2139,8 +2139,16 @@ async function trackRecord(env) {
       // row for every field the record needs (result, entry/close price, tier,
       // edge), so a second aggregator would be a copy that could drift.
       const rlres = await env.DB.prepare('SELECT * FROM rlpicks').all();
-      out.rl = buildMlRecord(rlres.results || []);
-      out.rl.note = 'run line, graded against the posted +/-1.5 from the final score. Logged and graded, still not posted.';
+      const rlRows = rlres.results || [];
+      // Pass-tier included, deliberately — see buildMlRecord. Every run-line
+      // pick is currently pass, so the alternative is an empty record forever.
+      out.rl = buildMlRecord(rlRows, true);
+      out.rl.logged = rlRows.length;
+      out.rl.passShare = rlRows.length
+        ? Math.round(rlRows.filter((r) => String(r.tier) === 'pass').length / rlRows.length * 100) : null;
+      out.rl.note = 'run line, graded against the posted +/-1.5 from the final score. '
+        + 'ALL tiers counted including pass, because none of these were posted and the question is whether the model reads the 1.5 at all. '
+        + 'Logged and graded, still not posted.';
     } catch (e) { /* additive */ }
     out.recent = buildRecent(unified, mlRows);
     return cors(json(out, 120));
@@ -3465,8 +3473,15 @@ function mlT(xs) {
 function mlP(t) { return (t == null || !isFinite(t)) ? null : Math.round(2 * (1 - normCdf(Math.abs(t))) * 1e4) / 1e4; }
 function mlR2(v) { return (v == null || !isFinite(v)) ? null : Math.round(v * 100) / 100; }
 
-function buildMlRecord(rows) {
-  const played = rows.filter((r) => (r.result === 'win' || r.result === 'loss') && r.tier !== 'pass');
+// includePass exists for markets that are MEASURED rather than POSTED. The
+// moneyline headline excludes pass-tier on purpose -- those are picks nobody was
+// told to make, and counting them would flatter or damn a record of bets that
+// never happened. The run line is different: under current pricing every one of
+// its picks is pass, so excluding them leaves a record of 0-0 no matter how many
+// games grade, and the reason for grading it at all disappears.
+function buildMlRecord(rows, includePass) {
+  const played = rows.filter((r) => (r.result === 'win' || r.result === 'loss')
+    && (includePass || r.tier !== 'pass'));
   const byTier = { '1': { w: 0, l: 0, units: 0 }, '2': { w: 0, l: 0, units: 0 }, '3': { w: 0, l: 0, units: 0 } };
   let w = 0, l = 0, units = 0, t1w = 0, t1l = 0, clvBeat = 0, clvN = 0;
   const profits = [], clvPts = [];
