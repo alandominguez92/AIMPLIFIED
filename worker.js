@@ -491,6 +491,125 @@ async function attachSplits(rows, group) {
 }
 
 // -------------------------------------------------------------------------
+// ESPN probable-pitcher fallback.
+//
+// StatsAPI stays the source of record. Everything downstream is keyed to its
+// person ids -- season stats, the K and hits projections, grading from box
+// scores, proj_log, picks.pitcher_id -- so a probable that cannot be resolved
+// back to one of those ids is useless to us no matter who published it.
+//
+// It also posts LATE. Measured 2026-09-12: StatsAPI was missing 2 of 30 sides
+// that day and 4 of 30 the next, where ESPN had 29 and 30. The gap widens the
+// further ahead you look, and one day ahead is exactly where this board is
+// trying to be -- opening lines are soft before the market sharpens them. A
+// missing probable is silent: projFor() returns null, the arm drops off the K
+// board and the batter board loses its opposing-arm context, and nothing errors.
+//
+// FALLBACK ONLY. A side StatsAPI has already named is never touched. The feeds
+// do genuinely disagree -- CWS read Sean Newcomb on StatsAPI and Luis Castillo
+// on ESPN the day this was written -- and preferring one would mean
+// adjudicating staleness on every render. Silently swapping out a pitcher the
+// model has already projected is a worse failure than showing none.
+// -------------------------------------------------------------------------
+
+// cdn.espn.com, NOT site.api.espn.com: the latter 403s from Workers (the same
+// wall the NFL grader hit). The date parameter here is `date` SINGULAR --
+// site.api's `dates` is accepted and then silently ignored, serving a cached
+// current-day scoreboard, which looks like real data for the wrong day.
+const ESPN_MLB_SB = 'https://cdn.espn.com/core/mlb/scoreboard?xhr=1&date=';
+const ESPN_TEAM_FIX = { CHW: 'CWS', ARI: 'AZ' };   // ESPN spells two clubs differently
+
+// Strip accents and case so ESPN's unaccented spelling compares equal to the
+// accented one StatsAPI returns (Urena/Urena, Rodon/Rodon, Perez/Perez).
+const plainName = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+// `date` is 'YYYY-MM-DD'; ESPN wants 'YYYYMMDD'. Returns team abbreviation ->
+// pitcher name, abbreviations normalised to StatsAPI's spelling.
+async function espnProbables(date) {
+  const byTeam = {};
+  try {
+    const r = await fetch(ESPN_MLB_SB + String(date).replace(/-/g, ''), { headers: { accept: 'application/json' } });
+    if (!r.ok) return byTeam;
+    const d = await r.json();
+    const evs = (((d.content || {}).sbData || {}).events) || [];
+    for (const ev of evs) {
+      const comp = (ev.competitions || [])[0];
+      for (const c of ((comp && comp.competitors) || [])) {
+        const raw = String(((c.team || {}).abbreviation) || '').toUpperCase();
+        if (!raw) continue;
+        const abbr = ESPN_TEAM_FIX[raw] || raw;
+        // A doubleheader puts a club on the card twice and nothing here says
+        // which game a name belongs to. Poison the entry rather than guess.
+        if (Object.prototype.hasOwnProperty.call(byTeam, abbr)) { byTeam[abbr] = null; continue; }
+        const pr = (c.probables || [])[0];
+        byTeam[abbr] = (pr && pr.athlete && pr.athlete.displayName) || null;
+      }
+    }
+  } catch (e) { /* no fallback this render */ }
+  return byTeam;
+}
+
+// One search call covers every name. Returns name -> { id, fullName }.
+async function resolvePitcherIds(names) {
+  const out = {};
+  if (!names.length) return out;
+  try {
+    const r = await fetch(`${STATS}/people/search?names=${encodeURIComponent(names.join(','))}&sportId=1`,
+      { headers: { accept: 'application/json' } });
+    if (!r.ok) return out;
+    const people = ((await r.json()).people) || [];
+    for (const nm of names) {
+      // Pitchers only, and only when the name lands on exactly one of them.
+      // 'Eury Perez' returns a pitcher and a left fielder; 'Jose Ramirez' a
+      // pitcher and a third baseman. Ambiguity is skipped, never guessed -- a
+      // wrong id would hang another player's season line on the projection.
+      const hits = people.filter((pl) => plainName(pl.fullName) === plainName(nm)
+        && ((pl.primaryPosition || {}).abbreviation === 'P'));
+      if (hits.length === 1) out[nm] = { id: hits[0].id, fullName: hits[0].fullName };
+    }
+  } catch (e) { /* leave the holes */ }
+  return out;
+}
+
+// Mutates the schedule games in place, filling ONLY the sides StatsAPI left
+// empty. Returns how many were filled. Costs no request at all on a day where
+// there are none, which is the common case for tonight.
+async function fillMissingProbables(games, date) {
+  const holes = [];
+  for (const g of (games || [])) {
+    for (const side of ['away', 'home']) {
+      const t = g.teams && g.teams[side];
+      if (!t || (t.probablePitcher && t.probablePitcher.id)) continue;
+      const abbr = teamAbbr(t.team);
+      if (abbr) holes.push({ t, abbr });
+    }
+  }
+  if (!holes.length) return 0;
+  const byTeam = await espnProbables(date);
+  const wanted = [];
+  for (const h of holes) {
+    const nm = byTeam[h.abbr];
+    if (!nm) continue;
+    h.name = nm;
+    if (!wanted.includes(nm)) wanted.push(nm);
+  }
+  if (!wanted.length) return 0;
+  const ids = await resolvePitcherIds(wanted);
+  let filled = 0;
+  for (const h of holes) {
+    const hit = h.name && ids[h.name];
+    if (!hit) continue;
+    // Shaped exactly like StatsAPI's own probablePitcher so every consumer
+    // downstream reads it without knowing where it came from. probableSource is
+    // the only addition, so a row sourced this way stays identifiable.
+    h.t.probablePitcher = { id: hit.id, fullName: hit.fullName };
+    h.t.probableSource = 'espn';
+    filled += 1;
+  }
+  return filled;
+}
+
+// -------------------------------------------------------------------------
 // /api/board — tonight's real slate with a transparent projected-K model.
 //   projK = pitcherK/9 × (expectedIP / 9) × (opponentK% / leagueK%)
 //   80% interval from a Poisson spread around projK.
@@ -528,6 +647,11 @@ async function board(env, ctx, opts) {
     if (nextGames.length) { date = nextDate; sched = next; games = nextGames; }
   }
   if (!games.length) return cors(json([], 60));
+
+  // Fill probables StatsAPI has not posted yet. Fallback only, and a no-op on
+  // days where it has posted them all -- most days for tonight, fewer for
+  // tomorrow, which is where the board spends its time.
+  await fillMissingProbables(games, date);
 
   // Real strikeout prop lines (paid Odds API player props), keyed by pitcher
   // name. Per-event requests — cached 5 min below to protect the quota.
@@ -816,6 +940,10 @@ async function board(env, ctx, opts) {
         name: shortName(pp.fullName),
         fullName: pp.fullName,
         team: teamAbbr(g.teams[side].team),
+        // 'espn' when StatsAPI had not posted this arm and the fallback filled
+        // it in. Carried so a row sourced that way can be told apart instead of
+        // blending in with the ones the league itself published.
+        probableSource: g.teams[side].probableSource || 'statsapi',
         hand: st.hand || null,
         era: st.era || null,
         k9: round1(k9),
@@ -1341,7 +1469,12 @@ async function batters(env, ctx, opts) {
     const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}&hydrate=team,lineups,probablePitcher,venue`, { headers: { accept: 'application/json' } });
     if (r.ok) {
       const sd = await r.json();
-      (((sd.dates || [])[0] || {}).games || []).forEach((g) => {
+      const sdGames = (((sd.dates || [])[0] || {}).games) || [];
+      // Same fallback as /api/board. Here a missing probable is even quieter:
+      // the opposing arm just goes neutral, so every batter facing an
+      // unannounced starter is silently modelled against a league-average one.
+      await fillMissingProbables(sdGames, slateDate());
+      sdGames.forEach((g) => {
         // Key by team NAME through the same table the Odds events use, so
         // StatsAPI abbreviations that differ (e.g. AZ vs ARI) still match.
         const away = keyAbbr((g.teams.away.team || {}).name), home = keyAbbr((g.teams.home.team || {}).name);
