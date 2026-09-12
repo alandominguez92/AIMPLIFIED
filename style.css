@@ -783,6 +783,17 @@ section { padding:44px 0; }
 .board-row .mp-name { color:var(--text); }
 .board-row .mp-name.pick { color:var(--accent); }
 .board-row .mp-hand { font-family:var(--mono); font-weight:500; font-size:10px; color:var(--textDim); margin-left:3px; vertical-align:1px; letter-spacing:0; }
+/* Starter sourced from ESPN because MLB had not posted one. Deliberately the
+   quietest chip on the row — faint text, faint outline, no colour role. It is
+   not a warning: the projection is the ordinary one and the pitcher is a real
+   resolved person. It says only that the league has not confirmed him yet, which
+   is a fact about the schedule, not about the number. Giving it --danger or
+   --warm would read as "something is wrong with this pick" and it is not. */
+.board-row .mp-src, .mp-src { font-family:var(--mono); font-weight:500; font-size:9px;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--textFaint);
+  border:1px solid var(--borderFaint); border-radius:3px; padding:0 3px;
+  margin-left:4px; vertical-align:1.5px; white-space:nowrap; }
+
 .board-row .mp-vs { color:var(--textDim); font-weight:600; font-size:11px; margin:0 5px; font-family:var(--sans); }
 .board-row .weather-label { font-size:11px; font-family:var(--mono); display:block; }
 .board-row .odds-cell { color:var(--accent); font-weight:600; font-family:var(--mono); }

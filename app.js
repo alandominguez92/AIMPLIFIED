@@ -2221,7 +2221,7 @@
           // The club badge, same chip the batter board uses. Two surnames and two
           // hand tags do not say who is the home arm; on a slate grouped by game
           // the side is the thing you are actually reading for.
-          return `<span class="mp-name${isPick ? ' pick' : ''}">${esc(lastName(p.name))}${ht ? ` <span class="mp-hand">${ht}</span>` : ''}${p.team ? ' ' + mlbBadge(p.team) : ''}</span>`;
+          return `<span class="mp-name${isPick ? ' pick' : ''}">${esc(lastName(p.name))}${ht ? ` <span class="mp-hand">${ht}</span>` : ''}${p.team ? ' ' + mlbBadge(p.team) : ''}${espnTag(p)}</span>`;
         }).join(' <span class="mp-vs">vs</span> ');
         const sub = [g.matchup, g.timeLabel, g.scorePart].filter(Boolean).join(' · ');
         matchupCell = `<div class="matchup-cell">
@@ -2430,7 +2430,7 @@
               : `<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">no prop line</span>`;
             return `
             <div style="display:flex;align-items:baseline;gap:10px;margin-top:10px;flex-wrap:wrap">
-              <span style="font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;min-width:120px">${esc(p.name)}</span>
+              <span style="font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;min-width:120px">${esc(p.name)}${espnTag(p)}</span>
               <span style="font-family:'IBM Plex Mono';font-size:14px;color:var(--accent);font-weight:600">${p.proj} K</span>
               <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--textDim)">80% ${p.lo} – ${p.hi}</span>
               <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">opp K ${p.oppKpct}%</span>
@@ -3155,6 +3155,19 @@
     const parts = String(name || '').trim().split(/\s+/);
     return parts.length ? parts[parts.length - 1] : String(name || '');
   }
+  // The league had not posted this starter, so the worker filled him in from
+  // ESPN (fillMissingProbables). The projection behind him is the ordinary one
+  // — same model, same StatsAPI season line, because the name is resolved back
+  // to a real person id before anything is computed. What is NOT confirmed is
+  // who is throwing, and a reader about to take a number off this row should be
+  // told that rather than left to assume MLB said so. Marked, never hidden, and
+  // never silently swapped: a side MLB has named is not sourced this way.
+  function espnTag(p) {
+    return (p && p.probableSource === 'espn')
+      ? ' <span class="mp-src" title="Probable from ESPN — MLB has not posted this starter yet">ESPN</span>'
+      : '';
+  }
+
   function heroBar(label, badge, fillPct, tone) {
     const w = Math.max(2, Math.min(98, fillPct));
     return `<div class="row"><span class="stat">${esc(label)}</span><div class="track"><div class="fill ${tone}" style="width:${w}%"></div></div><span class="badge ${tone}">${esc(String(badge))}</span></div>`;
@@ -3183,7 +3196,7 @@
       <div class="side">
         ${badge}
         <div class="name">${esc(p.fullName || p.name)}</div>
-        <div class="team">${esc(meta)}</div>
+        <div class="team">${esc(meta)}${espnTag(p)}</div>
         <div class="proj">
           <div class="label"><span class="label-long">Projected strikeouts</span><span class="label-short">Proj Ks</span></div>
           <div class="num">${p.proj}</div>
