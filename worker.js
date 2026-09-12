@@ -1078,9 +1078,24 @@ async function board(env, ctx, opts) {
     }
   }
 
+  // A finished game is nothing to act on, so it leaves the board as soon as it
+  // goes Final. The result is not lost: it is in the track record, and while the
+  // game was running it was in Live Now.
+  //
+  // Filtered HERE, after every logPicks/logMlPicks/logRlPicks/saveProjLog call
+  // above, and deliberately not earlier. Those writes are what put a pick on the
+  // record at all, and they run off this same array. Filtering before them would
+  // mean a game that ended before anyone opened the page never got logged, never
+  // got graded, and silently left the record — a far worse failure than a stale
+  // row, and one nothing on the page would show.
+  const openRows = rows.filter((r) => r.status !== 'Final');
+
   // 5 min near first pitch, 15 while the slate is still hours out — see
   // BOARD_TTL_NEAR. Props are the expensive part, and they do not move overnight.
-  return cors(json(rows, ttlForSoonest(soonestStart(rows, 'timeMs'))));
+  // Measured on what REMAINS: once the last game is final this is empty, which
+  // ttlForSoonest reads as the near window, so the board clears promptly rather
+  // than holding finished games for another 15 minutes.
+  return cors(json(openRows, ttlForSoonest(soonestStart(openRows, 'timeMs'))));
 }
 
 // Moneyline for one game. Fair line = Pinnacle's de-vigged probability (the
@@ -1415,8 +1430,15 @@ function soonestStart(rows, field) {
 // the finished rows, because a board that priced nothing still knows perfectly
 // well when the next first pitch is — and falling back to the near TTL there
 // would re-buy an empty slate every five minutes.
-const battersPayload = (rows, feedError, ttlSec) => cors(json(
-  { rows, feedError: feedError || null },
+// `slate` is counted BEFORE finished rows are dropped, and exists only because
+// they are. The client's empty-state copy has to tell "books have not posted the
+// two-way lines yet" from "the games are over and the books pulled them", and it
+// read that off the Final rows themselves. Those no longer arrive, so the fact
+// travels separately. Without it a board emptied by a finished slate tells the
+// reader to check back closer to first pitch at midnight — which is precisely
+// the bug that copy was written to fix.
+const battersPayload = (rows, feedError, ttlSec, slate) => cors(json(
+  { rows, feedError: feedError || null, slate: slate || null },
   feedError ? 30 : (ttlSec || ttlForSoonest(soonestStart(rows, 'timeMs'))),
 ));
 
@@ -2056,10 +2078,22 @@ async function batters(env, ctx, opts) {
     if (ctx && ctx.waitUntil) ctx.waitUntil(write); else await write;
   }
 
+  // Same rule as the strikeout board: a game that has gone Final drops off.
+  // Safe to do on `rows` because logging runs off `logRows`, which is built from
+  // `all` and never touched here — the record does not depend on what is
+  // displayed. Pulled rows go with their game, since "he was scratched" stops
+  // being news the moment the game is over.
+  const slate = {
+    rows: rows.length,
+    started: rows.length > 0 && rows.every((r) => r.status === 'Live' || r.status === 'Final'),
+    allFinal: rows.length > 0 && rows.every((r) => r.status === 'Final'),
+  };
+  const openRows = rows.filter((r) => r.status !== 'Final');
+
   // 5 min — batter props are the expensive call. propsFeedError rides along even
   // on a good slate: some events can 401 while others succeed, and a partial
   // slate presented as complete is its own quiet lie.
-  return battersPayload(rows, feedError, boardTtlSec);
+  return battersPayload(openRows, feedError, boardTtlSec, slate);
 }
 
 function abbrFromName(name) {

@@ -194,6 +194,7 @@
     liveHitters: null,
     livePitchers: null,
     liveBoard: null,
+    batterSlate: null,   // { rows, started, allFinal } — see slateStarted()
     liveBatters: null,
     liveNow: null,
     trackRecord: null,
@@ -621,6 +622,11 @@
       const payload = await fetchJson('/api/batters');
       const rows = Array.isArray(payload) ? payload : (payload && payload.rows);
       state.feedError = (payload && !Array.isArray(payload) && payload.feedError) || null;
+      // Whether tonight's games have started, counted server-side across the
+      // WHOLE slate. Finished games no longer reach the board, so this cannot be
+      // inferred from the rows any more. Null on the older array-shaped payload,
+      // which slateStarted() falls back from.
+      state.batterSlate = (payload && !Array.isArray(payload) && payload.slate) || null;
       // Stamp the start of an outage once, not on every poll — otherwise "out for
       // N min" resets every five minutes and a six-hour outage never reads as one.
       // A dry run is not an outage: it is us declining to call, so it never starts
@@ -1651,6 +1657,10 @@
     return boardIsLive() ? (state.liveBoard || []) : [];
   }
   function slateStarted() {
+    // Prefer the server's count on the batter board: its finished games are
+    // filtered out of the response, so an empty board there means the slate is
+    // OVER, and reading the (now empty) rows would conclude it had not begun.
+    if (isBatter() && state.batterSlate) return !!state.batterSlate.started;
     const rows = slateGames();
     return rows.length > 0 && rows.every((g) => g.status === 'Live' || g.status === 'Final');
   }
