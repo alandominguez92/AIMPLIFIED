@@ -6496,7 +6496,7 @@ async function nflCompare(env, url) {
     const all = url && url.searchParams && url.searchParams.get('all') === '1';
     const nowIso = new Date().toISOString();
     const projs = (await env.DB.prepare(
-      `SELECT event_id, player, market, team, pos, game, commence, proj, p25, p50, p75, conf, actual
+      `SELECT event_id, player, market, team, pos, game, commence, proj, p25, p50, p75, conf, actual, captured_at
          FROM nfl_proj WHERE season=2026 ${all ? '' : 'AND commence > ?'} ORDER BY commence, proj DESC`
     ).bind(...(all ? [] : [nowIso])).all()).results || [];
     if (!projs.length) { out.note += ' (no frozen projections for upcoming games — run /api/nfl-capture)'; return cors(json(out, 60)); }
@@ -6535,10 +6535,20 @@ async function nflCompare(env, url) {
     for (const p of projs) {
       const oddsMkt = NFL_PROJ_TO_ODDS[p.market];
       const quotes = oddsMkt ? (byPlayer.get(`${p.event_id}|${oddsMkt}|${normName(p.player)}`) || []) : [];
+      // How far ahead of kickoff this projection was locked. The freeze is
+      // INSERT OR IGNORE on (season, event_id, player, market), so the FIRST
+      // capture to see a game owns its projection for the rest of the season --
+      // and the capture horizon is 10 days. Without this field there is no way
+      // to tell a number frozen the morning of the game from one frozen a week
+      // out on nothing but last season's priors, and the grader treats them
+      // identically.
+      const leadH = (p.captured_at && p.commence)
+        ? Math.round((Date.parse(p.commence) - Date.parse(p.captured_at)) / 36e5 * 10) / 10
+        : null;
       const row = {
         player: p.player, pos: p.pos, team: p.team, game: p.game, commence: p.commence,
         market: p.market, proj: p.proj, p25: p.p25, p50: p.p50, p75: p.p75, conf: p.conf,
-        actual: p.actual,
+        actual: p.actual, frozenAt: p.captured_at || null, frozenLeadHours: leadH,
       };
       if (!quotes.length) {
         // Named explicitly rather than left null: "no book quoted him" and "the
@@ -7222,8 +7232,15 @@ async function nflProps(env, url) {
     // Biggest projections first — with no market line to rank against, volume is
     // the only honest ordering. It is explicitly NOT an edge ranking.
     out.rows.sort((a, b) => b.proj - a.proj);
-    out.note = 'projections only — no book quotes NFL player props through our feed, '
-      + 'so nothing here is priced, graded or postable';
+    // Written before the prop capture existed, this used to claim no book quoted
+    // NFL props through our feed. They do -- 96 of 145 rows carried DK, FD,
+    // Pinnacle, NoVig and ProphetX quotes the day this was corrected -- and the
+    // frozen projections are graded from box scores. What is still true is
+    // narrower: THIS endpoint holds no prices, and nothing anywhere is posted.
+    out.note = 'projections only — this endpoint carries no prices and ranks by volume, '
+      + 'never by edge. Books do quote NFL player props through the feed; those are '
+      + 'captured separately and joined to these projections in /api/nfl-compare, '
+      + 'which also carries the graded result. Nothing on either endpoint is posted as a play.';
   } catch (e) { out.error = String((e && e.message) || e); }
   return cors(json(out, 120));
 }
