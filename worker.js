@@ -158,7 +158,16 @@ export default {
 
     // Both write; caching either would serve a stale body and skip the write.
     if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade') return handleApi(p, env, ctx, url);
-    const cacheKey = new Request(url.origin + p + (p === '/api/fair-probe' ? url.search : ''));
+    // The query string is dropped from the key on purpose — every viewer should
+    // share one response — EXCEPT where it changes what the route returns.
+    // /api/nfl-compare was keyed by path alone, so ?all=1 (played games included,
+    // what the Monday grading run reads) could be answered from a cached
+    // upcoming-only response left by anyone who opened the NFL board in the last
+    // minute: zero graded rows, and a run concluding grading had failed. Its
+    // ?summary=1 form would have been worse the other way round — a rowless body
+    // cached under the path the board itself reads.
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare';
+    const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
 
@@ -6664,6 +6673,15 @@ async function nflCompare(env, url) {
         : 'the LINE predicts actuals better than the model — the gap is model error, do not price it';
     }
   } catch (e) { out.error = String((e && e.message) || e); }
+  // ?summary=1 keeps the counts, the summary and the `graded` verdict and drops
+  // the per-row detail. The full response runs past 100KB with ?all=1, far more
+  // than a scheduled run can read inline, and `graded` — the one block it exists
+  // to report — sits at the very end of it. The Week 1 capture run stalled
+  // exactly there, writing a script to parse a response it could not read.
+  if (url && url.searchParams && url.searchParams.get('summary') === '1') {
+    out.rowCount = out.rows.length;
+    delete out.rows;
+  }
   return cors(json(out, 60));
 }
 
