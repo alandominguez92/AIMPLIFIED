@@ -7322,6 +7322,10 @@ async function ensureUsageSchema(db) {
     day TEXT, route TEXT, credits INTEGER, calls INTEGER, blind INTEGER, updated_at TEXT,
     PRIMARY KEY (day, route)
   )`).run();
+  // Ledger writes that failed, written down after the fact — see METER_FAIL.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS odds_meter_fail (
+    day TEXT PRIMARY KEY, failures INTEGER, first_at TEXT, last_at TEXT, last_error TEXT
+  )`).run();
 }
 // Best-effort and never awaited by a request path: telemetry must not be able to
 // slow down or break the thing it is measuring.
@@ -7336,17 +7340,74 @@ async function ensureUsageSchema(db) {
 // A response without the header is counted as `blind`: not silently folded into
 // the total as a zero, because a route that looks free is exactly the kind of
 // wrong number this table exists to prevent.
+// Ledger writes that did not land, held in MEMORY. The likeliest reason a
+// ledger write fails is that the database itself is refusing writes, so
+// recording the failure in that database would fail right along with it.
+//
+// This is what the catch below used to swallow whole. On 2026-09-12 the last
+// recorded call was at 19:51Z, mid-slate; nothing more was written until
+// midnight UTC while about 632 credits went out, and the only trace was a gap in
+// the reconciliation a day later, attributed to the wrong day.
+//
+// Per isolate, so it undercounts: Workers run many and recycle them freely. It is
+// flushed to odds_meter_fail by the next write in this isolate that succeeds,
+// which leaves a durable lower bound, and /api/usage also reports what this
+// isolate has not flushed yet — because while the database is still down, that
+// in-memory count is the only evidence there is.
+const METER_FAIL = { pending: {}, total: 0, lastError: null, lastAt: null };
+
+function noteMeterFailure(day, now, e) {
+  const msg = String((e && e.message) || e).slice(0, 200);
+  const p = METER_FAIL.pending[day] || (METER_FAIL.pending[day] = { n: 0, firstAt: now, lastAt: now, lastError: msg });
+  p.n += 1; p.lastAt = now; p.lastError = msg;
+  METER_FAIL.total += 1; METER_FAIL.lastError = msg; METER_FAIL.lastAt = now;
+}
+
+async function flushMeterFailures(db) {
+  const days = Object.keys(METER_FAIL.pending);
+  if (!days.length) return;
+  // Swapped out synchronously, before any await, so two successful writes
+  // landing together in this isolate cannot both flush the same failures and
+  // count them twice.
+  const taken = METER_FAIL.pending;
+  METER_FAIL.pending = {};
+  try {
+    await db.batch(days.map((d) => db.prepare(
+      `INSERT INTO odds_meter_fail (day, failures, first_at, last_at, last_error) VALUES (?,?,?,?,?)
+       ON CONFLICT(day) DO UPDATE SET
+         failures = failures + excluded.failures,
+         first_at = MIN(first_at, excluded.first_at),
+         last_at = MAX(last_at, excluded.last_at),
+         last_error = excluded.last_error`
+    ).bind(d, taken[d].n, taken[d].firstAt, taken[d].lastAt, taken[d].lastError)));
+  } catch (e) {
+    // Put them back for a later success to retry, merged with anything that
+    // failed in the meantime.
+    for (const d of days) {
+      const cur = METER_FAIL.pending[d];
+      if (!cur) { METER_FAIL.pending[d] = taken[d]; continue; }
+      cur.n += taken[d].n;
+      if (taken[d].firstAt < cur.firstAt) cur.firstAt = taken[d].firstAt;
+    }
+  }
+}
+
 async function recordOddsUsage(env, res, route) {
+  let rem, last;
   try {
     if (!env || !env.DB || !res || !res.headers) return;
-    const rem = parseInt(res.headers.get('x-requests-remaining') || '', 10);
-    const last = parseInt(res.headers.get('x-requests-last') || '', 10);
-    if (!Number.isFinite(rem)) return;
+    rem = parseInt(res.headers.get('x-requests-remaining') || '', 10);
+    last = parseInt(res.headers.get('x-requests-last') || '', 10);
+  } catch (e) { return; }
+  // No remaining header means there is nothing to record. That is not a failed
+  // write and must not be counted as one.
+  if (!Number.isFinite(rem)) return;
+  const now = new Date().toISOString();
+  const day = now.slice(0, 10);
+  const cost = Number.isFinite(last) ? last : 0;
+  const blind = Number.isFinite(last) ? 0 : 1;
+  try {
     await ensureUsageSchema(env.DB);
-    const now = new Date().toISOString();
-    const day = now.slice(0, 10);
-    const cost = Number.isFinite(last) ? last : 0;
-    const blind = Number.isFinite(last) ? 0 : 1;
     await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO odds_usage (day, remaining, low, calls, updated_at) VALUES (?,?,?,1,?)
@@ -7365,13 +7426,38 @@ async function recordOddsUsage(env, res, route) {
            updated_at = excluded.updated_at`
       ).bind(day, route || 'unattributed', cost, blind, now),
     ]);
-  } catch (e) { /* telemetry is never worth an error */ }
+  } catch (e) {
+    // Still never worth an error to the request — but no longer silent.
+    noteMeterFailure(day, now, e);
+    return;
+  }
+  // The database is taking writes. If this isolate saw any fail earlier, write
+  // them down now, while it can.
+  await flushMeterFailures(env.DB);
 }
 
 // GET /api/usage — reads the stored numbers only. Costs nothing upstream, which
 // is the point: checking the quota must not consume the quota.
 async function oddsUsage(env) {
   const out = { note: 'read from stored response headers — this endpoint makes no upstream call' };
+  // Attached BEFORE the database is touched. If the database is what is
+  // failing, the reads below throw, and this is the one part of the answer that
+  // can still be produced.
+  const unflushed = Object.values(METER_FAIL.pending).reduce((a, p) => a + p.n, 0);
+  out.meterFailures = {
+    note: 'ledger writes that failed. `days` is what has been written down durably; '
+      + '`thisIsolate` is what the Worker instance answering this request saw and has not '
+      + 'written yet. Both undercount — isolates are many and short-lived — so any non-zero '
+      + 'value means the ledger is incomplete for that day.',
+    days: [],
+    thisIsolate: {
+      unflushed,
+      byDay: JSON.parse(JSON.stringify(METER_FAIL.pending)),
+      seenSinceStart: METER_FAIL.total,
+      lastError: METER_FAIL.lastError,
+      lastAt: METER_FAIL.lastAt,
+    },
+  };
   if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 30)); }
   try {
     await ensureUsageSchema(env.DB);
@@ -7379,6 +7465,14 @@ async function oddsUsage(env) {
       'SELECT day, remaining, low, calls, updated_at FROM odds_usage ORDER BY day DESC LIMIT 14'
     ).all()).results || [];
     out.days = rows;
+
+    const mf = (await env.DB.prepare(
+      'SELECT day, failures, first_at, last_at, last_error FROM odds_meter_fail ORDER BY day DESC LIMIT 14'
+    ).all()).results || [];
+    out.meterFailures.days = mf;
+    const failsByDay = {};
+    for (const f of mf) failsByDay[f.day] = f.failures || 0;
+    for (const [d, pnd] of Object.entries(METER_FAIL.pending)) failsByDay[d] = (failsByDay[d] || 0) + pnd.n;
     if (rows.length >= 2) {
       // Credits spent per day, from the drop in the low-water mark.
       out.burn = [];
@@ -7411,11 +7505,18 @@ async function oddsUsage(env) {
       const spent = spentByDay[day];
       // A day still in progress has no closing low to difference against, so it
       // reports metered-only rather than a gap that is really just "not over yet".
-      if (typeof spent !== 'number' || spent < 0) return { day, metered, blind, spent: null, note: 'day not closed — no burn to compare' };
-      return { day, metered, blind, spent, unattributed: spent - metered,
-        note: Math.abs(spent - metered) <= Math.max(20, spent * 0.05)
-          ? 'ledger accounts for the burn'
-          : 'GAP — some spend is not attributed to any route' };
+      // A failed write freezes that day's low-water mark at its last recorded
+      // call, so the unrecorded spend surfaces as a gap on the FOLLOWING day.
+      // The failures that explain a gap are therefore looked for on both.
+      const prev = new Date(Date.parse(day + 'T00:00:00Z') - 864e5).toISOString().slice(0, 10);
+      const writeFailures = (failsByDay[day] || 0) + (failsByDay[prev] || 0);
+      if (typeof spent !== 'number' || spent < 0) return { day, metered, blind, spent: null, writeFailures, note: 'day not closed — no burn to compare' };
+      const closes = Math.abs(spent - metered) <= Math.max(20, spent * 0.05);
+      return { day, metered, blind, spent, unattributed: spent - metered, writeFailures,
+        note: closes ? 'ledger accounts for the burn'
+          : writeFailures > 0
+            ? `GAP — ${writeFailures} ledger write(s) failed on ${prev} or ${day}; the unrecorded spend is most likely from those calls`
+            : 'GAP — some spend is not attributed to any route' };
     });
 
     const latest = rows[0];
