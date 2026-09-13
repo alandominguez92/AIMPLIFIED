@@ -4157,11 +4157,19 @@
       // and prophetx all quoting two-sided. The board was then rendering "line
       // 90.5 · 4 sharp" directly beneath a sentence saying no line existed.
       // A banner that contradicts the rows under it is worse than no banner.
+      //
+      // "or graded yet" went stale the same way: frozen projections are graded
+      // against ESPN box scores now (/api/nfl-grade), first on Week 1. Grading
+      // runs when that endpoint is called, not on every page load, and no grade
+      // is shown on this board — so the wording says it happens, not that you
+      // can see it here. "Not priced" still holds: there is no fair line or edge
+      // on a player prop.
       el.nflBannerBody.innerHTML = isLines
         ? 'The game-line read — spread, total and implied team totals — priced against the sharp pool '
           + 'where two or more sharp books agree. <b>Context, not plays</b>: nothing on this board is postable.'
-        : 'These are <b>projections, not plays</b>. Lines are now quoted and captured, but nothing here is '
-          + 'priced or graded yet — the bar shows where the model sits <b>against the market</b>, not value. '
+        : 'These are <b>projections, not plays</b>. Lines are quoted and captured, and each projection is '
+          + 'frozen before kickoff and graded against the box score after the game — but nothing here is '
+          + 'priced: the bar shows where the model sits <b>against the market</b>, not value. '
           + '<b>Passing yards are not shown</b>: backtested over two seasons the outcome landed below the '
           + 'projected mean only 42% and 49% of the time, so the skew this model trades on is not there.'
         ;
