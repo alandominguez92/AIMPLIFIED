@@ -6366,6 +6366,15 @@ const NFL_PROJ_TO_ODDS = { receiving: 'player_reception_yds', rushing: 'player_r
 // Worker itself (/api/nfl-grade?probe=1): site.api 403, cdn.espn 200.
 const ESPN_CDN = 'https://cdn.espn.com/core/nfl';
 const ESPN_UA = 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)';
+// ESPN puts generational suffixes in displayName ("Kyle Pitts Sr.", "James Cook
+// III"). The projections are keyed by nflverse names, which often do not, and
+// normName keeps the suffix — so the two never matched, and a player who dressed
+// and gained yards was graded as a did-not-play. Week 1's first grading marked 27
+// rows that way, with starters among them. The base name is a FALLBACK only, and
+// only when a single athlete in that game has it (see nflGrade).
+const NFL_NAME_SUFFIX = /\s+(jr|sr|ii|iii|iv|v)$/;
+const nflBaseName = (s) => normName(s).replace(NFL_NAME_SUFFIX, '');
+
 async function nflGrade(env, url) {
   const out = { note: 'fills nfl_proj.actual from ESPN box scores — no Odds API call, no credits',
     pending: 0, events: 0, graded: 0, dnp: 0, unmatched: [], errors: [] };
@@ -6402,6 +6411,21 @@ async function nflGrade(env, url) {
     // A 5-hour buffer after kickoff: an NFL game runs ~3h10m, and grading a
     // game still in progress would freeze a partial stat line as the result.
     const cutoff = new Date(Date.now() - 5 * 3600 * 1000).toISOString();
+
+    // ?regrade=dnp re-opens did-not-play rows so they are checked again. Needed
+    // because the grader only looks at graded_at IS NULL: once a row was wrongly
+    // marked DNP it was locked, and fixing the name match alone would change
+    // nothing for rows already written. Scoped to actual IS NULL, so a row that
+    // has a real stat line is never touched — the most this can do is turn a
+    // wrong DNP into a result, or write the same DNP again.
+    if (url && url.searchParams && url.searchParams.get('regrade') === 'dnp') {
+      const r = await env.DB.prepare(
+        `UPDATE nfl_proj SET graded_at = NULL
+          WHERE actual IS NULL AND graded_at IS NOT NULL AND commence IS NOT NULL AND commence < ?`
+      ).bind(cutoff).run();
+      out.reopenedDnp = (r && r.meta && r.meta.changes) || 0;
+    }
+
     const pend = (await env.DB.prepare(
       `SELECT event_id, player, market, game, commence FROM nfl_proj
         WHERE graded_at IS NULL AND commence IS NOT NULL AND commence < ? ORDER BY commence`
@@ -6488,15 +6512,21 @@ async function nflGrade(env, url) {
       // yardsBy[market][normName] = yards ; played = every name in the box score
       const yardsBy = { receiving: {}, rushing: {} };
       const played = new Set();
+      // base name -> the full names that reduce to it. A set, because one athlete
+      // appears in several stat categories and must count once; more than one
+      // entry means two players share the base name and the fallback refuses.
+      const byBase = {};
       const box = (sum.gamepackageJSON && sum.gamepackageJSON.boxscore) || sum.boxscore || {};
       for (const team of (box.players || [])) {
         for (const cat of (team.statistics || [])) {
           const labels = (cat.labels || []).map((l) => String(l).toUpperCase());
           const yi = labels.indexOf('YDS');
           for (const a of (cat.athletes || [])) {
-            const nm = normName(((a.athlete || {}).displayName) || '');
+            const display = ((a.athlete || {}).displayName) || '';
+            const nm = normName(display);
             if (!nm) continue;
             played.add(nm);
+            (byBase[nflBaseName(display)] = byBase[nflBaseName(display)] || new Set()).add(nm);
             const bucket = yardsBy[cat.name];
             if (!bucket || yi < 0) continue;
             const v = Number((a.stats || [])[yi]);
@@ -6507,8 +6537,12 @@ async function nflGrade(env, url) {
 
       const stamp = new Date().toISOString();
       for (const row of rows) {
-        const nm = normName(row.player);
         const bucket = yardsBy[row.market];
+        let nm = normName(row.player);
+        if (!played.has(nm)) {
+          const same = byBase[nflBaseName(row.player)];
+          if (same && same.size === 1) { nm = [...same][0]; out.matchedBySuffix = (out.matchedBySuffix || 0) + 1; }
+        }
         let actual = null;
         if (bucket && Object.prototype.hasOwnProperty.call(bucket, nm)) actual = bucket[nm];
         else if (played.has(nm)) actual = 0;   // dressed, recorded nothing in this market
