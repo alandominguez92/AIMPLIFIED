@@ -213,8 +213,10 @@ export default {
 // batters() is the expensive call, so watch quota before widening further.
 const CLOSE_WINDOW_MIN = 15;
 
-// Props post the morning of game day, so a game more than ~12h out has no lines
-// yet — pricing it spends a paid per-event call to receive an empty book list.
+// Props post the morning of game day, so a game more than ~12h out often has no
+// lines yet. That is no longer a reason not to ask (see early lines below): the
+// Odds API bills only the markets it returns, so an empty answer costs nothing —
+// the cost of asking early is how OFTEN, which the early tier rations.
 //
 // board() has gated its strikeout fetch on this since the board started rolling
 // a day ahead into projections. batters() never did: it asked /events with no
@@ -223,14 +225,77 @@ const CLOSE_WINDOW_MIN = 15;
 // (three markets per event against strikeouts' one), so the ungated path was
 // the costly one, and it was silently paying double through the evening.
 //
-// Hoisted to module scope so the two cannot drift apart again, and applied to
-// the /events request itself as commenceTimeTo — bounding the list upstream is
-// strictly better than fetching it whole and discarding half locally.
+// Hoisted to module scope so the two cannot drift apart again. The /events
+// request is bounded upstream by commenceTimeTo; since early lines (below) that
+// bound is PROP_EARLY_HORIZON_MS, and the tiers decide what is actually priced.
 const PROP_LEAD_MS = 12 * 3600 * 1000;
+
+// Early lines. PROP_LEAD_MS on its own meant no line was bought for a game until
+// 12 hours before first pitch, so an afternoon slate sat unpriced through the
+// small hours while DraftKings and FanDuel were already showing the numbers —
+// on 2026-09-14 every row read "awaiting line" at 2 AM PT for a 3:40 PM first
+// pitch. The model's projections were on the board the whole time; it was the
+// market side of the comparison that was missing.
+//
+// Games on the slate the board is SHOWING are now priced as soon as books post
+// them, on two cadences so the fix does not reopen the quota problem the lead
+// window was added to close:
+//   near   inside PROP_LEAD_MS — unchanged: the board's own TTL.
+//   early  on the displayed slate but further out — bought at most once per
+//          PROP_EARLY_TTL_MS, globally, through feed_cache, however many
+//          viewers or Cloudflare locations ask in between.
+// Lines move little that far from first pitch. Games on a slate the board is
+// not showing (tomorrow's, before the roll) are still not bought.
+const PROP_EARLY_HORIZON_MS = 24 * 3600 * 1000;
+const PROP_EARLY_TTL_MS = 60 * 60 * 1000;
+const ptDateOf = (ms) => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+  } catch (e) { return new Date(ms).toISOString().slice(0, 10); }
+};
+// 'near' | 'early' | null for a start time, against the slate being displayed.
+function propTierAt(tMs, nowMs, slateYmd) {
+  if (!(tMs > nowMs)) return null;                        // started: its pre-game line is gone
+  if (tMs - nowMs <= PROP_LEAD_MS) return 'near';
+  if (tMs - nowMs <= PROP_EARLY_HORIZON_MS && ptDateOf(tMs) === slateYmd) return 'early';
+  return null;
+}
+const propTier = (ev, nowMs, slateYmd) =>
+  (!ev || !ev.commence_time ? 'near' : propTierAt(Date.parse(ev.commence_time), nowMs, slateYmd));
+
+// Buys lines for a set of events at most once per ttlMs across every location,
+// using the same single-flight lease as the batter line store. fetchInto(ev,
+// target) fills `target` and returns an error string, or null.
+//
+// Unlike the near store, an EMPTY result is stored too: early in the day most
+// books have not posted, and without a stored "nothing yet" every request would
+// see a cold store and re-ask — the hourly cadence would only hold for slates
+// that already had lines. An error is never stored.
+async function linesOnCadence(env, ctx, key, ttlMs, events, fetchInto) {
+  const useStore = !!(env && env.DB);
+  if (useStore) {
+    const hit = await loadFeedCache(env.DB, key);
+    if (hit.present && hit.ageMs < ttlMs) return { data: hit.data || {}, error: null, fromStore: true };
+    if (!(await claimFeedRefresh(env.DB, key, ttlMs)) && hit.present) {
+      return { data: hit.data || {}, error: null, fromStore: true };
+    }
+  }
+  const data = {};
+  const errs = await Promise.all(events.map((ev) => fetchInto(ev, data)));
+  const error = errs.find(Boolean) || null;
+  if (useStore && !error) {
+    const w = saveFeedCache(env.DB, key, data);
+    if (ctx && ctx.waitUntil) ctx.waitUntil(w); else await w;
+  }
+  return { data, error, fromStore: false };
+}
+
 // Odds API wants ISO8601 with no sub-second part; toISOString always emits ms.
 const oddsTime = (ms) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+// Looks as far as the early tier can reach. /events itself costs nothing; the
+// per-event price calls are what the tiers above ration.
 const eventsUrl = (key) => `${ODDS}/events?apiKey=${key}&dateFormat=iso`
-  + `&commenceTimeTo=${oddsTime(Date.now() + PROP_LEAD_MS)}`;
+  + `&commenceTimeTo=${oddsTime(Date.now() + PROP_EARLY_HORIZON_MS)}`;
 
 // The cron fires when ANY game is inside the close window, but it was then
 // refreshing the WHOLE slate — every game's props re-fetched so that one game's
@@ -680,19 +745,20 @@ async function board(env, ctx, opts) {
         // express "already started", which is the other half of this filter.
         // Same scoping as batters(): a close-capture pass only needs the games
         // whose lines are about to vanish, not every game with a posted prop.
+        const list = Array.isArray(events) ? events : [];
+        // `date` is the slate this board is showing, which may already have
+        // rolled to tomorrow — so early lines follow what is on screen.
         const upcoming = (opts && opts.closeOnly)
           ? closingSoon(events, opts.closeOnly)
-          : (Array.isArray(events) ? events : [])
-            .filter((ev) => {
-              if (!ev.commence_time) return true;
-              const t = Date.parse(ev.commence_time);
-              return t > now && (t - now) <= PROP_LEAD_MS;
-            });
-        await Promise.all(upcoming.map(async (ev) => {
+          : list.filter((ev) => propTier(ev, now, date) === 'near');
+        // Never on a close-capture pass: freezing a closing line must see the
+        // live book, not a copy bought up to an hour ago.
+        const earlyK = (opts && opts.closeOnly) ? [] : list.filter((ev) => propTier(ev, now, date) === 'early');
+        const fetchK = async (ev, target) => {
           try {
             const pr = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=pitcher_strikeouts&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
             if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, pr, 'board:kprops'));
-            if (!pr.ok) return;
+            if (!pr.ok) return `HTTP ${pr.status}`;
             const pd = await pr.json();
             for (const bm of (pd.bookmakers || [])) {
               const label = PROP_BOOKS[bm.key]; // DK/FD (bet) + MGM and the sharp pool (fair only)
@@ -702,15 +768,21 @@ async function board(env, ctx, opts) {
               for (const oc of (mk.outcomes || [])) {
                 const nm = normName(oc.description);
                 if (!nm) continue;
-                const rec = propByName[nm] || (propByName[nm] = {});
+                const rec = target[nm] || (target[nm] = {});
                 const b = rec[label] || (rec[label] = {});
                 if (oc.point != null) b.point = oc.point;
                 if (oc.name === 'Over') b.over = oc.price;
                 else if (oc.name === 'Under') b.under = oc.price;
               }
             }
-          } catch (e) { /* skip this event */ }
-        }));
+            return null;
+          } catch (e) { return null; /* skip this event */ }
+        };
+        await Promise.all(upcoming.map((ev) => fetchK(ev, propByName)));
+        if (earlyK.length) {
+          const got = await linesOnCadence(env, ctx, `kprop_lines_early:${date}`, PROP_EARLY_TTL_MS, earlyK, fetchK);
+          for (const [nm, rec] of Object.entries(got.data || {})) if (!propByName[nm]) propByName[nm] = rec;
+        }
       }
     } catch (e) { /* no props -> projection-only board */ }
   }
@@ -1627,13 +1699,12 @@ async function batters(env, ctx, opts) {
   // no one has posted yet. Overnight the board rolls a day ahead and shows
   // projections; that is the designed behaviour, and prices now fill in on the
   // same schedule the strikeout board has always used.
+  const slateYmdB = slateDate();
   const upcomingB = opts && opts.closeOnly
     ? closingSoon(events, opts.closeOnly)
-    : events.filter((ev) => {
-      if (!ev.commence_time) return true;
-      const t = Date.parse(ev.commence_time);
-      return t > nowB && (t - nowB) <= PROP_LEAD_MS;
-    });
+    : events.filter((ev) => propTier(ev, nowB, slateYmdB) === 'near');
+  // Today's games still further out than PROP_LEAD_MS — see propTier.
+  const earlyB = opts && opts.closeOnly ? [] : events.filter((ev) => propTier(ev, nowB, slateYmdB) === 'early');
   // A per-event props failure used to return silently, so a whole slate of 401s
   // looked identical to a slate with no props posted. Keep the first one.
   let propsFeedError = null;
@@ -1662,16 +1733,17 @@ async function batters(env, ctx, opts) {
     // Cold store AND we lost the claim: fall through and fetch. Paying twice
     // once beats opening the board empty.
   }
-  if (seeded) {
-    for (const [nm, s] of Object.entries(seeded)) {
-      if (!s || !s.props) continue;
-      // The same window the fetch path applies. Without it a stored line would
+  // Every line — fetched now, read from a store, near or early — goes through
+  // this one rehydrate, in the stored shape. Status and score are re-derived from
+  // tonight's schedule rather than stored: the lines are what was bought, but a
+  // score read from cache would be wrong the moment the game moves.
+  const seedInto = (stored) => {
+    for (const [nm, s] of Object.entries(stored || {})) {
+      if (!s || !s.props || byName[nm]) continue;       // near lines take precedence
+      // The same windows the fetch paths apply. Without this a stored line would
       // outlive its game and quote a price on something already underway.
       const t = s.timeMs || 0;
-      if (!(t > nowB && (t - nowB) <= PROP_LEAD_MS)) continue;
-      // Status and score are re-derived from tonight's schedule rather than
-      // stored: the lines are what was bought, but a score read from cache
-      // would be wrong the moment the game moves.
+      if (!propTierAt(t, nowB, slateYmdB)) continue;
       const sc = schedByMatchup[`${s.awayAb}@${s.homeAb}`] || null;
       byName[nm] = {
         name: s.name, matchup: `${s.awayAb} @ ${s.homeAb}`,
@@ -1681,20 +1753,18 @@ async function batters(env, ctx, opts) {
         props: s.props,
       };
     }
-  }
-  await Promise.all((doFetch ? upcomingB : []).map(async (ev) => {
+  };
+  const fetchBatter = async (ev, target) => {
     try {
       // Explicit bookmaker list rather than `regions=us`: it pulls the sharp fair
       // sources (which sit outside the us region) at the same 1 region-equivalent
       // price, since Odds API bills ceil(books/10) and we ask for 7.
       const r = await fetch(`${ODDS}/events/${ev.id}/odds?apiKey=${key}&bookmakers=${Object.keys(PROP_BOOKS).join(',')}&markets=${marketKeys}&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
       if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r, 'batters:props'));
-      if (!r.ok) { if (!propsFeedError) propsFeedError = await feedErrorFrom(r); return; }
+      if (!r.ok) { const fe = await feedErrorFrom(r); if (!propsFeedError) propsFeedError = fe; return fe; }
       const d = await r.json();
       const awayAb = keyAbbr(ev.away_team);
       const homeAb = keyAbbr(ev.home_team);
-      const matchup = `${awayAb} @ ${homeAb}`;
-      const sched = schedByMatchup[`${awayAb}@${homeAb}`] || null;
       for (const bm of (d.bookmakers || [])) {
         const label = PROP_BOOKS[bm.key]; // DK/FD = bet, MGM + sharps = fair only
         if (!label) continue;
@@ -1704,7 +1774,7 @@ async function batters(env, ctx, opts) {
           for (const oc of (mk.outcomes || [])) {
             const nm = normName(oc.description);
             if (!nm) continue;
-            const rec = byName[nm] || (byName[nm] = { name: oc.description, matchup, awayAb, homeAb, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), gamePk: sched ? sched.gamePk : null, gameStatus: sched ? sched.status : 'Preview', awayScore: sched ? sched.awayScore : null, homeScore: sched ? sched.homeScore : null, props: {} });
+            const rec = target[nm] || (target[nm] = { name: oc.description, awayAb, homeAb, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), props: {} });
             const mp = rec.props[spec.metric] || (rec.props[spec.metric] = {});
             const b = mp[label] || (mp[label] = {});
             if (oc.point != null) b.point = oc.point;
@@ -1713,22 +1783,30 @@ async function batters(env, ctx, opts) {
           }
         }
       }
-    } catch (e) { /* skip this event */ }
-  }));
-  if (propsFeedError && !feedError) feedError = propsFeedError;
+      return null;
+    } catch (e) { return null; /* skip this event */ }
+  };
 
-  // Publish what we just bought so the next colo does not buy it again. Only on
-  // a clean fetch that actually produced lines: caching a slate emptied by a 401
-  // would spread the outage to every colo for the rest of the window, and the
-  // whole point of the store is that one colo's bad luck is not everyone's.
-  if (doFetch && useStore && !propsFeedError && Object.keys(byName).length) {
-    const toStore = {};
-    for (const [nm, r] of Object.entries(byName)) {
-      toStore[nm] = { name: r.name, awayAb: r.awayAb, homeAb: r.homeAb, timeMs: r.timeMs, timeLabel: r.timeLabel, props: r.props };
+  if (seeded) seedInto(seeded);
+  if (doFetch && upcomingB.length) {
+    const fresh = {};
+    await Promise.all(upcomingB.map((ev) => fetchBatter(ev, fresh)));
+    seedInto(fresh);
+    // Publish what we just bought so the next colo does not buy it again. Only
+    // on a clean fetch that actually produced lines: caching a slate emptied by
+    // a 401 would spread the outage to every colo for the rest of the window,
+    // and the whole point of the store is that one colo's bad luck is not
+    // everyone's.
+    if (useStore && !propsFeedError && Object.keys(fresh).length) {
+      const w = saveFeedCache(env.DB, feedKey, fresh);
+      if (ctx && ctx.waitUntil) ctx.waitUntil(w); else await w;
     }
-    const w = saveFeedCache(env.DB, feedKey, toStore);
-    if (ctx && ctx.waitUntil) ctx.waitUntil(w); else await w;
   }
+  if (earlyB.length) {
+    const got = await linesOnCadence(env, ctx, `batter_lines_early:${slateYmdB}:${marketKeys}`, PROP_EARLY_TTL_MS, earlyB, fetchBatter);
+    seedInto(got.data);
+  }
+  if (propsFeedError && !feedError) feedError = propsFeedError;
 
   // No priced players -- but that does not mean nothing is knowable. Everything
   // the projection needs (batting slot when posted, opposing arm, park, season
