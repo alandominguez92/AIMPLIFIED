@@ -289,7 +289,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/pitchers') return pitchers();
   if (p === '/api/board') return board(env, ctx);
   if (p === '/api/batters') return batters(env, ctx);
-  if (p === '/api/track-record') return trackRecord(env);
+  if (p === '/api/track-record') return trackRecordCached(env);
   if (p === '/api/injuries') return injuries();
   if (p === '/api/live-now') return liveNow(env);
   if (p === '/api/ml-debug') return mlDebug(env);
@@ -2316,6 +2316,41 @@ function battingLive(box, pid, market) {
 // graded on read once their games are final — no cron needed. All D1 access
 // is guarded, so the site works normally before the DB is set up.
 // -------------------------------------------------------------------------
+// The Track Record is the most expensive read on the site: it runs every grading
+// pass and then reads every pick ever logged across four tables. It was cached
+// only at the edge, for 120 seconds, and the edge cache is per Cloudflare
+// location — so each location with a viewer rebuilt it from scratch every two
+// minutes, while open pages re-requested it every ten. On 2026-09-12 and 09-13
+// that, with the NFL board, exhausted D1's daily row-read allowance by midday.
+//
+// Now the built result is stored once in feed_cache and shared by every
+// location for TRACK_RECORD_TTL_MS. When it goes stale, one request wins the
+// refresh (the same single-flight lease the board uses) and the others keep
+// serving the last result instead of all rebuilding at once. New grades
+// therefore reach the page within about ten minutes, rather than two.
+const TRACK_RECORD_TTL_MS = 10 * 60 * 1000;
+const TRACK_RECORD_KEY = 'track-record:v1';
+
+async function trackRecordCached(env) {
+  if (!env || !env.DB) return trackRecord(env);
+  const cached = await loadFeedCache(env.DB, TRACK_RECORD_KEY);
+  const serve = (data, ageMs, ttl) => cors(json({ ...data, cachedAgeSec: Math.round(ageMs / 1000) }, ttl));
+  if (cached.present && cached.ageMs < TRACK_RECORD_TTL_MS) return serve(cached.data, cached.ageMs, 300);
+  // Stale or missing. With something to show, only the request that wins the
+  // lease rebuilds; everyone else serves what exists. With nothing stored yet
+  // there is nothing to serve, so the request builds regardless.
+  if (cached.present && !(await claimFeedRefresh(env.DB, TRACK_RECORD_KEY, 120000))) {
+    return serve(cached.data, cached.ageMs, 60);
+  }
+  const fresh = await trackRecord(env);
+  let data = null;
+  try { data = await fresh.clone().json(); } catch (e) { return fresh; }
+  // Never store an error: a failed build must not be served for ten minutes.
+  if (!data || data.error) return fresh;
+  await saveFeedCache(env.DB, TRACK_RECORD_KEY, data);
+  return serve(data, 0, 300);
+}
+
 async function trackRecord(env) {
   if (!env || !env.DB) return cors(json({ empty: true, logged: 0 }, 60));
   try {
@@ -2379,6 +2414,14 @@ async function ensureSchema(db) {
   // dropped. Rows written before the sharp pool shipped keep NULL and stay
   // separable from it, exactly as on bpicks.
   await addColumns(db, 'picks', [['fair_src', 'TEXT'], ['model_ver', 'TEXT'], ['close_src', 'TEXT']]);
+  // Partial index over UNGRADED rows only. D1 bills rows scanned, and the
+  // grading passes ask "which games still need a boxscore?" with
+  // `result IS NULL AND date < today` — a range that covers every day of
+  // history, so through the primary key it read the whole table on every Track
+  // Record request just to find the handful still open. This index holds only
+  // the open rows, so the answer costs about as many reads as there are rows
+  // left to grade, and stays that size however long the record grows.
+  await db.prepare('CREATE INDEX IF NOT EXISTS picks_ungraded ON picks (date, game_id) WHERE result IS NULL').run();
 }
 
 // Batter picks live in their own table (a player carries up to 3 markets per
@@ -2415,11 +2458,32 @@ async function ensureBatterSchema(db) {
   // boxscore; reconciled rows are stamped so the sweep terminates instead of
   // re-fetching the same games forever.
   await addColumns(db, 'bpicks', [['grade_ver', 'TEXT']]);
+  // Partial index over UNGRADED rows only. D1 bills rows scanned, and the
+  // grading passes ask "which games still need a boxscore?" with
+  // `result IS NULL AND date < today` — a range that covers every day of
+  // history, so through the primary key it read the whole table on every Track
+  // Record request just to find the handful still open. This index holds only
+  // the open rows, so the answer costs about as many reads as there are rows
+  // left to grade, and stays that size however long the record grows.
+  await db.prepare('CREATE INDEX IF NOT EXISTS bpicks_ungraded ON bpicks (date, game_id) WHERE result IS NULL').run();
+  // The backfill sweep's own lookup, as a partial index over exactly the rows it
+  // has left to reconcile. Its WHERE clause is built by the same function the
+  // query uses, because SQLite only picks a partial index when the query's
+  // conditions match the index's; a bound ? cannot be matched, so the version is
+  // written in as a literal and the index is named for it. When the sweep is
+  // done this index is empty, and so is the cost of asking.
+  await db.prepare(`CREATE INDEX IF NOT EXISTS ${backfillIndexName()} ON bpicks (date, game_id) WHERE ${backfillWhere()}`).run();
 }
 
 // Stamped on every row this grader touches. Bump only if the grading RULE
 // changes — it is what tells the backfill which rows still need re-deriving.
 const GRADE_VER = 'dnp-void-1';
+// Shared by backfillBatterGrades and the partial index built for it, so the two
+// can never drift apart — if they did, SQLite would quietly stop using the index
+// and the sweep would go back to reading the whole table. GRADE_VER is a code
+// constant, never user input, so writing it into the SQL is safe.
+const backfillWhere = () => `actual = 0 AND result IN ('win','loss') AND (grade_ver IS NULL OR grade_ver <> '${GRADE_VER}')`;
+const backfillIndexName = () => 'bpicks_backfill_' + GRADE_VER.replace(/[^a-z0-9]/gi, '_');
 
 // Moneyline last-known lines. Unlike strikeout picks, the moneyline is never
 // logged, so it lives only in the live h2h feed. The book only offers it
@@ -2452,6 +2516,8 @@ async function ensureMlPickSchema(db) {
   // to have been priced any particular way, and guessing would be worse than the
   // NULL that honestly says "before attribution existed".
   await addColumns(db, 'mlpicks', [['model_ver', 'TEXT'], ['fair_source', 'TEXT']]);
+  // Partial index over ungraded rows — see picks_ungraded in ensureSchema.
+  await db.prepare('CREATE INDEX IF NOT EXISTS mlpicks_ungraded ON mlpicks (date, game_id) WHERE result IS NULL').run();
 }
 async function loadMlLines(db, date) {
   try {
@@ -2494,6 +2560,9 @@ async function ensureProjLogSchema(db) {
     proj REAL, actual INTEGER, updated_at INTEGER,
     PRIMARY KEY (date, game_id, pitcher_id, market)
   )`).run();
+  // Partial index over projections still waiting on a boxscore — the other half
+  // of gradeUngraded's UNION. See picks_ungraded in ensureSchema.
+  await db.prepare('CREATE INDEX IF NOT EXISTS proj_log_ungraded ON proj_log (date, game_id) WHERE actual IS NULL').run();
 }
 // Written once per slate render. INSERT OR IGNORE, never REPLACE: the value being
 // judged is what the model said BEFORE the game, and a later pass re-projecting
@@ -2636,6 +2705,8 @@ async function ensureRlPickSchema(db) {
     model_ver TEXT, fair_source TEXT,
     PRIMARY KEY (date, game_id)
   )`).run();
+  // Partial index over ungraded rows — see picks_ungraded in ensureSchema.
+  await db.prepare('CREATE INDEX IF NOT EXISTS rlpicks_ungraded ON rlpicks (date, game_id) WHERE result IS NULL').run();
 }
 async function logRlPicks(db, rows, date) {
   await ensureRlPickSchema(db);
@@ -2786,6 +2857,12 @@ async function ensureNflSchema(db) {
   await addColumns(db, 'nfl_lines', [['season_type', "TEXT NOT NULL DEFAULT 'REG'"]]);
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_evt ON nfl_lines (event_id, market)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_wk ON nfl_lines (season, week)').run();
+  // The NFL board asks twice per load for lines by season type and kickoff
+  // (`season_type = ? AND commence > ?`), and neither column was indexed, so both
+  // read every price snapshot ever captured. This table only grows — one
+  // capture on 2026-09-13 added 4,827 rows — so without it every NFL page cost
+  // more than the last. With it, played games drop out of the read entirely.
+  await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_type_commence ON nfl_lines (season_type, commence)').run();
 
   // npicks carries the lifecycle. The state column is the reason this is not
   // modelled as a boolean `posted`: an NFL play exists for four days and can be
@@ -3328,11 +3405,8 @@ async function gradeBatterPicks(env) {
 async function backfillBatterGrades(env) {
   const db = env.DB;
   const games = (await db.prepare(
-    `SELECT DISTINCT game_id, date FROM bpicks
-      WHERE actual = 0 AND result IN ('win','loss')
-        AND (grade_ver IS NULL OR grade_ver <> ?)
-      ORDER BY date DESC LIMIT 4`
-  ).bind(GRADE_VER).all()).results || [];
+    `SELECT DISTINCT game_id, date FROM bpicks WHERE ${backfillWhere()} ORDER BY date DESC LIMIT 4`
+  ).all()).results || [];
   if (!games.length) return;
 
   for (const g of games) {
@@ -3347,8 +3421,10 @@ async function backfillBatterGrades(env) {
     // entirely — they were never in question and re-grading them would risk
     // rewriting a settled result off a boxscore correction.
     const picks = (await db.prepare(
-      `SELECT * FROM bpicks WHERE game_id=? AND actual = 0 AND result IN ('win','loss')`
-    ).bind(g.game_id).all()).results || [];
+      // date as well as game_id: date leads the primary key, so this is a direct
+      // lookup. game_id alone read every row in the table, once per game.
+      `SELECT * FROM bpicks WHERE date=? AND game_id=? AND actual = 0 AND result IN ('win','loss')`
+    ).bind(g.date, g.game_id).all()).results || [];
     const stmts = [];
     for (const p of picks) {
       const actual = batterActual(box, p.player_id, p.market);
