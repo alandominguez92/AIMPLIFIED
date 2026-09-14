@@ -2957,7 +2957,15 @@ const NFL_GAME_MARKETS = 'h2h,spreads,totals';
 // because passing yards sum ~20 completions and the CLT flattens the right skew
 // the thesis trades on. Capturing lines for a market we will not price would be
 // spending to build a dataset with no question attached to it.
-const NFL_PROP_MARKETS = 'player_reception_yds,player_rush_yds,player_receptions';
+//
+// `player_receptions` went out on 2026-09-14 for the same reason. It was captured
+// from the start, but nothing projects a reception COUNT — NFL_PROJ_TO_ODDS maps
+// only receiving and rushing yards — so no row was ever joined to it, graded
+// against it, or shown. It was still 1,869 of the 4,827 prop rows the Week 1
+// Sunday capture wrote, and a third of that capture's 42 credits (billing is per
+// market per event). tests/nflmarkets.mjs keeps this list equal to the markets
+// the model projects, so a market the model cannot use cannot creep back in.
+const NFL_PROP_MARKETS = 'player_reception_yds,player_rush_yds';
 // Books are named explicitly rather than pulled by region. Three reasons, all
 // found by dry-running the live payload: regions=us,eu returned 23 books, 13 of
 // them European retail we will never price against; it billed 6 credits where a
