@@ -248,6 +248,28 @@ const PROP_LEAD_MS = 12 * 3600 * 1000;
 // not showing (tomorrow's, before the roll) are still not bought.
 const PROP_EARLY_HORIZON_MS = 24 * 3600 * 1000;
 const PROP_EARLY_TTL_MS = 60 * 60 * 1000;
+// Both boards roll to tomorrow's slate once tonight's games are done, which puts
+// a full schedule into the early tier for the whole night. At the hourly cadence
+// that is ~8 refreshes of every game before anyone is awake, for lines that
+// barely move that far out. Beyond PROP_EARLY_FAR_MS the cadence drops to three
+// hours; inside it — which is where a slate spends the morning it is played —
+// nothing changes.
+const PROP_EARLY_FAR_MS = 18 * 3600 * 1000;
+const PROP_EARLY_FAR_TTL_MS = 3 * 60 * 60 * 1000;
+// Splits early events by how far out they are: [{ suffix, ttlMs, events }].
+// The suffix keeps the two cadences in separate store keys, so the slower one
+// cannot be refreshed early by the faster one writing over it.
+function earlyBuckets(events, nowMs) {
+  const soon = [], far = [];
+  for (const ev of events) {
+    const t = ev && ev.commence_time ? Date.parse(ev.commence_time) : 0;
+    (t - nowMs > PROP_EARLY_FAR_MS ? far : soon).push(ev);
+  }
+  return [
+    { suffix: '', ttlMs: PROP_EARLY_TTL_MS, events: soon },
+    { suffix: ':far', ttlMs: PROP_EARLY_FAR_TTL_MS, events: far },
+  ].filter((b) => b.events.length);
+}
 const ptDateOf = (ms) => {
   try {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
@@ -779,8 +801,8 @@ async function board(env, ctx, opts) {
           } catch (e) { return null; /* skip this event */ }
         };
         await Promise.all(upcoming.map((ev) => fetchK(ev, propByName)));
-        if (earlyK.length) {
-          const got = await linesOnCadence(env, ctx, `kprop_lines_early:${date}`, PROP_EARLY_TTL_MS, earlyK, fetchK);
+        for (const b of earlyBuckets(earlyK, now)) {
+          const got = await linesOnCadence(env, ctx, `kprop_lines_early:${date}${b.suffix}`, b.ttlMs, b.events, fetchK);
           for (const [nm, rec] of Object.entries(got.data || {})) if (!propByName[nm]) propByName[nm] = rec;
         }
       }
@@ -1569,17 +1591,39 @@ async function batters(env, ctx, opts) {
   const oppPPNameByTeamId = {};     // teamId -> that pitcher's name (display/debug)
   const parkByTeamId = {};          // teamId -> tonight's venue name (for park factor)
   const ppIds = new Set();          // probable-pitcher ids to resolve throwing hand
-  try {
-    // Adds probablePitcher (opposing arm) + venue (park factor) to the same
-    // schedule call — no extra request, and both feed the batter projection.
-    const r = await fetch(`${STATS}/schedule?sportId=1&date=${slateDate()}&hydrate=team,lineups,probablePitcher,venue`, { headers: { accept: 'application/json' } });
-    if (r.ok) {
+  // The slate this board is showing. Starts as today in Pacific time and rolls a
+  // day ahead once tonight is over — the same rule /api/board has always used.
+  // Without it the batter board simply emptied when the last game went Final and
+  // stayed empty until the next morning, while the strikeout board next to it was
+  // already showing tomorrow. Everything downstream keys off this: the schedule
+  // read, the line store, and the date picks are logged and graded under.
+  let slateYmd = slateDate();
+  const fetchBatterSlate = async (d) => {
+    try {
+      // Adds probablePitcher (opposing arm) + venue (park factor) to the same
+      // schedule call — no extra request, and both feed the batter projection.
+      const r = await fetch(`${STATS}/schedule?sportId=1&date=${d}&hydrate=team,lineups,probablePitcher,venue`, { headers: { accept: 'application/json' } });
+      if (!r.ok) return null;
       const sd = await r.json();
-      const sdGames = (((sd.dates || [])[0] || {}).games) || [];
+      return (((sd.dates || [])[0] || {}).games) || [];
+    } catch (e) { return null; }
+  };
+  try {
+    let sdGames = await fetchBatterSlate(slateYmd);
+    const doneForToday = Array.isArray(sdGames)
+      && (!sdGames.length || sdGames.every((g) => (g.status && g.status.abstractGameState) === 'Final'));
+    if (doneForToday) {
+      const nextYmd = slateDateOffset(1);
+      const nextGames = await fetchBatterSlate(nextYmd);
+      // Only roll if tomorrow actually has games — in the offseason, or the day
+      // after the last one, staying put is what shows the correct empty board.
+      if (nextGames && nextGames.length) { slateYmd = nextYmd; sdGames = nextGames; }
+    }
+    if (sdGames) {
       // Same fallback as /api/board. Here a missing probable is even quieter:
       // the opposing arm just goes neutral, so every batter facing an
       // unannounced starter is silently modelled against a league-average one.
-      await fillMissingProbables(sdGames, slateDate());
+      await fillMissingProbables(sdGames, slateYmd);
       sdGames.forEach((g) => {
         // Key by team NAME through the same table the Odds events use, so
         // StatsAPI abbreviations that differ (e.g. AZ vs ARI) still match.
@@ -1702,7 +1746,7 @@ async function batters(env, ctx, opts) {
   // no one has posted yet. Overnight the board rolls a day ahead and shows
   // projections; that is the designed behaviour, and prices now fill in on the
   // same schedule the strikeout board has always used.
-  const slateYmdB = slateDate();
+  const slateYmdB = slateYmd;
   const upcomingB = opts && opts.closeOnly
     ? closingSoon(events, opts.closeOnly)
     : events.filter((ev) => propTier(ev, nowB, slateYmdB) === 'near');
@@ -1720,7 +1764,7 @@ async function batters(env, ctx, opts) {
   // that must see the live book, never a copy bought minutes ago.
   const boardTtlSec = ttlForSoonest(soonestStart(upcomingB, 'commence_time'));
   const linesTtlMs = boardTtlSec * 1000;
-  const feedKey = `batter_lines:${slateDate()}:${marketKeys}`;
+  const feedKey = `batter_lines:${slateYmd}:${marketKeys}`;
   const useStore = !!(env && env.DB) && !(opts && opts.closeOnly);
   let doFetch = true;
   let seeded = null;
@@ -1805,8 +1849,8 @@ async function batters(env, ctx, opts) {
       if (ctx && ctx.waitUntil) ctx.waitUntil(w); else await w;
     }
   }
-  if (earlyB.length) {
-    const got = await linesOnCadence(env, ctx, `batter_lines_early:${slateYmdB}:${marketKeys}`, PROP_EARLY_TTL_MS, earlyB, fetchBatter);
+  for (const b of earlyBuckets(earlyB, nowB)) {
+    const got = await linesOnCadence(env, ctx, `batter_lines_early:${slateYmdB}:${marketKeys}${b.suffix}`, b.ttlMs, b.events, fetchBatter);
     seedInto(got.data);
   }
   if (propsFeedError && !feedError) feedError = propsFeedError;
@@ -2176,7 +2220,7 @@ async function batters(env, ctx, opts) {
     try {
       const prior = (await env.DB.prepare(
         'SELECT game_id, player_id, market, entry_over, line, fair_src FROM bpicks WHERE date=?'
-      ).bind(slateDate()).all()).results || [];
+      ).bind(slateYmd).all()).results || [];
       const em = {};
       prior.forEach((p) => { em[`${p.game_id}|${p.player_id}|${p.market}`] = p; });
       rows.forEach((r) => {
@@ -2191,7 +2235,10 @@ async function batters(env, ctx, opts) {
       });
     } catch (e) { /* movement is optional — never block the board on it */ }
 
-    const write = logBatterPicks(env.DB, logRows, slateDate()).catch(() => {});
+    // Logged under the slate being shown, not the wall-clock day: a pick made
+    // on a rolled board belongs to the day its game is played, which is the date
+    // grading looks it up by.
+    const write = logBatterPicks(env.DB, logRows, slateYmd).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(write); else await write;
   }
 

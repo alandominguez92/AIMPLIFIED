@@ -197,7 +197,17 @@ const fmt = (b) => JSON.stringify(b);
   offsetMs = 61 * 60e3; resetCalls();
   await hit(env, '/api/board');
   console.log('-- 61 min later --  bought ' + fmt(calls.k));
-  ok(calls.k.early === 1 && calls.k.late === 1, 'after the hour the early games are bought again');
+  // Two cadences, split at 18h out: hourly inside it, every three hours beyond.
+  // The far one exists because both boards roll to tomorrow's slate overnight,
+  // which would otherwise re-buy a full schedule eight times before anyone woke
+  // up, for lines that barely move that far from first pitch.
+  ok(calls.k.early === 1, 'after the hour the game inside 18h is bought again');
+  ok(!calls.k.late, 'the one further out than 18h is not — it is on the slower cadence');
+
+  offsetMs = 181 * 60e3; resetCalls();
+  await hit(env, '/api/board');
+  console.log('-- 181 min later --  bought ' + fmt(calls.k));
+  ok(calls.k.late === 1, 'after three hours the far game is bought again');
 }
 
 // ---- batter board ----------------------------------------------------------------
@@ -222,6 +232,8 @@ const fmt = (b) => JSON.stringify(b);
   await hit(env, '/api/batters');
   console.log('-- 20 min later --  bought ' + fmt(calls.b));
   ok(!calls.b.early && !calls.b.late, 'the early games are NOT bought again inside the hour');
+  ok([...rows.keys()].some((k) => k.endsWith(':far')),
+    'the far-out game has its own store key, so the two cadences cannot overwrite each other');
 }
 
 // ---- books not posted yet: the empty answer is remembered ------------------------------
