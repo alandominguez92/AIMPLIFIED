@@ -186,7 +186,8 @@ const fmt = (b) => JSON.stringify(b);
   const earlyRow = (Array.isArray(board) ? board : []).find((r) => /EA|EH/.test(r.matchup || ''));
   ok(!!earlyRow && (earlyRow.pitchers || []).some((p) => p.market && p.market.line === 5.5 && (p.market.books || []).length === 2),
     'the early game\'s row carries the book line');
-  ok([...rows.keys()].some((k) => k.startsWith('kprop_lines_early:2026-09-14')), 'early lines were stored under today\'s slate');
+  ok([...rows.keys()].some((k) => k.startsWith('kprop_lines_early:') && k.includes('2026-09-14')),
+    `early lines were stored under today's slate (${[...rows.keys()].join(', ')})`);
 
   offsetMs = 20 * 60e3; resetCalls();
   await hit(env, '/api/board');                 // another location, 20 min later
@@ -220,7 +221,7 @@ const fmt = (b) => JSON.stringify(b);
   ok(calls.b.near === 1, 'the near game is bought, as before');
   ok(calls.b.early === 1 && calls.b.late === 1, 'today\'s games more than 12h out are bought');
   ok(!calls.b.tmrw, 'tomorrow\'s game is not bought');
-  const early = rows.get([...rows.keys()].find((k) => k.startsWith('batter_lines_early:2026-09-14')) || '');
+  const early = rows.get([...rows.keys()].find((k) => k.startsWith('batter_lines_early:') && k.includes('2026-09-14')) || '');
   const stored = early && early.data ? JSON.parse(early.data) : {};
   ok(!!stored[Object.keys(stored).find((k) => /early/.test(k))], 'the early hitters were stored under today\'s slate');
   const near = rows.get([...rows.keys()].find((k) => k.startsWith('batter_lines:')) || '');

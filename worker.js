@@ -257,6 +257,17 @@ const PROP_EARLY_TTL_MS = 60 * 60 * 1000;
 // barely move that far out. Beyond PROP_EARLY_FAR_MS the cadence drops to three
 // hours; inside it — which is where a slate spends the morning it is played —
 // nothing changes.
+// Stored lines carry team ABBREVIATIONS (awayAb/homeAb), and the board rebuilds
+// each row's matchup string from them. So a change to the abbreviation table does
+// not reach records already in the store: on 2026-09-16, minutes after Arizona
+// was corrected from ARI to AZ, the board listed the same game twice — "MIA @
+// ARI" with 8 rows from the store and "MIA @ AZ" with 1 from the fresh fetch. It
+// would have healed itself within three hours, which is three hours of a board
+// showing sixteen games on a fifteen-game slate.
+//
+// Bump this whenever the shape or the spelling of what is stored changes. Old
+// keys are simply never read again, and expire on their own.
+const LINES_STORE_VER = 'v2';
 const PROP_EARLY_FAR_MS = 18 * 3600 * 1000;
 const PROP_EARLY_FAR_TTL_MS = 3 * 60 * 60 * 1000;
 // Splits early events by how far out they are: [{ suffix, ttlMs, events }].
@@ -808,7 +819,7 @@ async function board(env, ctx, opts) {
         };
         await Promise.all(upcoming.map((ev) => fetchK(ev, propByName)));
         for (const b of earlyBuckets(earlyK, now)) {
-          const got = await linesOnCadence(env, ctx, `kprop_lines_early:${date}${b.suffix}`, b.ttlMs, b.events, fetchK);
+          const got = await linesOnCadence(env, ctx, `kprop_lines_early:${LINES_STORE_VER}:${date}${b.suffix}`, b.ttlMs, b.events, fetchK);
           for (const [nm, rec] of Object.entries(got.data || {})) if (!propByName[nm]) propByName[nm] = rec;
         }
       }
@@ -1812,7 +1823,7 @@ async function batters(env, ctx, opts) {
   // that must see the live book, never a copy bought minutes ago.
   const boardTtlSec = ttlForSoonest(soonestStart(upcomingB, 'commence_time'));
   const linesTtlMs = boardTtlSec * 1000;
-  const feedKey = `batter_lines:${slateYmd}:${marketKeys}`;
+  const feedKey = `batter_lines:${LINES_STORE_VER}:${slateYmd}:${marketKeys}`;
   const useStore = !!(env && env.DB) && !(opts && opts.closeOnly);
   let doFetch = true;
   let seeded = null;
@@ -1898,7 +1909,7 @@ async function batters(env, ctx, opts) {
     }
   }
   for (const b of earlyBuckets(earlyB, nowB)) {
-    const got = await linesOnCadence(env, ctx, `batter_lines_early:${slateYmdB}:${marketKeys}${b.suffix}`, b.ttlMs, b.events, fetchBatter);
+    const got = await linesOnCadence(env, ctx, `batter_lines_early:${LINES_STORE_VER}:${slateYmdB}:${marketKeys}${b.suffix}`, b.ttlMs, b.events, fetchBatter);
     seedInto(got.data);
   }
   if (propsFeedError && !feedError) feedError = propsFeedError;

@@ -55,7 +55,11 @@ let tomorrow = TOMORROW_GAMES;
 const HITTERS = ['CIN Hitter 1', 'CIN Hitter 2', 'LAD Hitter 1'];
 // Arizona's own hitters, for the spelling case at the bottom. Their team id is
 // the one mkGame(940004, ...) assigns the home club.
-const AZ_SPLITS = ['AZ Hitter 1', 'AZ Hitter 2'].map((h, i) => ({
+// 'Zeb Stalerecord' exists only so the stale-store case at the bottom can name a
+// player the season pool knows AND recognise him in the output: display names are
+// shortened to an initial, so 'AZ Hitter 1' comes back as 'A. Hitter 1' and an
+// assertion on it would match the other clubs' hitters too.
+const AZ_SPLITS = ['AZ Hitter 1', 'AZ Hitter 2', 'Zeb Stalerecord'].map((h, i) => ({
   player: { id: 610000 + i, fullName: h },
   team: { id: 940004 * 10 + 2, abbreviation: 'AZ' },
   stat: {
@@ -168,13 +172,15 @@ function makeDb() {
     };
     return st;
   };
-  return { db: { prepare, batch: async (l) => (l || []).map((x) => run(x.sql, x.args)) }, logged, store };
+  const preload = (key, data) => store.set(key, { data: JSON.stringify(data), updated_at: Date.now(), claimed_until: 0 });
+  return { db: { prepare, batch: async (l) => (l || []).map((x) => run(x.sql, x.args)) }, logged, store, preload };
 }
 
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-const load = async () => {
-  const { db, logged, store } = makeDb();
+const load = async (seedStore) => {
+  const { db, logged, store, preload } = makeDb();
+  if (seedStore) seedStore(preload);
   const pending = [];
   const ctx = { waitUntil: (p) => { if (p && p.then) pending.push(p.catch(() => {})); } };
   const res = await mod.default.fetch(new Request('https://x/api/batters'), { ODDS_API_KEY: 'k', DB: db }, ctx);
@@ -300,6 +306,37 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
   const keys = [...store.keys()].filter((k) => k.startsWith('batter_lines_early'));
   ok(keys.some((k) => k.endsWith(':far')), `the far bucket is used, not the hourly one (${keys.join(', ') || 'none'})`);
   ok(perEventCalls > 0, 'and it did buy the rolled slate');
+}
+
+// ---- lines written by an older build are not read back ------------------------------
+// Stored records carry team abbreviations, and the board rebuilds each row's
+// matchup from them — so the ARI->AZ correction did not reach lines already in
+// the store. Live, minutes after that deploy, the board listed Arizona's game
+// twice: "MIA @ ARI" from the store and "MIA @ AZ" from the fresh fetch, sixteen
+// games on a fifteen-game slate. The store key carries a version for exactly
+// this: change what is stored, bump it, and yesterday's records are never read.
+{
+  const stale = (preload) => {
+    // Written the way the previous build wrote it: no version in the key, and
+    // Arizona spelled the old way inside the record.
+    preload(`batter_lines:${TOMORROW}:batter_total_bases,batter_hits_runs_rbis`, {
+      // A hitter the season pool knows: a name with no stats behind it is
+      // dropped for having no projection, which would pass on any code.
+      'zeb stalerecord': {
+        name: 'Zeb Stalerecord', awayAb: 'MIA', homeAb: 'ARI',
+        timeMs: TOMORROW_START, timeLabel: '6:41 PM PT',
+        // Two books: one book alone cannot produce a fair line, and such a row
+        // is dropped for being unpriceable — which would pass on any code.
+        props: { tb: { DK: { point: 1.5, over: -115, under: -105 }, FD: { point: 1.5, over: -115, under: -105 } } },
+      },
+    });
+  };
+  const { rows } = await load(stale);
+  console.log('\n-- a record written before the spelling was fixed --');
+  const mu = [...new Set(rows.map((r) => r.matchup))];
+  ok(!mu.some((m) => m.includes('ARI')), `the old spelling does not come back from the store (${mu.join(', ')})`);
+  ok(!rows.some((r) => (r.name || '').includes('Stalerecord')),
+    `nor the record it was written with (${rows.map((r) => r.name).join(', ')})`);
 }
 
 globalThis.Date = RealDate;
