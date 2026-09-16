@@ -175,25 +175,32 @@ console.log(`slate: ${events.length} games, all >3h out (far TTL), inside the 12
     'status and score are NOT stored — they are re-read from the schedule each time');
 }
 
-// ---- the TTL follows first pitch ---------------------------------------------
-// The saving here is entirely in the far window: a flat 300 re-bought the slate
-// twelve times an hour while the nearest start was still half a day away. The
-// near window is asserted unchanged, because tightening it would quietly hand
-// back the saving somewhere no one was looking.
+// ---- an empty board is not held ----------------------------------------------
+// This file's hitters have no season stats behind them (the pool comes from the
+// real StatsAPI and these names are invented), so the board here always comes
+// back EMPTY. That is worth an assertion of its own, and it is also why the
+// near/far TTL check that used to live here has moved to batterroll.mjs: reading
+// 900 from this fixture never meant "a full board holds for 15 minutes", only
+// "nothing was projectable and the long TTL applied anyway". An empty board now
+// caches for 5 minutes however far out first pitch is, so it refills as soon as
+// there is something to show.
 {
   const maxAge = (r) => Number((/max-age=(\d+)/.exec(r.headers.get('cache-control') || '') || [])[1]);
 
   slate = buildSlate(SLATE_MIN);                 // nearest start 220 min (>3h)
   let env = { ODDS_API_KEY: 'k', DB: makeDb().db };
-  const far = maxAge(await hit(env));
+  const r1 = await hit(env);
+  const far = maxAge(r1);
+  const farRows = ((await r1.clone().json()).rows || []).length;
 
   slate = buildSlate([45, 90, 150, 200]);        // nearest start 45 min (<3h)
   env = { ODDS_API_KEY: 'k', DB: makeDb().db };
   const near = maxAge(await hit(env));
 
-  console.log('\n-- the TTL follows first pitch --');
-  ok(far === 900, `hours from first pitch, the board caches for 15 min (${far}s)`);
-  ok(near === 300, `inside three hours it is unchanged at 5 min (${near}s)`);
+  console.log('\n-- an empty board is not held --');
+  ok(farRows === 0, `this fixture's board is empty (${farRows} rows), which is what makes the rule apply`);
+  ok(far === 300, `so it caches for 5 min even with first pitch hours away (${far}s)`);
+  ok(near === 300, `and the same inside three hours (${near}s)`);
   slate = buildSlate(SLATE_MIN);
 }
 

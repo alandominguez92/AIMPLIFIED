@@ -53,6 +53,16 @@ const TOMORROW_GAMES = [mkGame(940003, 'LAD', 'Los Angeles Dodgers', 'CIN', 'Cin
 let tonight = TONIGHT_FINAL;
 let tomorrow = TOMORROW_GAMES;
 const HITTERS = ['CIN Hitter 1', 'CIN Hitter 2', 'LAD Hitter 1'];
+// Arizona's own hitters, for the spelling case at the bottom. Their team id is
+// the one mkGame(940004, ...) assigns the home club.
+const AZ_SPLITS = ['AZ Hitter 1', 'AZ Hitter 2'].map((h, i) => ({
+  player: { id: 610000 + i, fullName: h },
+  team: { id: 940004 * 10 + 2, abbreviation: 'AZ' },
+  stat: {
+    gamesPlayed: 140, plateAppearances: 600 - i, atBats: 540, hits: 150, runs: 80, rbi: 75,
+    homeRuns: 20, totalBases: 250, strikeOuts: 120, baseOnBalls: 55, avg: '.278', slg: '.463',
+  },
+}));
 const statSplits = [
   ...TOMORROW_GAMES.flatMap((g) => [[g.teams.away, 'LAD'], [g.teams.home, 'CIN']].flatMap(([side, ab]) => (
     HITTERS.filter((h) => h.startsWith(ab)).map((h, i) => ({
@@ -64,12 +74,17 @@ const statSplits = [
       },
     }))
   ))),
+  ...AZ_SPLITS,
 ];
 
-const events = [{
+const TOMORROW_EVENTS = [{
   id: 'tmrw', commence_time: iso(TOMORROW_START),
   away_team: 'Los Angeles Dodgers', home_team: 'Cincinnati Reds',
 }];
+let events = TOMORROW_EVENTS;
+// Off for the empty-board case: with no season stats nothing can be projected,
+// which is one of the real ways the board comes back empty.
+let statsOn = true;
 
 let perEventCalls = 0;
 const realFetch = globalThis.fetch;
@@ -81,7 +96,7 @@ globalThis.fetch = async (u, o) => {
     const games = d === TODAY ? tonight : d === TOMORROW ? tomorrow : [];
     return J({ dates: [{ games }] });
   }
-  if (url.includes('/stats?stats=season') && url.includes('group=hitting')) return J({ stats: [{ splits: statSplits }] });
+  if (url.includes('/stats?stats=season') && url.includes('group=hitting')) return J({ stats: [{ splits: statsOn ? statSplits : [] }] });
   if (url.includes('/teams/stats')) {
     return J({ stats: [{ splits: statSplits.map((s) => ({ team: { id: s.team.id }, stat: { hits: 1300, plateAppearances: 6000, strikeOuts: 1330, inningsPitched: '1400.0' } })) }] });
   }
@@ -95,7 +110,9 @@ globalThis.fetch = async (u, o) => {
   if (url.includes('cdn.espn.com')) return J({ content: { sbData: { events: [] } } });
   if (url.includes('api.the-odds-api.com')) {
     if (/\/events\?/.test(url)) return J(events);
-    if (/\/events\/tmrw\/odds/.test(url)) {
+    const evm = url.match(/\/events\/([a-z0-9]+)\/odds/);
+    if (evm && evm[1] !== 'tmrw') { perEventCalls++; return J({ bookmakers: [] }); }  // posted no props
+    if (evm) {
       perEventCalls++;
       return J({ bookmakers: ['draftkings', 'fanduel'].map((key) => ({
         key,
@@ -161,9 +178,10 @@ const load = async () => {
   const pending = [];
   const ctx = { waitUntil: (p) => { if (p && p.then) pending.push(p.catch(() => {})); } };
   const res = await mod.default.fetch(new Request('https://x/api/batters'), { ODDS_API_KEY: 'k', DB: db }, ctx);
+  const ttl = Number((/max-age=(\d+)/.exec(res.headers.get('cache-control') || '') || [])[1]);
   const body = await res.json();
   await Promise.all(pending.splice(0));
-  return { rows: body.rows || [], slate: body.slate, logged, store };
+  return { rows: body.rows || [], slate: body.slate, ttl, logged, store };
 };
 
 let fail = 0;
@@ -202,6 +220,73 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
   const { rows } = await load();
   console.log('\n-- no games tomorrow (end of season) --');
   ok(rows.length === 0, `the board is correctly empty rather than rolled into nothing (${rows.length} rows)`);
+  tomorrow = TOMORROW_GAMES;
+}
+
+// ---- an empty board is never cached for long --------------------------------------
+// The TTL follows first pitch: hours out, a board holds for 15 minutes because
+// its lines are not moving. Applied to an EMPTY board that reasoning inverts —
+// every way of having no rows (slate just went final and is about to roll, books
+// have not posted yet) resolves by itself within minutes, and a 15-minute hold
+// keeps an empty page in front of readers long after there is something to show.
+// It is why the roll took a quarter of an hour to appear in production on
+// 2026-09-15. So the fixture is a game far enough out to earn the long TTL, with
+// nothing projectable in it.
+{
+  const soonMs = T0 + 5 * 3600e3;                       // 5h out: past TTL_FAR_MS
+  tonight = [mkGame(940005, 'SEA', 'Seattle Mariners', 'LAA', 'Los Angeles Angels', soonMs, 'Preview')];
+  events = [{ id: 'soon', commence_time: iso(soonMs), away_team: 'Seattle Mariners', home_team: 'Los Angeles Angels' }];
+  statsOn = false;                                      // nothing can be projected
+  const { rows, ttl } = await load();
+  console.log('\n-- an empty board, 5h before first pitch --');
+  ok(rows.length === 0, `the board is empty (${rows.length} rows)`);
+  ok(ttl === 300, `and cached for 5 min, not the 15 its first pitch would earn (${ttl}s)`);
+  statsOn = true;
+  events = TOMORROW_EVENTS;
+  tonight = TONIGHT_FINAL;
+}
+
+// ---- the TTL follows first pitch, on a board with rows -----------------------------
+// The other half of the rule above: a POPULATED board hours from first pitch
+// holds for 15 minutes, because its lines are not moving and re-buying them is
+// what the shared store exists to avoid. Asserted here rather than in
+// sharedlines.mjs, whose fixture has no season stats and so was measuring an
+// empty board — it read 900 only because the empty-board rule did not exist yet.
+{
+  const populated = async (hoursOut) => {
+    const startMs = T0 + hoursOut * 3600e3;
+    tonight = [mkGame(940003, 'LAD', 'Los Angeles Dodgers', 'CIN', 'Cincinnati Reds', startMs, 'Preview')];
+    tomorrow = [];
+    events = [{ id: 'tmrw', commence_time: iso(startMs), away_team: 'Los Angeles Dodgers', home_team: 'Cincinnati Reds' }];
+    return load();
+  };
+  const far = await populated(5);          // 5h out: past TTL_FAR_MS
+  const near = await populated(2);         // 2h out: inside it
+  console.log('\n-- the TTL follows first pitch --');
+  ok(far.rows.length > 0 && near.rows.length > 0,
+    `both fixtures have rows (${far.rows.length}, ${near.rows.length}) — otherwise this measures the empty-board rule`);
+  ok(far.ttl === 900, `hours from first pitch, a full board caches for 15 min (${far.ttl}s)`);
+  ok(near.ttl === 300, `inside three hours it tightens to 5 min (${near.ttl}s)`);
+  tonight = TONIGHT_FINAL;
+  tomorrow = TOMORROW_GAMES;
+  events = TOMORROW_EVENTS;
+}
+
+// ---- the league's spelling, on both boards -------------------------------------
+// Arizona was the one club whose name->abbreviation table disagreed with
+// StatsAPI: the same game read "MIA @ ARI" on the batter board and "MIA @ AZ" on
+// the strikeout board, which reads as two different games. Checked against all 30
+// clubs on 2026-09-16 — Arizona was the only one.
+{
+  tonight = [mkGame(940004, 'MIA', 'Miami Marlins', 'AZ', 'Arizona Diamondbacks', T0 + 6 * 3600e3, 'Preview')];
+  tomorrow = [];
+  const { rows } = await load();
+  console.log('\n-- team spelling --');
+  const mu = [...new Set(rows.map((r) => r.matchup))];
+  ok(rows.length > 0, `Arizona's game is on the board (${rows.length} rows)`);
+  ok(mu.every((m) => m === 'MIA @ AZ'),
+    `spelled the way the league and the strikeout board spell it (${mu.join(', ') || 'no rows'})`);
+  tonight = TONIGHT_FINAL;
   tomorrow = TOMORROW_GAMES;
 }
 

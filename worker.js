@@ -1545,7 +1545,15 @@ function soonestStart(rows, field) {
 // the bug that copy was written to fix.
 const battersPayload = (rows, feedError, ttlSec, slate) => cors(json(
   { rows, feedError: feedError || null, slate: slate || null },
-  feedError ? 30 : (ttlSec || ttlForSoonest(soonestStart(rows, 'timeMs'))),
+  // An EMPTY board never takes the long TTL. Every way of ending up with no rows
+  // is temporary and about to change by itself — the slate just went final and is
+  // about to roll, or the books have not posted and the next refresh will find
+  // them — so caching that answer for 15 minutes holds an empty page in front of
+  // readers long after there is something to show. The far TTL exists for a
+  // board full of rows whose lines are not moving, which is the opposite case.
+  feedError ? 30
+    : (!rows || !rows.length) ? BOARD_TTL_NEAR
+      : (ttlSec || ttlForSoonest(soonestStart(rows, 'timeMs'))),
 ));
 
 async function batters(env, ctx, opts) {
@@ -6408,8 +6416,14 @@ function teamAbbr(team) {
   return TEAM_ABBR_BY_NAME[team.name]
     || String(team.name || '').split(' ').pop().slice(0, 3).toUpperCase();
 }
+// Keyed to the LEAGUE's own abbreviations (StatsAPI `team.abbreviation`), which
+// is what the strikeout board prints, because that board reads them straight off
+// the schedule. Arizona was the one club where this table disagreed — 'ARI' here
+// against StatsAPI's 'AZ' — so the same game read "MIA @ ARI" on the batter board
+// and "MIA @ AZ" on the strikeout board. Checked against all 30 clubs on
+// 2026-09-16; Arizona was the only mismatch.
 const TEAM_ABBR_BY_NAME = {
-  'Arizona Diamondbacks': 'ARI', 'Atlanta Braves': 'ATL', 'Baltimore Orioles': 'BAL',
+  'Arizona Diamondbacks': 'AZ', 'Atlanta Braves': 'ATL', 'Baltimore Orioles': 'BAL',
   'Boston Red Sox': 'BOS', 'Chicago Cubs': 'CHC', 'Chicago White Sox': 'CWS',
   'Cincinnati Reds': 'CIN', 'Cleveland Guardians': 'CLE', 'Colorado Rockies': 'COL',
   'Detroit Tigers': 'DET', 'Houston Astros': 'HOU', 'Kansas City Royals': 'KC',
