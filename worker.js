@@ -1486,6 +1486,9 @@ async function feedErrorFrom(res) {
 // batters() directly with closeOnly — so lengthening the far window cannot cost
 // a closing line, and the near window is left exactly where it was rather than
 // tightened, so nothing about the last three hours changes.
+// How many projection-only batter rows the board will carry. 40 was the whole
+// board's size when no line existed anywhere, so this keeps that case unchanged.
+const MODEL_ROW_CAP = 40;
 const BOARD_TTL_NEAR = 300;
 const BOARD_TTL_FAR = 900;
 const TTL_FAR_MS = 3 * 3600 * 1000;
@@ -1813,9 +1816,19 @@ async function batters(env, ctx, opts) {
   // rates) comes from StatsAPI, which is independent of the odds feed. The
   // seeding happens below, once season stats are in hand, because the player
   // universe has to come from the stats pool when no lineup card is up yet.
-  const modelSeeded = !Object.keys(byName).length;
+  // Which GAMES the books have quoted, not whether any game was quoted. The
+  // seeding below used to be all-or-nothing across the slate: one priced game
+  // switched it off for every other, so a game the books had not posted yet
+  // vanished from the board entirely — no row, no projection, no note. On
+  // 2026-09-15 that hid every hitter facing Yamamoto and Misiorowski, which
+  // reads as "the model passed on them" and is indistinguishable from "that
+  // game does not exist tonight". Per game, an unquoted game is seeded from the
+  // schedule while its quoted neighbours keep the book's own player list.
+  const gameKeyOfRec = (rec) => (rec && rec.gamePk != null ? `g${rec.gamePk}` : (rec && rec.matchup) || null);
+  const gameKeyOfTeam = (teamId) => gameKeyOfRec(gameByTeamId[teamId]);
+  const pricedGames = new Set(Object.values(byName).map(gameKeyOfRec).filter(Boolean));
   // Nothing priced AND no game on the schedule: genuinely nothing to show.
-  if (modelSeeded && !Object.keys(gameByTeamId).length) return battersPayload([], feedError, boardTtlSec);
+  if (!Object.keys(byName).length && !Object.keys(gameByTeamId).length) return battersPayload([], feedError, boardTtlSec);
 
   // 2) Season hitting stats for every batter, keyed by name for matching.
   const statByName = {};
@@ -1832,15 +1845,20 @@ async function batters(env, ctx, opts) {
     }
   } catch (e) { /* projections fall back to rate-only where possible */ }
 
-  // 2a) Model-only seeding. With no book quotes there is no priced player list,
-  // so the universe comes from who is playing tonight instead of who got priced.
+  // 2a) Model-only seeding, per game. A game the books have not quoted still has
+  // everything the projection needs — batting slot once the card is up, opposing
+  // arm, park, season rates — all from StatsAPI, which is independent of the odds
+  // feed. So it gets rows carrying a projection and no price, rather than being
+  // dropped. A game the books HAVE quoted is left alone: there the book's list is
+  // the universe, and seeding it would add players nobody can price.
   //
-  // Preference order matters. A posted lineup card is fact, so it wins outright.
-  // Before cards go up -- which is most of the day, since they post ~3h out --
-  // fall back to each club's qualified hitters from the season pool. That is a
-  // projection of who plays, not a claim about it, and it self-corrects: the
-  // moment a card posts, the slot filter in step 3 drops everyone not on it.
-  if (modelSeeded) {
+  // Preference order matters, and it is per club. A posted lineup card is fact,
+  // so it wins outright for that club. Before the card goes up -- most of the
+  // day, since they post ~3h out -- fall back to its qualified hitters from the
+  // season pool. That is a projection of who plays, not a claim about it, and it
+  // self-corrects: the moment a card posts, the slot filter in step 3 drops
+  // everyone not on it.
+  {
     const seed = (name, teamId) => {
       const g = gameByTeamId[teamId];
       if (!g) return;
@@ -1853,20 +1871,26 @@ async function batters(env, ctx, opts) {
         props: {},               // no book quotes -> no line, no price, no edge
       };
     };
-    const posted = Object.keys(lineupById).length > 0;
-    if (posted) {
-      for (const pid of Object.keys(lineupById)) seed(lineupById[pid].name, lineupById[pid].teamId);
-    } else {
-      // Rank each club's hitters by season plate appearances and keep the top 9 --
-      // playing time is the best available predictor of who is in tonight's card.
-      const byTeam = {};
-      for (const nm of Object.keys(statByName)) {
-        const s = statByName[nm];
-        if (!s.teamId || !gameByTeamId[s.teamId]) continue;
-        (byTeam[s.teamId] || (byTeam[s.teamId] = [])).push({ nm, pa: toNum((s.st || {}).plateAppearances) });
-      }
-      for (const teamId of Object.keys(byTeam)) {
-        byTeam[teamId].sort((a, b) => b.pa - a.pa).slice(0, 9)
+    // Each club's hitters by season plate appearances — playing time is the best
+    // available predictor of who is in tonight's card.
+    const paByTeam = {};
+    for (const nm of Object.keys(statByName)) {
+      const st = statByName[nm];
+      if (!st.teamId || !gameByTeamId[st.teamId]) continue;
+      (paByTeam[st.teamId] || (paByTeam[st.teamId] = [])).push({ nm, pa: toNum((st.st || {}).plateAppearances) });
+    }
+    const cardByTeam = {};
+    for (const pid of Object.keys(lineupById)) {
+      const l = lineupById[pid];
+      (cardByTeam[l.teamId] || (cardByTeam[l.teamId] = [])).push(l);
+    }
+    for (const teamId of Object.keys(gameByTeamId)) {
+      const key = gameKeyOfTeam(teamId);
+      if (key && pricedGames.has(key)) continue;   // the books have this game
+      if (cardByTeam[teamId]) {
+        cardByTeam[teamId].forEach((l) => seed(l.name, l.teamId));
+      } else {
+        (paByTeam[teamId] || []).sort((a, b) => b.pa - a.pa).slice(0, 9)
           .forEach((x) => seed(statByName[x.nm].name || x.nm, teamId));
       }
     }
@@ -2112,17 +2136,23 @@ async function batters(env, ctx, opts) {
 
   // Board rows = under leans only. Logging stays whole-model (every priced
   // market, both sides) so the research record keeps measuring what we DON'T post.
+  //
+  // MODEL_ROW_CAP bounds the unpriced half of the board. A fully unquoted 15-game
+  // slate seeds ~9 hitters a side; without a cap the payload would grow with the
+  // schedule rather than with anything useful.
   const pricedRows = all.filter((r) => r.odds != null)
     .sort((a, b) => (b.edge || 0) - (a.edge || 0))
     .slice(0, 40);
-  // Nothing priced anywhere: fall back to the model-only view rather than an
-  // empty board. Ranked by projected total bases, since with no line there is no
-  // edge to rank by. Batting order breaks ties -- it is the one ordering that is
-  // real information here and not an artifact of the projection.
-  const live = pricedRows.length ? pricedRows
-    : all.filter((r) => r.tier === 'model')
-      .sort((a, b) => (b.projVal || 0) - (a.projVal || 0) || (a.lineupSlot || 99) - (b.lineupSlot || 99))
-      .slice(0, 40);
+  // Projection-only rows ride below the priced ones. Ranked by projected total
+  // bases, since with no line there is no edge to rank by; batting order breaks
+  // ties, being the one ordering here that is real information rather than an
+  // artifact of the projection. Priced rows are kept first so that if either cap
+  // bites, what it drops is a row with no number to act on. (The client sorts the
+  // board by first pitch, so this decides what survives, not what shows on top.)
+  const modelRows = all.filter((r) => r.tier === 'model')
+    .sort((a, b) => (b.projVal || 0) - (a.projVal || 0) || (a.lineupSlot || 99) - (b.lineupSlot || 99))
+    .slice(0, MODEL_ROW_CAP);
+  const live = pricedRows.concat(modelRows);
   // Pulled rows ride along rather than being filtered out. They carry no price
   // so the priced filter drops them, but a row that silently disappears is the
   // problem the alert bar exists to fix — especially one already on someone's
