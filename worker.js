@@ -166,7 +166,10 @@ export default {
     // minute: zero graded rows, and a run concluding grading had failed. Its
     // ?summary=1 form would have been worse the other way round — a rowless body
     // cached under the path the board itself reads.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare';
+    // Routes whose answer depends on the query string. The edge cache key drops
+    // the query everywhere else, so without this a ?summary=1 request and a full
+    // board request would share one entry and serve each other's body.
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -375,7 +378,10 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/hitters') return hitters();
   if (p === '/api/pitchers') return pitchers();
   if (p === '/api/board') return board(env, ctx);
-  if (p === '/api/batters') return batters(env, ctx);
+  if (p === '/api/batters') {
+    const full = await batters(env, ctx);
+    return url.searchParams.get('summary') ? battersSummary(full) : full;
+  }
   if (p === '/api/track-record') return trackRecordCached(env);
   if (p === '/api/injuries') return injuries();
   if (p === '/api/live-now') return liveNow(env);
@@ -1543,6 +1549,40 @@ function soonestStart(rows, field) {
 // travels separately. Without it a board emptied by a finished slate tells the
 // reader to check back closer to first pitch at midnight — which is precisely
 // the bug that copy was written to fix.
+// ?summary=1 — the same board, counted instead of listed. A full board is ~80
+// rows of projection, market, percentile and matchup detail, which is a lot to
+// move (and to read) when the question is only "is the board up, and how much of
+// it has a line yet". That question gets asked by the scheduled checks, which
+// have to read whatever they fetch — a large answer there is wasted for the same
+// reason it is useful on the page.
+//
+// Derived from the real response rather than computed alongside it, so it cannot
+// drift from what the board actually shows.
+async function battersSummary(res) {
+  let body = null;
+  try { body = await res.clone().json(); } catch (e) { return res; }
+  const rows = (body && body.rows) || [];
+  const byGame = new Map();
+  for (const r of rows) {
+    const g = byGame.get(r.matchup) || { matchup: r.matchup, timeLabel: r.timeLabel, rows: 0, priced: 0, status: r.status };
+    g.rows++;
+    if (r.odds != null) g.priced++;
+    byGame.set(r.matchup, g);
+  }
+  const games = [...byGame.values()].sort((a, b) => (a.timeLabel || '').localeCompare(b.timeLabel || ''));
+  const ttl = Number((/max-age=(\d+)/.exec(res.headers.get('cache-control') || '') || [])[1]) || null;
+  return cors(json({
+    rows: rows.length,
+    priced: rows.filter((r) => r.odds != null).length,
+    games: games.length,
+    gamesWithALine: games.filter((g) => g.priced > 0).length,
+    slate: (body && body.slate) || null,
+    feedError: (body && body.feedError) || null,
+    ttlSec: ttl,
+    byGame: games,
+  }, ttl || 300));
+}
+
 const battersPayload = (rows, feedError, ttlSec, slate) => cors(json(
   { rows, feedError: feedError || null, slate: slate || null },
   // An EMPTY board never takes the long TTL. Every way of ending up with no rows

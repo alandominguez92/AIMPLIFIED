@@ -13,7 +13,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const BOARD = path.join(import.meta.dirname, '..');
-globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+// A real (if tiny) stand-in for the edge cache, keyed by request URL the way
+// Cloudflare's is. The worker builds its own cache key and DROPS the query string
+// on most routes, so an always-miss stub could not see a ?summary=1 request being
+// served the full board's cached body — which is exactly the bug that hit
+// /api/nfl-compare (see comparesummary.mjs).
+const edge = new Map();
+globalThis.caches = {
+  default: {
+    match: async (req) => {
+      const hit = edge.get(typeof req === 'string' ? req : req.url);
+      return hit ? hit.clone() : undefined;
+    },
+    put: async (req, res) => { edge.set(typeof req === 'string' ? req : req.url, res.clone()); },
+  },
+};
 
 const NOW = Date.now();
 const iso = (ms) => new Date(ms).toISOString();
@@ -181,6 +195,32 @@ ok(loggedTeams.length === 2 && loggedTeams.every((t) => t === 'SEA' || t === 'LA
   `and only from the quoted game (${loggedTeams.join(', ') || 'none'})`);
 ok(!loggedTeams.some((t) => ['LAD', 'CIN', 'MIL', 'PIT'].includes(t)),
   'no hitter from an unquoted game reached the record');
+
+// ---- ?summary=1 ---------------------------------------------------------------
+// The same board, counted instead of listed, for the scheduled checks: they have
+// to read whatever they fetch, and a full board is ~80 rows of detail to answer
+// "is it up, and how much of it has a line".
+{
+  const sres = await mod.default.fetch(new Request('https://x/api/batters?summary=1'), { ODDS_API_KEY: 'k', DB: db }, ctx);
+  await Promise.all(pending.splice(0));
+  const sum = await sres.json();
+  console.log('\n-- ?summary=1 --');
+  ok(!Array.isArray(sum.rows) && sum.rows === rows.length,
+    `it counts the board instead of listing it (rows ${JSON.stringify(sum.rows)} vs ${rows.length})`);
+  ok(sum.games === 3 && sum.gamesWithALine === 1,
+    `every game is represented, priced or not (${sum.games} games, ${sum.gamesWithALine} with a line)`);
+  ok(Array.isArray(sum.byGame) && sum.byGame.length === 3
+    && sum.byGame.every((g) => g.matchup && typeof g.rows === 'number'),
+    'each game carries its own row and price counts');
+  ok(JSON.stringify(sum).length < JSON.stringify({ rows, slate: null }).length / 5,
+    `and it is far smaller (${JSON.stringify(sum).length} bytes vs ${JSON.stringify(rows).length})`);
+  // The collision guard. Same path, different query — if the cache key dropped
+  // the query, this would come back as the full board.
+  ok(sum.byGame !== undefined, 'a summary request is not served the full board from cache');
+  const full2 = await (await mod.default.fetch(new Request('https://x/api/batters'), { ODDS_API_KEY: 'k', DB: db }, ctx)).json();
+  ok(Array.isArray(full2.rows) && full2.rows.length === rows.length,
+    'and the full board is not served the summary either');
+}
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
