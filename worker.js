@@ -7679,6 +7679,23 @@ async function nflBoardData(env, url) {
       });
     }
     out.games.sort((x, y) => Date.parse(x.commence || 0) - Date.parse(y.commence || 0));
+    // ONE slate day, not the whole week (2026-09-17). The board carried every
+    // remaining game of the week, so a Thursday showed the Thursday game plus
+    // thirteen Sunday ones — and /api/nfl-props builds its player rows from this
+    // list, so it projected a week of players at once. The NFL week is three
+    // distinct slates (Thu, Sun, Mon) that are read on the day they are played.
+    //
+    // The day is taken from the EARLIEST remaining kickoff rather than from the
+    // clock, so an off day rolls forward to the next slate instead of showing an
+    // empty board, and a Sunday still shows Sunday's games all day. Pacific time,
+    // like every other date in this file.
+    const firstUp = out.games.find((g) => g.commence);
+    if (firstUp) {
+      out.slateDay = ptDateOf(Date.parse(firstUp.commence));
+      out.gamesAllUpcoming = out.games.length;
+      out.games = out.games.filter((g) => g.commence && ptDateOf(Date.parse(g.commence)) === out.slateDay);
+      out.slateNote = `one slate day only: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming games this season type)`;
+    }
     out.empty = out.games.length === 0;
     out.postable = 0;   // no player props on the wire -> nothing is postable yet
   } catch (e) { out.error = String((e && e.message) || e); }

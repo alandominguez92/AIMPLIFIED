@@ -4328,6 +4328,18 @@
       + `</div></div>`;
   }
 
+  // Where our fair number sits against what the price implies, in the same
+  // grammar every other board uses: the fill is ours, the tick is the market's.
+  // The gap between them IS the value cell, so the bar is that number made
+  // readable — and it survives the phone collapse, where the caption does not.
+  function nflMlBar(g) {
+    if (g.fairSrc === 'MKT' || g.pickFair == null) return '';
+    return miniBar(g.pickFair, g.pickImplied, (v) => v)
+      + `<span class="bw-cush">fair <b>${g.pickFair}%</b>`
+      + (g.pickImplied != null ? ` · tick: price <b>${g.pickImplied}%</b>` : ' · no price')
+      + `</span>`;
+  }
+
   function nflRow(g) {
     const open = state.nflOpen === g.id;
     const isMkt = g.fairSrc === 'MKT';
@@ -4367,10 +4379,14 @@
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${g.away} at ${g.home} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head">${nflBadge(g.away)}<span class="at-sep">@</span>${nflBadge(g.home)}</span>
+          <span class="mc-head">${nflBadge(g.away)}<span class="at-sep">@</span>${nflBadge(g.home)}${
+            // The sub-line below carries kickoff, the spread and the total, and
+            // the phone collapse hides all three. Kickoff rides the head line so
+            // it survives, the same rule the MLB rows follow.
+            g.commence ? `<span class="row-when">${esc(kickoff(g.commence))}</span>` : ''}</span>
           <span class="matchup-sub">${sub}</span>
         </div>
-        <span>${pick}</span>
+        <span>${pick}${nflMlBar(g)}</span>
         ${odds}
         <span class="edge-cell" style="color:${valColor}">${valLabel}</span>
         ${winProb}
@@ -4563,8 +4579,9 @@
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${esc(r.player)} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head"><b>${esc(r.player)}</b> ${nflBadge(r.team)}</span>
-          <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}</span>
+          <span class="mc-head"><b>${esc(r.player)}</b> ${nflBadge(r.team)}${
+            r.commence ? `<span class="row-when">${esc(kickoff(r.commence))}</span>` : ''}</span>
+          <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}${r.commence ? ' · ' + esc(kickoff(r.commence)) : ''}</span>
           ${nflPropBar(r, market)}
         </div>
         <span class="np-proj">${r.proj}<i>yds</i></span>

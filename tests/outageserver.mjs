@@ -165,7 +165,62 @@ globalThis.fetch = async (u, o) => {
 
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-const env = { ODDS_API_KEY: 'test-key', DB: null };
+
+// NFLDEMO=1 stands in for D1's nfl_lines so the NFL board and its player
+// projections render locally. D1 lives only in Cloudflare, so without this the
+// NFL views answer "no DB binding" and cannot be reviewed at all. Two slate days
+// on purpose (a Thursday night game and a Sunday afternoon), which is how the
+// one-slate-day filter shows up: only Thursday should be on the board.
+const NFLDEMO = process.env.NFLDEMO === '1';
+const nflLines = (() => {
+  if (!NFLDEMO) return [];
+  const rows = [];
+  const day = (n) => {
+    const d = new Date(Date.now() + n * 3600e3);
+    return d.toISOString();
+  };
+  const games = [
+    { id: 'demo-thu', commence: day(9), away: 'Detroit Lions', home: 'Buffalo Bills' },
+    { id: 'demo-sun', commence: day(80), away: 'Kansas City Chiefs', home: 'Los Angeles Chargers' },
+  ];
+  for (const g of games) {
+    for (const [team, price] of [[g.away, -155], [g.home, 135]]) {
+      // pinnacle + lowvig are the game-line sharp pool; DK/FD are execution.
+      for (const book of ['pinnacle', 'lowvig', 'draftkings', 'fanduel']) {
+        // DK/FD hang a slightly longer price than the sharp pool, so the value
+        // cell and the new fair-vs-price bar have something real to draw.
+        const p = (book === 'draftkings' || book === 'fanduel') ? (price > 0 ? price + 15 : price + 10) : price;
+        rows.push({ event_id: g.id, commence: g.commence, home: g.home, away: g.away, market: 'h2h',
+          player: team, point: null, book, over: p, under: null, captured_at: new Date().toISOString(), week: 3 });
+      }
+    }
+    rows.push({ event_id: g.id, commence: g.commence, home: g.home, away: g.away, market: 'spreads',
+      player: g.away, point: -3.5, book: 'draftkings', over: -110, under: null, captured_at: new Date().toISOString(), week: 3 });
+    rows.push({ event_id: g.id, commence: g.commence, home: g.home, away: g.away, market: 'totals',
+      player: null, point: 47.5, book: 'draftkings', over: -110, under: -110, captured_at: new Date().toISOString(), week: 3 });
+  }
+  return rows;
+})();
+const nflDb = {
+  prepare: (sql) => {
+    const st = { bind: () => st, run: async () => ({ meta: { changes: 0 } }),
+      first: async () => (/COUNT\(\*\)/i.test(sql) ? { n: nflLines.length } : null),
+      all: async () => ({ results: /FROM nfl_lines/i.test(sql) ? nflLines : [] }) };
+    return st;
+  },
+  batch: async () => [],
+};
+const env = {
+  ODDS_API_KEY: 'test-key',
+  DB: NFLDEMO ? nflDb : null,
+  // The priors and schedule the NFL projections read, served off disk.
+  ASSETS: { fetch: async (r) => {
+    const name = new URL(r.url).pathname;
+    const file = path.join(BOARD, name);
+    if (!fs.existsSync(file)) return new Response('missing', { status: 404 });
+    return new Response(fs.readFileSync(file, 'utf8'), { status: 200, headers: { 'content-type': 'application/json' } });
+  } },
+};
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
 const cache = new Map();
