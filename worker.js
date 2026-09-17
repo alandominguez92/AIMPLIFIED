@@ -5428,7 +5428,26 @@ async function bpicksExport(env, url) {
   if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
   const market = (url.searchParams.get('market') || '').toLowerCase();
   const ver = url.searchParams.get('ver') || BATTER_MODEL_VER;
-  if (!/^(hrr|tb|hr)$/.test(market)) return cors(json({ error: 'market must be hrr, tb or hr' }, 30));
+  // k = pitcher strikeout props, from the `picks` table: same pricing fields,
+  // with actual_k as the actual and pitcher_id as the player.
+  if (market === 'k') {
+    try {
+      await ensureSchema(env.DB);
+      const kv = url.searchParams.get('ver') || K_MODEL_VER;
+      const cols = ['date', 'line', 'side', 'price', 'proj', 'model_over', 'entry_over', 'tier', 'result', 'fair_src', 'actual', 'game_id', 'team', 'player_id', 'edge'];
+      const rows = (await env.DB.prepare(
+        `SELECT date, line, side, price, proj, model_over, entry_over, tier, result, fair_src, actual_k AS actual, game_id, team, pitcher_id AS player_id, edge
+           FROM picks WHERE model_ver = ? AND result IN ('win','loss') ORDER BY date`
+      ).bind(kv).all()).results || [];
+      return cors(json({
+        market, ver: kv, n: rows.length, cols, rows: rows.map((r) => cols.map((c) => r[c])),
+        lineShrink: LINE_SHRINK, dispersion: DISPERSION, tiers: [5, 3, 1.5],
+      }, 600));
+    } catch (e) {
+      return cors(json({ error: String((e && e.message) || e) }, 30));
+    }
+  }
+  if (!/^(hrr|tb|hr)$/.test(market)) return cors(json({ error: 'market must be hrr, tb, hr or k' }, 30));
   try {
     await ensureBatterSchema(env.DB);
     // game_id / team / player_id let a replay join outside data (game totals,

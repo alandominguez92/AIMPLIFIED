@@ -67,6 +67,15 @@ ok(tb.market === 'tb' && tb.n === 1, `a tb export is not served the hrr body fro
 
 const bad = await get('?market=everything');
 ok(!!bad.error, `an unknown market is refused (${bad.error})`);
+// k reads the pitcher strikeout table, not bpicks.
+{
+  const kq = [];
+  const kdb = { prepare: (sql) => { const st = { bind: (...a) => { kq.push({ sql, a }); return st; }, run: async () => ({ meta: { changes: 0 } }), first: async () => null,
+    all: async () => ({ results: /FROM picks/i.test(sql) ? [{ date: '2026-09-10', line: 5.5, side: 'Over', price: -115, proj: 6.1, model_over: 58, entry_over: 0.52, tier: '2', result: 'loss', fair_src: 'sharp', actual: 4, game_id: 'g1', team: 'LAD', player_id: 1, edge: 6 }] : [] }) }; return st; }, batch: async () => [] };
+  const k = await (await mod.default.fetch(new Request('https://x/api/bpicks-export?market=k'), { DB: kdb }, { waitUntil() {} })).json();
+  ok(k.market === 'k' && k.n === 1 && k.lineShrink != null && k.dispersion != null && kq.some((q) => /FROM picks/i.test(q.sql)),
+    `market=k exports graded strikeout rows from picks with the K pricing constants (n=${k.n})`);
+}
 
 // The moneyline export: graded rows only, from the same stub table idea.
 {
