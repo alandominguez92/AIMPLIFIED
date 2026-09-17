@@ -3416,6 +3416,11 @@
   }
 
   function setView(v) {
+    // The Run Line tab was removed 2026-09-17 (31-54, -18.2u on 85 graded
+    // games, and no longer logged or bought). Its rendering code is left dormant
+    // rather than unpicked from shared helpers; this keeps any stray reference
+    // to the view from opening an empty board.
+    if (v === 'runline') v = 'batter';
     if (state.boardView === v) return;
     state.boardView = v;
     state.filter = 'all';       // tiers differ between views

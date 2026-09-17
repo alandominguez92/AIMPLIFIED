@@ -28,6 +28,7 @@ const book = (key) => ({
   ],
 });
 
+const oddsMarkets = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (u, o) => {
   const url = String(u);
@@ -42,6 +43,7 @@ globalThis.fetch = async (u, o) => {
   if (url.includes('cdn.espn.com')) return J({ content: { sbData: { events: [] } } });
   if (url.includes('api.the-odds-api.com')) {
     if (/\/odds\?/.test(url) && /markets=h2h/.test(url)) {
+      oddsMarkets.push((url.match(/markets=([^&]*)/) || [])[1]);
       return J([{ id: 'e1', commence_time: iso(START), home_team: 'Cincinnati Reds', away_team: 'Los Angeles Dodgers', bookmakers: ['draftkings', 'fanduel', 'pinnacle'].map(book) }]);
     }
     return J([]);
@@ -70,5 +72,8 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 ok(inserts.ml > 0, `the moneyline still logs from the same pass (${inserts.ml} mlpicks writes) — so the board did price this game`);
 ok(inserts.rl === 0, `the run line logs nothing (${inserts.rl} rlpicks writes)`);
+// Nor is it bought. spreads was half of this call's credits and nothing reads it now.
+ok(oddsMarkets.length > 0 && oddsMarkets.every((m) => m === 'h2h'),
+  `the game-odds call buys the moneyline only (markets=${oddsMarkets.join(' | ') || 'no call seen'})`);
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

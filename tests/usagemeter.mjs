@@ -143,7 +143,7 @@ const env0 = { ODDS_API_KEY: 'k' };
   await settle();
   const names = [...routes.values()].map((r) => r.route).sort();
   console.log('\n-- /api/board attributes the three that were never metered --');
-  for (const want of ['board:events', 'board:kprops', 'board:h2h+runline']) {
+  for (const want of ['board:events', 'board:kprops', 'board:h2h']) {
     ok(names.includes(want), `${want} is recorded`);
   }
 }

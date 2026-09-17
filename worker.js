@@ -1039,8 +1039,12 @@ async function board(env, ctx, opts) {
   const pinRlByHome = {}; // Pinnacle run-line price+point per side (sharp fair)
   if (key) {
     try {
-      const r = await fetch(`${ODDS}/odds?apiKey=${key}&bookmakers=${ML_BOOKS}&markets=h2h,spreads&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
-      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r, 'board:h2h+runline'));
+      // h2h only since 2026-09-17. `spreads` was bought for the run line, which
+      // is no longer logged or shown; at 2 markets per call it was half of this
+      // route's credits (~40 a day). The route name changes with it, so the
+      // usage ledger shows the drop rather than blending the two regimes.
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&bookmakers=${ML_BOOKS}&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r, 'board:h2h'));
       if (r.ok) {
         const events = await r.json();
         // Best moneyline price for a team name across a set of bookmakers.
@@ -1108,8 +1112,9 @@ async function board(env, ctx, opts) {
   // Last-known strikeout props from D1 — keeps the closing line on the board
   // after the book pulls the market (see savePropLines).
   const savedProps = (env && env.DB) ? await loadPropLines(env.DB, date) : {};
-  // Last-known run lines (spread pairs) from D1 — same fallback for the run line.
-  const savedRl = (env && env.DB) ? await loadRlLines(env.DB, date) : {};
+  // Run lines are no longer bought, so there is nothing to fall back to — and
+  // reading rl_lines on every board build would spend D1 reads for nothing.
+  const savedRl = {};
 
   const rows = games.map((g) => {
     const away = g.teams.away, home = g.teams.home;
