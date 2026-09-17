@@ -1254,11 +1254,13 @@ async function board(env, ctx, opts) {
     const write = logPicks(env.DB, rows, date).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(write);
     const writeMl = logMlPicks(env.DB, rows, date).catch(() => {});
-    // The run line rides the same pass. It posts nothing either; logging is what
-    // makes "no track record stands behind it" a temporary statement.
-    const writeRl = logRlPicks(env.DB, rows, date).catch(() => {});
-    if (ctx && ctx.waitUntil) ctx.waitUntil(writeRl);
     if (ctx && ctx.waitUntil) ctx.waitUntil(writeMl);
+    // The run line is no longer logged (2026-09-17). It was logged to find out
+    // whether the model read the 1.5 at all, and the record answered: 31-54,
+    // -18.2u, -21.4% ROI on 85 graded games, 9-21 over its last two days, with
+    // nothing posted on it. Rows already logged keep grading (gradeRlPicks is
+    // untouched), so the pending ones still settle and the history stays on the
+    // Track Record; nothing new is added to it.
 
     // Hits-allowed projections. Nothing here is a pick — this is the accuracy
     // record that has to exist before deciding whether the market is worth

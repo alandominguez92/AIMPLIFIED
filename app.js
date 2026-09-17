@@ -2255,14 +2255,16 @@
         const corrTag = corrN >= 2
           ? `<span class="corr-inline" title="Correlated: these unders share one game and tend to hit or miss together"> · ${corrN} in this game</span>`
           : '';
-        // Under a group header the subline would repeat the header verbatim, so
-        // the line goes to the market instead — which the row otherwise only
-        // states inside its pick, in shorthand.
-        // Always the market, never the matchup. Grouped, the game is in the
-        // header above; ungrouped, repeating "COL @ WSH · 7:04 AM PT" on every
-        // row spends the line on something the reader already scrolled past.
-        // What changes row to row is which market this batter is being faded in.
-        const sub = MARKET_NAME[g.metric] || MARKET_NAME[g.wasMetric] || g.marketLabel || '';
+        // The market, then when the game is. The time used to be left to the
+        // group header ("COL @ WSH · 7:04 AM PT") on the theory that repeating it
+        // per row spent the line on something already on screen — but the header
+        // only exists when the board is grouped by first pitch. Sorted by edge
+        // there is no header, and on Moneyline there never was one, so the board
+        // said "sorted by first pitch" while showing no time at all. Each row now
+        // carries its own: first pitch before the game, Live / Final after.
+        const when = g.status === 'Live' ? 'Live' : g.status === 'Final' ? 'Final' : (g.timeLabel || '');
+        const sub = [MARKET_NAME[g.metric] || MARKET_NAME[g.wasMetric] || g.marketLabel || '', (isBatter() || isML()) ? when : '']
+          .filter(Boolean).join(' · ');
         // Moneyline leads with the two clubs, badged, the way the NFL board
         // already does — the row IS the matchup, so the teams are the headline
         // rather than a string to parse. Falls back to the plain matchup when
@@ -2271,7 +2273,7 @@
           ? `${mlbBadge(ml.awayAbbr)}<span class="at-sep">@</span>${mlbBadge(ml.homeAbbr)}`
           : `<b>${esc(g.matchup)}</b>`;
         matchupCell = `<div class="matchup-cell">
-            <span class="mc-head">${leadingHtml}${mlHead}${teamBadge}</span>
+            <span class="mc-head">${leadingHtml}${mlHead}${teamBadge}${(isBatter() || isML()) && when ? `<span class="row-when">${esc(when.replace(/ PT$/, ''))}</span>` : ''}</span>
             ${sub || corrTag ? `<span class="matchup-sub">${esc(sub)}${corrTag}</span>` : ''}
             ${weatherHtml}
           </div>`;

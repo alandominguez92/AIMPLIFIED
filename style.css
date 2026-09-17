@@ -1423,6 +1423,16 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    way round these two rules have equal specificity and the later one wins,
    which hides the digest on the one screen it exists for. */
 
+/* First pitch on the head line, for collapsed rows only. The subline that
+   carries the time on desktop is one of the lines the collapse below hides, so
+   on a phone the board read "sorted by first pitch" with no time anywhere on
+   the row. Inline beside the name it costs no height; " PT" is dropped because
+   the width is the constraint here and every time on the board is Pacific. */
+.board-row .row-when { display:none }
+@media (max-width:900px) {
+  .board-row:not(.expanded) .row-when { display:inline; margin-left:6px; font-family:var(--mono); font-size:10.5px; color:var(--textDim); white-space:nowrap; font-weight:400 }
+}
+
 @media (max-width:900px) {
   .board-row:not(.expanded) .matchup-sub,
   .board-row:not(.expanded) .corr-tag,
