@@ -43,7 +43,28 @@ const H_PROJ_CAL = 0.923;
 // fraction, so the P(over) reduction scales with the projection-line gap and
 // lands hardest on T1 while barely touching the calibrated lower tiers. Interim
 // half-step; refit precisely from the per-decile curve as more picks grade.
-const LINE_SHRINK = 0.37;  // fraction of the projection pulled toward the line
+const LINE_SHRINK = 0.37;
+// Strikeout projection calibration (2026-09-17).
+//
+// Across 881 graded starts under k-sharp-shin (07-28..09-16) the model projected
+// 5.21 strikeouts and pitchers recorded 4.76: actual/projected 0.913, and 0.912 /
+// 0.914 in the two halves, so a stable bias rather than a streak. Running high
+// made the model lean OVER on 74% of starts, and overs were the losing side
+// (247-307, -11%, p=0.01; unders 84-90, -2.6%).
+//
+// 0.93 is 85% of the first-half fit (0.912 -> 0.925), the caution every
+// calibration here has used. Scored on the second half: average miss 1.895 ->
+// 1.857 strikeouts, over-leans 74% -> 52%, Brier on P(over) 0.2528 -> 0.2522.
+//
+// What it does NOT do: beat the market (its Brier was 0.2505) or make K props
+// bettable — the second half's non-pass picks went from break-even to -5.4%
+// after re-pricing. It ships because the projections on the K Props tab are read
+// daily and were systematically high, not because it finds an edge.
+//
+// Not applied: pulling extreme projections toward the average (actual = 1.53 +
+// 0.62 x projection on the first half). It lowered the miss further (1.842) but
+// made the over/under probabilities worse (0.2537).
+const K_PROJ_CAL = 0.93;  // fraction of the projection pulled toward the line
 
 // The books we price against (the user's accounts). Odds API bookmaker keys ->
 // short display labels. Prices are pinned to these two only, and the better of
@@ -96,7 +117,8 @@ const BATTER_MODEL_VER = 'sharp-shin-nb-evgate-hrrcal111-itt';
 // Same idea for the strikeout board, which moved from a DK/FD/MGM consensus fair
 // (circular — two of the three are the books we bet) to the sharp pool with that
 // consensus demoted to a middle fallback rung.
-const K_MODEL_VER = 'k-sharp-shin';
+// 'k-sharp-shin-cal93' (2026-09-17): projections scaled by K_PROJ_CAL.
+const K_MODEL_VER = 'k-sharp-shin-cal93';
 // Moneyline pricing era. 'ml-shin' covers Shin de-vig on the sharp pair,
 // grading at entry price rather than close, and de-vigging each book's own
 // two sides instead of the best-of pair. fair_source is logged alongside so
@@ -1147,7 +1169,7 @@ async function board(env, ctx, opts) {
       const k9 = st.k9 > 0 ? st.k9 : 8.5;
       const expIP = clamp(st.gs > 0 ? st.ip / st.gs : 5.5, 4, 6.8);
       // Base rate model, then scale by park (strikeout factor) and weather (temp).
-      const projK = (k9 * expIP / 9) * (lgK > 0 ? oppK / lgK : 1) * parkK * wxK;
+      const projK = (k9 * expIP / 9) * (lgK > 0 ? oppK / lgK : 1) * parkK * wxK * K_PROJ_CAL;
       const sd = Math.sqrt(Math.max(projK, 1) * DISPERSION);
 
       // Hits allowed, same shape. Projection only — no line is bought for this
