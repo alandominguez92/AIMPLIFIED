@@ -273,7 +273,9 @@ const PROP_EARLY_TTL_MS = 60 * 60 * 1000;
 //
 // Bump this whenever the shape or the spelling of what is stored changes. Old
 // keys are simply never read again, and expire on their own.
-const LINES_STORE_VER = 'v2';
+// v3 (2026-09-17): same-named hitters in different games are stored as separate
+// records; a v2 record could hold two players' lines merged under one name.
+const LINES_STORE_VER = 'v3';
 const PROP_EARLY_FAR_MS = 18 * 3600 * 1000;
 const PROP_EARLY_FAR_TTL_MS = 3 * 60 * 60 * 1000;
 // Splits early events by how far out they are: [{ suffix, ttlMs, events }].
@@ -1998,7 +2000,12 @@ async function batters(env, ctx, opts) {
           for (const oc of (mk.outcomes || [])) {
             const nm = normName(oc.description);
             if (!nm) continue;
-            const rec = target[nm] || (target[nm] = { name: oc.description, awayAb, homeAb, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), props: {} });
+            // Two same-named hitters quoted in different games must stay two
+            // records; merging them priced one man's line off the other's.
+            // The row loop strips the qualifier and resolves the player by game.
+            let slot = nm;
+            if (target[slot] && (target[slot].awayAb !== awayAb || target[slot].homeAb !== homeAb)) slot = `${nm}|${awayAb}@${homeAb}`;
+            const rec = target[slot] || (target[slot] = { name: oc.description, awayAb, homeAb, timeMs: Date.parse(ev.commence_time) || 0, timeLabel: timeLabelPT(ev.commence_time), props: {} });
             const mp = rec.props[spec.metric] || (rec.props[spec.metric] = {});
             const b = mp[label] || (mp[label] = {});
             if (oc.point != null) b.point = oc.point;
@@ -2052,7 +2059,18 @@ async function batters(env, ctx, opts) {
   if (!Object.keys(byName).length && !Object.keys(gameByTeamId).length) return battersPayload([], feedError, boardTtlSec);
 
   // 2) Season hitting stats for every batter, keyed by name for matching.
-  const statByName = {};
+  //
+  // A name is NOT a player. Books quote hitters by name, so matching has to go
+  // through the name — but it used to store one player per name, and the last one
+  // read won. On 2026-09-17 there were two Max Muncys (Dodgers 3B, Athletics SS):
+  // the Athletics' overwrote the Dodger, so the Dodger's line in LAD @ CIN was
+  // priced off the other man's season, at Tropicana Field, against Tampa's
+  // starter and the Athletics' implied runs — and posted as a play at +104.
+  //
+  // So every candidate is kept, and statFor() picks the one actually in the game
+  // the line (or the seed) came from. Ambiguous and nobody in that game -> no row,
+  // rather than a confident projection of the wrong person.
+  const statsByName = {};
   try {
     const r = await fetch(`${STATS}/stats?stats=season&group=hitting&gameType=R&season=${season}&sportId=1&playerPool=All&limit=2000`, { headers: { accept: 'application/json' } });
     if (r.ok) {
@@ -2061,10 +2079,27 @@ async function batters(env, ctx, opts) {
         const nm = normName((s.player || {}).fullName);
         // fullName is kept for display: the key is normalized, so it can't be
         // shown, and the model-only path has no book description to fall back on.
-        if (nm) statByName[nm] = { st: s.stat || {}, id: (s.player || {}).id, name: (s.player || {}).fullName || null, team: teamAbbr(s.team), teamId: (s.team || {}).id };
+        if (nm) (statsByName[nm] || (statsByName[nm] = [])).push({ st: s.stat || {}, id: (s.player || {}).id, name: (s.player || {}).fullName || null, team: teamAbbr(s.team), teamId: (s.team || {}).id });
       });
     }
   } catch (e) { /* projections fall back to rate-only where possible */ }
+  const allStats = Object.values(statsByName).flat();
+  // The season-stat entry for the player named `nm` who is in `rec`'s game.
+  // Identity is by team id against tonight's schedule, not by abbreviation, so a
+  // spelling difference between feeds cannot mis-assign anyone.
+  const statFor = (nm, rec) => {
+    const cands = statsByName[nm] || [];
+    if (cands.length <= 1) return cands[0] || null;       // unique name: as before
+    const inGame = cands.filter((c) => {
+      const g = c.teamId != null ? gameByTeamId[c.teamId] : null;
+      return g && rec && g.matchup === rec.matchup;
+    });
+    if (!inGame.length) return null;                     // shared name, neither is in this game
+    // One player listed twice (traded mid-season, one split per club) is still
+    // one player: take the split with the most plate appearances.
+    if (new Set(inGame.map((c) => c.id)).size > 1) return null;   // two same-named players in ONE game
+    return inGame.sort((a, b) => toNum((b.st || {}).plateAppearances) - toNum((a.st || {}).plateAppearances))[0];
+  };
 
   // 2a) Model-only seeding, per game. A game the books have not quoted still has
   // everything the projection needs — batting slot once the card is up, opposing
@@ -2084,8 +2119,17 @@ async function batters(env, ctx, opts) {
       const g = gameByTeamId[teamId];
       if (!g) return;
       const nm = normName(name);
-      if (!nm || byName[nm]) return;
-      byName[nm] = {
+      if (!nm) return;
+      // The key is the name, so a namesake already seeded for ANOTHER game gets a
+      // team-qualified key instead of silently taking this player's place. The
+      // row loop strips the qualifier and resolves by game (statFor).
+      let slot = nm;
+      if (byName[slot]) {
+        if (byName[slot].matchup === g.matchup) return;    // same player, same game: already there
+        slot = `${nm}|${teamId}`;
+        if (byName[slot]) return;
+      }
+      byName[slot] = {
         name, matchup: g.matchup, timeMs: g.timeMs, timeLabel: g.timeLabel,
         gamePk: g.gamePk, gameStatus: g.gameStatus,
         awayScore: g.awayScore, homeScore: g.homeScore,
@@ -2095,10 +2139,9 @@ async function batters(env, ctx, opts) {
     // Each club's hitters by season plate appearances — playing time is the best
     // available predictor of who is in tonight's card.
     const paByTeam = {};
-    for (const nm of Object.keys(statByName)) {
-      const st = statByName[nm];
+    for (const st of allStats) {
       if (!st.teamId || !gameByTeamId[st.teamId]) continue;
-      (paByTeam[st.teamId] || (paByTeam[st.teamId] = [])).push({ nm, pa: toNum((st.st || {}).plateAppearances) });
+      (paByTeam[st.teamId] || (paByTeam[st.teamId] = [])).push({ name: st.name, pa: toNum((st.st || {}).plateAppearances) });
     }
     const cardByTeam = {};
     for (const pid of Object.keys(lineupById)) {
@@ -2112,7 +2155,7 @@ async function batters(env, ctx, opts) {
         cardByTeam[teamId].forEach((l) => seed(l.name, l.teamId));
       } else {
         (paByTeam[teamId] || []).sort((a, b) => b.pa - a.pa).slice(0, 9)
-          .forEach((x) => seed(statByName[x.nm].name || x.nm, teamId));
+          .forEach((x) => x.name && seed(x.name, teamId));
       }
     }
   }
@@ -2123,7 +2166,7 @@ async function batters(env, ctx, opts) {
   // adjustment for that batter, i.e. neutral. splitByPlayerId[id] = { L, R }
   // where each side is { pa, hr, tb, hrr } season totals for that split.
   const splitByPlayerId = {};
-  const batterIds = [...new Set(Object.values(statByName).map((x) => x.id).filter(Boolean))];
+  const batterIds = [...new Set(allStats.map((x) => x.id).filter(Boolean))];
   const chunk = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
   await Promise.all(chunk(batterIds, 100).map(async (ids) => {
     try {
@@ -2151,8 +2194,8 @@ async function batters(env, ctx, opts) {
   // against a hardcoded constant. H+R is used (not H+R+RBI) to match the pitcher
   // side, where RBI isn't charged.
   const lg = { pa: 0, hr: 0, tb: 0, hrr: 0 };
-  for (const k of Object.keys(statByName)) {
-    const s = statByName[k].st || {};
+  for (const cand of allStats) {
+    const s = cand.st || {};
     lg.pa += toNum(s.plateAppearances);
     lg.hr += toNum(s.homeRuns);
     lg.tb += toNum(s.totalBases);
@@ -2167,8 +2210,8 @@ async function batters(env, ctx, opts) {
   const draft = [];
   for (const nm of Object.keys(byName)) {
     const rec = byName[nm];
-    const match = statByName[nm];
-    if (!match) continue;              // no stats -> can't project; skip
+    const match = statFor(nm.split('|')[0], rec);
+    if (!match) continue;              // no stats, or a shared name we cannot place -> skip
     const st = match.st;
     const gp = toNum(st.gamesPlayed), pa = toNum(st.plateAppearances);
     if (gp < 10 || pa < 30) continue;  // too small a sample to model
