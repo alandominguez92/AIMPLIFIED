@@ -90,7 +90,9 @@ const SHARP_MAX_SPREAD = 0.05;
 // 1.00 -> 1.11). It changes which H+R+RBI unders are posted, so rows either side
 // of it are different experiments and the era-edge card must start counting fresh
 // rather than blend a month at 1.00 into whatever 1.11 does.
-const BATTER_MODEL_VER = 'sharp-shin-nb-evgate-hrrcal111';
+// And again the same day for the implied-team-runs input on H+R+RBI (see
+// ITT_BETA). It moves H+R+RBI projections game by game, so it is its own era.
+const BATTER_MODEL_VER = 'sharp-shin-nb-evgate-hrrcal111-itt';
 // Same idea for the strikeout board, which moved from a DK/FD/MGM consensus fair
 // (circular — two of the three are the books we bet) to the sharp pool with that
 // consensus demoted to a middle fallback rung.
@@ -635,7 +637,100 @@ async function attachSplits(rows, group) {
 // site.api's `dates` is accepted and then silently ignored, serving a cached
 // current-day scoreboard, which looks like real data for the wrong day.
 const ESPN_MLB_SB = 'https://cdn.espn.com/core/mlb/scoreboard?xhr=1&date=';
-const ESPN_TEAM_FIX = { CHW: 'CWS', ARI: 'AZ' };   // ESPN spells two clubs differently
+// ESPN spells some clubs differently. OAK/WAS are defensive: not seen on the
+// current card, but historical ESPN data used both.
+const ESPN_TEAM_FIX = { CHW: 'CWS', ARI: 'AZ', OAK: 'ATH', WAS: 'WSH' };
+
+// Implied team runs, as an H+R+RBI projection input.
+//
+// H+R+RBI is two-thirds runs and RBI, which depend far more on how much a
+// team scores than on the hitter alone, and the projection barely saw it.
+// Backtested on 5,763 graded H+R+RBI rows (2026-07-28..09-16), joined to
+// DraftKings totals and moneylines for all 689 games via ESPN:
+//
+//   implied team runs   projected   actual   actual/projected   under plays
+//   2.7-3.6               1.46       1.58        1.09           136, +11.6%
+//   3.6-4.0               1.49       1.65        1.11           236,  +1.8%
+//   4.0-4.3               1.52       1.75        1.15           347,  +1.2%
+//   4.3-4.6               1.54       1.77        1.15           425,  -2.5%
+//   4.6-6.5               1.60       2.10        1.31           553,  -7.6%
+//
+// Actuals rise 33% from the weakest offenses to the strongest; the projection
+// rose 10%. The model posted its MOST unders on the highest-scoring teams, where
+// they lost. Fit on the first half and scored on the second: the negative-
+// binomial log-likelihood improves by 5.5 on one parameter (p~0.001), beta 0.5 on
+// closing lines and 0.6 on opening lines, and the calibration constant fitted
+// alongside it did not move (1.173 either way), so this sits on top of
+// BATTER_PROJ_CAL rather than replacing any of it.
+//
+// What the backtest did NOT show: better betting results. On the held-out half
+// the adjusted under plays went -1.1% (n=166) against -0.1% (n=192); the picks it
+// dropped and added were too few to read. This ships because the projection is
+// measurably more accurate, not because a profit has been demonstrated.
+//
+// Total Bases is deliberately untouched: the same test found zero out-of-sample
+// gain. TB is the hitter's own contact and power, which the model already has.
+//
+// No line posted yet (overnight, or ESPN has nothing) -> multiplier 1.0, the same
+// neutral default every other matchup input uses.
+const ITT_BETA = 0.5;
+const ITT_MEAN = 4.17;          // mean implied team runs across the backtest rows (DK closing lines)
+const ITT_MULT_LO = 0.75;
+const ITT_MULT_HI = 1.30;
+
+const parseAmerican = (v) => {
+  const t = String(v == null ? '' : v).trim().toUpperCase();
+  if (t === 'EVEN' || t === 'EV') return 100;
+  const n = Number(t.replace('+', ''));
+  return isFinite(n) && Math.abs(n) >= 100 ? n : null;
+};
+const americanProb = (a) => (a > 0 ? 100 / (a + 100) : -a / (-a + 100));
+
+// Game total split between the two clubs by their de-vigged win probability,
+// converted to a run ratio with the Pythagorean exponent (1.83). Returns
+// { away, home } in runs, or null if the line is incomplete.
+function impliedTeamRuns(total, awayML, homeML) {
+  const t = Number(total), a = parseAmerican(awayML), h = parseAmerican(homeML);
+  if (!(t > 0) || a == null || h == null) return null;
+  const pa = americanProb(a), ph = americanProb(h);
+  const pHome = ph / (pa + ph);
+  if (!(pHome > 0 && pHome < 1)) return null;
+  const ratio = Math.pow(pHome / (1 - pHome), 1 / 1.83);
+  const home = t * ratio / (1 + ratio);
+  return { away: t - home, home };
+}
+
+// ESPN's scoreboard carries DraftKings' pre-game total and both moneylines, at no
+// credit cost. Returns 'AWAY@HOME' -> [{ startMs, away, home }] (implied runs),
+// several entries for a doubleheader. Empty on any failure.
+async function espnGameLines(date) {
+  const out = {};
+  try {
+    const r = await fetch(ESPN_MLB_SB + String(date).replace(/-/g, ''), { headers: { accept: 'application/json' } });
+    if (!r.ok) return out;
+    const d = await r.json();
+    for (const ev of ((((d.content || {}).sbData || {}).events) || [])) {
+      const comp = (ev.competitions || [])[0] || {};
+      const side = {};
+      for (const c of (comp.competitors || [])) {
+        const raw = String(((c.team || {}).abbreviation) || '').toUpperCase();
+        side[c.homeAway] = ESPN_TEAM_FIX[raw] || raw;
+      }
+      const o = (comp.odds || [])[0];
+      if (!o || !side.away || !side.home) continue;
+      const ml = o.moneyline || {};
+      const pickML = (k) => {
+        const x = ml[k] || {};
+        return (x.close && x.close.odds) || (x.current && x.current.odds) || (x.open && x.open.odds) || null;
+      };
+      const runs = impliedTeamRuns(o.overUnder, pickML('away'), pickML('home'));
+      if (!runs) continue;
+      const key = `${side.away}@${side.home}`;
+      (out[key] || (out[key] = [])).push({ startMs: Date.parse(ev.date) || 0, away: runs.away, home: runs.home });
+    }
+  } catch (e) { /* neutral this render */ }
+  return out;
+}
 
 // Strip accents and case so ESPN's unaccented spelling compares equal to the
 // accented one StatsAPI returns (Urena/Urena, Rodon/Rodon, Perez/Perez).
@@ -1648,6 +1743,7 @@ async function batters(env, ctx, opts) {
   // know who actually plays tonight and where they bat.
   const schedByMatchup = {};
   const gameByTeamId = {};          // teamId -> tonight's game identity (matchup/time/status)
+  const sideByTeamId = {};          // teamId -> 'away' | 'home' (for implied team runs)
   const lineupSlotById = {};        // playerId -> batting slot 1-9
   const lineupById = {};            // playerId -> { name, teamId } for posted starters
   const lineupPostedTeamIds = new Set(); // teams whose lineup is posted
@@ -1713,8 +1809,8 @@ async function batters(env, ctx, opts) {
           awayScore: numOr(g.teams.away.score, null),
           homeScore: numOr(g.teams.home.score, null),
         };
-        if (g.teams.away.team && g.teams.away.team.id) gameByTeamId[g.teams.away.team.id] = ident;
-        if (g.teams.home.team && g.teams.home.team.id) gameByTeamId[g.teams.home.team.id] = ident;
+        if (g.teams.away.team && g.teams.away.team.id) { gameByTeamId[g.teams.away.team.id] = ident; sideByTeamId[g.teams.away.team.id] = 'away'; }
+        if (g.teams.home.team && g.teams.home.team.id) { gameByTeamId[g.teams.home.team.id] = ident; sideByTeamId[g.teams.home.team.id] = 'home'; }
 
         const lp = g.lineups || {};
         [['awayPlayers', g.teams.away.team], ['homePlayers', g.teams.home.team]].forEach(([k, team]) => {
@@ -1810,6 +1906,23 @@ async function batters(env, ctx, opts) {
   // no one has posted yet. Overnight the board rolls a day ahead and shows
   // projections; that is the designed behaviour, and prices now fill in on the
   // same schedule the strikeout board has always used.
+  // Implied team runs per club for tonight, from ESPN's copy of the DraftKings
+  // line. Matched by matchup and, for a doubleheader, by the nearer start time.
+  const ittByTeamId = {};
+  {
+    const lines = await espnGameLines(slateYmd);
+    for (const teamId of Object.keys(gameByTeamId)) {
+      const g = gameByTeamId[teamId], side = sideByTeamId[teamId];
+      if (!g || !side) continue;
+      const cands = lines[String(g.matchup || '').replace(' @ ', '@')] || [];
+      let best = null;
+      for (const c of cands) {
+        const gap = Math.abs((c.startMs || 0) - (g.timeMs || 0));
+        if (gap <= 4 * 3600e3 && (!best || gap < best.gap)) best = { gap, c };
+      }
+      if (best) ittByTeamId[teamId] = best.c[side];
+    }
+  }
   const slateYmdB = slateYmd;
   const upcomingB = opts && opts.closeOnly
     ? closingSoon(events, opts.closeOnly)
@@ -2113,11 +2226,17 @@ async function batters(env, ctx, opts) {
     for (const m of ['hr', 'tb', 'hrr']) {
       adj[m] = clamp(platoonMult(m) * parkFactor(venue, m) * pitcherMult(m), ADJ_LO, ADJ_HI);
     }
+    // Implied team runs — H+R+RBI only, applied outside the matchup clamp because
+    // that is how it was fitted: on top of projections that already carried it.
+    const impliedRuns = ittByTeamId[match.teamId] != null ? ittByTeamId[match.teamId] : null;
+    const ittMult = impliedRuns != null
+      ? clamp(Math.pow(impliedRuns / ITT_MEAN, ITT_BETA), ITT_MULT_LO, ITT_MULT_HI)
+      : 1;
 
     const lambda = {
       hr: baseRate.hr * expPA * BATTER_PROJ_CAL.hr * adj.hr,
       tb: baseRate.tb * expPA * BATTER_PROJ_CAL.tb * adj.tb,
-      hrr: (slot ? baseRate.hrr * expPA : (hits + runs + rbi) / gp) * BATTER_PROJ_CAL.hrr * adj.hrr,
+      hrr: (slot ? baseRate.hrr * expPA : (hits + runs + rbi) / gp) * BATTER_PROJ_CAL.hrr * adj.hrr * ittMult,
     };
     const markets = {};
     for (const spec of BATTER_MARKETS) {
@@ -2126,7 +2245,7 @@ async function batters(env, ctx, opts) {
     // oppPFac = the pitcher-only multiplier per metric, kept separate from the
     // combined `adj` so a projection can be traced back to which factor moved it.
     const oppPFac = oppP ? { hr: round2(pitcherMult('hr')), tb: round2(pitcherMult('tb')), hrr: round2(pitcherMult('hrr')) } : null;
-    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, pulled, facingHand, venue, adj, seasonPA: pa, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac });
+    draft.push({ nm, rec, match, st, lambda, iso, slg: toNum(st.slg), kpct, bbpct, markets, slot, pulled, facingHand, venue, adj, seasonPA: pa, oppPName: oppPPNameByTeamId[match.teamId] || null, oppPFac, impliedRuns, ittMult });
   }
   if (!draft.length) return battersPayload([], feedError, boardTtlSec);
 
@@ -2204,6 +2323,10 @@ async function batters(env, ctx, opts) {
       // than argued about: a 30-PA rate is mostly noise, but whether that
       // noise costs anything is measurable once the column exists.
       seasonPA: b.seasonPA || null,
+      // The club's implied runs tonight and what it did to the H+R+RBI projection
+      // (1.0 when no line is posted yet).
+      impliedRuns: b.impliedRuns != null ? round2(b.impliedRuns) : null,
+      impliedRunsAdj: b.ittMult != null ? round2(b.ittMult) : null,
       oppPitcher: b.oppPName || null,   // tonight's opposing starter
       oppPitcherAdj: b.oppPFac || null, // his contribution alone, per metric
       pick: lead ? `${lead.m.side === 'Over' ? 'O' : 'U'} ${lead.m.line} ${lead.spec.label}`
@@ -2677,6 +2800,10 @@ async function ensureBatterSchema(db) {
   // boxscore; reconciled rows are stamped so the sweep terminates instead of
   // re-fetching the same games forever.
   await addColumns(db, 'bpicks', [['grade_ver', 'TEXT']]);
+  // Implied team runs at entry. Written for both markets so the betting effect of
+  // the H+R+RBI input can be measured directly, and TB re-tested, rather than
+  // reconstructed from ESPN after the fact.
+  await addColumns(db, 'bpicks', [['impl_runs', 'REAL']]);
   // Partial index over UNGRADED rows only. D1 bills rows scanned, and the
   // grading passes ask "which games still need a boxscore?" with
   // `result IS NULL AND date < today` — a range that covers every day of
@@ -3523,9 +3650,9 @@ async function logBatterPicks(db, rows, date) {
       if (m.none || m.price == null) continue;
       const gid = 'g' + r.gamePk;
       stmts.push(db.prepare(
-        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over,fair_src,model_ver,fair_books,season_pa)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null, m.fairSrc ?? null, BATTER_MODEL_VER, m.fairBooks ? JSON.stringify(m.fairBooks) : null, r.seasonPA ?? null));
+        `INSERT OR IGNORE INTO bpicks (date,game_id,player_id,player,team,market,line,side,price,proj,model_over,edge,tier,entry_over,fair_src,model_ver,fair_books,season_pa,impl_runs)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(date, gid, r.playerId, r.name, r.team, m.metric, m.line, m.side, m.price, m.proj, m.modelOver, m.edge, String(m.tier), m.fairOver ?? null, m.fairSrc ?? null, BATTER_MODEL_VER, m.fairBooks ? JSON.stringify(m.fairBooks) : null, r.seasonPA ?? null, r.impliedRuns ?? null));
       // Continuous close capture: latest line/price always; the vig-free over%
       // only when the line still matches entry (so a late line move never
       // clobbers the last comparable close).
@@ -5050,7 +5177,7 @@ async function bpicksExport(env, url) {
     await ensureBatterSchema(env.DB);
     // game_id / team / player_id let a replay join outside data (game totals,
     // weather, bullpen) to the rows; the rest is what the pricing needs.
-    const cols = ['date', 'line', 'side', 'price', 'proj', 'model_over', 'entry_over', 'tier', 'result', 'fair_src', 'actual', 'game_id', 'team', 'player_id'];
+    const cols = ['date', 'line', 'side', 'price', 'proj', 'model_over', 'entry_over', 'tier', 'result', 'fair_src', 'actual', 'game_id', 'team', 'player_id', 'impl_runs'];
     const rows = (await env.DB.prepare(
       `SELECT ${cols.join(', ')} FROM bpicks
         WHERE market = ? AND model_ver = ? AND result IN ('win','loss')
