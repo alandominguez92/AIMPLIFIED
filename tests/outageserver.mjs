@@ -26,6 +26,8 @@ const CARDS = process.env.CARDS === '1';
 // Books price twelve hitters per club; with CARDS=1 the card names nine, so the
 // other three become pulled rows and the alert bar has real content.
 const HEALTHY = process.env.HEALTHY === '1';
+// MLGAP=1: see the moneyline fixture below.
+const MLGAP = process.env.MLGAP === '1';
 const oddsFixture = { events: [], props: {}, ks: {}, h2h: [] };
 
 // Same day the board will be on. worker.js rolls a day ahead once every game
@@ -95,7 +97,9 @@ async function buildOddsFixture() {
     // priced branch never renders.
     const mlbk = (key) => ({ key, markets: [{ key: 'h2h', outcomes: [
       { name: g.teams.home.team.name, price: key === 'pinnacle' ? -145 : -150 },
-      { name: g.teams.away.team.name, price: key === 'pinnacle' ? +128 : +125 },
+      // MLGAP=1 dangles every other underdog at +175 on DK/FD against Pinnacle's
+      // +128 — a gap past ML_EDGE_CHECK — so the "check news" state can be seen.
+      { name: g.teams.away.team.name, price: key === 'pinnacle' ? +128 : (MLGAP && i % 2 === 0 ? +175 : +125) },
     ] }] });
     oddsFixture.h2h.push({ id, commence_time: new Date(now + (90 + i * 25) * 60000).toISOString(),
       home_team: g.teams.home.team.name, away_team: g.teams.away.team.name,

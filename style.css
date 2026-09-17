@@ -2194,6 +2194,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Cell-level source labels. The design never leaves a number or an absence
    unexplained at the cell — the banner carries the story once, but a reader
    scrolling forty rows should not have to hold it in their head. */
+/* Moneyline edge source / warning, under the Edge number. Deliberately NOT in
+   the phone collapse list — on a phone it is the only place the warning shows. */
+.ml-edge-tag { display:block; margin-top:2px; font-family:var(--mono); font-size:9.5px; font-style:normal; color:var(--textFaint); letter-spacing:.02em; white-space:nowrap }
+.ml-edge-tag.check { color:var(--warm); font-weight:600 }
 .cell-src { display:block; margin-top:2px; font-family:var(--mono); font-size:9.5px;
   font-style:normal; letter-spacing:.1em; text-transform:uppercase; color:var(--textGhost); }
 .tier-chip.noprice { color:var(--textFaint); background:color-mix(in srgb, var(--text) 7%, transparent);

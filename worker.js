@@ -101,7 +101,9 @@ const K_MODEL_VER = 'k-sharp-shin';
 // grading at entry price rather than close, and de-vigging each book's own
 // two sides instead of the best-of pair. fair_source is logged alongside so
 // a Pinnacle-priced pick is distinguishable from a soft-book fallback.
-const ML_MODEL_VER = 'ml-shin';
+// 'ml-shin-check25' (2026-09-17): Pinnacle edges of ML_EDGE_CHECK+ are flagged
+// 'check' instead of ranked, so rows either side of it are different regimes.
+const ML_MODEL_VER = 'ml-shin-check25';
 // Stamped on every run-line row so eras stay separable, exactly as the other
 // tables do. 'rl-shin' is the regime this starts in: cover% from the model,
 // fair from Pinnacle's de-vigged spread, edge measured against it.
@@ -1332,6 +1334,23 @@ async function board(env, ctx, opts) {
 // sharpest read available); edge = how much the DK/FD price you'd actually bet
 // beats that fair number. If Pinnacle is missing we fall back to DK/FD-de-vig vs
 // our log5 model, and if there's no market at all, to the model favorite.
+// Moneyline edges against Pinnacle at or above this many points are flagged
+// "check the news" rather than ranked as the strongest plays.
+//
+// Graded mlpicks through 2026-09-16, priced against Pinnacle, at the last
+// recorded price:
+//   edge 0-2.5    41-25   about +17%
+//   edge 2.5-4     6-10   -23.7%
+//   edge 4+       16-28   -24.6%     (these were Tier 1)
+//   underdogs at 2.5+: 8-26, -42.4% (p=0.02); favourites at 2.5+: 14-12, -0.7%
+// A DK/FD price several points better than the sharp book is rarely a gift. It
+// usually means one of them has not caught up with news — a scratched starter,
+// a bullpen game, a lineup or weather change — and the side that looks cheap is
+// the stale one. The price move after entry agrees: our side lengthened 76% of
+// the time. Small samples, and several slices were checked, so this is a flag
+// and not a filter: the row still shows, with its number, labelled.
+const ML_EDGE_CHECK = 2.5;
+
 function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair, bookPairs) {
   // log5 team model (kept as a fallback fair line and a reference number).
   const pH = teamWinP(home.team && home.team.id);
@@ -1410,7 +1429,16 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair, bookPairs) 
   else chosen = h.edge >= a.edge ? h : a;
 
   const e = chosen.edge;
-  const tier = e == null ? 'model' : e >= 4 ? 1 : e >= 2.5 ? 2 : e >= 1 ? 3 : 'pass';
+  // Which kind of edge this is. Against Pinnacle it is price shopping — the
+  // DK/FD number vs the sharp book's fair. Without Pinnacle it is our log5 model
+  // vs the soft market, a different claim that used to share the same column
+  // with nothing to tell them apart.
+  const edgeKind = fairSource === 'pinnacle' ? 'sharp' : fairSource === 'dkfd' ? 'model' : null;
+  // A big gap to Pinnacle is a warning, not a stronger play. See ML_EDGE_CHECK.
+  const edgeCheck = fairSource === 'pinnacle' && e != null && e >= ML_EDGE_CHECK;
+  const tier = e == null ? 'model'
+    : edgeCheck ? 'check'
+    : e >= 4 ? 1 : e >= 2.5 ? 2 : e >= 1 ? 3 : 'pass';
   return {
     pick: `${chosen.teamAbbr} ML`,
     teamAbbr: chosen.teamAbbr,
@@ -1418,6 +1446,8 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair, bookPairs) 
     price: chosen.price,       // DK/FD price you'd bet
     edge: e,
     tier,
+    edgeKind,                  // 'sharp' (vs Pinnacle) | 'model' (log5 vs DK/FD) | null
+    edgeCheck,                 // true -> gap to Pinnacle too large to trust; check the news
     fairSource,                // 'pinnacle' | 'dkfd' | 'model'
     // Shin vs proportional on the same sharp pair, in points. Lets the de-vig
     // method be judged empirically instead of assumed.
@@ -4168,8 +4198,10 @@ function mlR2(v) { return (v == null || !isFinite(v)) ? null : Math.round(v * 10
 // its picks is pass, so excluding them leaves a record of 0-0 no matter how many
 // games grade, and the reason for grading it at all disappears.
 function buildMlRecord(rows, includePass) {
+  // 'check' rows are graded but kept out of the headline alongside pass: the
+  // board told nobody to bet them, it told them to check the news first.
   const played = rows.filter((r) => (r.result === 'win' || r.result === 'loss')
-    && (includePass || r.tier !== 'pass'));
+    && (includePass || (r.tier !== 'pass' && r.tier !== 'check')));
   const byTier = { '1': { w: 0, l: 0, units: 0 }, '2': { w: 0, l: 0, units: 0 }, '3': { w: 0, l: 0, units: 0 } };
   let w = 0, l = 0, units = 0, t1w = 0, t1l = 0, clvBeat = 0, clvN = 0;
   const profits = [], clvPts = [];

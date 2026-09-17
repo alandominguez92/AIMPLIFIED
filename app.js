@@ -1822,6 +1822,22 @@
   // consensus priced it, "mkt" means no sharp book quoted this exact number and
   // it fell back to the book we bet at — the weaker, self-referential case. A
   // badge that only appeared on the good case would be marketing, not data.
+  // What the moneyline Edge number is, stated under it. Two different claims
+  // shared this column: price shopping against Pinnacle, and our model against
+  // DK/FD when Pinnacle has no line. And a large Pinnacle gap has been the worst
+  // bucket in the record (see ML_EDGE_CHECK in worker.js), so it says so rather
+  // than reading as the strongest number on the board. Not in the phone collapse
+  // list: on a phone this tag is the only place the warning appears.
+  function mlEdgeTag(ml, hasEdge) {
+    if (!hasEdge || !ml) return '';
+    if (ml.edgeCheck) {
+      return `<i class="ml-edge-tag check" title="A gap this large to Pinnacle has usually meant a stale line or news the price hasn't caught up with (scratched starter, bullpen game, lineup). In our graded record these went 22-38; underdogs 8-26. Check before betting.">check news</i>`;
+    }
+    if (ml.edgeKind === 'sharp') return `<i class="ml-edge-tag" title="DK/FD price vs Pinnacle's fair line">vs Pinnacle</i>`;
+    if (ml.edgeKind === 'model') return `<i class="ml-edge-tag model" title="No Pinnacle line: this is our win model vs the DK/FD market, which has not beaten the market in backtesting">model</i>`;
+    return '';
+  }
+
   function fairSrcTag(g) {
     if (!isBatter() || !g.fairSrc) return '';
     const sharp = g.fairSrc === 'sharp';
@@ -2073,7 +2089,8 @@
       // Green/red edge is a PLAY signal — reserve it for the batter board. On the
       // context views (ML/K/RL) the edge is information, not a recommendation, so
       // it renders neutral: a losing moneyline can't masquerade as green "value".
-      const edgeColor = (!hasEdge || !isBatter()) ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
+      const edgeColor = (isML() && ml.edgeCheck) ? 'var(--warm)'
+        : (!hasEdge || !isBatter()) ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
       const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
       const tierVal = activeTier(g);
       // How many board picks share this pick's game (batter view) — drives the
@@ -2290,7 +2307,7 @@
             // a quote. Saying so here, once per row and in two words, is what
             // stops the dash reading as a value we failed to compute.
             !hasEdge && isBatter() && g.tier === 'model'
-              ? '<i class="cell-src">needs price</i>' : fairSrcTag(g)}</span>
+              ? '<i class="cell-src">needs price</i>' : isML() ? mlEdgeTag(ml, hasEdge) : fairSrcTag(g)}</span>
           ${detailCell}
           <span class="tier-cell">${isPlayView ? tierChip(tierVal) : '<span class="ctx-chip">analysis</span>'}</span>
           <span class="chevron">${isExpanded ? '▲' : '▼'}</span>
@@ -2402,8 +2419,9 @@
 
           const fairNote = g.ml.fairSource === 'pinnacle'
             ? `Win% is Pinnacle's sharp de-vigged line (the fair number). Edge = how much the DK/FD price you'd bet beats that fair line.`
+              + (g.ml.edgeCheck ? ` <b>Check the news:</b> a gap of 2.5+ points to Pinnacle has usually meant a stale line or late news rather than value — 22-38 in our graded record, underdogs 8-26.` : ` Small gaps (under 2.5) have been the reliable range.`)
             : g.ml.fairSource === 'dkfd'
-              ? `No Pinnacle line yet — win% is the DK/FD vig-free line and edge is our model vs. that.`
+              ? `No Pinnacle line yet — win% is the DK/FD vig-free line and edge is our model vs. that. Treat it as a model read, not a price edge: the model has not beaten the market in backtesting.`
               : `No market line yet — win% is our log5 model (team rating + home field + starter ERA).`;
           detailHtml = `<div class="expanded-detail${barsIn('panel:' + g.id)}">
             <div class="expanded-title">Starting pitchers — model matchup</div>
