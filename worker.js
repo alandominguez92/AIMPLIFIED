@@ -104,7 +104,7 @@ const RL_MODEL_VER = 'rl-shin';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export',
   '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
@@ -169,7 +169,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -400,6 +400,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/track-debug') return trackDebug(env);
   if (p === '/api/edge-debug') return edgeDebug(env);
   if (p === '/api/batter-debug') return batterDebug(env);
+  if (p === '/api/bpicks-export') return bpicksExport(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-compare') return nflCompare(env, url);
@@ -5003,6 +5004,42 @@ async function edgeDebug(env) {
 // doesn't. By month = is it stable or one hot stretch? By price = do we win at
 // prices that actually pay, or only expensive -150 unders? By market = which
 // props carry it. Cumulative = the trajectory.
+// /api/bpicks-export?market=hrr&ver=sharp-shin-nb-evgate — graded batter rows,
+// compact, for replaying the model offline. batter-debug answers questions it
+// was written to answer; a calibration backtest needs the rows themselves: the
+// projection, line, fair, price and result that decided each pick, so a changed
+// constant can be re-applied through the same probability and EV gate and the
+// picks it would have kept or dropped scored against what actually happened.
+//
+// Read-only, graded rows only, and filtered in SQL so an export of one market
+// and one model version does not ship the whole table. Columns are positional
+// to keep the payload small; `cols` names them.
+async function bpicksExport(env, url) {
+  if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
+  const market = (url.searchParams.get('market') || '').toLowerCase();
+  const ver = url.searchParams.get('ver') || BATTER_MODEL_VER;
+  if (!/^(hrr|tb|hr)$/.test(market)) return cors(json({ error: 'market must be hrr, tb or hr' }, 30));
+  try {
+    await ensureBatterSchema(env.DB);
+    const cols = ['date', 'line', 'side', 'price', 'proj', 'model_over', 'entry_over', 'tier', 'result', 'fair_src', 'actual'];
+    const rows = (await env.DB.prepare(
+      `SELECT ${cols.join(', ')} FROM bpicks
+        WHERE market = ? AND model_ver = ? AND result IN ('win','loss')
+        ORDER BY date`
+    ).bind(market, ver).all()).results || [];
+    return cors(json({
+      market, ver, n: rows.length, cols,
+      rows: rows.map((r) => cols.map((c) => r[c])),
+      calibrationInForce: BATTER_PROJ_CAL[market],
+      dispersion: BATTER_DISPERSION[market],
+      shrink: BATTER_SHRINK,
+      evGate: BATTER_EV_GATE,
+    }, 600));
+  } catch (e) {
+    return cors(json({ error: String((e && e.message) || e) }, 30));
+  }
+}
+
 async function batterDebug(env) {
   if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
   try {
