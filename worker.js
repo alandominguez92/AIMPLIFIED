@@ -1038,6 +1038,7 @@ async function board(env, ctx, opts) {
   const mlByHome = {};   // DK/FD best price per side — what you'd actually bet
   const mlBookPairs = {}; // per-book {book,home,away} — real quotes, for de-vigging
   const pinByHome = {};  // Pinnacle price per side — the sharp fair line
+  const totByHome = {};  // { soft: [{book,point,over,under}], pin: [...] } — logged only
   const rlByHome = {};   // DK/FD best run-line price+point per side
   const pinRlByHome = {}; // Pinnacle run-line price+point per side (sharp fair)
   if (key) {
@@ -1046,8 +1047,10 @@ async function board(env, ctx, opts) {
       // is no longer logged or shown; at 2 markets per call it was half of this
       // route's credits (~40 a day). The route name changes with it, so the
       // usage ledger shows the drop rather than blending the two regimes.
-      const r = await fetch(`${ODDS}/odds?apiKey=${key}&bookmakers=${ML_BOOKS}&markets=h2h&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
-      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r, 'board:h2h'));
+      // + totals (2026-09-17), logged only — see TOT_EDGE_CHECK. Roughly the
+      // credits the run line's spreads used to cost.
+      const r = await fetch(`${ODDS}/odds?apiKey=${key}&bookmakers=${ML_BOOKS}&markets=h2h,totals&oddsFormat=american&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      if (ctx && ctx.waitUntil) ctx.waitUntil(recordOddsUsage(env, r, 'board:h2h+totals'));
       if (r.ok) {
         const events = await r.json();
         // Best moneyline price for a team name across a set of bookmakers.
@@ -1079,6 +1082,14 @@ async function board(env, ctx, opts) {
           }
           return best == null ? null : { price: best, point };
         };
+        const totalsFrom = (books) => books.map((b) => {
+          const mk = (b.markets || []).find((m) => m.key === 'totals');
+          if (!mk) return null;
+          const o = (mk.outcomes || []).find((x) => x.name === 'Over');
+          const u = (mk.outcomes || []).find((x) => x.name === 'Under');
+          if (!o || !u || o.point == null || o.point !== u.point) return null;
+          return { book: BOOKS[b.key] || 'PIN', point: o.point, over: o.price, under: u.price };
+        }).filter(Boolean);
         (Array.isArray(events) ? events : []).forEach((ev) => {
           const bms = ev.bookmakers || [];
           const dkfd = bms.filter((b) => BOOKS[b.key]);
@@ -1100,6 +1111,7 @@ async function board(env, ctx, opts) {
               .filter((p) => p.home != null && p.away != null);
             rlByHome[k2] = { home: spreadFrom(dkfd, ev.home_team), away: spreadFrom(dkfd, ev.away_team) };
           }
+          totByHome[k2] = { soft: totalsFrom(dkfd), pin: totalsFrom(pin) };
           if (pin.length) {
             pinByHome[k2] = { home: priceFrom(pin, ev.home_team), away: priceFrom(pin, ev.away_team) };
             pinRlByHome[k2] = { home: spreadFrom(pin, ev.home_team), away: spreadFrom(pin, ev.away_team) };
@@ -1223,6 +1235,8 @@ async function board(env, ctx, opts) {
     const liveHasPrice = livePair && (livePair.home != null || livePair.away != null);
     const effPair = liveHasPrice ? livePair : (savedLines[gid] || null);
     const ml = moneyline(g, home, away, teamWinP, pmap, effPair, pinByHome[hKey] || null, mlBookPairs[hKey] || null);
+    const tq = totByHome[hKey];
+    const tot = tq ? totalsRead(tq.soft, tq.pin) : null;
     if (ml && !liveHasPrice && effPair) ml.lineStale = true; // shown from last-known line
 
     // Run line: Pinnacle fair + the log5 model (via ml) as the lean filter.
@@ -1254,6 +1268,7 @@ async function board(env, ctx, opts) {
       pitchers,
       ml,
       rl,
+      tot,                 // game total vs Pinnacle — logged only, not rendered
     };
   }).sort((a, b) => a.timeMs - b.timeMs);
 
@@ -1263,6 +1278,8 @@ async function board(env, ctx, opts) {
     if (ctx && ctx.waitUntil) ctx.waitUntil(write);
     const writeMl = logMlPicks(env.DB, rows, date).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(writeMl);
+    const writeTot = logTotPicks(env.DB, rows, date).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(writeTot);
     // The run line is no longer logged (2026-09-17). It was logged to find out
     // whether the model read the 1.5 at all, and the record answered: 31-54,
     // -18.2u, -21.4% ROI on 85 graded games, 9-21 over its last two days, with
@@ -1350,6 +1367,46 @@ async function board(env, ctx, opts) {
 // the time. Small samples, and several slices were checked, so this is a flag
 // and not a filter: the row still shows, with its number, labelled.
 const ML_EDGE_CHECK = 2.5;
+
+// Game totals — LOGGED ONLY, never shown or posted (2026-09-17).
+//
+// The same read as the moneyline: the best DK/FD over/under price against
+// Pinnacle's de-vigged total at the SAME number, with the same "check" flag on
+// big gaps. It exists to find out whether that read has anything in it for
+// totals. Nothing here has been validated: our own runs model lost to the DK
+// total in backtesting (MAE 3.55 vs 3.47, no information beyond the line), and
+// the 2.5-point cutoff is copied from moneylines, where it was measured, as a
+// starting point to test rather than a finding. Graded quietly into totpicks
+// and summarised under `totals` on /api/track-record for reading; no tab.
+const TOT_MODEL_VER = 'tot-pin-check25';
+const TOT_EDGE_CHECK = 2.5;
+
+// soft = [{ book, point, over, under }] for DK/FD; pin = same for Pinnacle.
+// Returns the side whose DK/FD price beats Pinnacle's fair by more, or a row with
+// side null when there is nothing to compare (no Pinnacle total, or the books
+// hang a different number — a half-run apart is a different bet, not a price).
+function totalsRead(soft, pin) {
+  if (!soft || !soft.length) return null;
+  const p = (pin || [])[0] || null;
+  const none = (point, why) => ({ point, side: null, price: null, pinFair: null, edge: null, edgeKind: null, edgeCheck: false, why });
+  if (!p) return none(soft[0].point, 'no Pinnacle total');
+  const fairOver = shinDevig(p.over, p.under);
+  if (fairOver == null) return none(p.point, 'Pinnacle total not two-sided');
+  const same = soft.filter((q) => q.point === p.point);
+  if (!same.length) return none(p.point, 'DK/FD on a different total than Pinnacle');
+  const best = (k) => same.reduce((acc, q) => (q[k] != null && (acc == null || payoutMult(q[k]) > payoutMult(acc)) ? q[k] : acc), null);
+  const bo = best('over'), bu = best('under');
+  const eo = bo == null ? null : round1((fairOver - amProb(bo)) * 100);
+  const eu = bu == null ? null : round1(((1 - fairOver) - amProb(bu)) * 100);
+  if (eo == null && eu == null) return none(p.point, 'no DK/FD price');
+  const over = eu == null || (eo != null && eo >= eu);
+  const edge = over ? eo : eu;
+  return {
+    point: p.point, side: over ? 'Over' : 'Under', price: over ? bo : bu,
+    pinFair: Math.round((over ? fairOver : 1 - fairOver) * 1e4) / 1e4,
+    edge, edgeKind: 'sharp', edgeCheck: edge >= TOT_EDGE_CHECK,
+  };
+}
 
 function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair, bookPairs) {
   // log5 team model (kept as a fallback fair line and a reference number).
@@ -2784,6 +2841,7 @@ async function trackRecord(env) {
     await backfillBatterGrades(env);
     await gradeMlPicks(env);
     await gradeRlPicks(env);
+    try { await gradeTotPicks(env); } catch (e) { /* additive — never break the record */ }
     const kres = await env.DB.prepare('SELECT * FROM picks').all();
     const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
     // Normalize both feeds to one row shape: pitcher picks are market 'K' with
@@ -2814,6 +2872,10 @@ async function trackRecord(env) {
       out.rl.note = 'run line, graded against the posted +/-1.5 from the final score. '
         + 'ALL tiers counted including pass, because none of these were posted and the question is whether the model reads the 1.5 at all. '
         + 'Logged and graded, still not posted.';
+    } catch (e) { /* additive */ }
+    try {
+      await ensureTotSchema(env.DB);
+      out.totals = buildTotRecord(((await env.DB.prepare('SELECT * FROM totpicks').all()).results) || []);
     } catch (e) { /* additive */ }
     out.recent = buildRecent(unified, mlRows);
     return cors(json(out, 120));
@@ -2946,6 +3008,37 @@ async function ensureMlPickSchema(db) {
   // Partial index over ungraded rows — see picks_ungraded in ensureSchema.
   await db.prepare('CREATE INDEX IF NOT EXISTS mlpicks_ungraded ON mlpicks (date, game_id) WHERE result IS NULL').run();
 }
+// Game totals, logged only (see TOT_EDGE_CHECK). One row per game: the side and
+// number first seen, the entry edge frozen, the latest price and edge refreshed
+// while the side and number hold — the same entry/close shape as mlpicks.
+async function ensureTotSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS totpicks (
+    date TEXT, game_id TEXT, side TEXT, point REAL,
+    entry_price INTEGER, close_price INTEGER, pin_fair REAL,
+    entry_edge REAL, edge REAL, edge_check INTEGER,
+    result TEXT, total_runs INTEGER, model_ver TEXT,
+    PRIMARY KEY (date, game_id)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS totpicks_ungraded ON totpicks (date, game_id) WHERE result IS NULL').run();
+}
+async function logTotPicks(db, rows, date) {
+  const stmts = [];
+  for (const r of rows) {
+    const t = r.tot;
+    if (r.status !== 'Preview' || !t || !t.side || t.price == null) continue;
+    stmts.push(db.prepare(
+      `INSERT OR IGNORE INTO totpicks (date,game_id,side,point,entry_price,close_price,pin_fair,entry_edge,edge,edge_check,model_ver)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(date, r.id, t.side, t.point, t.price, t.price, t.pinFair, t.edge, t.edge, t.edgeCheck ? 1 : 0, TOT_MODEL_VER));
+    stmts.push(db.prepare(
+      'UPDATE totpicks SET close_price=?, pin_fair=?, edge=?, edge_check=? WHERE date=? AND game_id=? AND side=? AND point=?'
+    ).bind(t.price, t.pinFair, t.edge, t.edgeCheck ? 1 : 0, date, r.id, t.side, t.point));
+  }
+  if (!stmts.length) return;
+  await ensureTotSchema(db);
+  await db.batch(stmts);
+}
+
 async function loadMlLines(db, date) {
   try {
     await ensureMlSchema(db);
@@ -4113,6 +4206,86 @@ async function logMlPicks(db, rows, date) {
 // Grade past-day moneyline picks from final scores (schedule linescore). The
 // picked team wins the bet if it outscored its opponent. MLB has no ties, but
 // equal scores grade as push defensively.
+// Over wins above the number, under below, a landing on it pushes.
+async function gradeTotPicks(env) {
+  const db = env.DB;
+  await ensureTotSchema(db);
+  const rows = (await db.prepare('SELECT * FROM totpicks WHERE result IS NULL AND date < ?').bind(slateDate()).all()).results || [];
+  if (!rows.length) return;
+  const byDate = {};
+  for (const r of rows) (byDate[r.date] = byDate[r.date] || []).push(r);
+  for (const d of Object.keys(byDate)) {
+    let games = [];
+    try {
+      const res = await fetch(`${STATS}/schedule?sportId=1&date=${d}&hydrate=linescore,team`, { headers: { accept: 'application/json' } });
+      if (!res.ok) continue;
+      games = (((await res.json()).dates || [])[0] || {}).games || [];
+    } catch (e) { continue; }
+    const runsByGame = {};
+    for (const g of games) {
+      if (((g.status || {}).abstractGameState) !== 'Final') continue;
+      const ls = g.linescore || {};
+      const h = numOr((ls.teams && ls.teams.home && ls.teams.home.runs), g.teams.home.score);
+      const a = numOr((ls.teams && ls.teams.away && ls.teams.away.runs), g.teams.away.score);
+      if (h != null && a != null) runsByGame['g' + g.gamePk] = h + a;
+    }
+    const missing = byDate[d].filter((p) => runsByGame[p.game_id] == null).map((p) => p.game_id);
+    if (missing.length) {
+      const byPk = await gamesByPk(missing);
+      const voids = [];
+      for (const [gid, g] of Object.entries(byPk)) {
+        if (g.state === 'Final' && g.homeR != null && g.awayR != null) runsByGame[gid] = g.homeR + g.awayR;
+        else if (isAbandoned(g)) voids.push(gid);
+      }
+      if (voids.length) {
+        try { await db.batch(voids.map((gid) => db.prepare("UPDATE totpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid))); } catch (e) { /* next pass */ }
+      }
+    }
+    const stmts = [];
+    for (const p of byDate[d]) {
+      const runs = runsByGame[p.game_id];
+      if (runs == null) continue;
+      const result = runs === p.point ? 'push' : ((runs > p.point) === (p.side === 'Over') ? 'win' : 'loss');
+      stmts.push(db.prepare('UPDATE totpicks SET result=?, total_runs=? WHERE date=? AND game_id=?').bind(result, runs, p.date, p.game_id));
+    }
+    if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* next pass */ } }
+  }
+}
+
+// Totals summary for reading, not for the page: everything logged, split by the
+// entry edge the way the moneyline flag was measured, plus how often the price
+// moved our way.
+function buildTotRecord(rows) {
+  const graded = rows.filter((r) => r.result === 'win' || r.result === 'loss');
+  const sum = (arr) => {
+    let w = 0, l = 0, units = 0;
+    for (const r of arr) { if (r.result === 'win') w++; else l++; units += profitUnits(r.result, r.entry_price ?? r.close_price); }
+    const n = w + l;
+    return { n, record: `${w}–${l}`, units: Math.round(units * 10) / 10, roi: n ? round1(units / n * 100) : null };
+  };
+  const e = (r) => (r.entry_edge != null ? r.entry_edge : r.edge);
+  let beat = 0, clvN = 0;
+  for (const r of graded) {
+    const ie = amProb(r.entry_price), ic = amProb(r.close_price);
+    if (ie == null || ic == null || r.entry_price === r.close_price) continue;
+    clvN++; if (ic > ie) beat++;
+  }
+  return {
+    note: `game totals, LOGGED ONLY — not shown or posted. DK/FD best price vs Pinnacle's de-vigged total at the same number; flag at ${TOT_EDGE_CHECK}+ points copied from moneylines, under test.`,
+    logged: rows.length,
+    pending: rows.filter((r) => r.result == null).length,
+    all: sum(graded),
+    byEntryEdge: {
+      below0: sum(graded.filter((r) => e(r) != null && e(r) < 0)),
+      from0to2_5: sum(graded.filter((r) => e(r) != null && e(r) >= 0 && e(r) < TOT_EDGE_CHECK)),
+      check2_5plus: sum(graded.filter((r) => e(r) != null && e(r) >= TOT_EDGE_CHECK)),
+    },
+    bySide: { Over: sum(graded.filter((r) => r.side === 'Over')), Under: sum(graded.filter((r) => r.side === 'Under')) },
+    clvBeatRate: clvN ? Math.round(beat / clvN * 1000) / 10 : null,
+    clvN,
+  };
+}
+
 async function gradeMlPicks(env) {
   const db = env.DB;
   await ensureMlPickSchema(db);

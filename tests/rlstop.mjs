@@ -72,8 +72,9 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 ok(inserts.ml > 0, `the moneyline still logs from the same pass (${inserts.ml} mlpicks writes) — so the board did price this game`);
 ok(inserts.rl === 0, `the run line logs nothing (${inserts.rl} rlpicks writes)`);
-// Nor is it bought. spreads was half of this call's credits and nothing reads it now.
-ok(oddsMarkets.length > 0 && oddsMarkets.every((m) => m === 'h2h'),
-  `the game-odds call buys the moneyline only (markets=${oddsMarkets.join(' | ') || 'no call seen'})`);
+// Nor is it bought. spreads was half of this call's credits and nothing reads it
+// now. (totals rides the same call since 2026-09-17, logged only — totalslog.mjs.)
+ok(oddsMarkets.length > 0 && oddsMarkets.every((m) => !/spreads/.test(m)),
+  `the game-odds call no longer buys spreads (markets=${oddsMarkets.join(' | ') || 'no call seen'})`);
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
