@@ -86,7 +86,11 @@ const SHARP_MAX_SPREAD = 0.05;
 // switch are not the same experiment — leaving both as 'sharp-shin' would have
 // blended a 3-slate Poisson sample into the negative-binomial one and made the
 // sharp-fair verdict unattributable to either change.
-const BATTER_MODEL_VER = 'sharp-shin-nb-evgate';
+// Bumped again 2026-09-17 for the H+R+RBI calibration (BATTER_PROJ_CAL.hrr
+// 1.00 -> 1.11). It changes which H+R+RBI unders are posted, so rows either side
+// of it are different experiments and the era-edge card must start counting fresh
+// rather than blend a month at 1.00 into whatever 1.11 does.
+const BATTER_MODEL_VER = 'sharp-shin-nb-evgate-hrrcal111';
 // Same idea for the strikeout board, which moved from a DK/FD/MGM consensus fair
 // (circular — two of the three are the books we bet) to the sharp pool with that
 // consensus demoted to a middle fallback rung.
@@ -4730,7 +4734,30 @@ const BATTER_TIERS = [5.5, 4, 3];
 //
 // HR keeps 1.00 and no suggestion of its own: home runs are not posted as a
 // market and carry no graded projection bias to fit against.
-const BATTER_PROJ_CAL = { hr: 1.00, tb: 1.00, hrr: 1.00 };
+// 2026-09-17: H+R+RBI 1.00 -> 1.11. TB stays 1.00.
+//
+// Measured over the whole sharp-shin-nb-evgate era (2,377 graded H+R+RBI rows,
+// 08-16..09-16): actual / projected = 1.150 — 1.132 in the first half, 1.163 in
+// the second, so the under-projection is persistent and growing. 1.11 is 85% of
+// the first-half fit, the same caution every previous correction used. TB
+// measured 1.00 (1.68 projected, 1.68 actual) and needs nothing.
+//
+// Replayed offline through the exact production pricing (tests nothing here, but
+// the replay reproduced 2,377/2,377 model probabilities and 1,953/1,958 play/pass
+// calls at 1.00 before any what-if was trusted):
+//
+//                 posted   record    ROI     units
+//   at 1.00        526    273-253   -3.9%   -20.4
+//   at 1.11        275    143-132   -3.4%    -9.2
+//   dropped        251    130-121   -4.5%   -11.2
+//
+// READ THIS BEFORE CITING IT AS A WIN. Kept minus dropped is +1.1 ROI points,
+// p=0.89 — no evidence the calibration selects better picks. The halves disagree:
+// the picks it drops returned +5.9% in the first half and -14.4% in the second.
+// What it reliably does is halve H+R+RBI exposure on a stream that is negative
+// either way, and stop the model stating 1.6 where the truth is 1.8. It is a
+// correctness and exposure fix, not a profitability fix.
+const BATTER_PROJ_CAL = { hr: 1.00, tb: 1.00, hrr: 1.11 };
 // Variance-to-mean ratio per market, measured from this system's own graded
 // outcomes (see negBinomCdf). Home runs stay on Poisson: no graded HR sample
 // exists to fit, and at a per-game lambda near 0.15 the Poisson, binomial and
