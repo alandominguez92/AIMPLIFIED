@@ -5467,24 +5467,37 @@ async function batterDebug(env) {
     // Declared here, after projBiasByWeek, and not beside the other posted-only
     // blocks: it reads that array, and a `const` referenced above its declaration
     // throws at runtime rather than being hoisted.
+    // Measured on rows priced by the model version now running, NOT by week.
+    // It used to select weeks from 2026-W33 on, which was right while every one
+    // of those weeks ran at the constant in force. The 2026-09-17 H+R+RBI change
+    // (1.00 -> 1.11) broke that: the suggestion multiplies the measured k by the
+    // CURRENT constant, so a month of rows projected at 1.00 would have been read
+    // as though projected at 1.11, and it would have recommended ~1.25 — an
+    // over-correction of half again, on the next read, from nothing new.
+    //
+    // model_ver is stamped on every row at log time and bumped whenever pricing
+    // changes, so it is exactly the "rows this constant produced" boundary a week
+    // number only approximated. Until the new version has graded rows the report
+    // says so instead of falling back to the old ones.
     const projCalSuggest = (() => {
-      const CUR_WEEK_MIN = '2026-W33';   // first week priced entirely at 1.00
-      const out = { basis: `projBiasByWeek from ${CUR_WEEK_MIN} (post-fix pricing only)`, current: BATTER_PROJ_CAL, markets: [] };
-      for (const mk of ['HRR', 'TB']) {
-        const wks = projBiasByWeek.filter((w) => w.market === mk && w.week >= CUR_WEEK_MIN && w.avgProj > 0);
-        const n = wks.reduce((s, w) => s + w.n, 0);
-        if (!n) { out.markets.push({ market: mk, n: 0, note: 'no graded rows on the current pricing yet' }); continue; }
-        const k = wks.reduce((s, w) => s + w.n * (w.avgActual / w.avgProj), 0) / n;
-        const cur = mk === 'HRR' ? BATTER_PROJ_CAL.hrr : BATTER_PROJ_CAL.tb;
+      const out = { basis: `graded rows logged under ${BATTER_MODEL_VER} (the constants now in force)`, current: BATTER_PROJ_CAL, markets: [] };
+      const cur = graded.filter((r) => (r.model_ver || null) === BATTER_MODEL_VER && r.proj > 0 && r.actual != null);
+      for (const [mk, key] of [['HRR', 'hrr'], ['TB', 'tb']]) {
+        const arr = cur.filter((r) => r.market === key);
+        const n = arr.length;
+        if (!n) { out.markets.push({ market: mk, n: 0, current: BATTER_PROJ_CAL[key], note: `no graded rows under ${BATTER_MODEL_VER} yet — nothing to re-derive from` }); continue; }
+        const sumP = arr.reduce((s2, r) => s2 + r.proj, 0), sumA = arr.reduce((s2, r) => s2 + r.actual, 0);
+        const k = sumA / sumP;
+        const c = BATTER_PROJ_CAL[key];
         out.markets.push({
           market: mk, n,
-          avgProj: round2(wks.reduce((s, w) => s + w.n * w.avgProj, 0) / n),
-          avgActual: round2(wks.reduce((s, w) => s + w.n * w.avgActual, 0) / n),
+          avgProj: round2(sumP / n),
+          avgActual: round2(sumA / n),
           k: round2(k),
-          current: cur,
-          suggestedFull: round2(cur * k),
-          suggestedAt85: round2(cur * (1 + 0.85 * (k - 1))),
-          direction: k > 1 ? 'raise (under-projecting)' : k < 1 ? 'lower (over-projecting)' : 'hold',
+          current: c,
+          suggestedFull: round2(c * k),
+          suggestedAt85: round2(c * (1 + 0.85 * (k - 1))),
+          direction: k > 1.005 ? 'raise (under-projecting)' : k < 0.995 ? 'lower (over-projecting)' : 'hold',
           // A week that is one graded day is a direction, not a value.
           confidence: n < 300 ? 'LOW — too few graded rows to set a value; read as direction only' : 'usable',
         });
