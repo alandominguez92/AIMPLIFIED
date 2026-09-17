@@ -68,5 +68,18 @@ ok(tb.market === 'tb' && tb.n === 1, `a tb export is not served the hrr body fro
 const bad = await get('?market=everything');
 ok(!!bad.error, `an unknown market is refused (${bad.error})`);
 
+// The moneyline export: graded rows only, from the same stub table idea.
+{
+  const mlTable = [
+    { date: '2026-09-10', game_id: 'g1', team: 'LAD', opp: 'CIN', is_home: 0, tier: '3', win_prob: 58, edge: 1.2, entry_price: -130, close_price: -140, result: 'win', team_score: 5, opp_score: 3, model_ver: 'ml-shin', fair_source: 'pinnacle' },
+    { date: '2026-09-17', game_id: 'g2', team: 'NYM', opp: 'PHI', is_home: 1, tier: 'pass', win_prob: 51, edge: 0.2, entry_price: 105, close_price: 100, result: null, team_score: null, opp_score: null, model_ver: 'ml-shin', fair_source: 'dkfd' },
+  ];
+  const mdb = { prepare: (sql) => { const st = { bind: () => st, run: async () => ({ meta: { changes: 0 } }), first: async () => null,
+    all: async () => ({ results: /FROM mlpicks/i.test(sql) && /result IN/.test(sql) ? mlTable.filter((r) => r.result === 'win' || r.result === 'loss') : [] }) }; return st; }, batch: async () => [] };
+  const ml = await (await mod.default.fetch(new Request('https://x/api/mlpicks-export'), { DB: mdb }, { waitUntil() {} })).json();
+  ok(ml.n === 1 && ml.cols.includes('entry_price') && ml.cols.includes('close_price') && ml.cols.includes('fair_source'),
+    `the moneyline export returns graded rows with entry, close and fair source (${ml.n})`);
+}
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

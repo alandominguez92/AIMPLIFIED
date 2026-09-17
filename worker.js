@@ -110,7 +110,7 @@ const RL_MODEL_VER = 'rl-shin';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export',
   '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
@@ -175,7 +175,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -409,6 +409,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/edge-debug') return edgeDebug(env);
   if (p === '/api/batter-debug') return batterDebug(env);
   if (p === '/api/bpicks-export') return bpicksExport(env, url);
+  if (p === '/api/mlpicks-export') return mlpicksExport(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-compare') return nflCompare(env, url);
@@ -5241,6 +5242,25 @@ async function bpicksExport(env, url) {
       shrink: BATTER_SHRINK,
       evGate: BATTER_EV_GATE,
     }, 600));
+  } catch (e) {
+    return cors(json({ error: String((e && e.message) || e) }, 30));
+  }
+}
+
+// /api/mlpicks-export — every graded moneyline row, compact, for offline review.
+// Same reasoning as bpicks-export: a question about what the moneyline record is
+// made of (Pinnacle-priced vs not, favourite vs dog, entry vs close) needs the
+// rows, not a summary written before the question existed. Read-only, graded
+// rows only, positional columns.
+async function mlpicksExport(env) {
+  if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
+  try {
+    await ensureMlPickSchema(env.DB);
+    const cols = ['date', 'game_id', 'team', 'opp', 'is_home', 'tier', 'win_prob', 'edge', 'entry_price', 'close_price', 'result', 'team_score', 'opp_score', 'model_ver', 'fair_source'];
+    const rows = (await env.DB.prepare(
+      `SELECT ${cols.join(', ')} FROM mlpicks WHERE result IN ('win','loss') ORDER BY date`
+    ).all()).results || [];
+    return cors(json({ n: rows.length, cols, rows: rows.map((r) => cols.map((c) => r[c])) }, 600));
   } catch (e) {
     return cors(json({ error: String((e && e.message) || e) }, 30));
   }
