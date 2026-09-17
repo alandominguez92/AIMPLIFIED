@@ -55,6 +55,8 @@ ok(Array.isArray(hrr.cols) && hrr.rows[0].length === hrr.cols.length, 'rows are 
 const at = (row, c) => row[hrr.cols.indexOf(c)];
 ok(at(hrr.rows[0], 'proj') === 1.4 && at(hrr.rows[0], 'price') === -125 && at(hrr.rows[0], 'result') === 'win',
   'carries what a replay needs: projection, price, result');
+ok(hrr.cols.includes('game_id') && hrr.cols.includes('team') && hrr.cols.includes('player_id'),
+  'and the keys a replay needs to join outside data (game, team, player)');
 ok(hrr.dispersion > 1 && hrr.shrink > 0 && hrr.evGate != null && hrr.calibrationInForce != null,
   'and the constants the rows were priced under');
 ok(seen.some((q) => /market = \?/.test(q.sql) && /model_ver = \?/.test(q.sql) && /result IN/.test(q.sql)),

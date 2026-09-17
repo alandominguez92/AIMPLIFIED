@@ -5048,7 +5048,9 @@ async function bpicksExport(env, url) {
   if (!/^(hrr|tb|hr)$/.test(market)) return cors(json({ error: 'market must be hrr, tb or hr' }, 30));
   try {
     await ensureBatterSchema(env.DB);
-    const cols = ['date', 'line', 'side', 'price', 'proj', 'model_over', 'entry_over', 'tier', 'result', 'fair_src', 'actual'];
+    // game_id / team / player_id let a replay join outside data (game totals,
+    // weather, bullpen) to the rows; the rest is what the pricing needs.
+    const cols = ['date', 'line', 'side', 'price', 'proj', 'model_over', 'entry_over', 'tier', 'result', 'fair_src', 'actual', 'game_id', 'team', 'player_id'];
     const rows = (await env.DB.prepare(
       `SELECT ${cols.join(', ')} FROM bpicks
         WHERE market = ? AND model_ver = ? AND result IN ('win','loss')
