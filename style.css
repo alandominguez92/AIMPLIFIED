@@ -2196,6 +2196,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    scrolling forty rows should not have to hold it in their head. */
 /* Moneyline edge source / warning, under the Edge number. Deliberately NOT in
    the phone collapse list — on a phone it is the only place the warning shows. */
+/* PrizePicks number beside the priced one. Same weight as the book tags — it is
+   a reference, not a call — until it disagrees with the line we priced, which is
+   the case worth catching before an entry is built. Survives the phone collapse:
+   on a phone this is the only place the PrizePicks number appears. */
+.pp-tag { display:block; margin-top:2px; font-family:var(--mono); font-size:9.5px; font-style:normal; color:var(--textFaint); letter-spacing:.02em; white-space:nowrap }
+.pp-tag.diff { color:var(--warm); font-weight:600 }
 .ml-edge-tag { display:block; margin-top:2px; font-family:var(--mono); font-size:9.5px; font-style:normal; color:var(--textFaint); letter-spacing:.02em; white-space:nowrap }
 .ml-edge-tag.check { color:var(--warm); font-weight:600 }
 .cell-src { display:block; margin-top:2px; font-family:var(--mono); font-size:9.5px;

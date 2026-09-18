@@ -75,6 +75,19 @@ const BOOKS = { draftkings: 'DK', fanduel: 'FD' };
 // ride along in the us-region prop response we pay for, so pooling them is free
 // quota. More de-vigged books -> a median fair that rejects one soft/stale line.
 const FAIR_EXTRA = { betmgm: 'MGM' };
+// PrizePicks — SHOWN, never priced against. It is where most of the betting
+// actually happens here, so its number belongs on the board; but pick'em is not
+// a sportsbook. The payout comes from the entry type (2-pick power, 6-pick flex,
+// ...), not from the line, so its "odds" cannot drive a best price, an EV gate or
+// a fair line — the model's probability against the entry's break-even is the
+// comparison that means anything, and that lives with the reader, not the row.
+//
+// What IS decision-grade is the NUMBER: PrizePicks routinely hangs a different
+// line than DK/FD, and under 2.5 is a different bet from under 1.5. So the line
+// is displayed, flagged when it differs from the one we priced, and kept out of
+// every calculation. Free: billing is ceil(books/10) region-equivalents and this
+// is the 8th book in the same request.
+const DISPLAY_BOOKS = { prizepicks: 'PP' };
 const FAIR_BOOKS = { ...BOOKS, ...FAIR_EXTRA };
 // Sharp reference book: Pinnacle's de-vigged line is the closest thing to a true
 // probability. We price value against it (fair line) but still bet DK/FD (the
@@ -93,7 +106,7 @@ const SHARP_BOOKS = { pinnacle: 'PIN', novig: 'NOVIG', prophetx: 'PX', lowvig: '
 // MGM (soft reference), and the sharp pool (fair only). Requesting these by key
 // costs ceil(n/10) region-equivalents = 1, identical to the `regions=us` call it
 // replaces, so the sharp fair line is quota-neutral.
-const PROP_BOOKS = { ...BOOKS, ...FAIR_EXTRA, ...SHARP_BOOKS };
+const PROP_BOOKS = { ...BOOKS, ...FAIR_EXTRA, ...SHARP_BOOKS, ...DISPLAY_BOOKS };
 const SHARP_LABELS = Object.values(SHARP_BOOKS);
 // Max de-vigged disagreement tolerated between exactly two sharp books before
 // their midpoint stops being a fair line and becomes a guess. Live pairs agree
@@ -299,7 +312,8 @@ const PROP_EARLY_TTL_MS = 60 * 60 * 1000;
 // keys are simply never read again, and expire on their own.
 // v3 (2026-09-17): same-named hitters in different games are stored as separate
 // records; a v2 record could hold two players' lines merged under one name.
-const LINES_STORE_VER = 'v3';
+// v4 (2026-09-18): stored props carry PrizePicks alongside DK/FD/sharps.
+const LINES_STORE_VER = 'v4';
 const PROP_EARLY_FAR_MS = 18 * 3600 * 1000;
 const PROP_EARLY_FAR_TTL_MS = 3 * 60 * 60 * 1000;
 // Splits early events by how far out they are: [{ suffix, ttlMs, events }].
@@ -1231,6 +1245,14 @@ async function board(env, ctx, opts) {
         wxK: Math.round(wxK * 1000) / 1000,
         modeled: k9 !== 8.5,
         market,
+        // PrizePicks' strikeout number for this starter, with the model's
+        // probability of landing under IT — not under the DK/FD line, which is
+        // often a different number.
+        pp: ppQuote(propRec, (L) => {
+          const lam = (1 - LINE_SHRINK) * projK + LINE_SHRINK * L;
+          const sd2 = Math.sqrt(Math.max(lam, 1) * DISPERSION);
+          return normCdf((L - lam) / sd2);
+        }),
       };
     };
 
@@ -2512,7 +2534,18 @@ async function batters(env, ctx, opts) {
       // Per-market detail for the expanded row (also carries what logging needs).
       batterMarkets: BATTER_MARKETS.map((spec) => {
         const m = b.markets[spec.metric];
-        return m ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, fairSrc: m.fairSrc, fairBooks: m.fairBooks, tier: m.tier, proj: expFor(spec.metric), books: m.books } : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric) };
+        // PrizePicks rides along on every market, priced or not: a row with no
+        // DK/FD line can still have a PP number to play, and that is precisely
+        // the row that used to show nothing.
+        // The model's own P(under) at PrizePicks' number — unregressed, because
+        // regression pulls toward a market fair line and there isn't one at a
+        // number only PrizePicks hangs. The client labels it as the model's read,
+        // not an edge; the graded record says these probabilities run optimistic.
+        const pp = ppQuote((b.rec.props || {})[spec.metric],
+          (L) => negBinomCdf(Math.floor(L), b.lambda[spec.metric], BATTER_DISPERSION[spec.metric]));
+        return m
+          ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, fairSrc: m.fairSrc, fairBooks: m.fairBooks, tier: m.tier, proj: expFor(spec.metric), books: m.books, pp }
+          : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric), pp };
       }),
       // Real percentile bars from the priced pool. These describe the player's
       // season, not tonight, so they survive a pull.
@@ -5042,6 +5075,21 @@ function bestBookMarket(prop, probOver, opts) {
       : (edgePts >= tiers[0] ? 1 : edgePts >= tiers[1] ? 2 : edgePts >= tiers[2] ? 3 : 'pass'),
     books,              // [{ book, price, line, off, best }]
   };
+}
+
+// The PrizePicks quote for one market, in the shape the client renders: the
+// number, and the model's own read of it. Never an edge — see DISPLAY_BOOKS.
+// `modelUnder` is the model's probability that the result lands UNDER the PP
+// number, which is the only figure a pick'em entry is decided on.
+function ppQuote(bookRec, modelUnderAt) {
+  const b = bookRec && bookRec.PP;
+  if (!b || b.point == null) return null;
+  const out = { point: b.point, over: b.over ?? null, under: b.under ?? null };
+  if (typeof modelUnderAt === 'function') {
+    const u = modelUnderAt(b.point);
+    if (u != null && isFinite(u)) out.modelUnder = Math.round(u * 1000) / 10;
+  }
+  return out;
 }
 
 // Strikeout prop: overdispersed normal around the projection, regressed to line.

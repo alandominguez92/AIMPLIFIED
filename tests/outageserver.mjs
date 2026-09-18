@@ -70,10 +70,14 @@ async function buildOddsFixture() {
     // the only side this board posts, so it is what exercises play/pass.
     const bk = (key) => ({ key, markets: [{ key: 'batter_total_bases',
       outcomes: names.flatMap((n) => ([
-        { name: 'Over', description: n, point: 1.5, price: key === 'draftkings' ? -115 : -108 },
-        { name: 'Under', description: n, point: 1.5, price: key === 'draftkings' ? -105 : -112 },
+        // PrizePicks a half-run higher: the case worth seeing is their number
+        // disagreeing with the one the books priced.
+        { name: 'Over', description: n, point: key === 'prizepicks' ? 2.5 : 1.5, price: key === 'draftkings' ? -115 : -108 },
+        { name: 'Under', description: n, point: key === 'prizepicks' ? 2.5 : 1.5, price: key === 'draftkings' ? -105 : -112 },
       ])) }] });
-    oddsFixture.props[id] = { bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig'].map(bk) };
+    // PrizePicks rides along, deliberately on a DIFFERENT number than DK/FD so the
+    // "PP hangs another line" case is visible in the preview.
+    oddsFixture.props[id] = { bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig', 'prizepicks'].map(bk) };
 
     // Strikeouts. Without these the K board has no priced state at all: every
     // row reads "awaiting line", so the market column, the edge, the tier and
@@ -85,10 +89,10 @@ async function buildOddsFixture() {
     if (arms.length) {
       const kbk = (key) => ({ key, markets: [{ key: 'pitcher_strikeouts',
         outcomes: arms.flatMap((n) => ([
-          { name: 'Over', description: n, point: 4.5, price: key === 'draftkings' ? -110 : -105 },
-          { name: 'Under', description: n, point: 4.5, price: key === 'draftkings' ? -110 : -115 },
+          { name: 'Over', description: n, point: key === 'prizepicks' ? 5.5 : 4.5, price: key === 'draftkings' ? -110 : -105 },
+          { name: 'Under', description: n, point: key === 'prizepicks' ? 5.5 : 4.5, price: key === 'draftkings' ? -110 : -115 },
         ])) }] });
-      oddsFixture.ks[id] = { bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig'].map(kbk) };
+      oddsFixture.ks[id] = { bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig', 'prizepicks'].map(kbk) };
     }
 
     // Moneyline, league-wide shape (not per-event). The home side is priced a

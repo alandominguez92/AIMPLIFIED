@@ -1578,6 +1578,41 @@
     return `<div class="price-read"><span class="pr-k">Price read</span><span>At <b>${esc(price)}</b> the ${esc(g.side)} needs <b>${be}%</b> to profit; the model gives it <b>${pSide}%</b> — ${verdict}.${edgeBit}</span></div>`;
   }
 
+  // PrizePicks' number for the market this row leads with. Shown, never priced
+  // against: pick'em pays by entry type (2-pick power, 6-pick flex, ...), not by
+  // the line, so an "edge" against it would be meaningless. What matters is the
+  // NUMBER — PrizePicks often hangs a different one than DK/FD, and under 2.5 is
+  // a different bet from under 1.5 — so a mismatch is called out rather than
+  // blended into the priced line beside it.
+  function ppTag(pp, pricedLine) {
+    if (!pp || pp.point == null) return '';
+    const diff = pricedLine != null && pp.point !== pricedLine;
+    const under = pp.modelUnder != null ? ` · model ${pp.modelUnder}% u` : '';
+    const title = diff
+      ? `PrizePicks hangs ${pp.point} where the book we priced hangs ${pricedLine} — a different bet, not a better price.`
+      : 'PrizePicks line, shown for reference. Pick\u2019em pays by entry type, so no edge is computed against it.';
+    return `<i class="pp-tag${diff ? ' diff' : ''}" title="${esc(title)}">PP ${esc(String(pp.point))}${diff ? ' \u2260' : ''}${esc(under)}</i>`;
+  }
+
+  // The PrizePicks quote for the market this row is leading with, and the line it
+  // should be compared against — which lives in a different place on each board.
+  function ppForRow(g) {
+    if (isBatter()) {
+      const m = (g.batterMarkets || []).find((x) => x.metric === g.metric)
+        || (g.batterMarkets || []).find((x) => x.pp);
+      return { pp: m ? m.pp : null, line: g.line != null ? g.line : (m ? m.line : null) };
+    }
+    if (isK()) {
+      // projRows, not pitchers: refreshBoard renames the API's field on the way
+      // in (see kProjOf) — reading the API's name here rendered no tag at all.
+      const ps = Array.isArray(g.projRows) ? g.projRows : [];
+      const lead = ps.find((p) => p && p.pp && p.name && String(g.pick || '').startsWith(p.name))
+        || ps.find((p) => p && p.pp);
+      return { pp: lead ? lead.pp : null, line: lead && lead.market ? lead.market.line : null };
+    }
+    return { pp: null, line: null };
+  }
+
   function oddsBooksCell(g, money) {
     const books = g.oddsBooks;
     if (!Array.isArray(books) || !books.length) {
@@ -2172,6 +2207,7 @@
         oddsCell = g.closed
           ? `<span class="odds-cell mono closed">${esc(money(g.odds))}<span class="closed-tag">closed</span></span>`
           : (priced ? oddsBooksCell(g, money) : `<span class="odds-blank">${esc(projReason(g))}</span>`);
+        oddsCell += (() => { const q = ppForRow(g); return ppTag(q.pp, q.line); })();
         const pUnder = typeof g.modelOver === 'number' ? Math.round((100 - g.modelOver) * 10) / 10 : null;
         // The percentage carries a source label. It is the one number on the row
         // that is ours rather than the market's, and unlabelled beside a price and
@@ -2210,6 +2246,7 @@
           // Persisted closing line — show the final price, marked closed (not bettable).
           ? `<span class="odds-cell mono closed">${esc(money(g.odds))}<span class="closed-tag">closed</span></span>`
           : (priced ? oddsBooksCell(g, money) : `<span class="odds-blank">${esc(projReason(g))}</span>`);
+        oddsCell += (() => { const q = ppForRow(g); return ppTag(q.pp, q.line); })();
         detailCell = `<span class="interval-cell">${esc(g.interval)}</span>`;
       }
 
@@ -2326,11 +2363,15 @@
           const booksStr = Array.isArray(m.books) && m.books.length
             ? m.books.map((b) => `${b.book} ${b.off && b.line != null ? b.line + ' ' : ''}${b.price > 0 ? '+' + b.price : b.price}${b.best ? ' ✓' : ''}`).join(' · ')
             : '';
+          const ppStr = m.pp
+            ? `PP ${m.pp.point}${m.pp.modelUnder != null ? ` · model ${m.pp.modelUnder}% under` : ''}`
+              + (m.pp.point !== m.line ? ' — different number than the priced line' : '')
+            : '';
           return `<div class="bm-row">
             <span class="bm-label">${esc(m.label)}</span>
             <span class="bm-proj">proj ${esc(String(m.proj))} · model ${m.modelOver}% over</span>
             <span class="bm-pick" style="color:${m.edge >= 1.5 ? 'var(--positive)' : 'var(--textDim)'}">${m.side} ${m.line} · +${m.edge}%</span>
-            <span class="bm-books">${esc(booksStr)}</span>
+            <span class="bm-books">${esc(booksStr)}${ppStr ? ` · ${esc(ppStr)}` : ''}</span>
           </div>`;
         }).join('');
         // "No line posted: HR proj 0 · TB proj 0.33" measured 40 characters, which
