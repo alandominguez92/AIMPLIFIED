@@ -6573,6 +6573,7 @@ const PROBE_SPORTS = {
   // Soccer, for coverage probes only — nothing is modelled or priced here yet.
   epl: 'soccer_epl',
   laliga: 'soccer_spain_la_liga',
+  ucl: 'soccer_uefa_champs_league',
 };
 // GET /api/sports-list — every sport the feed offers, and whether it is in
 // season. FREE: /v4/sports bills nothing, the same way /events does, so asking
