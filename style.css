@@ -1431,6 +1431,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .board-row .row-when { display:none }
 @media (max-width:900px) {
   .board-row:not(.expanded) .row-when { display:inline; margin-left:6px; font-family:var(--mono); font-size:10.5px; color:var(--textDim); white-space:nowrap; font-weight:400 }
+  /* The head line is a nowrap flex row, which is fine while the names are team
+     abbreviations. Soccer writes clubs out in full ("Bournemouth @ Liverpool"),
+     and at 375px that pushed the kickoff out of the matchup column and straight
+     through the sharp-count chip. Wrapping only bites when it overflows. */
+  .board-row .mc-head { flex-wrap:wrap; row-gap:2px }
 }
 
 @media (max-width:900px) {

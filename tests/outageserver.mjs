@@ -176,6 +176,40 @@ const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toStr
 // on purpose (a Thursday night game and a Sunday afternoon), which is how the
 // one-slate-day filter shows up: only Thursday should be on the board.
 const NFLDEMO = process.env.NFLDEMO === '1';
+// SOCCERDEMO=1 stands in for D1's soccer_lines, the same way NFLDEMO does for
+// nfl_lines: without it the soccer board answers "no DB binding" and the tab
+// cannot be reviewed at all. Two leagues, two fixtures today and one next week,
+// so the one-matchday filter is visible.
+const SOCCERDEMO = process.env.SOCCERDEMO === '1';
+const soccerLines = (() => {
+  if (!SOCCERDEMO) return [];
+  const now = Date.now();
+  const at = (h) => new Date(now + h * 3600e3).toISOString();
+  const fixtures = [
+    { league: 'epl', id: 'sx1', commence: at(6), home: 'Liverpool', away: 'Bournemouth' },
+    { league: 'laliga', id: 'sx2', commence: at(9), home: 'Real Madrid', away: 'Getafe' },
+    { league: 'ucl', id: 'sx3', commence: at(120), home: 'Bayern Munich', away: 'Inter' },
+  ];
+  const prices = {
+    pinnacle: { h: -140, d: 260, a: 380, o: -105, u: -115 },
+    lowvig: { h: -138, d: 255, a: 390, o: -108, u: -112 },
+    betonlineag: { h: -145, d: 250, a: 370, o: -110, u: -110 },
+    draftkings: { h: -130, d: 285, a: 400, o: -102, u: -120 },
+    fanduel: { h: -135, d: 275, a: 395, o: -105, u: -115 },
+  };
+  const rows = [];
+  for (const f of fixtures) {
+    for (const [book, p] of Object.entries(prices)) {
+      const base = { league: f.league, event_id: f.id, commence: f.commence, home: f.home, away: f.away, book, captured_at: new Date(now - 3600e3).toISOString() };
+      rows.push({ ...base, market: 'h2h', selection: f.home, point: null, price: p.h });
+      rows.push({ ...base, market: 'h2h', selection: 'Draw', point: null, price: p.d });
+      rows.push({ ...base, market: 'h2h', selection: f.away, point: null, price: p.a });
+      rows.push({ ...base, market: 'totals', selection: 'Over', point: 2.5, price: p.o });
+      rows.push({ ...base, market: 'totals', selection: 'Under', point: 2.5, price: p.u });
+    }
+  }
+  return rows;
+})();
 const nflLines = (() => {
   if (!NFLDEMO) return [];
   const rows = [];
@@ -209,14 +243,15 @@ const nflDb = {
   prepare: (sql) => {
     const st = { bind: () => st, run: async () => ({ meta: { changes: 0 } }),
       first: async () => (/COUNT\(\*\)/i.test(sql) ? { n: nflLines.length } : null),
-      all: async () => ({ results: /FROM nfl_lines/i.test(sql) ? nflLines : [] }) };
+      all: async () => ({ results: /FROM nfl_lines/i.test(sql) ? nflLines
+        : /FROM soccer_lines/i.test(sql) ? soccerLines : [] }) };
     return st;
   },
   batch: async () => [],
 };
 const env = {
   ODDS_API_KEY: 'test-key',
-  DB: NFLDEMO ? nflDb : null,
+  DB: (NFLDEMO || SOCCERDEMO) ? nflDb : null,
   // The priors and schedule the NFL projections read, served off disk.
   ASSETS: { fetch: async (r) => {
     const name = new URL(r.url).pathname;

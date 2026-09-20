@@ -207,6 +207,9 @@
     injuriesFetchedAt: null, // ms timestamp of the last injuries fetch (for "updated Xm ago")
     ycOpen: false,           // "Yesterday's Card" collapsed by default — keeps the board up top
     boardView: 'batter', // 'batter' (Under Plays — the default) | 'kprops' | 'moneyline' | 'runline'
+    soccer: null,          // /api/soccer-board payload, loaded on first visit
+    soccerLeague: 'all',   // 'all' | 'epl' | 'laliga' | 'ucl'
+    soccerOpen: null,      // expanded fixture id
     slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
     stake: 1,   // units per bet
     quotaRemaining: null,
@@ -346,6 +349,9 @@
     slateSummary: document.getElementById('slateSummary'),
     lineupAlerts: document.getElementById('lineupAlerts'),
     nflBoard: document.getElementById('nflBoard'),
+    soccerBoard: document.getElementById('soccerBoard'),
+    soccerGrid: document.getElementById('soccerGrid'),
+    soccerCount: document.getElementById('soccerCount'),
     nflBannerTag: document.getElementById('nflBannerTag'),
     nflBannerBody: document.getElementById('nflBannerBody'),
     nflBoardTitle: document.getElementById('nflBoardTitle'),
@@ -3935,6 +3941,15 @@
       case 'set-filter': setFilter(target.dataset.filter); break;
       case 'set-view': setView(target.dataset.view); break;
       case 'set-sport': setSport(target.dataset.sport); break;
+      case 'soccer-league': setSoccerLeague(target.dataset.league); break;
+      // Its own toggle, not the NFL one: sharing 'nfl-toggle' re-rendered the NFL
+      // grid, so a soccer row opened its panel into a board nobody was looking at.
+      case 'soccer-toggle': {
+        const sid = target.dataset.id;
+        state.soccerOpen = state.soccerOpen === sid ? null : sid;
+        renderSoccer();
+        break;
+      }
       case 'nfl-view': setNflView(target.dataset.nflview); break;
       case 'nfl-filter': setNflFilter(target.dataset.nflfilter); break;
       case 'nfl-sort': setNflSort(target.dataset.nflsort); break;
@@ -4160,19 +4175,23 @@
     document.querySelectorAll('.stab[data-sport]').forEach((t) =>
       t.classList.toggle('active', t.dataset.sport === s));
     const nfl = s === 'nfl';
+    // Every non-MLB board hides the MLB furniture, not just the NFL one — the
+    // hero, live-now strip, slip and record are all batter-board features.
     for (const sel of MLB_ONLY) {
       const n = document.querySelector(sel);
-      if (n) n.hidden = nfl;
+      if (n) n.hidden = s !== 'mlb';
     }
     applySportChrome(s);
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
+    if (el.soccerBoard) el.soccerBoard.hidden = s !== 'soccer';
+    if (s === 'soccer' && !state.soccer) refreshSoccer();   // lazy first load
     // Hiding on the way out was only half of it. Coming BACK to MLB left the
     // strip hidden until the next batter poll happened to re-render it, which
     // can be minutes -- so the board you switched to was missing its own summary
     // for no reason a reader could see. renderSlateSummary is the existing
     // dispatcher and correctly leaves it hidden when there is nothing to show.
     if (el.slateSummary) {
-      if (nfl) el.slateSummary.hidden = true;
+      if (s !== 'mlb') el.slateSummary.hidden = true;
       else renderSlateSummary();
     }
     if (nfl && !state.nfl) refreshNfl();          // lazy first load
@@ -4906,21 +4925,135 @@
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
   // sport switch and never changed back.
-  const DOC_TITLE = { mlb: document.title, nfl: 'Aimplified — NFL Board' };
+  const DOC_TITLE = { mlb: document.title, nfl: 'Aimplified — NFL Board', soccer: 'Aimplified — Soccer Board' };
 
   function applySportChrome(sport) {
-    const nfl = sport === 'nfl';
+    // Anything that is not the MLB board hides the MLB-only chrome. Written as
+    // "not mlb" rather than "is nfl" so a third sport cannot inherit the batter
+    // board's CLV chip and nav links by default.
+    const away = sport !== 'mlb';
     document.title = DOC_TITLE[sport] || DOC_TITLE.mlb;
     const chip = document.getElementById('clvChip');
-    if (chip) chip.hidden = nfl;
+    if (chip) chip.hidden = away;
     document.querySelectorAll('.nav-links a').forEach((a) => {
       const href = a.getAttribute('href');
-      if (MLB_ONLY_NAV.includes(href)) a.hidden = nfl;
+      if (MLB_ONLY_NAV.includes(href)) a.hidden = away;
     });
     // The live-now link is an MLB feed too; it manages its own hidden flag, so
     // only force it off rather than on.
     const live = document.getElementById('navLive');
-    if (live && nfl) live.hidden = true;
+    if (live && away) live.hidden = true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Soccer — game lines for three leagues, context only
+  // -------------------------------------------------------------------------
+  async function refreshSoccer() {
+    if (!LIVE_MODE) return;
+    try {
+      const d = await fetchJson('/api/soccer-board');
+      state.soccer = (d && Array.isArray(d.games)) ? d : { games: [], empty: true };
+    } catch (e) {
+      state.soccer = { games: [], empty: true, error: 'unreachable' };
+    }
+    renderSoccer();
+  }
+
+  function setSoccerLeague(lg) {
+    state.soccerLeague = lg || 'all';
+    document.querySelectorAll('#soccerLeagues .nflm').forEach((b) =>
+      b.classList.toggle('active', b.dataset.league === state.soccerLeague));
+    renderSoccer();
+  }
+
+  const soccerKick = (iso) => {
+    if (!iso) return '';
+    const t = new Date(iso);
+    return isNaN(t) ? '' : t.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  };
+
+  function renderSoccer() {
+    if (!el.soccerGrid) return;
+    const d = state.soccer;
+    if (!d) { el.soccerGrid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
+    if (d.error) { el.soccerGrid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
+    const games = (d.games || []).filter((g) => state.soccerLeague === 'all' || g.league === state.soccerLeague);
+    if (el.soccerCount) {
+      el.soccerCount.textContent = games.length
+        ? `${games.length} fixture${games.length === 1 ? '' : 's'}${d.slateDay ? ' · one matchday' : ''}`
+        : '';
+    }
+    if (!games.length) {
+      // An empty board here is usually "no fixtures today", which is most days —
+      // say that rather than leaving a blank panel that reads as broken.
+      el.soccerGrid.innerHTML = `<div class="nfl-empty">No fixtures on the next matchday for this league${
+        d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+      return;
+    }
+    el.soccerGrid.innerHTML = games.map(soccerRow).join('');
+  }
+
+  function soccerRow(g) {
+    const open = state.soccerOpen === g.id;
+    const isMkt = g.fairSrc !== 'sharp-pool';
+    const lead = g.lead && g.lead.value != null ? g.lead : null;
+    const val = lead ? lead.value : null;
+    const valColor = val == null ? 'var(--textFaint)' : (val > 0 ? 'var(--positive)' : 'var(--textDim)');
+    const sub = [g.leagueLabel, g.total ? `O/U ${g.total.point}` : null].filter(Boolean).join(' · ');
+    // Same bar as every other board: our fair is the fill, what the price implies
+    // is the tick, and the gap between them is the value cell in picture form.
+    const bar = (!isMkt && lead && lead.fair != null)
+      ? miniBar(lead.fair, lead.implied, (v) => v)
+        + `<span class="bw-cush">fair <b>${lead.fair}%</b>${lead.implied != null ? ` · tick: price <b>${lead.implied}%</b>` : ''}</span>`
+      : '';
+    const pick = isMkt
+      ? '<span class="odds-blank">fewer than two sharp books</span>'
+      : `<span class="ctx-pick">${esc(lead ? lead.selection : '—')}</span>${bar}`;
+    const odds = (!isMkt && lead && lead.price != null)
+      ? `<span class="odds-cell mono">${AM(lead.price)}<i class="bk-tag">${bkLabel(lead.book)}</i></span>`
+      : '<span class="odds-blank">no price</span>';
+    const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="soccer-toggle" data-id="${esc(g.id)}"
+        role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
+        aria-label="${esc(g.away || '')} at ${esc(g.home || '')} — toggle breakdown">
+        <div class="matchup-cell">
+          <span class="mc-head"><b>${esc(g.away || '')}</b><span class="at-sep">@</span><b>${esc(g.home || '')}</b>${
+            g.commence ? `<span class="row-when">${esc(soccerKick(g.commence))}</span>` : ''}</span>
+          <span class="matchup-sub">${esc(sub)}</span>
+        </div>
+        <span>${pick}</span>
+        ${odds}
+        <span class="edge-cell" style="color:${valColor}">${val == null ? '—' : (val > 0 ? '+' : '') + val + '%'}</span>
+        <span class="interval-cell" style="color:var(--model)">${lead && lead.fair != null ? lead.fair + '%' : '—'}</span>
+        <span class="tier-cell"><span class="ctx-chip">${isMkt ? 'MKT' : 'sharp ' + g.sharpN}</span></span>
+        <span class="chevron">${open ? '▲' : '▼'}</span>
+      </div>`;
+    return row + (open ? soccerDetail(g) : '');
+  }
+
+  function soccerDetail(g) {
+    const cell = (k, v) => `<div class="nfd-c"><span>${esc(k)}</span><b>${v}</b></div>`;
+    const outcomes = (g.oneXtwo || []).map((p) => cell(
+      p.selection,
+      `${p.fair != null ? p.fair + '%' : '—'} fair · ${AM(p.price)}${p.book ? ' ' + bkLabel(p.book) : ''}`
+        + `<span class="rl-cov">${p.value == null ? '' : (p.value > 0 ? '+' : '') + p.value + '% vs fair'}</span>`,
+    )).join('');
+    const t = g.total;
+    const totals = t
+      ? cell(`Over ${t.point}`, `${t.overFair != null ? t.overFair + '%' : '—'} fair · ${AM(t.overPrice)}${t.overBook ? ' ' + bkLabel(t.overBook) : ''}`
+          + `<span class="rl-cov">${t.overValue == null ? '' : (t.overValue > 0 ? '+' : '') + t.overValue + '% vs fair'}</span>`)
+        + cell(`Under ${t.point}`, `${t.underFair != null ? t.underFair + '%' : '—'} fair · ${AM(t.underPrice)}${t.underBook ? ' ' + bkLabel(t.underBook) : ''}`
+          + `<span class="rl-cov">${t.underValue == null ? '' : (t.underValue > 0 ? '+' : '') + t.underValue + '% vs fair'}</span>`)
+      : '';
+    const read = g.fairSrc === 'sharp-pool'
+      ? `Fair from ${g.sharpN} sharp book${g.sharpN === 1 ? '' : 's'}, de-vigged across <b>all three outcomes</b> — home, draw and away — then medianed. `
+        + `Value is that fair number minus what the best DraftKings or FanDuel price implies.`
+      : `Fewer than two sharp books quoted this fixture, so there is no fair line to price against. The prices shown are the market's, not a value read.`;
+    return `<div class="expanded-detail nfl-detail">
+      <div class="nfd-k">Price read</div>
+      <div class="nfd-read">${read}</div>
+      <div class="nfd-grid">${outcomes}${totals}</div>
+      <div class="nfd-foot">Context only — soccer is not modelled, not posted and not graded. The draw is a real outcome here, so a "value side" is one of three, not one of two.</div>
+    </div>`;
   }
 
 })();

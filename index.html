@@ -46,7 +46,7 @@
     <a class="stab active" href="#" data-action="set-sport" data-sport="mlb"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6c2.2 1.9 3.4 4 3.4 6.4s-1.2 4.5-3.4 6.4"/><path d="M18.4 5.6c-2.2 1.9-3.4 4-3.4 6.4s1.2 4.5 3.4 6.4"/></svg><span>MLB</span><span class="mini">Model + Picks</span></a>
     <a class="stab" href="#" data-action="set-sport" data-sport="nfl"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 19.5c-1.5-5.5 1-11 5.5-13.5 3-1.6 6.5-2 9.5-1.5.5 3 .1 6.5-1.5 9.5-2.5 4.5-8 7-13.5 5.5z"/><path d="M9 15l6-6"/><path d="M9.2 13.2l1.6 1.6M11.2 11.2l1.6 1.6M13.2 9.2l1.6 1.6"/></svg><span>NFL</span><span class="mini">Game Context</span></a>
     <a class="stab soon-tab" href="#" aria-disabled="true"><span>NBA</span><span class="mini">Scores &amp; Stats</span><span class="soon">Soon</span></a>
-    <a class="stab soon-tab" href="#" aria-disabled="true"><span>Soccer</span><span class="mini">World Cup Hub</span><span class="soon">Soon</span></a>
+    <a class="stab" href="#" data-action="set-sport" data-sport="soccer"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 7.5l3.5 2.5-1.3 4.1h-4.4L8.5 10z"/><path d="M12 3v4.5M4.2 9.6l4.3.4M19.8 9.6l-4.3.4M7.2 19.4l2.6-3.3M16.8 19.4l-2.6-3.3"/></svg><span>Soccer</span><span class="mini">Game Lines</span></a>
   </div>
 </div>
 
@@ -107,6 +107,32 @@
        Deliberately not a copy of the MLB slate: it posts no plays, so it carries
        no tier filters, no track-record chip and no play/pin notes, because none
        of those would be telling the truth yet. -->
+  <section id="soccerBoard" hidden>
+    <!-- Same disclosure the NFL board carries, for the same reason: there is no
+         model here. The fair line is the sharp books' own number, so every row is
+         a price comparison, not a projection — and the markets a pick'em entry
+         would use (shots, shots on target) are quoted one-sided by a single book,
+         so they are absent rather than half-built. -->
+    <div class="ctx-banner nfl-banner">
+      <span class="ctx-banner-tag">Context · not plays</span>
+      <span>The <b>1X2 and goals lines</b> priced against the sharp pool — Pinnacle, lowvig and BetOnline — with the best DraftKings or FanDuel price beside it. <b>No model and no player props</b>: shots and shots-on-target are quoted over-only by one book, so there is no under to fade and no independent fair line. Nothing here is posted or graded.</span>
+    </div>
+
+    <div class="sec-head">
+      <h2 id="soccerTitle">Soccer Board</h2>
+      <span class="count" id="soccerCount"></span>
+    </div>
+
+    <div class="nfl-markets" id="soccerLeagues">
+      <button class="nflm active" data-action="soccer-league" data-league="all"><span class="nflm-k">All</span><span class="nflm-t">three leagues</span></button>
+      <button class="nflm" data-action="soccer-league" data-league="epl"><span class="nflm-k">Premier League</span><span class="nflm-t">England</span></button>
+      <button class="nflm" data-action="soccer-league" data-league="laliga"><span class="nflm-k">La Liga</span><span class="nflm-t">Spain</span></button>
+      <button class="nflm" data-action="soccer-league" data-league="ucl"><span class="nflm-k">Champions League</span><span class="nflm-t">UEFA</span></button>
+    </div>
+
+    <div id="soccerGrid"></div>
+  </section>
+
   <section id="nflBoard" hidden>
     <!-- One banner, not two. Both disclosures survive intact — nothing is
          postable, and in preseason nothing is graded either — but they were
