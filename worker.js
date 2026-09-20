@@ -1325,6 +1325,15 @@ async function board(env, ctx, opts) {
     if (ctx && ctx.waitUntil) ctx.waitUntil(writeMl);
     const writeTot = logTotPicks(env.DB, rows, date).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(writeTot);
+    const ppK = [];
+    for (const r of rows) {
+      if (r.status !== 'Preview') continue;
+      for (const p of (r.pitchers || [])) {
+        if (p && p.pp && p.id != null) ppK.push({ gameId: r.id, playerId: p.id, player: p.fullName || p.name, team: p.team, market: 'K', pp: p.pp });
+      }
+    }
+    const writePpK = logPpPicks(env.DB, ppK, date).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(writePpK);
     // The run line is no longer logged (2026-09-17). It was logged to find out
     // whether the model read the 1.5 at all, and the record answered: 31-54,
     // -18.2u, -21.4% ROI on 85 graded games, 9-21 over its last two days, with
@@ -2621,6 +2630,17 @@ async function batters(env, ctx, opts) {
     // grading looks it up by.
     const write = logBatterPicks(env.DB, logRows, slateYmd).catch(() => {});
     if (ctx && ctx.waitUntil) ctx.waitUntil(write); else await write;
+    // Every PrizePicks number on the board, priced or not — a row the books never
+    // quoted still has a PrizePicks line to play, and those are most of them.
+    const ppEntries = [];
+    for (const r of all) {
+      if (r.status !== 'Preview' || r.playerId == null || r.gamePk == null) continue;
+      for (const m of (r.batterMarkets || [])) {
+        if (m && m.pp) ppEntries.push({ gameId: 'g' + r.gamePk, playerId: r.playerId, player: r.name, team: r.team, market: m.metric, pp: m.pp });
+      }
+    }
+    const wpp = logPpPicks(env.DB, ppEntries, slateYmd).catch(() => {});
+    if (ctx && ctx.waitUntil) ctx.waitUntil(wpp); else await wpp;
   }
 
   // Same rule as the strikeout board: a game that has gone Final drops off.
@@ -2898,6 +2918,7 @@ async function trackRecord(env) {
     await gradeMlPicks(env);
     await gradeRlPicks(env);
     try { await gradeTotPicks(env); } catch (e) { /* additive — never break the record */ }
+    try { await gradePpPicks(env); } catch (e) { /* additive */ }
     const kres = await env.DB.prepare('SELECT * FROM picks').all();
     const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
     // Normalize both feeds to one row shape: pitcher picks are market 'K' with
@@ -2932,6 +2953,10 @@ async function trackRecord(env) {
     try {
       await ensureTotSchema(env.DB);
       out.totals = buildTotRecord(((await env.DB.prepare('SELECT * FROM totpicks').all()).results) || []);
+    } catch (e) { /* additive */ }
+    try {
+      await ensurePpSchema(env.DB);
+      out.prizepicks = buildPpRecord(((await env.DB.prepare('SELECT * FROM pppicks').all()).results) || []);
     } catch (e) { /* additive */ }
     out.recent = buildRecent(unified, mlRows);
     return cors(json(out, 120));
@@ -3093,6 +3118,145 @@ async function logTotPicks(db, rows, date) {
   if (!stmts.length) return;
   await ensureTotSchema(db);
   await db.batch(stmts);
+}
+
+// PrizePicks lines, logged and graded at THEIR number.
+//
+// Everything else here is graded against DK/FD: the record says batter unders
+// hit 54.8% at the book's line. That number does not transfer to pick'em,
+// because PrizePicks hangs a different number — on 2026-09-18 it was mostly 0.5
+// total bases and 1.5 H+R+RBI where the books posted 1.5 and 2.5 — and an under
+// at 1.5 is a different bet from an under at 2.5.
+//
+// So the number that decides a pick'em entry has never been measured. This logs
+// it: every PrizePicks line the board sees, the model's probability of landing
+// under THAT number, and afterwards what actually happened. Nothing is posted
+// and nothing is ranked; it exists so a daily card can be built on a graded hit
+// rate against the entry break-evens (57.7% for a 2-pick power, ~54.2% for a
+// 6-pick flex) instead of on the book-line record, which does not apply.
+//
+// Costs no credits: the PrizePicks quote already rides the prop call.
+const PP_MODEL_VER = 'pp-v1';
+async function ensurePpSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS pppicks (
+    date TEXT, game_id TEXT, player_id INTEGER, player TEXT, team TEXT,
+    market TEXT, point REAL, model_under REAL,
+    close_point REAL, close_model_under REAL,
+    actual REAL, result TEXT, model_ver TEXT,
+    PRIMARY KEY (date, game_id, player_id, market)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS pppicks_ungraded ON pppicks (date, game_id) WHERE result IS NULL').run();
+}
+
+// rows: board rows carrying a pp quote. `pick(r)` yields [{playerId, player,
+// team, market, pp}] so the batter board (a row per hitter, several markets) and
+// the strikeout board (a row per game, two starters) can share one writer.
+async function logPpPicks(db, entries, date) {
+  const stmts = [];
+  for (const e of entries) {
+    if (!e || !e.pp || e.pp.point == null || e.playerId == null || e.gameId == null) continue;
+    stmts.push(db.prepare(
+      `INSERT OR IGNORE INTO pppicks (date,game_id,player_id,player,team,market,point,model_under,close_point,close_model_under,model_ver)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(date, e.gameId, e.playerId, e.player || null, e.team || null, e.market, e.pp.point, e.pp.modelUnder ?? null, e.pp.point, e.pp.modelUnder ?? null, PP_MODEL_VER));
+    // The closing number, refreshed while the line still stands. PrizePicks moves
+    // its numbers too, and a card built at noon is not the card at first pitch.
+    stmts.push(db.prepare(
+      'UPDATE pppicks SET close_point=?, close_model_under=? WHERE date=? AND game_id=? AND player_id=? AND market=?'
+    ).bind(e.pp.point, e.pp.modelUnder ?? null, date, e.gameId, e.playerId, e.market));
+  }
+  if (!stmts.length) return;
+  await ensurePpSchema(db);
+  await db.batch(stmts);
+}
+
+// Graded at the PrizePicks number: under it wins, over it loses, exactly on it
+// is a push (PrizePicks lines are usually .5, so pushes are rare but real on
+// whole numbers). A player who did not appear is void, never a 0 — the same hole
+// the batter grader had.
+async function gradePpPicks(env) {
+  const db = env.DB;
+  await ensurePpSchema(db);
+  const today = slateDate();
+  const games = (await db.prepare('SELECT DISTINCT game_id, date FROM pppicks WHERE result IS NULL AND date < ?').bind(today).all()).results || [];
+  if (!games.length) return;
+  const statusByGame = {};
+  for (const d of [...new Set(games.map((g) => g.date))]) {
+    try {
+      const r = await fetch(`${STATS}/schedule?sportId=1&date=${d}`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      (((await r.json()).dates || [])[0] || {}).games?.forEach((g) => {
+        statusByGame['g' + g.gamePk] = (g.status && g.status.abstractGameState) || '';
+      });
+    } catch (e) { /* skip this date */ }
+  }
+  const unresolved = games.filter((g) => statusByGame[g.game_id] !== 'Final').map((g) => g.game_id);
+  const byPk = unresolved.length ? await gamesByPk(unresolved) : {};
+  for (const [gid, g] of Object.entries(byPk)) if (g.state === 'Final') statusByGame[gid] = 'Final';
+  const abandoned = Object.keys(byPk).filter((gid) => isAbandoned(byPk[gid]));
+  if (abandoned.length) {
+    try {
+      await db.batch(abandoned.map((gid) => db.prepare(
+        "UPDATE pppicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)));
+    } catch (e) { /* retry next pass */ }
+  }
+  for (const g of games.slice(0, 30)) {
+    if (statusByGame[g.game_id] !== 'Final') continue;
+    let box;
+    try {
+      const r = await fetch(`${STATS}/game/${String(g.game_id).replace(/^g/, '')}/boxscore`, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      box = await r.json();
+    } catch (e) { continue; }
+    const ks = pitcherKsFromBox(box);
+    const picks = (await db.prepare('SELECT * FROM pppicks WHERE game_id=? AND result IS NULL').bind(g.game_id).all()).results || [];
+    const stmts = [];
+    for (const p of picks) {
+      const actual = p.market === 'K' ? (ks[p.player_id] ?? null) : batterActual(box, p.player_id, p.market);
+      const point = p.close_point != null ? p.close_point : p.point;
+      const result = actual == null ? 'void' : (actual < point ? 'under' : actual > point ? 'over' : 'push');
+      stmts.push(db.prepare('UPDATE pppicks SET actual=?, result=? WHERE date=? AND game_id=? AND player_id=? AND market=?')
+        .bind(actual, result, p.date, p.game_id, p.player_id, p.market));
+    }
+    if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* next pass */ } }
+  }
+}
+
+// How often the model's under call at PrizePicks' own number was right, banded
+// by the probability it claimed — the bands are the entry break-evens, so the
+// table reads directly against the card a reader would build.
+function buildPpRecord(rows) {
+  const graded = rows.filter((r) => r.result === 'under' || r.result === 'over');
+  const band = (lo, hi) => {
+    const rs = graded.filter((r) => r.close_model_under != null && r.close_model_under >= lo && r.close_model_under < hi);
+    const hit = rs.filter((r) => r.result === 'under').length;
+    return { n: rs.length, under: hit, over: rs.length - hit, hitRate: rs.length ? round1(hit / rs.length * 100) : null };
+  };
+  const all = graded.length;
+  const hits = graded.filter((r) => r.result === 'under').length;
+  const byMarket = {};
+  for (const mk of [...new Set(graded.map((r) => r.market))]) {
+    const rs = graded.filter((r) => r.market === mk);
+    const h = rs.filter((x) => x.result === 'under').length;
+    byMarket[mk] = { n: rs.length, hitRate: rs.length ? round1(h / rs.length * 100) : null };
+  }
+  return {
+    note: 'PrizePicks lines, graded at THEIR number. Under = the result landed below the line. '
+      + 'Nothing here is posted or ranked; break-evens for reference: 2-pick power 57.7%, 4-pick flex 56.9%, 5-pick flex 54.3%, 6-pick flex 54.2%.',
+    logged: rows.length,
+    pending: rows.filter((r) => r.result == null).length,
+    voided: rows.filter((r) => r.result === 'void').length,
+    graded: all,
+    underRate: all ? round1(hits / all * 100) : null,
+    byModelUnder: {
+      'under 50': band(0, 50),
+      '50-55': band(50, 55),
+      '55-60': band(55, 60),
+      '60-70': band(60, 70),
+      '70plus': band(70, 101),
+    },
+    byMarket,
+  };
 }
 
 async function loadMlLines(db, date) {
