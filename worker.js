@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export',
-  '/api/fair-probe', '/api/sports-list', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
 export default {
@@ -200,7 +200,7 @@ export default {
     }
 
     // Both write; caching either would serve a stale body and skip the write.
-    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade') return handleApi(p, env, ctx, url);
+    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest') return handleApi(p, env, ctx, url);
     // The query string is dropped from the key on purpose — every viewer should
     // share one response — EXCEPT where it changes what the route returns.
     // /api/nfl-compare was keyed by path alone, so ?all=1 (played games included,
@@ -231,6 +231,9 @@ export default {
   // viewer happened to load the site. See captureCloses.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(captureCloses(env, ctx));
+    // Soccer game lines, gated to twice a matchday per league — see
+    // soccerMaybeIngest. Most ticks do nothing but read a counter.
+    ctx.waitUntil(soccerMaybeIngest(env, ctx).catch(() => null));
   },
 };
 
@@ -450,6 +453,8 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/mlpicks-export') return mlpicksExport(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
+  if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
+  if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-compare') return nflCompare(env, url);
   if (p === '/api/nfl-grade') return nflGrade(env, url);
@@ -6575,6 +6580,261 @@ const PROBE_SPORTS = {
   laliga: 'soccer_spain_la_liga',
   ucl: 'soccer_uefa_champs_league',
 };
+// ---------------------------------------------------------------------------
+// Soccer — game lines only, for three leagues, as CONTEXT.
+//
+// What the coverage probe found on 2026-09-20: Pinnacle, lowvig and betonlineag
+// quote 1X2 and goals totals for all three, DK and FanDuel quote them too, and
+// PrizePicks is absent from soccer entirely. Player props (shots, shots on
+// target, assists) come back OVER-ONLY from a single book, so there is no under
+// side to fade and no independent fair line — the thesis this site is built on
+// does not exist in that market, and nothing here pretends otherwise.
+//
+// So this is the NFL board's shape: a sharp fair line, the best price you could
+// take against it, and the gap. No model, no projections, no plays.
+const SOCCER_LEAGUES = {
+  epl: { key: 'soccer_epl', label: 'Premier League' },
+  laliga: { key: 'soccer_spain_la_liga', label: 'La Liga' },
+  ucl: { key: 'soccer_uefa_champs_league', label: 'Champions League' },
+};
+const SOCCER_SHARP = ['pinnacle', 'lowvig', 'betonlineag'];
+const SOCCER_EXEC = ['draftkings', 'fanduel'];
+const SOCCER_BOOKS = [...SOCCER_SHARP, ...SOCCER_EXEC];   // 5 books = 1 region-equivalent
+const SOCCER_MARKETS = 'h2h,totals';
+// Twice a matchday, per league: 2 markets x 1 region-equivalent = 2 credits a
+// call, so 12 credits on a day all three play. The gap keeps a busy Saturday
+// from turning into a dozen refreshes.
+const SOCCER_MAX_PER_DAY = 2;
+const SOCCER_MIN_GAP_MS = 5 * 3600 * 1000;
+// Only bother when something is actually coming.
+const SOCCER_HORIZON_MS = 36 * 3600 * 1000;
+
+async function ensureSoccerSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS soccer_lines (
+    league TEXT, event_id TEXT, commence TEXT, home TEXT, away TEXT,
+    market TEXT, selection TEXT, point REAL, book TEXT, price INTEGER,
+    captured_at TEXT
+  )`).run();
+  // The board reads by league and kickoff; the change-detection read keys off
+  // the same pair. Without this every render scans the whole history.
+  await db.prepare('CREATE INDEX IF NOT EXISTS soccer_lines_lg ON soccer_lines (league, commence)').run();
+}
+
+// One league's lines, appended only where a number actually moved.
+async function soccerIngest(env, url) {
+  const out = { leagues: [], credits: 0, wrote: 0, unchanged: 0, errors: [] };
+  const key = env && env.ODDS_API_KEY;
+  if (!key) { out.errors.push('ODDS_API_KEY not configured'); return out; }
+  if (!env.DB) { out.errors.push('no DB binding'); return out; }
+  await ensureSoccerSchema(env.DB);
+  const want = (url && url.searchParams && url.searchParams.get('league')) || null;
+  const leagues = Object.keys(SOCCER_LEAGUES).filter((l) => !want || l === want);
+  const now = Date.now();
+  for (const lg of leagues) {
+    const sp = SOCCER_LEAGUES[lg];
+    const res = { league: lg, events: 0, wrote: 0, unchanged: 0 };
+    try {
+      const r = await fetch(`${ODDS}/sports/${sp.key}/odds?apiKey=${key}&bookmakers=${SOCCER_BOOKS.join(',')}&markets=${SOCCER_MARKETS}&oddsFormat=american&dateFormat=iso`,
+        { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, `soccer:${lg}`);
+      const used = Number(r.headers.get('x-requests-last') || 0);
+      if (isFinite(used)) out.credits += used;
+      if (!r.ok) { out.errors.push(`${lg}: HTTP ${r.status}`); out.leagues.push(res); continue; }
+      const events = await r.json();
+      const live = (Array.isArray(events) ? events : []).filter((e) => Date.parse(e.commence_time) > now - 3 * 3600e3);
+      res.events = live.length;
+      // Latest stored number per (event, market, selection, book), so an
+      // unchanged price is not written again. Append-on-change keeps the history
+      // honest — every row is a real move — and keeps the table small.
+      const prior = (await env.DB.prepare(
+        'SELECT event_id, market, selection, point, book, price, captured_at FROM soccer_lines WHERE league=? AND commence > ? ORDER BY captured_at ASC'
+      ).bind(lg, new Date(now - 3 * 3600e3).toISOString()).all()).results || [];
+      const last = new Map();
+      for (const p of prior) last.set(`${p.event_id}|${p.market}|${p.selection}|${p.book}`, p);
+      const stamp = new Date().toISOString();
+      const stmts = [];
+      for (const e of live) {
+        for (const bm of (e.bookmakers || [])) {
+          for (const mk of (bm.markets || [])) {
+            if (mk.key !== 'h2h' && mk.key !== 'totals') continue;
+            for (const oc of (mk.outcomes || [])) {
+              const sel = mk.key === 'totals' ? oc.name : oc.name;   // Over/Under, or a club name (or 'Draw')
+              const k = `${e.id}|${mk.key}|${sel}|${bm.key}`;
+              const was = last.get(k);
+              if (was && was.price === oc.price && (was.point ?? null) === (oc.point ?? null)) { res.unchanged++; continue; }
+              stmts.push(env.DB.prepare(
+                `INSERT INTO soccer_lines (league,event_id,commence,home,away,market,selection,point,book,price,captured_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+              ).bind(lg, e.id, e.commence_time || null, e.home_team || null, e.away_team || null, mk.key, sel, oc.point ?? null, bm.key, oc.price ?? null, stamp));
+              res.wrote++;
+            }
+          }
+        }
+      }
+      for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+    } catch (e) {
+      out.errors.push(`${lg}: ${String((e && e.message) || e)}`);
+    }
+    out.wrote += res.wrote; out.unchanged += res.unchanged;
+    out.leagues.push(res);
+  }
+  return out;
+}
+
+// Cron gate: at most SOCCER_MAX_PER_DAY captures per league per day, spaced, and
+// only when that league actually has a fixture inside the horizon. The counter
+// lives in feed_cache rather than its own table — it is one small row a day.
+async function soccerMaybeIngest(env, ctx) {
+  if (!env || !env.DB || !env.ODDS_API_KEY) return null;
+  const today = slateDate();
+  const out = [];
+  for (const lg of Object.keys(SOCCER_LEAGUES)) {
+    try {
+      const cacheKey = `soccer_cap:${lg}:${today}`;
+      const hit = await loadFeedCache(env.DB, cacheKey);
+      const state = (hit.present && hit.data) || { n: 0, last: 0 };
+      if (state.n >= SOCCER_MAX_PER_DAY) continue;
+      if (state.last && Date.now() - state.last < SOCCER_MIN_GAP_MS) continue;
+      // Is anything coming? The events list is free.
+      const evR = await fetch(`${ODDS}/sports/${SOCCER_LEAGUES[lg].key}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, evR, `soccer:${lg}:events`);
+      if (!evR.ok) continue;
+      const evs = await evR.json();
+      const soon = (Array.isArray(evs) ? evs : []).some((e) => {
+        const t = Date.parse(e.commence_time);
+        return isFinite(t) && t > Date.now() && t - Date.now() <= SOCCER_HORIZON_MS;
+      });
+      if (!soon) continue;
+      const res = await soccerIngest(env, new URL(`https://x/api/soccer-ingest?league=${lg}`));
+      await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
+      out.push({ league: lg, ...(res.leagues[0] || {}), credits: res.credits });
+    } catch (e) { /* next tick */ }
+  }
+  return out.length ? out : null;
+}
+
+// Three-way de-vig. Shin is a two-way construction and 1X2 has a draw, so the
+// margin is stripped proportionally across all three outcomes. Proportional
+// under-states heavy favourites slightly (the same bias that made us switch the
+// moneyline to Shin), so the fair line here is labelled as what it is rather
+// than presented as the sharpest possible number.
+function devigThreeWay(prices) {
+  const imps = prices.map((p) => amProb(p));
+  if (imps.some((x) => x == null || !(x > 0))) return null;
+  const sum = imps.reduce((a, b) => a + b, 0);
+  return sum > 0 ? imps.map((x) => x / sum) : null;
+}
+
+async function soccerBoardData(env, url) {
+  const out = { leagues: Object.keys(SOCCER_LEAGUES), games: [], empty: true, asOf: null };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
+  const want = (url && url.searchParams && url.searchParams.get('league')) || null;
+  try {
+    await ensureSoccerSchema(env.DB);
+    const rows = (await env.DB.prepare(
+      `SELECT league, event_id, commence, home, away, market, selection, point, book, price, captured_at
+         FROM soccer_lines WHERE commence > ? ORDER BY captured_at ASC`
+    ).bind(new Date(Date.now() - 3 * 3600e3).toISOString()).all()).results || [];
+    const latest = new Map();
+    for (const r of rows) {
+      if (want && r.league !== want) continue;
+      latest.set(`${r.event_id}|${r.market}|${r.selection}|${r.book}`, r);
+      if (!out.asOf || String(r.captured_at) > String(out.asOf)) out.asOf = r.captured_at;
+    }
+    const games = new Map();
+    for (const r of latest.values()) {
+      const g = games.get(r.event_id) || games.set(r.event_id, {
+        id: r.event_id, league: r.league, leagueLabel: SOCCER_LEAGUES[r.league] ? SOCCER_LEAGUES[r.league].label : r.league,
+        commence: r.commence, home: r.home, away: r.away, h2h: {}, totals: {},
+      }).get(r.event_id);
+      if (r.market === 'h2h') (g.h2h[r.selection] = g.h2h[r.selection] || {})[r.book] = r.price;
+      else (g.totals[`${r.point}|${r.selection}`] = g.totals[`${r.point}|${r.selection}`] || {})[r.book] = r.price;
+    }
+    for (const g of games.values()) {
+      const sides = [g.home, 'Draw', g.away];
+      // Fair 1X2 from each sharp book that quoted all three, medianed per outcome.
+      const fairs = [];
+      for (const bk of SOCCER_SHARP) {
+        const ps = sides.map((s) => (g.h2h[s] || {})[bk]);
+        if (ps.some((x) => typeof x !== 'number')) continue;
+        const dv = devigThreeWay(ps);
+        if (dv) fairs.push(dv);
+      }
+      const sharpN = fairs.length;
+      const fair = sharpN >= 2
+        ? sides.map((_, i) => median(fairs.map((f) => f[i])))
+        : null;
+      const best = (sel) => {
+        let bp = null, bb = null;
+        for (const bk of SOCCER_EXEC) {
+          const p = (g.h2h[sel] || {})[bk];
+          if (typeof p !== 'number') continue;
+          if (bp == null || amProb(p) < amProb(bp)) { bp = p; bb = bk; }
+        }
+        return { price: bp, book: bb };
+      };
+      const picks = sides.map((sel, i) => {
+        const b = best(sel);
+        const f = fair ? fair[i] : null;
+        const imp = b.price != null ? amProb(b.price) : null;
+        return {
+          selection: sel === 'Draw' ? 'Draw' : sel,
+          fair: f != null ? Math.round(f * 1000) / 10 : null,
+          price: b.price, book: b.book,
+          implied: imp != null ? Math.round(imp * 1000) / 10 : null,
+          value: (f != null && imp != null) ? Math.round((f - imp) * 1000) / 10 : null,
+        };
+      });
+      const lead = picks.filter((p) => p.value != null).sort((a, b) => b.value - a.value)[0] || null;
+      // The most-quoted goals line, with both sides de-vigged two-way (Over/Under
+      // is a true two-way market, so Shin applies as it does everywhere else).
+      const points = [...new Set(Object.keys(g.totals).map((k) => Number(k.split('|')[0])).filter((x) => isFinite(x)))];
+      let totalRead = null;
+      if (points.length) {
+        const point = points.sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5))[0];
+        const ov = g.totals[`${point}|Over`] || {}, un = g.totals[`${point}|Under`] || {};
+        const dvs = SOCCER_SHARP.map((bk) => (typeof ov[bk] === 'number' && typeof un[bk] === 'number' ? shinDevig(ov[bk], un[bk]) : null)).filter((x) => x != null);
+        const fairOver = dvs.length >= 2 ? median(dvs) : null;
+        const bestSide = (rec) => {
+          let bp = null, bb = null;
+          for (const bk of SOCCER_EXEC) {
+            const p = rec[bk];
+            if (typeof p !== 'number') continue;
+            if (bp == null || amProb(p) < amProb(bp)) { bp = p; bb = bk; }
+          }
+          return { price: bp, book: bb };
+        };
+        const bo = bestSide(ov), bu = bestSide(un);
+        const val = (f, pr) => (f != null && pr != null && amProb(pr) != null) ? Math.round((f - amProb(pr)) * 1000) / 10 : null;
+        totalRead = {
+          point, sharpN: dvs.length,
+          overFair: fairOver != null ? Math.round(fairOver * 1000) / 10 : null,
+          overPrice: bo.price, overBook: bo.book, overValue: val(fairOver, bo.price),
+          underFair: fairOver != null ? Math.round((1 - fairOver) * 1000) / 10 : null,
+          underPrice: bu.price, underBook: bu.book, underValue: val(fairOver != null ? 1 - fairOver : null, bu.price),
+        };
+      }
+      out.games.push({
+        id: g.id, league: g.league, leagueLabel: g.leagueLabel, commence: g.commence,
+        home: g.home, away: g.away, sharpN, fairSrc: sharpN >= 2 ? 'sharp-pool' : 'MKT',
+        oneXtwo: picks, lead, total: totalRead,
+      });
+    }
+    out.games.sort((a, b) => Date.parse(a.commence || 0) - Date.parse(b.commence || 0));
+    // One matchday, the same rule the NFL board uses: soccer weeks are clusters,
+    // and a Saturday reader is not choosing between today and next Wednesday.
+    const first = out.games.find((g) => g.commence);
+    if (first) {
+      out.slateDay = ptDateOf(Date.parse(first.commence));
+      out.gamesAllUpcoming = out.games.length;
+      out.games = out.games.filter((g) => g.commence && ptDateOf(Date.parse(g.commence)) === out.slateDay);
+      out.slateNote = `one matchday only: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming fixtures)`;
+    }
+    out.empty = out.games.length === 0;
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return out;
+}
+
 // GET /api/sports-list — every sport the feed offers, and whether it is in
 // season. FREE: /v4/sports bills nothing, the same way /events does, so asking
 // "is this league even carried?" never costs credits. ?q= filters by substring
