@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export',
-  '/api/fair-probe', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
 export default {
@@ -449,6 +449,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/bpicks-export') return bpicksExport(env, url);
   if (p === '/api/mlpicks-export') return mlpicksExport(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
+  if (p === '/api/sports-list') return sportsList(env, url);
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-compare') return nflCompare(env, url);
   if (p === '/api/nfl-grade') return nflGrade(env, url);
@@ -6405,7 +6406,32 @@ const PROBE_SPORTS = {
   mlb: 'baseball_mlb',
   nfl: 'americanfootball_nfl',
   nflpre: 'americanfootball_nfl_preseason',
+  // Soccer, for coverage probes only — nothing is modelled or priced here yet.
+  epl: 'soccer_epl',
+  laliga: 'soccer_spain_la_liga',
 };
+// GET /api/sports-list — every sport the feed offers, and whether it is in
+// season. FREE: /v4/sports bills nothing, the same way /events does, so asking
+// "is this league even carried?" never costs credits. ?q= filters by substring
+// so a soccer question does not print 200 lines of everything else.
+async function sportsList(env, reqUrl) {
+  const key = env && env.ODDS_API_KEY;
+  if (!key) return cors(json({ error: 'ODDS_API_KEY not configured' }, 30));
+  const q = ((reqUrl && reqUrl.searchParams && reqUrl.searchParams.get('q')) || '').toLowerCase();
+  try {
+    const r = await fetch(`https://api.the-odds-api.com/v4/sports?apiKey=${key}&all=true`, { headers: { accept: 'application/json' } });
+    if (env) await recordOddsUsage(env, r, 'debug:sports-list');
+    if (!r.ok) return cors(json({ error: `HTTP ${r.status}`, body: (await r.text()).slice(0, 200) }, 30));
+    const all = await r.json();
+    const rows = (Array.isArray(all) ? all : [])
+      .filter((s) => !q || `${s.key} ${s.title} ${s.group}`.toLowerCase().includes(q))
+      .map((s) => ({ key: s.key, title: s.title, group: s.group, active: !!s.active, outrights: !!s.has_outrights }));
+    return cors(json({ note: 'free call — /v4/sports costs no credits', q: q || null, n: rows.length, sports: rows }, 600));
+  } catch (e) {
+    return cors(json({ error: String((e && e.message) || e) }, 30));
+  }
+}
+
 async function fairProbe(env, reqUrl) {
   const key = env && env.ODDS_API_KEY;
   if (!key) return cors(json({ error: 'ODDS_API_KEY not configured' }, 30));
