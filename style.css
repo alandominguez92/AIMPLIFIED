@@ -192,7 +192,11 @@
 /* hidden must always win — author display rules (flex/grid) otherwise defeat the
    UA [hidden]{display:none}, leaving toggled elements visible when hidden=true. */
 [hidden] { display:none !important; }
-html { scroll-behavior:smooth; scroll-padding-top:72px; } /* offset the sticky header on anchor jumps */
+/* The sticky stack, as two numbers rather than as magic ones scattered around.
+   .slate-summary was pinned at 57px against a header that measures 65 at every
+   width, so it sat 8px under the logo bar the whole time. */
+:root { --hdrH:65px; --sportsH:47px; }
+html { scroll-behavior:smooth; scroll-padding-top:calc(var(--hdrH) + var(--sportsH)); } /* clear the sticky stack on anchor jumps */
 
 /* Respect users who ask for less motion — neutralizes the live-dot pulse,
    the alert-bar pulse, hover transitions, and smooth scroll. */
@@ -266,7 +270,11 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .theme-toggle:hover { color:var(--text); border-color:var(--accent); }
 
 /* ---------- sport tabs ---------- */
-.sports { border-bottom:1px solid var(--border); overflow-x:auto; }
+/* Pinned under the header, so switching sports never means scrolling back up.
+   Below the header in z-order (10) and above the slate summary (8), so the three
+   slide over each other in the order they appear on the page. */
+.sports { border-bottom:1px solid var(--border); overflow-x:auto; position:sticky; top:var(--hdrH); z-index:9;
+  background:var(--headerBg); backdrop-filter:blur(8px); }
 .sports-inner { display:flex; gap:4px; width:max-content; min-width:100%; }
 .stab { display:flex; align-items:center; gap:8px; padding:12px 18px 11px; font-family:var(--sans); font-weight:700; font-size:13.5px; letter-spacing:.02em; text-transform:uppercase; color:var(--textDim); border-bottom:2px solid transparent; }
 .stab:hover { color:var(--text); }
@@ -1270,7 +1278,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* Sticky slate summary bar — tonight at a glance. Sticky on desktop only;
    on phones it scrolls away so it never eats screen height. */
-.slate-summary { position:sticky; top:57px; z-index:9; background:var(--headerBg); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
+.slate-summary { position:sticky; top:calc(var(--hdrH) + var(--sportsH)); z-index:8; background:var(--headerBg); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
 .slate-summary .ss-in { max-width:1320px; margin:0 auto; padding:9px 32px; display:flex; gap:24px; align-items:center; flex-wrap:wrap; font-family:var(--mono); font-size:12px; }
 .slate-summary .k { color:var(--textDim); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; }
 .slate-summary b { font-size:15px; font-weight:600; margin-left:6px; font-variant-numeric:tabular-nums; }
@@ -1429,6 +1437,34 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    the row. Inline beside the name it costs no height; " PT" is dropped because
    the width is the constraint here and every time on the board is Pacific. */
 .board-row .row-when { display:none }
+/* On a phone the pinned thing should be the sport switcher, not the wordmark.
+   The header scrolls away and the tabs take top:0, which leaves LESS fixed
+   chrome than before — about 40px against the header's 65 — while making the
+   thing you actually reach for always reachable.
+
+   The tabs also have to fit. At 375px the row measured 907px wide, so Soccer
+   sat 500px off-screen in a sideways-scrolling strip: pinning it would have
+   kept an unreachable tab permanently in view. The mini captions and the
+   not-yet-live NBA placeholder come off, which is what makes the three real
+   sports fit across the screen at once. Both are still there on a wider one. */
+@media (max-width:900px) {
+  header { position:static; }
+  :root { --hdrH:0px; --sportsH:44px; }
+  /* NBA is a disabled placeholder. It is the one tab worth dropping to keep the
+     three live ones on screen together, and dropping it alone is enough here. */
+  .stab.soon-tab { display:none; }
+}
+/* Narrower than a tablet the captions have to go too, or the row is 907px wide
+   in a 375px window and Soccer sits 500px off-screen — pinning that would have
+   kept a permanently unreachable tab in view. Spread rather than bunched, so
+   each one is its own thumb target. */
+@media (max-width:640px) {
+  :root { --sportsH:40px; }
+  .stab .mini { display:none; }
+  .stab { padding:11px 12px 10px; gap:6px; font-size:13px; }
+  .sports-inner { width:auto; justify-content:space-between; gap:0; }
+}
+
 @media (max-width:900px) {
   .board-row:not(.expanded) .row-when { display:inline; margin-left:6px; font-family:var(--mono); font-size:10.5px; color:var(--textDim); white-space:nowrap; font-weight:400 }
   /* The head line is a nowrap flex row, which is fine while the names are team
