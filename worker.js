@@ -212,7 +212,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/soccer-board';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -6824,12 +6824,17 @@ async function soccerBoardData(env, url) {
     // One matchday, the same rule the NFL board uses: soccer weeks are clusters,
     // and a Saturday reader is not choosing between today and next Wednesday.
     const first = out.games.find((g) => g.commence);
-    if (first) {
+    // ?all=1 keeps every upcoming fixture. The board itself never asks for it;
+    // it exists so "why is the board showing that one?" is answerable from the
+    // stored rows instead of another paid ingest.
+    const showAll = !!(url && url.searchParams && url.searchParams.get('all'));
+    if (first && !showAll) {
       out.slateDay = ptDateOf(Date.parse(first.commence));
       out.gamesAllUpcoming = out.games.length;
       out.games = out.games.filter((g) => g.commence && ptDateOf(Date.parse(g.commence)) === out.slateDay);
       out.slateNote = `one matchday only: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming fixtures)`;
     }
+    if (showAll) { out.gamesAllUpcoming = out.games.length; out.slateNote = 'all upcoming fixtures (?all=1)'; }
     out.empty = out.games.length === 0;
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
