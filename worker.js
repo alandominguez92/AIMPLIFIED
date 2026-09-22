@@ -212,7 +212,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/soccer-board';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/soccer-board';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -450,6 +450,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/edge-debug') return edgeDebug(env);
   if (p === '/api/batter-debug') return batterDebug(env);
   if (p === '/api/bpicks-export') return bpicksExport(env, url);
+  if (p === '/api/pppicks-export') return ppExport(env, url);
   if (p === '/api/mlpicks-export') return mlpicksExport(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
@@ -5664,6 +5665,25 @@ async function edgeDebug(env) {
 // Read-only, graded rows only, and filtered in SQL so an export of one market
 // and one model version does not ship the whole table. Columns are positional
 // to keep the payload small; `cols` names them.
+// GET /api/pppicks-export — the PrizePicks log, row by row. buildPpRecord only
+// reports bands; a question like "why are the strikeout unders losing" needs the
+// rows themselves (the number, the model's claim, what the pitcher actually did)
+// and this is cheaper than a deploy each time one comes up.
+async function ppExport(env, url) {
+  if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
+  try {
+    await ensurePpSchema(env.DB);
+    const market = (url.searchParams.get('market') || '').toLowerCase();
+    const cols = ['date', 'player', 'team', 'market', 'point', 'model_under', 'close_point', 'close_model_under', 'actual', 'result', 'game_id', 'player_id', 'model_ver'];
+    const rows = (await env.DB.prepare(
+      `SELECT ${cols.join(', ')} FROM pppicks${market ? ' WHERE market = ?' : ''} ORDER BY date, player`
+    ).bind(...(market ? [market] : [])).all()).results || [];
+    return cors(json({ market: market || 'all', n: rows.length, cols, rows: rows.map((r) => cols.map((c) => r[c])) }, 600));
+  } catch (e) {
+    return cors(json({ error: String((e && e.message) || e) }, 30));
+  }
+}
+
 async function bpicksExport(env, url) {
   if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
   const market = (url.searchParams.get('market') || '').toLowerCase();
