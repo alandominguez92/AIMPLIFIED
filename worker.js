@@ -239,6 +239,7 @@ export default {
     // Grading is free (ESPN only) and idempotent, so it can ride the cron rather
     // than waiting for someone to open the track record.
     ctx.waitUntil(gradeGamePicks(env).catch(() => null));
+    ctx.waitUntil(gradePassTds(env).catch(() => null));
   },
 };
 
@@ -2932,6 +2933,7 @@ async function trackRecord(env) {
     try { await gradeTotPicks(env); } catch (e) { /* additive — never break the record */ }
     try { await gradePpPicks(env); } catch (e) { /* additive */ }
     try { await gradeGamePicks(env); } catch (e) { /* additive */ }
+    try { await gradePassTds(env); } catch (e) { /* additive */ }
     const kres = await env.DB.prepare('SELECT * FROM picks').all();
     const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
     // Normalize both feeds to one row shape: pitcher picks are market 'K' with
@@ -2975,6 +2977,7 @@ async function trackRecord(env) {
       const gm = ((await env.DB.prepare('SELECT * FROM gmpicks').all()).results) || [];
       out.nflMl = buildGmRecord(gm, 'nfl');
       out.soccerMl = buildGmRecord(gm, 'soccer');
+      out.nflPassTds = buildPassTdRecord(gm);
     } catch (e) { /* additive */ }
     out.recent = buildRecent(unified, mlRows);
     return cors(json(out, 120));
@@ -3489,6 +3492,156 @@ async function gradeGamePicks(env) {
   return out;
 }
 
+// Passing touchdowns, logged only.
+//
+// Reuses gmpicks — a side, a fair number, a price and a result is the same
+// shape whether the side is a team or a player's under. sport 'nflptd' keeps it
+// out of the NFL moneyline record, which is about games.
+//
+// The side is always the under, because that is the question: is the sharp
+// pool's under-1.5 price cheaper than the 55.4% the market has actually run at.
+// Logging the model-preferred side instead would answer a question no one asked
+// and leave the baseline uncomparable.
+const PTD_SHARP = ['betonlineag', 'novig', 'prophetx', 'pinnacle', 'lowvig'];
+const PTD_EXEC = ['draftkings', 'fanduel', 'betmgm', 'betrivers', 'williamhill_us'];
+
+function passTdEntries(rows, week, seasonType) {
+  // rows: nfl_lines rows for market player_pass_tds, latest per (event, player, book)
+  const byPlayer = new Map();
+  for (const r of rows) {
+    if (r.market !== 'player_pass_tds') continue;
+    if (Number(r.point) !== NFL_PASS_TD_LINE) continue;      // only the standard line
+    const k = `${r.event_id}|${r.player}`;
+    if (!byPlayer.has(k)) byPlayer.set(k, { event_id: r.event_id, player: r.player, commence: r.commence, home: r.home, away: r.away, books: {} });
+    byPlayer.get(k).books[r.book] = { over: r.over, under: r.under };
+  }
+  const out = [];
+  for (const g of byPlayer.values()) {
+    // Fair from the sharp pool, two-way Shin on over/under, median across books.
+    const fairs = [];
+    for (const bk of PTD_SHARP) {
+      const q = g.books[bk];
+      if (!q || typeof q.over !== 'number' || typeof q.under !== 'number') continue;
+      const pOver = shinDevig(q.over, q.under);
+      if (pOver != null) fairs.push(1 - pOver);              // p(under)
+    }
+    if (fairs.length < 2) continue;                          // same two-book rule as everywhere
+    const fairUnder = median(fairs);
+    // Best executable under price.
+    let price = null, book = null;
+    for (const bk of PTD_EXEC) {
+      const q = g.books[bk];
+      if (!q || typeof q.under !== 'number') continue;
+      if (price == null || amProb(q.under) < amProb(price)) { price = q.under; book = bk; }
+    }
+    if (price == null) continue;
+    out.push({
+      game_id: `${g.event_id}|${g.player}`,
+      market: 'pass_tds', league: seasonType || 'REG', week,
+      commence: g.commence, side: 'under', point: NFL_PASS_TD_LINE,
+      pick: `${g.player} under ${NFL_PASS_TD_LINE}`,
+      home: g.home, away: g.away,
+      win_prob: Math.round(fairUnder * 1000) / 10,
+      implied: Math.round(amProb(price) * 1000) / 10,
+      // Edge against the realised baseline, not against the model — there is no
+      // model. Positive means the price is cheaper than the rate history ran at.
+      edge: Math.round((NFL_PASS_TD_BASE - amProb(price) * 100) * 10) / 10,
+      price, book, fair_src: 'sharp-pool', sharp_n: fairs.length,
+    });
+  }
+  return out;
+}
+
+// Grades from the box score the NFL projections already read, not from a
+// scoreboard: the result needed is one player's passing touchdowns.
+async function gradePassTds(env) {
+  const out = { graded: 0, pending: 0 };
+  if (!env || !env.DB) return out;
+  await ensureGamePickSchema(env.DB);
+  const today = slateDate();
+  const rows = (await env.DB.prepare(
+    "SELECT * FROM gmpicks WHERE sport='nflptd' AND result IS NULL AND date < ?"
+  ).bind(today).all()).results || [];
+  out.pending = rows.length;
+  if (!rows.length) return out;
+  const byWeek = new Map();
+  for (const r of rows) {
+    const k = `${r.date.slice(0, 4)}|${r.league}|${r.week}`;
+    if (!byWeek.has(k)) byWeek.set(k, []);
+    byWeek.get(k).push(r);
+  }
+  const stmts = [];
+  for (const [k, rs] of byWeek) {
+    const [yr, lg, wk] = k.split('|');
+    if (!wk || wk === 'null') continue;
+    let events = [];
+    try {
+      events = await espnScoreboard(`nfl/scoreboard?xhr=1&year=${yr}&seasontype=${String(lg).toUpperCase() === 'PRE' ? 1 : 2}&week=${wk}`);
+    } catch (e) { continue; }
+    // The scoreboard carries per-game leaders, which is enough for a QB's
+    // passing line in the games we priced.
+    const tds = new Map();
+    for (const ev of events) {
+      const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
+      if (!/FINAL/.test(String(st))) continue;
+      const c = (ev.competitions || [])[0];
+      for (const comp of (c && c.competitors) || []) {
+        for (const cat of (comp.leaders || [])) {
+          if (!/passing/i.test(cat.name || '')) continue;
+          for (const l of cat.leaders || []) {
+            const nm = l.athlete && (l.athlete.displayName || l.athlete.fullName);
+            // "277 YDS, 3 TD, 1 INT"
+            const m = /(\d+)\s*TD/i.exec(l.displayValue || '');
+            if (nm && m) tds.set(nflBaseName(nm), Number(m[1]));
+          }
+        }
+      }
+    }
+    for (const r of rs) {
+      const nm = String(r.pick || '').replace(/ under .*$/, '');
+      const got = tds.get(nflBaseName(nm));
+      if (got == null) continue;      // leaders only carry the top passer per side
+      const result = got === r.point ? 'push' : (got < r.point ? 'win' : 'loss');
+      stmts.push(env.DB.prepare(
+        "UPDATE gmpicks SET result=?, home_score=? WHERE sport='nflptd' AND date=? AND game_id=? AND market=?"
+      ).bind(result, got, r.date, r.game_id, r.market));
+      out.graded++;
+    }
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+  return out;
+}
+
+function buildPassTdRecord(rows) {
+  const mine = rows.filter((r) => r.sport === 'nflptd');
+  const graded = mine.filter((r) => r.result === 'win' || r.result === 'loss');
+  const w = graded.filter((r) => r.result === 'win').length;
+  let u = 0;
+  for (const r of graded) u += profitUnits(r.result, mlGradePrice(r));
+  // The whole point: what the sharp pool said, against what history ran at.
+  const fair = graded.filter((r) => r.win_prob != null).map((r) => r.win_prob);
+  const impl = graded.filter((r) => r.implied != null).map((r) => r.implied);
+  const avg = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length * 10) / 10 : null);
+  return {
+    note: `passing touchdowns, under ${NFL_PASS_TD_LINE}, LOGGED ONLY — nothing projected and nothing posted. `
+      + `Read against ${NFL_PASS_TD_BASE}%, the realised under-${NFL_PASS_TD_LINE} rate over 1,082 QB starts in 2024-25 `
+      + `(55.6% and 55.1% by season). If the sharp fair sits at or above that, the market has it priced and there is nothing here.`,
+    baseline: NFL_PASS_TD_BASE,
+    logged: mine.length, pending: mine.filter((r) => r.result == null).length,
+    pushed: mine.filter((r) => r.result === 'push').length,
+    n: graded.length, record: `${w}–${graded.length - w}`,
+    underRate: graded.length ? round1(w / graded.length * 100) : null,
+    units: Math.round(u * 10) / 10,
+    roi: graded.length ? round1(u / graded.length * 100) : null,
+    sharpFairMean: avg(fair),
+    bestPriceImpliedMean: avg(impl),
+    verdict: avg(fair) == null ? null
+      : (avg(fair) >= NFL_PASS_TD_BASE
+        ? 'sharp pool is at or above the realised rate — priced, no edge visible'
+        : 'sharp pool is below the realised rate — worth continuing to watch'),
+  };
+}
+
 function buildGmRecord(rows, sport) {
   const mine = rows.filter((r) => r.sport === sport);
   const graded = mine.filter((r) => r.result === 'win' || r.result === 'loss');
@@ -3968,7 +4121,26 @@ const NFL_GAME_MARKETS = 'h2h,spreads,totals';
 // Sunday capture wrote, and a third of that capture's 42 credits (billing is per
 // market per event). tests/nflmarkets.mjs keeps this list equal to the markets
 // the model projects, so a market the model cannot use cannot creep back in.
-const NFL_PROP_MARKETS = 'player_reception_yds,player_rush_yds';
+// player_pass_tds joins them for a different reason, and on a different footing:
+// nothing projects it and nothing is posted from it. It is bought to be MEASURED.
+//
+// Probed 2026-09-22: BetOnline, Novig and ProphetX quote it two-sided, so a
+// non-circular fair line exists, and DK, FanDuel, BetMGM and BetRivers quote it
+// for execution. (player_pass_longest_completion was probed at the same time and
+// failed — DraftKings and BetMGM only, no sharp book, so there is nothing to
+// de-vig against. It is not bought.)
+//
+// The question it answers: passing TDs are a coarse count, 0 through 5, so a
+// line sits at 1.5 and the book prices P(0 or 1) directly rather than setting a
+// number near a skewed mean. Over 2024-25, 1,082 QB starts of 15+ attempts
+// landed under 1.5 in 55.4% of them — 55.6% and 55.1% by season, which is
+// remarkably steady. A fair price of -124. If the sharp pool prices the under
+// at -124 or worse there is nothing here; if it prices it cheaper, the edge
+// needs no model, just that number. NFL_PASS_TD_BASE is what the log is read
+// against.
+const NFL_PROP_MARKETS = 'player_reception_yds,player_rush_yds,player_pass_tds';
+const NFL_PASS_TD_LINE = 1.5;
+const NFL_PASS_TD_BASE = 55.4;   // realised under-1.5 rate, 2024-25 regular season
 // Books are named explicitly rather than pulled by region. Three reasons, all
 // found by dry-running the live payload: regions=us,eu returned 23 books, 13 of
 // them European retail we will never price against; it billed 6 credits where a
@@ -8080,6 +8252,34 @@ async function nflIngest(env, url) {
       res.rowsWithoutWeek = nullWk ? nullWk.n : null;
     } catch (e) { res.errors.push('readback: ' + String((e && e.message) || e)); }
   }
+  // Passing touchdowns, logged off the rows this capture just wrote. Read back
+  // rather than logged inline: the capture writes append-on-change, so the
+  // current price for a player is whatever survived, not necessarily a row from
+  // this pass. Nothing is posted from these — see passTdEntries.
+  try {
+    const ptdRows = (await env.DB.prepare(
+      `SELECT event_id, commence, home, away, market, player, point, book, over, under, week, season_type
+         FROM nfl_lines WHERE market = 'player_pass_tds' AND commence > ?
+        ORDER BY captured_at ASC`
+    ).bind(new Date().toISOString()).all()).results || [];
+    const latest = new Map();
+    for (const r of ptdRows) latest.set(`${r.event_id}|${r.player}|${r.book}`, r);
+    const byWeek = new Map();
+    for (const r of latest.values()) {
+      const k = `${r.week}|${r.season_type}`;
+      if (!byWeek.has(k)) byWeek.set(k, []);
+      byWeek.get(k).push(r);
+    }
+    let wrote = 0;
+    for (const [k, rs] of byWeek) {
+      const [wk, st] = k.split('|');
+      const entries = passTdEntries(rs, wk === 'null' ? null : Number(wk), st);
+      if (!entries.length) continue;
+      const day = ptDateOf(Date.parse(entries[0].commence || Date.now()));
+      wrote += await logGamePicks(env.DB, 'nflptd', day, entries);
+    }
+    res.passTdsLogged = wrote;
+  } catch (e) { res.errors.push('pass-tds: ' + String((e && e.message) || e)); }
   return cors(json(res, 30));
 }
 
