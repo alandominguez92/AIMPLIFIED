@@ -4414,6 +4414,10 @@ async function logMlPicks(db, rows, date) {
     if (r.status !== 'Preview') continue;
     const ml = r.ml;
     if (!ml || ml.price == null || !ml.teamAbbr) continue;
+    // A price this far from the model's own number is a bad read off the feed,
+    // not an edge. Logging it poisons the record; posting it sends a bet at a
+    // number no book is holding.
+    if (!mlPriceSane(ml.price, ml.winProb)) continue;
     const isHome = ml.teamAbbr === ml.homeAbbr ? 1 : 0;
     const opp = isHome ? ml.awayAbbr : ml.homeAbbr;
     stmts.push(db.prepare(
@@ -4610,7 +4614,7 @@ function buildMlRecord(rows, includePass) {
     // Graded at ENTRY price — the number actually available when the pick
     // posted. Grading at close_price scores a bet nobody could have placed, and
     // shifts ROI by exactly the line movement CLV is separately measuring.
-    const u = profitUnits(r.result, r.entry_price ?? r.close_price);
+    const u = profitUnits(r.result, mlGradePrice(r));
     units += u;
     profits.push(u);
     const bt = byTier[String(r.tier)];
@@ -4700,6 +4704,35 @@ function gradePick(side, line, k) {
   if (k === line) return 'push';
   const over = k > line;
   return (side === 'Over' ? over : !over) ? 'win' : 'loss';
+}
+
+// A moneyline price the book could actually have been offering.
+//
+// One row in the log is AZ at +1500 on 2026-07-21, closing at -118, on a game
+// the model made a 55% favourite and scored as a 1-point edge. A price does not
+// travel from +1500 to -118, and a 55% side is not +1500; the edge and win
+// probability were computed against the real number, so only the stored price
+// was wrong. It won, and at +1500 it paid 15 units into a record whose entire
+// profit was 8.3 — every other pick together lost. One garbled field turned a
+// losing model into a winning one on the page.
+//
+// Two ways it fails the check. MLB moneylines do not reach +/-600 (the longest
+// real dog in 763 logged rows is +304), and a price cannot disagree with the
+// model's own probability by 25 points; the widest genuine gap here is ~20, and
+// ML_EDGE_CHECK already treats 2.5 as worth a second look.
+const ML_PRICE_MAX = 600;
+const ML_PRICE_GAP = 25;
+function mlPriceSane(price, winProb) {
+  if (price == null || !isFinite(price)) return false;
+  if (Math.abs(price) < 100 || Math.abs(price) > ML_PRICE_MAX) return false;
+  if (winProb == null) return true;
+  const imp = amProb(price);
+  return imp == null ? false : Math.abs(winProb - imp * 100) <= ML_PRICE_GAP;
+}
+// The price to grade at: entry when it is usable, else the close. The bad row
+// keeps its history and stops paying out.
+function mlGradePrice(r) {
+  return mlPriceSane(r.entry_price, r.win_prob) ? r.entry_price : r.close_price;
 }
 
 function profitUnits(result, price) {
