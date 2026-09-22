@@ -115,7 +115,7 @@
          so they are absent rather than half-built. -->
     <div class="ctx-banner nfl-banner">
       <span class="ctx-banner-tag">Context · not plays</span>
-      <span>The <b>1X2 and goals lines</b> priced against the sharp pool — Pinnacle, lowvig and BetOnline — with the best DraftKings or FanDuel price beside it. <b>No model and no player props</b>: shots and shots-on-target are quoted over-only by one book, so there is no under to fade and no independent fair line. Nothing here is posted or graded.</span>
+      <span>The <b>1X2 and goals lines</b> priced against the sharp pool — Pinnacle, lowvig and BetOnline — with the best DraftKings or FanDuel price beside it. <b>No model and no player props</b>: shots and shots-on-target are quoted over-only by one book, so there is no under to fade and no independent fair line. Nothing here is posted as a play — the lines are kept and settled quietly, so there is a record to read once these leagues have played a few weeks.</span>
     </div>
 
     <div class="sec-head">
@@ -123,12 +123,10 @@
       <span class="count" id="soccerCount"></span>
     </div>
 
-    <div class="nfl-markets" id="soccerLeagues">
-      <button class="nflm active" data-action="soccer-league" data-league="all"><span class="nflm-k">All</span><span class="nflm-t">three leagues</span></button>
-      <button class="nflm" data-action="soccer-league" data-league="epl"><span class="nflm-k">Premier League</span><span class="nflm-t">England</span></button>
-      <button class="nflm" data-action="soccer-league" data-league="laliga"><span class="nflm-k">La Liga</span><span class="nflm-t">Spain</span></button>
-      <button class="nflm" data-action="soccer-league" data-league="ucl"><span class="nflm-k">Champions League</span><span class="nflm-t">UEFA</span></button>
-    </div>
+    <!-- Filled from the board payload's leagueList. Hardcoded here, these chips
+         went stale the moment a league was added: the list said "three leagues"
+         while five were being priced. -->
+    <div class="nfl-markets" id="soccerLeagues"></div>
 
     <div id="soccerGrid"></div>
   </section>

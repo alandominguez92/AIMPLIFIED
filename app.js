@@ -4946,7 +4946,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // Soccer — game lines for three leagues, context only
+  // Soccer — game lines, context only; the leagues come from the payload
   // -------------------------------------------------------------------------
   async function refreshSoccer() {
     if (!LIVE_MODE) return;
@@ -4972,8 +4972,21 @@
     return isNaN(t) ? '' : t.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
   };
 
+  // The chips come from the payload, so adding a league to the worker is enough.
+  function renderSoccerLeagues() {
+    const box = document.getElementById('soccerLeagues');
+    if (!box) return;
+    const list = (state.soccer && state.soccer.leagueList) || [];
+    if (!list.length) { box.innerHTML = ''; return; }
+    const chip = (key, label, sub) => `<button class="nflm${state.soccerLeague === key ? ' active' : ''}" data-action="soccer-league" data-league="${esc(key)}">`
+      + `<span class="nflm-k">${esc(label)}</span><span class="nflm-t">${esc(sub)}</span></button>`;
+    box.innerHTML = chip('all', 'All', `${list.length} leagues`)
+      + list.map((l) => chip(l.key, l.label, l.country || '')).join('');
+  }
+
   function renderSoccer() {
     if (!el.soccerGrid) return;
+    renderSoccerLeagues();
     const d = state.soccer;
     if (!d) { el.soccerGrid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
     if (d.error) { el.soccerGrid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }

@@ -3373,7 +3373,7 @@ async function logGamePicks(db, sport, date, entries) {
 // ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
 // Cloudflare (see the nfl-grade probe). Free either way, like every other score
 // read in this file.
-const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions' };
+const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', seriea: 'ita.1', ligamx: 'mex.1' };
 async function espnScoreboard(path) {
   const r = await fetch(`https://cdn.espn.com/core/${path}`, { headers: { accept: 'application/json' } });
   if (!r.ok) return [];
@@ -6945,10 +6945,20 @@ const PROBE_SPORTS = {
 //
 // So this is the NFL board's shape: a sharp fair line, the best price you could
 // take against it, and the gap. No model, no projections, no plays.
+// Liga MX earns its place on fixtures, not on form: the three above all pause
+// for the same FIFA windows, and this one plays straight through them — Sep 25,
+// 26 and 27 while EPL, La Liga and the Champions League sit idle until Oct 9.
+// Probed 2026-09-22: Pinnacle, lowvig and betonlineag all quote its 1X2, and so
+// do DK and FanDuel, which is the same coverage the original three have.
+//
+// Serie A is on exactly the same break as the EPL and adds no fixtures before
+// Oct 10; it is here because it is a league worth having, not to fill the gap.
 const SOCCER_LEAGUES = {
-  epl: { key: 'soccer_epl', label: 'Premier League' },
-  laliga: { key: 'soccer_spain_la_liga', label: 'La Liga' },
-  ucl: { key: 'soccer_uefa_champs_league', label: 'Champions League' },
+  epl: { key: 'soccer_epl', label: 'Premier League', country: 'England' },
+  laliga: { key: 'soccer_spain_la_liga', label: 'La Liga', country: 'Spain' },
+  ucl: { key: 'soccer_uefa_champs_league', label: 'Champions League', country: 'UEFA' },
+  seriea: { key: 'soccer_italy_serie_a', label: 'Serie A', country: 'Italy' },
+  ligamx: { key: 'soccer_mexico_ligamx', label: 'Liga MX', country: 'Mexico' },
 };
 const SOCCER_SHARP = ['pinnacle', 'lowvig', 'betonlineag'];
 const SOCCER_EXEC = ['draftkings', 'fanduel'];
@@ -7116,7 +7126,13 @@ function devigThreeWay(prices) {
 }
 
 async function soccerBoardData(env, url) {
-  const out = { leagues: Object.keys(SOCCER_LEAGUES), games: [], empty: true, asOf: null };
+  // leagueList, not just the keys: the chips used to be hardcoded in the HTML and
+  // would have silently kept saying "three leagues" with two of them missing.
+  const out = {
+    leagues: Object.keys(SOCCER_LEAGUES),
+    leagueList: Object.entries(SOCCER_LEAGUES).map(([k, v]) => ({ key: k, label: v.label, country: v.country || '' })),
+    games: [], empty: true, asOf: null,
+  };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   const want = (url && url.searchParams && url.searchParams.get('league')) || null;
   try {

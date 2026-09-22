@@ -108,8 +108,8 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
 const ing = await hit('/api/soccer-ingest');
 console.log(`  ingest: ${ing.wrote} rows, ${ing.credits} credits, leagues ${ing.leagues.map((l) => l.league + ':' + l.events).join(' ')}\n`);
 ok(ing.wrote > 0 && lines.length === ing.wrote, `lines are stored (${lines.length})`);
-ok(calls.length === 3 && calls.every((c) => c.markets === 'h2h,totals'),
-  `one call per league, both markets (${calls.length} calls, markets ${[...new Set(calls.map((c) => c.markets))].join(',') || 'none'})`);
+ok(calls.length === ing.leagues.length && calls.length > 0 && calls.every((c) => c.markets === 'h2h,totals'),
+  `one call per league, both markets (${calls.length} calls for ${ing.leagues.length} leagues, markets ${[...new Set(calls.map((c) => c.markets))].join(',') || 'none'})`);
 ok(calls.length > 0 && calls.every((c) => (c.books || '').split(',').length <= 10), 'book list stays inside one region-equivalent');
 ok(!badPaths.length && calls.length > 0 && calls.every((c) => c.path === `/v4/sports/${c.sport}/odds` || c.path === `/v4/sports/${c.sport}/events`),
   `every call goes to a real Odds API path (${badPaths.length ? 'bad: ' + [...new Set(badPaths)].join(' ') : [...new Set(calls.map((c) => c.path))].join(' ')})`);
