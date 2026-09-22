@@ -2241,6 +2241,33 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    a reference, not a call — until it disagrees with the line we priced, which is
    the case worth catching before an entry is built. Survives the phone collapse:
    on a phone this is the only place the PrizePicks number appears. */
+/* The three 1X2 prices, on the row rather than behind a tap. Home, draw, away,
+   always in that order, so a glance reads the shape of the match. The side the
+   model leads with is the one picked out. */
+.soc-ml { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
+.soc-ml i { font-style:normal; font-family:var(--mono); font-size:10.5px; letter-spacing:.02em;
+  color:var(--textDim); border:1px solid var(--borderFaint); border-radius:5px; padding:2px 6px; white-space:nowrap; }
+.soc-ml i b { font-weight:600; color:var(--textFaint); margin-right:5px; }
+.soc-ml i.soc-ml-lead { color:var(--text); border-color:var(--accent); }
+.soc-ml i.soc-ml-lead b { color:var(--accent); }
+/* The sub-line is hidden on a collapsed phone row; these are the numbers the
+   row exists for, so they stay. */
+@media (max-width:900px) {
+  .board-row:not(.expanded) .soc-ml { display:flex; }
+  /* Three prices need 213px and the shared matchup column is 205, so they
+     wrapped to a second line and cost 60px on every row. A soccer row gives the
+     matchup cell the full width and moves the sharp-count chip down beside the
+     pick — nothing else on the page uses this template. */
+  /* The three prices have to fit the 199px matchup column. Re-laying out the
+     shared row grid to widen it is not worth the risk — the row places seven
+     named areas and a template that misses one silently invents columns for it.
+     Tighter chips fit, and on a narrower phone they wrap to two lines, which
+     costs height rather than correctness. */
+  .soc-ml { gap:4px; }
+  .soc-ml i { padding:2px 4px; font-size:10px; }
+  .soc-ml i b { margin-right:4px; }
+}
+
 .pp-tag { display:block; margin-top:2px; font-family:var(--mono); font-size:9.5px; font-style:normal; color:var(--textFaint); letter-spacing:.02em; white-space:nowrap }
 .pp-tag.diff { color:var(--warm); font-weight:600 }
 .ml-edge-tag { display:block; margin-top:2px; font-family:var(--mono); font-size:9.5px; font-style:normal; color:var(--textFaint); letter-spacing:.02em; white-space:nowrap }

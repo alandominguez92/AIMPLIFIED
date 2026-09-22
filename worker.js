@@ -7241,22 +7241,29 @@ async function soccerBoardData(env, url) {
     const showAll = !!(url && url.searchParams && url.searchParams.get('all'));
     if (first && !showAll) {
       out.gamesAllUpcoming = out.games.length;
-      const firstMs = Date.parse(first.commence);
-      // Nothing soon is a real state in this sport, and a long one: the first
-      // international break of 2026-27 runs from this past weekend to Oct 9.
-      // Books post those fixtures weeks early, so "the next matchday" would
-      // otherwise be a lone Friday-night fixture 18 days out, priced by one
-      // book, with no fair line behind it. The window here is the same 36h the
-      // ingest gate uses, so the board shows exactly what is being refreshed.
-      if (firstMs - Date.now() > SOCCER_HORIZON_MS) {
-        out.nextDay = ptDateOf(firstMs);
-        out.awayUntil = out.nextDay;
-        out.games = [];
-        out.slateNote = `no fixtures in the next ${Math.round(SOCCER_HORIZON_MS / 3600e3)}h — next matchday ${out.nextDay} (${out.gamesAllUpcoming} fixtures priced ahead)`;
+      // The next matchday that is actually PRICED, rather than the next one
+      // inside a fixed window.
+      //
+      // A 36h window was the first attempt and it was the wrong test. It went
+      // blank whenever the next fixtures sat 38 hours out — which is most of a
+      // Monday, and every midweek — while a hundred fully priced fixtures sat in
+      // the store. What made that lone Oct 9 fixture useless was not that it was
+      // 18 days away; it was that one book had quoted it and there was no fair
+      // line behind it. So test for the fair line.
+      const dayOf = (g) => ptDateOf(Date.parse(g.commence));
+      const priced = out.games.filter((g) => g.sharpN >= 2);
+      const target = priced.length ? dayOf(priced[0]) : null;
+      if (target) {
+        out.slateDay = target;
+        out.games = out.games.filter((g) => g.commence && dayOf(g) === target);
+        const withFair = out.games.filter((g) => g.sharpN >= 2).length;
+        out.slateNote = `next matchday: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming fixtures, ${withFair} with a sharp fair line)`;
       } else {
-        out.slateDay = ptDateOf(firstMs);
-        out.games = out.games.filter((g) => g.commence && ptDateOf(Date.parse(g.commence)) === out.slateDay);
-        out.slateNote = `one matchday only: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming fixtures)`;
+        // Fixtures exist but nothing carries two sharp books yet. Name the day
+        // rather than implying the season has stopped.
+        out.nextDay = ptDateOf(Date.parse(first.commence));
+        out.games = [];
+        out.slateNote = `no fixture priced yet — next matchday ${out.nextDay} (${out.gamesAllUpcoming} upcoming, none quoted by two sharp books)`;
       }
     }
     if (showAll) { out.gamesAllUpcoming = out.games.length; out.slateNote = 'all upcoming fixtures (?all=1)'; }

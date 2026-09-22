@@ -140,31 +140,50 @@ ok(g && g.total && g.total.point === 2.5 && g.total.overFair != null && Math.abs
   `the goals total is de-vigged two-way and sums to 100% (${g && g.total && (g.total.overFair + g.total.underFair).toFixed(1)}%)`);
 ok(board.games.length === 2 && board.gamesAllUpcoming === 3,
   `one matchday only: today's two fixtures, not next week's (${board.games.length} of ${board.gamesAllUpcoming})`);
-ok(/one matchday only/.test(board.slateNote || ''), `the payload says what it filtered (${board.slateNote})`);
+ok(/next matchday/.test(board.slateNote || ''), `the payload says what it filtered (${board.slateNote})`);
 ok((board.games || []).some((x) => x.league === 'epl') && (board.games || []).some((x) => x.league === 'laliga'),
   'leagues share one board and are labelled');
 
 
-// ---- a break week ---------------------------------------------------------------------
-// The first international break of 2026-27 runs ~18 days. Books price through
-// it, so the store fills with fixtures a fortnight out and the nearest one is a
-// lone Friday-night game with one book on it. That must not read as "today's
-// matchday" -- the board covers the window the ingest refreshes (36h) and says
-// so when nothing is in it.
-lines.splice(0);                                   // empty the store
+// ---- a fixture far out ----------------------------------------------------------------
+// The first rule here was a 36h window, and it was the wrong test. It blanked the
+// board whenever the next fixtures sat 38 hours away — most of a Monday, and
+// every midweek — while a hundred fully priced fixtures sat in the store. What
+// made a lone fixture useless was never its distance; it was having one book on
+// it and no fair line behind it.
+//
+// So: priced far out still shows. Unpriced does not, however close.
+lines.splice(0);
 calls = [];
 const FAR = new Date(Date.now() + 18 * 86400e3).toISOString();
 EVENTS.soccer_epl = [ev('far1', FAR, 'Arsenal', 'Leeds United')];
 EVENTS.soccer_spain_la_liga = [];
 await hit('/api/soccer-ingest');
-const brk = await hit('/api/soccer-board');
-console.log(`\n  break week: ${brk.games.length} shown, nextDay ${brk.nextDay}, note "${brk.slateNote}"`);
-ok(brk.games.length === 0 && brk.empty === true,
-  `a fixture 18 days out is not "the next matchday" (${brk.games.length} shown)`);
-ok(brk.nextDay === new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.parse(FAR))),
-  `the board names the day play resumes (${brk.nextDay})`);
-ok(brk.gamesAllUpcoming === 1 && /36h/.test(brk.slateNote || ''),
-  `and says how many are priced ahead, without pretending they are playable now (${brk.slateNote})`);
+const far = await hit('/api/soccer-board');
+console.log(`\n  far but priced: ${far.games.length} shown — "${far.slateNote}"`);
+ok(far.games.length === 1 && far.empty === false,
+  `a fixture 18 days out still shows when the sharp pool has priced it — a blank board with a hundred priced fixtures behind it helps nobody (${far.games.length} shown)`);
+ok(far.games[0] && far.games[0].sharpN >= 2 && far.games[0].lead && far.games[0].lead.fair != null,
+  `and it shows because it has a fair line, not because it is close (sharp ${far.games[0] && far.games[0].sharpN})`);
+
+// Now the same fixture with a single book on it: no fair line, nothing to show.
+lines.splice(0);
+const solo = JSON.parse(JSON.stringify(EVENTS.soccer_epl[0]));
+solo.bookmakers = solo.bookmakers.filter((b) => b.key === 'draftkings');
+EVENTS.soccer_epl = [solo];
+await hit('/api/soccer-ingest');
+const thin = await hit('/api/soccer-board');
+console.log(`  one book only:  ${thin.games.length} shown — "${thin.slateNote}"`);
+ok(thin.games.length === 0 && thin.empty === true,
+  `one book is not a fair line, so it is not a board (${thin.games.length} shown)`);
+ok(thin.nextDay === new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.parse(FAR))),
+  `the board names the day instead of implying the season stopped (${thin.nextDay})`);
+ok(/none quoted by two sharp books/.test(thin.slateNote || ''),
+  `and says why it is empty, which is not the same as "no fixtures" (${thin.slateNote})`);
+
+EVENTS.soccer_epl = [ev('far1', FAR, 'Arsenal', 'Leeds United')];
+lines.splice(0);
+await hit('/api/soccer-ingest');
 const allq = await hit('/api/soccer-board?all=1');
 ok(allq.games.length === 1, `?all=1 still shows them, for reading the store without a paid ingest (${allq.games.length})`);
 

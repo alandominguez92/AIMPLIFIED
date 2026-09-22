@@ -4167,7 +4167,13 @@
   // than trying to make them sport-agnostic: the hero argues the batter-unders
   // thesis and the track record is an MLB record, so showing either under an NFL
   // tab would be a claim we have not earned.
-  const MLB_ONLY = ['.hero', '#liveNow', '#slate', '#slipSection', '#record'];
+  // Everything on the page that is MLB and only MLB. #yesterdayCard and
+  // #mlbExtras were missing: yesterday's receipt, the hottest hitters, the
+  // handedness splits, the hottest pitchers and the methodology note all stayed
+  // on screen under the NFL and soccer boards, which read as those sports'
+  // content purely because of where it sat.
+  const MLB_ONLY = ['.hero', '#liveNow', '#slate', '#slipSection', '#record',
+    '#yesterdayCard', '#mlbExtras'];
 
   function setSport(s) {
     if (state.sport === s) return;
@@ -5013,7 +5019,32 @@
             d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
     }
-    el.soccerGrid.innerHTML = games.map(soccerRow).join('');
+    // view-moneyline carries --bcols, and the soccer row has the same seven
+    // cells as the NFL moneyline row. Without the wrapper .board-row has no
+    // column template at all and every cell collapses to content width — the
+    // rows had been stacking vertically on desktop since the tab shipped, 332px
+    // each instead of 97. The NFL board hit this exact thing and its wrapper
+    // carries the note; soccer was written without one.
+    const head = ['Fixture', '1X2 lead', 'Best price', 'Value', 'Fair', 'Books', '']
+      .map((h) => `<span>${h}</span>`).join('');
+    el.soccerGrid.innerHTML = `<div class="board view-moneyline"><div class="board-inner">`
+      + `<div class="board-head-row">${head}</div>`
+      + `<div>${games.map(soccerRow).join('')}</div>`
+      + `</div></div>`;
+  }
+
+  // "Brighton and Hove Albion" cannot sit three-to-a-row on a phone. Drop the
+  // connecting words and keep the first distinctive one; the full names are
+  // already on the head line directly above.
+  const CLUB_DROP = /^(afc|fc|cf|sc|ac|as|real|club|deportivo)$/i;
+  function shortClub(name) {
+    const parts = String(name || '').split(/\s+/).filter(Boolean);
+    if (!parts.length) return '';
+    const keep = parts.filter((w) => !CLUB_DROP.test(w) && !/^(and|of|de|the)$/i.test(w));
+    // Three letters, the way every book and scoreboard writes them. Written out
+    // the strip wrapped to two lines inside the matchup column — "Bournemouth
+    // +400" alone is most of the width — and cost 60px on every row.
+    return (keep[0] || parts[0]).slice(0, 3).toUpperCase();
   }
 
   function soccerRow(g) {
@@ -5022,6 +5053,18 @@
     const lead = g.lead && g.lead.value != null ? g.lead : null;
     const val = lead ? lead.value : null;
     const valColor = val == null ? 'var(--textFaint)' : (val > 0 ? 'var(--positive)' : 'var(--textDim)');
+    // The three moneyline prices on the row itself. The lead selection alone
+    // answered "which side does the model like" but not "what is this game" —
+    // and with the fixtures that are actually up right now, that is the number
+    // worth reading. Home / draw / away in that order, always, so the shape of
+    // a match is readable at a glance without expanding anything.
+    const ml = (g.oneXtwo || []).length === 3
+      ? `<span class="soc-ml">${(g.oneXtwo || []).map((p) => {
+          const isLead = lead && p.selection === lead.selection;
+          const who = p.selection === 'Draw' ? 'DRW' : (p.selection === g.home ? shortClub(g.home) : shortClub(g.away));
+          return `<i class="${isLead ? 'soc-ml-lead' : ''}"><b>${esc(who)}</b>${p.price == null ? '—' : AM(p.price)}</i>`;
+        }).join('')}</span>`
+      : '';
     const sub = [g.leagueLabel, g.total ? `O/U ${g.total.point}` : null].filter(Boolean).join(' · ');
     // Same bar as every other board: our fair is the fill, what the price implies
     // is the tick, and the gap between them is the value cell in picture form.
@@ -5042,6 +5085,7 @@
           <span class="mc-head"><b>${esc(g.away || '')}</b><span class="at-sep">@</span><b>${esc(g.home || '')}</b>${
             g.commence ? `<span class="row-when">${esc(soccerKick(g.commence))}</span>` : ''}</span>
           <span class="matchup-sub">${esc(sub)}</span>
+          ${ml}
         </div>
         <span>${pick}</span>
         ${odds}
