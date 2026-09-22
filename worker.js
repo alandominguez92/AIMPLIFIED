@@ -3373,7 +3373,7 @@ async function logGamePicks(db, sport, date, entries) {
 // ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
 // Cloudflare (see the nfl-grade probe). Free either way, like every other score
 // read in this file.
-const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', seriea: 'ita.1', ligamx: 'mex.1' };
+const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', seriea: 'ita.1', ligamx: 'mex.1', mls: 'usa.1' };
 async function espnScoreboard(path) {
   const r = await fetch(`https://cdn.espn.com/core/${path}`, { headers: { accept: 'application/json' } });
   if (!r.ok) return [];
@@ -6959,6 +6959,11 @@ const SOCCER_LEAGUES = {
   ucl: { key: 'soccer_uefa_champs_league', label: 'Champions League', country: 'UEFA' },
   seriea: { key: 'soccer_italy_serie_a', label: 'Serie A', country: 'Italy' },
   ligamx: { key: 'soccer_mexico_ligamx', label: 'Liga MX', country: 'Mexico' },
+  // MLS, for the same reason as Liga MX and with the same caveat: both run on a
+  // spring-to-autumn calendar and finish in November (MLS Nov 7, Liga MX Nov 22)
+  // while the European four go to May. They are a seven-week source that covers
+  // this FIFA window, not a permanent fifth and sixth league.
+  mls: { key: 'soccer_usa_mls', label: 'MLS', country: 'USA' },
 };
 const SOCCER_SHARP = ['pinnacle', 'lowvig', 'betonlineag'];
 const SOCCER_EXEC = ['draftkings', 'fanduel'];
