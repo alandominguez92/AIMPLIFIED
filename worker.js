@@ -147,7 +147,7 @@ const RL_MODEL_VER = 'rl-shin';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
@@ -212,7 +212,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/soccer-board';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/soccer-board';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -451,6 +451,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/batter-debug') return batterDebug(env);
   if (p === '/api/bpicks-export') return bpicksExport(env, url);
   if (p === '/api/pppicks-export') return ppExport(env, url);
+  if (p === '/api/gmpicks-export') return gmExport(env, url);
   if (p === '/api/mlpicks-export') return mlpicksExport(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
@@ -2925,6 +2926,7 @@ async function trackRecord(env) {
     await gradeRlPicks(env);
     try { await gradeTotPicks(env); } catch (e) { /* additive — never break the record */ }
     try { await gradePpPicks(env); } catch (e) { /* additive */ }
+    try { await gradeGamePicks(env); } catch (e) { /* additive */ }
     const kres = await env.DB.prepare('SELECT * FROM picks').all();
     const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
     // Normalize both feeds to one row shape: pitcher picks are market 'K' with
@@ -2963,6 +2965,11 @@ async function trackRecord(env) {
     try {
       await ensurePpSchema(env.DB);
       out.prizepicks = buildPpRecord(((await env.DB.prepare('SELECT * FROM pppicks').all()).results) || []);
+      // NFL and soccer game lines. MLB's moneyline stays in out.ml, on its own
+      // table, so its 763 rows keep running without a schema change under them.
+      const gm = ((await env.DB.prepare('SELECT * FROM gmpicks').all()).results) || [];
+      out.nflMl = buildGmRecord(gm, 'nfl');
+      out.soccerMl = buildGmRecord(gm, 'soccer');
     } catch (e) { /* additive */ }
     out.recent = buildRecent(unified, mlRows);
     return cors(json(out, 120));
@@ -3262,6 +3269,205 @@ function buildPpRecord(rows) {
       '70plus': band(70, 101),
     },
     byMarket,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Game moneylines across sports: NFL and soccer, kept the way the MLB moneyline
+// already is.
+//
+// MLB stays in its own table (mlpicks, 763 rows) so its history runs unbroken.
+// These two start empty and share one table, because they share one shape: a
+// side, the sharp pool's fair number for it, the best price standing against
+// that number, and what happened. Soccer adds the only real difference — the
+// draw is a side you can be on, so a three-way result grades like any other.
+//
+// Nothing here is posted or ranked. It is a record being accumulated so that in
+// a month there is something to read.
+const GM_MODEL_VER = 'gm-v1';
+
+async function ensureGamePickSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS gmpicks (
+    sport TEXT NOT NULL,
+    date TEXT NOT NULL,
+    game_id TEXT NOT NULL,
+    league TEXT,
+    commence TEXT,
+    side TEXT,
+    pick TEXT,
+    home TEXT,
+    away TEXT,
+    win_prob REAL,
+    implied REAL,
+    edge REAL,
+    entry_price INTEGER,
+    close_price INTEGER,
+    book TEXT,
+    fair_src TEXT,
+    sharp_n INTEGER,
+    result TEXT,
+    home_score INTEGER,
+    away_score INTEGER,
+    model_ver TEXT,
+    PRIMARY KEY (sport, date, game_id)
+  )`).run();
+  // The grader reads only ungraded rows from days already played; a partial
+  // index keeps that read off the rest of the table.
+  await db.prepare('CREATE INDEX IF NOT EXISTS gmpicks_ungraded ON gmpicks (sport, date) WHERE result IS NULL').run();
+}
+
+// entries: { game_id, league, commence, side, pick, home, away, win_prob,
+//            implied, edge, price, book, fair_src, sharp_n }
+async function logGamePicks(db, sport, date, entries) {
+  if (!db || !date || !entries || !entries.length) return 0;
+  await ensureGamePickSchema(db);
+  const stmts = [];
+  for (const e of entries) {
+    if (!e || !e.game_id || e.price == null || e.win_prob == null) continue;
+    // The same rule the moneyline learned: a price disagreeing with the fair
+    // number by more than ML_PRICE_GAP is a bad read off the feed, not an edge.
+    if (!mlPriceSane(e.price, e.win_prob)) continue;
+    stmts.push(db.prepare(
+      `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,league,commence,side,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(sport, date, String(e.game_id), e.league || null, e.commence || null, e.side || null, e.pick || null,
+      e.home || null, e.away || null, e.win_prob, e.implied == null ? null : e.implied, e.edge == null ? null : e.edge,
+      e.price, e.price, e.book || null, e.fair_src || null, e.sharp_n == null ? null : e.sharp_n, GM_MODEL_VER));
+    // Close refreshes only while the same side is still the board's lead, so a
+    // flip later in the week cannot overwrite the entry side's closing number.
+    stmts.push(db.prepare(
+      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=? WHERE sport=? AND date=? AND game_id=? AND side=?'
+    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied,
+      sport, date, String(e.game_id), e.side || null));
+  }
+  if (!stmts.length) return 0;
+  await db.batch(stmts);
+  return stmts.length / 2;
+}
+
+// ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
+// Cloudflare (see the nfl-grade probe). Free either way, like every other score
+// read in this file.
+const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions' };
+async function espnScoreboard(path) {
+  const r = await fetch(`https://cdn.espn.com/core/${path}`, { headers: { accept: 'application/json' } });
+  if (!r.ok) return [];
+  const j = await r.json();
+  return (j && j.content && j.content.sbData && j.content.sbData.events) || [];
+}
+// Club names differ between the odds feed and ESPN ("Bournemouth" against "AFC
+// Bournemouth", "Malaga" against "Málaga"). Strip the accents and the club-form
+// words and match on what is left.
+const CLUB_NOISE = /\b(afc|fc|cf|sc|ud|cd|rcd|ac|as|ss|sv|bv|club|de|the)\b/g;
+function clubKey(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(CLUB_NOISE, ' ').replace(/[^a-z0-9]+/g, '');
+}
+function clubMatch(a, b) {
+  const x = clubKey(a), y = clubKey(b);
+  if (!x || !y) return false;
+  return x === y || x.includes(y) || y.includes(x);
+}
+
+// Grade every ungraded row from a day that has finished. ESPN only, no credits.
+async function gradeGamePicks(env) {
+  const out = { graded: 0, pending: 0, unmatched: [] };
+  if (!env || !env.DB) return out;
+  await ensureGamePickSchema(env.DB);
+  const today = slateDate();
+  const rows = (await env.DB.prepare(
+    'SELECT * FROM gmpicks WHERE result IS NULL AND date < ?'
+  ).bind(today).all()).results || [];
+  out.pending = rows.length;
+  if (!rows.length) return out;
+
+  // One scoreboard fetch per (sport, league, date), never per row.
+  const need = new Map();
+  for (const r of rows) {
+    const k = `${r.sport}|${r.league || ''}|${r.date}`;
+    if (!need.has(k)) need.set(k, { sport: r.sport, league: r.league, date: r.date, rows: [] });
+    need.get(k).rows.push(r);
+  }
+  const stmts = [];
+  for (const job of need.values()) {
+    const board = (ymd) => (job.sport === 'nfl'
+      ? espnScoreboard(`nfl/scoreboard?xhr=1&dates=${ymd}`)
+      : espnScoreboard(`soccer/scoreboard?xhr=1&league=${ESPN_SOCCER_SLUG[job.league] || 'eng.1'}&dates=${ymd}`));
+    let events = [];
+    try { events = await board(String(job.date).replace(/-/g, '')); } catch (e) { continue; }
+    // Our dates are Pacific and ESPN's are UTC, so a late kickoff lands on the
+    // next one. Ask for that day too rather than leaving a row ungraded forever.
+    try {
+      const nxt = new Date(Date.parse(job.date + 'T12:00:00Z') + 86400e3).toISOString().slice(0, 10).replace(/-/g, '');
+      events = events.concat(await board(nxt));
+    } catch (e) { /* the first day covers most of them */ }
+
+    const finals = [];
+    for (const ev of events) {
+      const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
+      if (!/FINAL|FULL_TIME/.test(String(st))) continue;
+      const c = (ev.competitions || [])[0];
+      if (!c) continue;
+      const h = (c.competitors || []).find((t) => t.homeAway === 'home');
+      const a = (c.competitors || []).find((t) => t.homeAway === 'away');
+      if (!h || !a) continue;
+      finals.push({
+        home: (h.team && (h.team.displayName || h.team.name)) || '',
+        away: (a.team && (a.team.displayName || a.team.name)) || '',
+        homeAb: (h.team && h.team.abbreviation) || '',
+        awayAb: (a.team && a.team.abbreviation) || '',
+        hs: Number(h.score), as: Number(a.score),
+      });
+    }
+    for (const r of job.rows) {
+      const f = finals.find((x) => (r.sport === 'nfl'
+        ? (clubMatch(x.homeAb, r.home) || clubMatch(x.home, r.home)) && (clubMatch(x.awayAb, r.away) || clubMatch(x.away, r.away))
+        : clubMatch(x.home, r.home) && clubMatch(x.away, r.away)));
+      if (!f || !isFinite(f.hs) || !isFinite(f.as)) { out.unmatched.push(`${r.sport} ${r.date} ${r.away}@${r.home}`); continue; }
+      const winner = f.hs > f.as ? 'home' : (f.as > f.hs ? 'away' : 'draw');
+      // An NFL tie is a push — no draw price is offered, so there was no such
+      // side to be on. Soccer prices the draw, so there it grades like any other.
+      const result = r.sport === 'nfl'
+        ? (winner === 'draw' ? 'push' : (winner === r.side ? 'win' : 'loss'))
+        : (winner === r.side ? 'win' : 'loss');
+      stmts.push(env.DB.prepare(
+        'UPDATE gmpicks SET result=?, home_score=?, away_score=? WHERE sport=? AND date=? AND game_id=?'
+      ).bind(result, f.hs, f.as, r.sport, r.date, r.game_id));
+      out.graded++;
+    }
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+  return out;
+}
+
+function buildGmRecord(rows, sport) {
+  const mine = rows.filter((r) => r.sport === sport);
+  const graded = mine.filter((r) => r.result === 'win' || r.result === 'loss');
+  const sum = (arr) => {
+    let w = 0, u = 0;
+    for (const r of arr) { if (r.result === 'win') w++; u += profitUnits(r.result, mlGradePrice(r)); }
+    return { n: arr.length, record: `${w}–${arr.length - w}`, winRate: arr.length ? round1(w / arr.length * 100) : null,
+      units: Math.round(u * 10) / 10, roi: arr.length ? round1(u / arr.length * 100) : null };
+  };
+  const bySide = {};
+  for (const sd of [...new Set(graded.map((r) => r.side))]) bySide[sd] = sum(graded.filter((r) => r.side === sd));
+  const byLeague = {};
+  if (sport === 'soccer') for (const lg of [...new Set(graded.map((r) => r.league))]) byLeague[lg] = sum(graded.filter((r) => r.league === lg));
+  let beat = 0, clvN = 0;
+  for (const r of graded) {
+    const ie = amProb(r.entry_price), ic = amProb(r.close_price);
+    if (ie == null || ic == null || r.entry_price === r.close_price) continue;
+    clvN++; if (ic > ie) beat++;
+  }
+  return {
+    note: `${sport} game lines, LOGGED ONLY — not posted and not ranked. The sharp pool's fair number against the best executable price, graded from free ESPN finals.`,
+    logged: mine.length,
+    pending: mine.filter((r) => r.result == null).length,
+    pushed: mine.filter((r) => r.result === 'push').length,
+    ...sum(graded),
+    bySide,
+    ...(sport === 'soccer' ? { byLeague } : {}),
+    clvBeatRate: clvN ? round1(beat / clvN * 100) : null, clvN,
   };
 }
 
@@ -5726,6 +5932,31 @@ async function ppExport(env, url) {
   }
 }
 
+// GET /api/gmpicks-export — the NFL and soccer game-line log, row by row.
+// ?sport=nfl|soccer, ?league=epl|laliga|ucl|REG|PRE. The record reports totals;
+// the questions worth asking of it ("are the draws the losing side", "is one
+// league carrying the whole thing") need the rows.
+async function gmExport(env, url) {
+  if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
+  try {
+    await ensureGamePickSchema(env.DB);
+    const sport = (url.searchParams.get('sport') || '').trim();
+    const league = (url.searchParams.get('league') || '').trim();
+    const where = [], args = [];
+    if (sport) { where.push('sport = ? COLLATE NOCASE'); args.push(sport); }
+    if (league) { where.push('league = ? COLLATE NOCASE'); args.push(league); }
+    const cols = ['sport', 'date', 'league', 'commence', 'away', 'home', 'side', 'pick', 'win_prob', 'implied', 'edge',
+      'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'result', 'away_score', 'home_score', 'game_id', 'model_ver'];
+    const rows = (await env.DB.prepare(
+      `SELECT ${cols.join(', ')} FROM gmpicks${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY date, commence`
+    ).bind(...args).all()).results || [];
+    return cors(json({ sport: sport || 'all', league: league || 'all', n: rows.length, cols,
+      rows: rows.map((r) => cols.map((c) => r[c])) }, 600));
+  } catch (e) {
+    return cors(json({ error: String((e && e.message) || e) }, 30));
+  }
+}
+
 async function bpicksExport(env, url) {
   if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
   const market = (url.searchParams.get('market') || '').toLowerCase();
@@ -6911,6 +7142,22 @@ async function soccerBoardData(env, url) {
       }
     }
     if (showAll) { out.gamesAllUpcoming = out.games.length; out.slateNote = 'all upcoming fixtures (?all=1)'; }
+    // Keep the record: the side the board leads with, on fixtures that have a
+    // fair line and have not kicked off. The tab still says context and still
+    // posts nothing — this is written down, not shown.
+    try {
+      const pre = out.games.filter((g) => g.lead && g.lead.price != null && g.lead.fair != null
+        && g.sharpN >= 2 && Date.parse(g.commence || 0) > Date.now());
+      if (pre.length && !showAll) {
+        await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), pre.map((g) => ({
+          game_id: g.id, league: g.league, commence: g.commence,
+          side: g.lead.selection === 'Draw' ? 'draw' : (g.lead.selection === g.home ? 'home' : 'away'),
+          pick: g.lead.selection, home: g.home, away: g.away,
+          win_prob: g.lead.fair, implied: g.lead.implied, edge: g.lead.value,
+          price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN,
+        })));
+      }
+    } catch (e) { /* logging never breaks the board */ }
     out.empty = out.games.length === 0;
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
@@ -8278,6 +8525,21 @@ async function nflBoardData(env, url) {
     }
     out.empty = out.games.length === 0;
     out.postable = 0;   // no player props on the wire -> nothing is postable yet
+    // Keep the record. Only games that have not kicked off, only ones with a
+    // real fair line behind them, and only the side the board is leading with.
+    try {
+      const pre = out.games.filter((g) => g.pickTeam && g.pickPrice != null && g.pickFair != null
+        && g.sharpN >= 2 && Date.parse(g.commence || 0) > Date.now());
+      if (pre.length) {
+        await logGamePicks(env.DB, 'nfl', out.slateDay || ptDateOf(Date.now()), pre.map((g) => ({
+          game_id: g.id, league: out.seasonType, commence: g.commence,
+          side: g.pickTeam === g.home ? 'home' : 'away', pick: g.pickTeam,
+          home: g.home, away: g.away,
+          win_prob: g.pickFair, implied: g.pickImplied, edge: g.pickValue,
+          price: g.pickPrice, book: g.pickBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
+        })));
+      }
+    } catch (e) { /* logging never breaks the board */ }
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }
