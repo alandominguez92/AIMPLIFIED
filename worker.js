@@ -6634,7 +6634,7 @@ async function soccerIngest(env, url) {
     const sp = SOCCER_LEAGUES[lg];
     const res = { league: lg, events: 0, wrote: 0, unchanged: 0 };
     try {
-      const r = await fetch(`${ODDS}/sports/${sp.key}/odds?apiKey=${key}&bookmakers=${SOCCER_BOOKS.join(',')}&markets=${SOCCER_MARKETS}&oddsFormat=american&dateFormat=iso`,
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${sp.key}/odds?apiKey=${key}&bookmakers=${SOCCER_BOOKS.join(',')}&markets=${SOCCER_MARKETS}&oddsFormat=american&dateFormat=iso`,
         { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, `soccer:${lg}`);
       const used = Number(r.headers.get('x-requests-last') || 0);
@@ -6696,7 +6696,7 @@ async function soccerMaybeIngest(env, ctx) {
       if (state.n >= SOCCER_MAX_PER_DAY) continue;
       if (state.last && Date.now() - state.last < SOCCER_MIN_GAP_MS) continue;
       // Is anything coming? The events list is free.
-      const evR = await fetch(`${ODDS}/sports/${SOCCER_LEAGUES[lg].key}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`, { headers: { accept: 'application/json' } });
+      const evR = await fetch(`https://api.the-odds-api.com/v4/sports/${SOCCER_LEAGUES[lg].key}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`, { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, evR, `soccer:${lg}:events`);
       if (!evR.ok) continue;
       const evs = await evR.json();

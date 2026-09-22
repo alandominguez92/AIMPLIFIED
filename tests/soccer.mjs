@@ -44,17 +44,26 @@ const EVENTS = {
 };
 
 let calls = [];
+const badPaths = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (u, o) => {
   const url = String(u);
   const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json', 'x-requests-last': '2' } });
   if (url.includes('api.the-odds-api.com')) {
-    const m = url.match(/\/sports\/([a-z_]+)\/(odds|events)/);
+    // Match the path EXACTLY, the way the API does. A loose /sports/<key>/odds
+    // regex also matches .../sports/baseball_mlb/sports/soccer_epl/odds, which
+    // is what shipped: the soccer calls were built off the MLB base constant,
+    // every request 404'd, and because a 404 carries no quota header the usage
+    // ledger recorded nothing either. The stub answered it happily. Anything
+    // that is not a real path now 404s here too.
+    const u = new URL(url);
+    const m = u.pathname.match(/^\/v4\/sports\/([a-z_]+)\/(odds|events)$/);
     if (m) {
-      calls.push({ sport: m[1], kind: m[2], markets: (url.match(/markets=([^&]*)/) || [])[1], books: (url.match(/bookmakers=([^&]*)/) || [])[1] });
+      calls.push({ sport: m[1], kind: m[2], path: u.pathname, markets: u.searchParams.get('markets'), books: u.searchParams.get('bookmakers') });
       return J(EVENTS[m[1]] || []);
     }
-    return J([]);
+    badPaths.push(u.pathname);
+    return new Response('{"message":"Not found"}', { status: 404, headers: { 'content-type': 'application/json' } });
   }
   return realFetch(u, o);
 };
@@ -99,9 +108,12 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
 const ing = await hit('/api/soccer-ingest');
 console.log(`  ingest: ${ing.wrote} rows, ${ing.credits} credits, leagues ${ing.leagues.map((l) => l.league + ':' + l.events).join(' ')}\n`);
 ok(ing.wrote > 0 && lines.length === ing.wrote, `lines are stored (${lines.length})`);
-ok(calls.every((c) => c.markets === 'h2h,totals'), `one call per league, both markets (${[...new Set(calls.map((c) => c.markets))].join(',')})`);
-ok(calls.every((c) => (c.books || '').split(',').length <= 10), 'book list stays inside one region-equivalent');
-ok(!lines.some((r) => r.event_id === 'epl2' && false), 'next week\'s fixture is stored too (the board filters, not the ingest)');
+ok(calls.length === 3 && calls.every((c) => c.markets === 'h2h,totals'),
+  `one call per league, both markets (${calls.length} calls, markets ${[...new Set(calls.map((c) => c.markets))].join(',') || 'none'})`);
+ok(calls.length > 0 && calls.every((c) => (c.books || '').split(',').length <= 10), 'book list stays inside one region-equivalent');
+ok(!badPaths.length && calls.length > 0 && calls.every((c) => c.path === `/v4/sports/${c.sport}/odds` || c.path === `/v4/sports/${c.sport}/events`),
+  `every call goes to a real Odds API path (${badPaths.length ? 'bad: ' + [...new Set(badPaths)].join(' ') : [...new Set(calls.map((c) => c.path))].join(' ')})`);
+ok(lines.some((r) => r.event_id === 'epl2'), "next week's fixture is stored too (the board filters, not the ingest)");
 
 // Re-ingest with nothing moved: append-on-change means no new rows.
 const before = lines.length;
