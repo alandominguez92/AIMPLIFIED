@@ -234,6 +234,11 @@ export default {
     // Soccer game lines, gated to twice a matchday per league — see
     // soccerMaybeIngest. Most ticks do nothing but read a counter.
     ctx.waitUntil(soccerMaybeIngest(env, ctx).catch(() => null));
+    // Same shape for the NFL game lines: most ticks read a counter and stop.
+    ctx.waitUntil(nflMaybeIngest(env, ctx).catch(() => null));
+    // Grading is free (ESPN only) and idempotent, so it can ride the cron rather
+    // than waiting for someone to open the track record.
+    ctx.waitUntil(gradeGamePicks(env).catch(() => null));
   },
 };
 
@@ -6977,6 +6982,43 @@ async function soccerIngest(env, url) {
 // Cron gate: at most SOCCER_MAX_PER_DAY captures per league per day, spaced, and
 // only when that league actually has a fixture inside the horizon. The counter
 // lives in feed_cache rather than its own table — it is one small row a day.
+// Cron gate for NFL game lines, the same shape as the soccer one below: at most
+// NFL_MAX_PER_DAY captures a day, spaced, and only when a game is close enough
+// to matter. Until now the NFL lines came in only when a one-off scheduled task
+// fired, which meant a week nobody set one up left no record at all.
+//
+// 3 markets x 1 region-equivalent = 3 credits a call, so a slate day costs 6 and
+// a full NFL week about 18 — against a quota in the tens of thousands.
+const NFL_MAX_PER_DAY = 2;
+const NFL_MIN_GAP_MS = 5 * 3600 * 1000;
+const NFL_HORIZON_MS = 36 * 3600 * 1000;
+async function nflMaybeIngest(env, ctx) {
+  if (!env || !env.DB || !env.ODDS_API_KEY) return null;
+  try {
+    const today = slateDate();
+    const cacheKey = `nfl_cap:${today}`;
+    const hit = await loadFeedCache(env.DB, cacheKey);
+    const state = (hit.present && hit.data) || { n: 0, last: 0 };
+    if (state.n >= NFL_MAX_PER_DAY) return null;
+    if (state.last && Date.now() - state.last < NFL_MIN_GAP_MS) return null;
+    // Is anything coming? The events list is free, so this question costs nothing
+    // on the many days the answer is no.
+    const evR = await fetch(`https://api.the-odds-api.com/v4/sports/americanfootball_nfl/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`,
+      { headers: { accept: 'application/json' } });
+    await recordOddsUsage(env, evR, 'nfl:cron-events');
+    if (!evR.ok) return null;
+    const evs = await evR.json();
+    const soon = (Array.isArray(evs) ? evs : []).some((e) => {
+      const t = Date.parse(e.commence_time);
+      return isFinite(t) && t > Date.now() && t - Date.now() <= NFL_HORIZON_MS;
+    });
+    if (!soon) return null;
+    const res = await nflIngest(env, new URL('https://x/api/nfl-ingest'));
+    await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
+    return { ran: true, n: state.n + 1, res: res && res.status };
+  } catch (e) { return null; }   // next tick
+}
+
 async function soccerMaybeIngest(env, ctx) {
   if (!env || !env.DB || !env.ODDS_API_KEY) return null;
   const today = slateDate();

@@ -236,5 +236,49 @@ ok(tr.soccerMl && tr.soccerMl.byLeague && Object.keys(tr.soccerMl.byLeague).leng
   `soccer is split by league (${Object.keys((tr.soccerMl || {}).byLeague || {}).join(',')})`);
 ok(tr.ml && tr.ml.record, 'and the MLB moneyline record is untouched on its own table');
 
+
+// ---- the cron keeps it filling -----------------------------------------------------------
+// The NFL lines used to arrive only when a one-off scheduled task fired, so a
+// week nobody set one up left no record at all. The gate now sits on the cron
+// next to the soccer one: a free events read first, a paid capture only when a
+// game is inside 36h, at most twice a day.
+let ingested = 0, eventCalls = 0;
+const runCron = async () => {
+  const held = [];
+  await mod.default.scheduled({}, env, { waitUntil: (pr) => held.push(pr) });
+  await Promise.allSettled(held);
+};
+const oddsFetch = globalThis.fetch;
+globalThis.fetch = async (u, o) => {
+  const url = String(u);
+  if (url.includes('americanfootball_nfl/events')) {
+    eventCalls++;
+    return new Response(JSON.stringify(nflEvents), { status: 200, headers: { 'content-type': 'application/json', 'x-requests-remaining': '100', 'x-requests-last': '0' } });
+  }
+  if (url.includes('americanfootball_nfl/odds')) {
+    ingested++;
+    return new Response(JSON.stringify([]), { status: 200, headers: { 'content-type': 'application/json', 'x-requests-remaining': '100', 'x-requests-last': '3' } });
+  }
+  return oddsFetch(u, o);
+};
+
+// Nothing within 36h: the free events call happens, the paid one must not.
+let nflEvents = [{ id: 'far', commence_time: iso(NOW + 10 * 86400e3) }];
+await runCron();
+ok(eventCalls > 0 && ingested === 0,
+  `nothing inside 36h: the free events read runs, the paid capture does not (${eventCalls} free, ${ingested} paid)`);
+
+// A game tomorrow: it captures, once.
+nflEvents = [{ id: 'near', commence_time: iso(NOW + 20 * HOUR) }];
+cache.delete(`nfl_cap:${ptDay(NOW)}`);
+await runCron();
+const afterFirst = ingested;
+ok(afterFirst === 1, `a game inside 36h is captured (${afterFirst})`);
+
+// The very next tick must not buy it again — that is the whole point of the gate.
+await runCron();
+ok(ingested === afterFirst, `the next tick five minutes later buys nothing (${ingested} total)`);
+globalThis.fetch = oddsFetch;
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
