@@ -185,7 +185,14 @@ const soccerLines = (() => {
   if (!SOCCERDEMO) return [];
   const now = Date.now();
   const at = (h) => new Date(now + h * 3600e3).toISOString();
-  const fixtures = [
+  // SOCCERBREAK=1 pushes every fixture past the 36h window, which is what an
+  // international break looks like -- the state the live board was in the day it
+  // shipped, and the one the "next matchday is <date>" empty text is written for.
+  const brk = process.env.SOCCERBREAK === '1';
+  const fixtures = brk ? [
+    { league: 'laliga', id: 'sx9', commence: at(18 * 24), home: 'Malaga', away: 'Espanyol' },
+    { league: 'epl', id: 'sx8', commence: at(19 * 24), home: 'Arsenal', away: 'Leeds United' },
+  ] : [
     { league: 'epl', id: 'sx1', commence: at(6), home: 'Liverpool', away: 'Bournemouth' },
     { league: 'laliga', id: 'sx2', commence: at(9), home: 'Real Madrid', away: 'Getafe' },
     { league: 'ucl', id: 'sx3', commence: at(120), home: 'Bayern Munich', away: 'Inter' },
