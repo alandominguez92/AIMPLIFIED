@@ -6925,6 +6925,13 @@ const PROBE_SPORTS = {
   epl: 'soccer_epl',
   laliga: 'soccer_spain_la_liga',
   ucl: 'soccer_uefa_champs_league',
+  // Candidates, probe-only: none of these are ingested. The three above all
+  // pause for the FIFA windows together, so "which leagues are playing when
+  // ours are not" is a question worth being able to ask without a deploy.
+  seriea: 'soccer_italy_serie_a',
+  ligamx: 'soccer_mexico_ligamx',
+  mls: 'soccer_usa_mls',
+  bundesliga: 'soccer_germany_bundesliga',
 };
 // ---------------------------------------------------------------------------
 // Soccer — game lines only, for three leagues, as CONTEXT.
