@@ -5673,10 +5673,13 @@ async function ppExport(env, url) {
   if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
   try {
     await ensurePpSchema(env.DB);
-    const market = (url.searchParams.get('market') || '').toLowerCase();
+    // Batter markets are stored lowercase and strikeouts as 'K', so match
+    // without case: ?market=K and ?market=k both have to find the 41 K rows
+    // rather than silently returning none, which reads as "nothing logged".
+    const market = (url.searchParams.get('market') || '').trim();
     const cols = ['date', 'player', 'team', 'market', 'point', 'model_under', 'close_point', 'close_model_under', 'actual', 'result', 'game_id', 'player_id', 'model_ver'];
     const rows = (await env.DB.prepare(
-      `SELECT ${cols.join(', ')} FROM pppicks${market ? ' WHERE market = ?' : ''} ORDER BY date, player`
+      `SELECT ${cols.join(', ')} FROM pppicks${market ? ' WHERE market = ? COLLATE NOCASE' : ''} ORDER BY date, player`
     ).bind(...(market ? [market] : [])).all()).results || [];
     return cors(json({ market: market || 'all', n: rows.length, cols, rows: rows.map((r) => cols.map((c) => r[c])) }, 600));
   } catch (e) {

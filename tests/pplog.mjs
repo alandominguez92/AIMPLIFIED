@@ -104,6 +104,12 @@ const db = {
         return { results: out };
       }
       if (/WHERE game_id=\?/i.test(sql)) rs = rs.filter((r) => r.game_id === st.args[0]);
+      // The export filters by market, and does it COLLATE NOCASE. If the stub
+      // ignored the clause the case test below would pass on any implementation.
+      const mm = /WHERE market = \?( COLLATE NOCASE)?/i.exec(sql);
+      if (mm) rs = mm[1]
+        ? rs.filter((r) => String(r.market).toLowerCase() === String(st.args[0]).toLowerCase())
+        : rs.filter((r) => r.market === st.args[0]);
       return { results: rs };
     } };
     return st; },
@@ -144,6 +150,23 @@ ok(tr.prizepicks && tr.prizepicks.graded === 2 && tr.prizepicks.underRate === 50
   `the record reports it for reading (${JSON.stringify(tr.prizepicks && { graded: tr.prizepicks.graded, underRate: tr.prizepicks.underRate })})`);
 ok(tr.prizepicks && tr.prizepicks.byModelUnder && tr.prizepicks.byMarket,
   'banded by the probability claimed, so it reads against the entry break-evens');
+
+
+// The export has to find the strikeout rows. They are stored as 'K' while the
+// batter markets are lowercase, so a lower-casing export answered ?market=K
+// with zero rows -- indistinguishable from "none were ever logged".
+const exp = async (q) => (await (await mod.default.fetch(new Request('https://x/api/pppicks-export' + q), { DB: db }, { waitUntil() {} })).json());
+// Strikeouts are stored as 'K' where the batter markets are lowercase, so seed
+// one directly: an export that lower-cases the query answers ?market=K with
+// nothing, which reads exactly like "none were ever logged".
+pp.set('seed|g|9|K', { date: '2026-09-20', game_id: 'g', player_id: 9, player: 'Some Arm', team: 'CIN',
+  market: 'K', point: 4.5, model_under: 51, close_point: 4.5, close_model_under: 51, actual: 6, result: 'over', model_ver: 'x' });
+const eAll = await exp('');
+const eUpper = await exp('?market=K'), eLower = await exp('?market=k');
+ok(eUpper.n === 1 && eLower.n === 1,
+  `?market=K and ?market=k both find the strikeout row (${eUpper.n} / ${eLower.n})`);
+ok(eAll.n === 4 && (await exp('?market=tb')).n === 3,
+  `and the filter is real, not a pass-through (${eAll.n} logged, tb ${(await exp('?market=tb')).n})`);
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
