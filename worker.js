@@ -147,7 +147,7 @@ const RL_MODEL_VER = 'rl-shin';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
