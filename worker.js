@@ -3299,7 +3299,9 @@ async function ensureGamePickSchema(db) {
   // guarded on being empty, so a populated table is never dropped.
   try {
     const cols = (await db.prepare('PRAGMA table_info(gmpicks)').all()).results || [];
-    if (cols.length && !cols.some((c) => c.name === 'market')) {
+    const have = new Set(cols.map((c) => c.name));
+    const want = ['market', 'point', 'week'];
+    if (cols.length && want.some((c) => !have.has(c))) {
       const n = await db.prepare('SELECT COUNT(*) AS n FROM gmpicks').first();
       if (n && Number(n.n) === 0) await db.prepare('DROP TABLE gmpicks').run();
     }
@@ -3310,6 +3312,7 @@ async function ensureGamePickSchema(db) {
     game_id TEXT NOT NULL,
     market TEXT NOT NULL DEFAULT 'h2h',
     league TEXT,
+    week INTEGER,
     commence TEXT,
     side TEXT,
     point REAL,
@@ -3348,9 +3351,10 @@ async function logGamePicks(db, sport, date, entries) {
     if (!mlPriceSane(e.price, e.win_prob)) continue;
     const market = e.market || 'h2h';
     stmts.push(db.prepare(
-      `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,market,league,commence,side,point,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(sport, date, String(e.game_id), market, e.league || null, e.commence || null, e.side || null,
+      `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,market,league,week,commence,side,point,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(sport, date, String(e.game_id), market, e.league || null, e.week == null ? null : e.week,
+      e.commence || null, e.side || null,
       e.point == null ? null : e.point, e.pick || null,
       e.home || null, e.away || null, e.win_prob, e.implied == null ? null : e.implied, e.edge == null ? null : e.edge,
       e.price, e.price, e.book || null, e.fair_src || null, e.sharp_n == null ? null : e.sharp_n, GM_MODEL_VER));
@@ -3402,26 +3406,40 @@ async function gradeGamePicks(env) {
   out.pending = rows.length;
   if (!rows.length) return out;
 
-  // One scoreboard fetch per (sport, league, date), never per row.
+  // One scoreboard fetch per (sport, league/week, date), never per row.
   const need = new Map();
   for (const r of rows) {
-    const k = `${r.sport}|${r.league || ''}|${r.date}`;
-    if (!need.has(k)) need.set(k, { sport: r.sport, league: r.league, date: r.date, rows: [] });
+    const k = `${r.sport}|${r.league || ''}|${r.week == null ? '' : r.week}|${r.date}`;
+    if (!need.has(k)) need.set(k, { sport: r.sport, league: r.league, week: r.week, date: r.date, rows: [] });
     need.get(k).rows.push(r);
   }
   const stmts = [];
   for (const job of need.values()) {
-    const board = (ymd) => (job.sport === 'nfl'
-      ? espnScoreboard(`nfl/scoreboard?xhr=1&dates=${ymd}`)
-      : espnScoreboard(`soccer/scoreboard?xhr=1&league=${ESPN_SOCCER_SLUG[job.league] || 'eng.1'}&dates=${ymd}`));
     let events = [];
-    try { events = await board(String(job.date).replace(/-/g, '')); } catch (e) { continue; }
-    // Our dates are Pacific and ESPN's are UTC, so a late kickoff lands on the
-    // next one. Ask for that day too rather than leaving a row ungraded forever.
-    try {
-      const nxt = new Date(Date.parse(job.date + 'T12:00:00Z') + 86400e3).toISOString().slice(0, 10).replace(/-/g, '');
-      events = events.concat(await board(nxt));
-    } catch (e) { /* the first day covers most of them */ }
+    if (job.sport === 'nfl') {
+      // The NFL scoreboard is week-oriented and ignores any date parameter
+      // entirely — ?dates= and ?date= both return whatever week is current, so
+      // asking it for a past Sunday hands back this Sunday's games. Ask by week,
+      // which is why the week is stored on the row.
+      const yr = Number(String(job.date).slice(0, 4));
+      const season = Number(String(job.date).slice(5, 7)) <= 2 ? yr - 1 : yr;   // Jan/Feb belong to the previous season
+      const stype = String(job.league || 'REG').toUpperCase() === 'PRE' ? 1 : 2;
+      if (job.week == null) { for (const r of job.rows) out.unmatched.push(`${r.sport} ${r.date} no week stored`); continue; }
+      try { events = await espnScoreboard(`nfl/scoreboard?xhr=1&year=${season}&seasontype=${stype}&week=${job.week}`); } catch (e) { continue; }
+    } else {
+      // Soccer takes ?date= (singular). ?dates= is accepted and silently
+      // ignored, which returns the current matchday — so every row would have
+      // been graded against whatever was played most recently.
+      const slug = ESPN_SOCCER_SLUG[job.league] || 'eng.1';
+      const day = (ymd) => espnScoreboard(`soccer/scoreboard?xhr=1&league=${slug}&date=${ymd}`);
+      try { events = await day(String(job.date).replace(/-/g, '')); } catch (e) { continue; }
+      // Our dates are Pacific and ESPN's are UTC, so a late kickoff lands on the
+      // next one. Ask for that day too rather than leaving a row ungraded.
+      try {
+        const nxt = new Date(Date.parse(job.date + 'T12:00:00Z') + 86400e3).toISOString().slice(0, 10).replace(/-/g, '');
+        events = events.concat(await day(nxt));
+      } catch (e) { /* the first day covers most of them */ }
+    }
 
     const finals = [];
     for (const ev of events) {
@@ -5980,7 +5998,7 @@ async function gmExport(env, url) {
     if (sport) { where.push('sport = ? COLLATE NOCASE'); args.push(sport); }
     if (league) { where.push('league = ? COLLATE NOCASE'); args.push(league); }
     if (market) { where.push('market = ? COLLATE NOCASE'); args.push(market); }
-    const cols = ['sport', 'date', 'market', 'league', 'commence', 'away', 'home', 'side', 'point', 'pick', 'win_prob', 'implied', 'edge',
+    const cols = ['sport', 'date', 'market', 'league', 'week', 'commence', 'away', 'home', 'side', 'point', 'pick', 'win_prob', 'implied', 'edge',
       'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'result', 'away_score', 'home_score', 'game_id', 'model_ver'];
     const rows = (await env.DB.prepare(
       `SELECT ${cols.join(', ')} FROM gmpicks${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY date, commence`
@@ -8626,7 +8644,7 @@ async function nflBoardData(env, url) {
         && g.sharpN >= 2 && Date.parse(g.commence || 0) > Date.now());
       if (pre.length) {
         await logGamePicks(env.DB, 'nfl', out.slateDay || ptDateOf(Date.now()), pre.map((g) => ({
-          game_id: g.id, league: out.seasonType, commence: g.commence,
+          game_id: g.id, league: out.seasonType, week: g.week, commence: g.commence,
           side: g.pickTeam === g.home ? 'home' : 'away', pick: g.pickTeam,
           home: g.home, away: g.away,
           win_prob: g.pickFair, implied: g.pickImplied, edge: g.pickValue,

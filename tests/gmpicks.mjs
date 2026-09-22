@@ -31,6 +31,9 @@ const iso = (ms) => new RealDate(ms).toISOString();
 const SOON = iso(NOW + 6 * HOUR);                 // 6pm Pacific, not yet kicked off
 const GONE = iso(NOW - 2 * HOUR);                 // 10am Pacific, already started
 const ptDay = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new RealDate(ms));
+const yday = ptDay(NOW - 86400e3);        // the day the graded rows are moved to
+const NFL_WEEK = 3;                       // the week the fixture rows carry
+const ymdOf = (d) => String(d).replace(/-/g, '');
 
 // ---- soccer fixtures -------------------------------------------------------------------
 // Three sharp books so there is a fair line; DK/FD for the executable price.
@@ -69,7 +72,7 @@ for (const g of NFL_GAMES) {
   for (const [team, price] of [[g.away, 240], [g.home, -290]]) {
     for (const book of ['pinnacle', 'lowvig', 'betonlineag', 'draftkings', 'fanduel']) {
       nflRows.push({ event_id: g.id, commence: g.commence, home: g.home, away: g.away, market: 'h2h',
-        player: team, point: null, book, over: price, under: null, captured_at: iso(NOW - HOUR), week: 3 });
+        player: team, point: null, book, over: price, under: null, captured_at: iso(NOW - HOUR), week: NFL_WEEK });
     }
   }
 }
@@ -92,6 +95,16 @@ const ESPN = {
     espnEvent('Buffalo Bills', 'Detroit Lions', 17, 17, 'STATUS_FINAL', 'BUF', 'DET'),
   ],
 };
+// Something else entirely, to stand in for "whatever was played most recently".
+// The real scoreboards hand this back when you ask them the wrong way: soccer
+// accepts ?dates= and silently ignores it, and the NFL board ignores any date
+// parameter at all and always answers with the current week. A stub that
+// answers every URL with the fixtures you wanted cannot see either mistake --
+// the first version of this test did exactly that, and the grader shipped
+// asking both of them the wrong question.
+const WRONG_WEEK = [
+  espnEvent('Someone Else FC', 'Not Our Team', 4, 0, 'STATUS_FULL_TIME', 'SEF', 'NOT'),
+];
 
 let espnCalls = [];
 const realFetch = globalThis.fetch;
@@ -100,8 +113,17 @@ globalThis.fetch = async (u, o) => {
   const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json', 'x-requests-last': '2', 'x-requests-remaining': '100' } });
   if (url.includes('cdn.espn.com')) {
     espnCalls.push(url);
-    const lg = (url.match(/league=([a-z0-9.]+)/) || [])[1];
-    return J({ content: { sbData: { events: url.includes('/nfl/') ? ESPN.nfl : (ESPN[lg] || []) } } });
+    const q = new URL(url).searchParams;
+    if (url.includes('/nfl/')) {
+      // Week-oriented: a date parameter is not an error, it is just ignored.
+      const wk = q.get('week');
+      return J({ content: { sbData: { events: wk === String(NFL_WEEK) ? ESPN.nfl : WRONG_WEEK } } });
+    }
+    const lg = q.get('league');
+    // ?date= is honoured; ?dates= is not, and you get the latest matchday.
+    const d = q.get('date');
+    if (!d) return J({ content: { sbData: { events: WRONG_WEEK } } });
+    return J({ content: { sbData: { events: d === ymdOf(yday) ? (ESPN[lg] || []) : [] } } });
   }
   if (url.includes('api.the-odds-api.com')) {
     const m = new URL(url).pathname.match(/^\/v4\/sports\/([a-z_]+)\/(odds|events)$/);
@@ -121,7 +143,7 @@ const run = (sql, a) => {
     const [league, event_id, commence, home, away, market, selection, point, book, price, captured_at] = a;
     soccerLines.push({ league, event_id, commence, home, away, market, selection, point, book, price, captured_at });
   } else if (/^\s*INSERT OR IGNORE INTO gmpicks/i.test(sql)) {
-    const c = ['sport', 'date', 'game_id', 'market', 'league', 'commence', 'side', 'point', 'pick', 'home', 'away', 'win_prob', 'implied', 'edge', 'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'model_ver'];
+    const c = ['sport', 'date', 'game_id', 'market', 'league', 'week', 'commence', 'side', 'point', 'pick', 'home', 'away', 'win_prob', 'implied', 'edge', 'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'model_ver'];
     const row = Object.fromEntries(c.map((k, i) => [k, a[i]]));
     const k = gmKey([row.sport, row.date, row.game_id, row.market]);
     if (!gm.has(k)) gm.set(k, { ...row, result: null, home_score: null, away_score: null });
@@ -206,7 +228,7 @@ ok(gm.size === 6 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.mar
 
 // ---- grade -----------------------------------------------------------------------------
 // Yesterday's rows, so the grader picks them up.
-const yday = ptDay(NOW - 86400e3);
+// (yday is declared at the top — the fetch stub needs it.)
 for (const r of [...gm.values()]) { gm.delete(gmKey([r.sport, r.date, r.game_id, r.market])); r.date = yday; gm.set(gmKey([r.sport, r.date, r.game_id, r.market]), r); }
 espnCalls = [];
 const tr = await hit('/api/track-record', { DB: db });
