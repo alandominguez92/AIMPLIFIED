@@ -4986,8 +4986,18 @@
     if (!games.length) {
       // An empty board here is usually "no fixtures today", which is most days —
       // say that rather than leaving a blank panel that reads as broken.
-      el.soccerGrid.innerHTML = `<div class="nfl-empty">No fixtures on the next matchday for this league${
-        d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+      // Two different empties. "Nothing within 36h" is the whole board on a
+      // break week and should name the date play resumes; "nothing for this
+      // league" is a chip filter and should not claim the season has paused.
+      const dayLabel = (ymd) => {
+        const t = Date.parse(ymd + 'T12:00:00Z');
+        return isFinite(t) ? new Date(t).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }) : ymd;
+      };
+      el.soccerGrid.innerHTML = (d.nextDay && state.soccerLeague === 'all')
+        ? `<div class="nfl-empty">No fixtures in the next day and a half. Next matchday is <b>${esc(dayLabel(d.nextDay))}</b>${
+            d.gamesAllUpcoming ? ` — ${d.gamesAllUpcoming} fixtures are already priced` : ''}.</div>`
+        : `<div class="nfl-empty">No fixtures on the next matchday for this league${
+            d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
     }
     el.soccerGrid.innerHTML = games.map(soccerRow).join('');

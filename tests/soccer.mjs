@@ -144,5 +144,29 @@ ok(/one matchday only/.test(board.slateNote || ''), `the payload says what it fi
 ok((board.games || []).some((x) => x.league === 'epl') && (board.games || []).some((x) => x.league === 'laliga'),
   'leagues share one board and are labelled');
 
+
+// ---- a break week ---------------------------------------------------------------------
+// The first international break of 2026-27 runs ~18 days. Books price through
+// it, so the store fills with fixtures a fortnight out and the nearest one is a
+// lone Friday-night game with one book on it. That must not read as "today's
+// matchday" -- the board covers the window the ingest refreshes (36h) and says
+// so when nothing is in it.
+lines.splice(0);                                   // empty the store
+calls = [];
+const FAR = new Date(Date.now() + 18 * 86400e3).toISOString();
+EVENTS.soccer_epl = [ev('far1', FAR, 'Arsenal', 'Leeds United')];
+EVENTS.soccer_spain_la_liga = [];
+await hit('/api/soccer-ingest');
+const brk = await hit('/api/soccer-board');
+console.log(`\n  break week: ${brk.games.length} shown, nextDay ${brk.nextDay}, note "${brk.slateNote}"`);
+ok(brk.games.length === 0 && brk.empty === true,
+  `a fixture 18 days out is not "the next matchday" (${brk.games.length} shown)`);
+ok(brk.nextDay === new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.parse(FAR))),
+  `the board names the day play resumes (${brk.nextDay})`);
+ok(brk.gamesAllUpcoming === 1 && /36h/.test(brk.slateNote || ''),
+  `and says how many are priced ahead, without pretending they are playable now (${brk.slateNote})`);
+const allq = await hit('/api/soccer-board?all=1');
+ok(allq.games.length === 1, `?all=1 still shows them, for reading the store without a paid ingest (${allq.games.length})`);
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

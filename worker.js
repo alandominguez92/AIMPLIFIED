@@ -6829,10 +6829,24 @@ async function soccerBoardData(env, url) {
     // stored rows instead of another paid ingest.
     const showAll = !!(url && url.searchParams && url.searchParams.get('all'));
     if (first && !showAll) {
-      out.slateDay = ptDateOf(Date.parse(first.commence));
       out.gamesAllUpcoming = out.games.length;
-      out.games = out.games.filter((g) => g.commence && ptDateOf(Date.parse(g.commence)) === out.slateDay);
-      out.slateNote = `one matchday only: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming fixtures)`;
+      const firstMs = Date.parse(first.commence);
+      // Nothing soon is a real state in this sport, and a long one: the first
+      // international break of 2026-27 runs from this past weekend to Oct 9.
+      // Books post those fixtures weeks early, so "the next matchday" would
+      // otherwise be a lone Friday-night fixture 18 days out, priced by one
+      // book, with no fair line behind it. The window here is the same 36h the
+      // ingest gate uses, so the board shows exactly what is being refreshed.
+      if (firstMs - Date.now() > SOCCER_HORIZON_MS) {
+        out.nextDay = ptDateOf(firstMs);
+        out.awayUntil = out.nextDay;
+        out.games = [];
+        out.slateNote = `no fixtures in the next ${Math.round(SOCCER_HORIZON_MS / 3600e3)}h — next matchday ${out.nextDay} (${out.gamesAllUpcoming} fixtures priced ahead)`;
+      } else {
+        out.slateDay = ptDateOf(firstMs);
+        out.games = out.games.filter((g) => g.commence && ptDateOf(Date.parse(g.commence)) === out.slateDay);
+        out.slateNote = `one matchday only: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming fixtures)`;
+      }
     }
     if (showAll) { out.gamesAllUpcoming = out.games.length; out.slateNote = 'all upcoming fixtures (?all=1)'; }
     out.empty = out.games.length === 0;
