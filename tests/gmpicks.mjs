@@ -115,22 +115,22 @@ globalThis.fetch = async (u, o) => {
 const soccerLines = [];
 const gm = new Map();
 const cache = new Map();
-const gmKey = (a) => `${a[0]}|${a[1]}|${a[2]}`;
+const gmKey = (a) => `${a[0]}|${a[1]}|${a[2]}|${a[3] || 'h2h'}`;
 const run = (sql, a) => {
   if (/^\s*INSERT INTO soccer_lines/i.test(sql)) {
     const [league, event_id, commence, home, away, market, selection, point, book, price, captured_at] = a;
     soccerLines.push({ league, event_id, commence, home, away, market, selection, point, book, price, captured_at });
   } else if (/^\s*INSERT OR IGNORE INTO gmpicks/i.test(sql)) {
-    const c = ['sport', 'date', 'game_id', 'league', 'commence', 'side', 'pick', 'home', 'away', 'win_prob', 'implied', 'edge', 'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'model_ver'];
+    const c = ['sport', 'date', 'game_id', 'market', 'league', 'commence', 'side', 'point', 'pick', 'home', 'away', 'win_prob', 'implied', 'edge', 'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'model_ver'];
     const row = Object.fromEntries(c.map((k, i) => [k, a[i]]));
-    const k = gmKey([row.sport, row.date, row.game_id]);
+    const k = gmKey([row.sport, row.date, row.game_id, row.market]);
     if (!gm.has(k)) gm.set(k, { ...row, result: null, home_score: null, away_score: null });
   } else if (/^\s*UPDATE gmpicks SET close_price/i.test(sql)) {
-    const [cp, edge, wp, imp, sport, date, gid] = a;
-    const r = gm.get(gmKey([sport, date, gid])); if (r) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; }
+    const [cp, edge, wp, imp, sport, date, gid, mkt] = a;
+    const r = gm.get(gmKey([sport, date, gid, mkt])); if (r) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; }
   } else if (/^\s*UPDATE gmpicks SET result/i.test(sql)) {
-    const [res, hs, as, sport, date, gid] = a;
-    const r = gm.get(gmKey([sport, date, gid])); if (r) { r.result = res; r.home_score = hs; r.away_score = as; }
+    const [res, hs, as, sport, date, gid, mkt] = a;
+    const r = gm.get(gmKey([sport, date, gid, mkt])); if (r) { r.result = res; r.home_score = hs; r.away_score = as; }
   } else if (/^INSERT OR IGNORE INTO feed_cache/i.test(sql)) {
     if (!cache.has(a[0])) cache.set(a[0], { data: null, updated_at: 0 });
   } else if (/^INSERT OR REPLACE INTO feed_cache/i.test(sql)) {
@@ -186,28 +186,31 @@ console.log('  logged: ' + logged.map((r) => `${r.sport}:${r.pick}@${r.entry_pri
 
 const soc = logged.filter((r) => r.sport === 'soccer');
 const nfl = logged.filter((r) => r.sport === 'nfl');
-ok(soc.length === 2 && nfl.length === 2, `both boards write a row per game (soccer ${soc.length}, nfl ${nfl.length})`);
+const socH2h = soc.filter((r) => r.market === 'h2h'), socTot = soc.filter((r) => r.market === 'totals');
+ok(socH2h.length === 2 && nfl.length === 2, `both boards write the 1X2 / moneyline row per game (soccer ${socH2h.length}, nfl ${nfl.length})`);
+ok(socTot.length === 2 && socTot.every((r) => r.point === 2.5 && (r.side === 'over' || r.side === 'under') && r.entry_price != null),
+  `the goals total is kept too — bought on the same call, so it costs nothing (${socTot.map((r) => r.pick + '@' + r.entry_price).join(', ')})`);
 ok(nfl.every((r) => r.game_id !== 'n3'), 'a game that already kicked off is not logged as a pick');
 ok(soc.every((r) => r.win_prob != null && r.entry_price != null && r.sharp_n >= 2),
   'each row carries the fair number, the price taken against it and how many sharp books were behind it');
 ok(logged.every((r) => r.date === ptDay(NOW)), `dated by Pacific slate day (${[...new Set(logged.map((r) => r.date))].join(',')})`);
-ok(soc.some((r) => r.side === 'draw'), `the draw is logged as a side of its own (${soc.map((r) => r.side).join(',')})`);
+ok(socH2h.some((r) => r.side === 'draw'), `the draw is logged as a side of its own (${socH2h.map((r) => r.side).join(',')})`);
 ok(nfl.every((r) => r.side === 'home' || r.side === 'away'), `NFL has no draw side (${nfl.map((r) => r.side).join(',')})`);
 
 // Logging twice must not double up, and must not move the entry price.
-const before = JSON.stringify([...gm.values()].map((r) => [r.game_id, r.entry_price]));
+const before = JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price]));
 await hit('/api/nfl-board');
 await hit('/api/soccer-board');
-ok(gm.size === 4 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.entry_price])) === before,
+ok(gm.size === 6 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price])) === before,
   `a second board load re-freezes nothing (${gm.size} rows)`);
 
 // ---- grade -----------------------------------------------------------------------------
 // Yesterday's rows, so the grader picks them up.
 const yday = ptDay(NOW - 86400e3);
-for (const r of [...gm.values()]) { gm.delete(gmKey([r.sport, r.date, r.game_id])); r.date = yday; gm.set(gmKey([r.sport, r.date, r.game_id]), r); }
+for (const r of [...gm.values()]) { gm.delete(gmKey([r.sport, r.date, r.game_id, r.market])); r.date = yday; gm.set(gmKey([r.sport, r.date, r.game_id, r.market]), r); }
 espnCalls = [];
 const tr = await hit('/api/track-record', { DB: db });
-const by = (id) => [...gm.values()].find((r) => r.game_id === id);
+const by = (id, mkt) => [...gm.values()].find((r) => r.game_id === id && (r.market || 'h2h') === (mkt || 'h2h'));
 console.log('\n  graded: ' + [...gm.values()].map((r) => `${r.pick} ${r.away_score}-${r.home_score} ${r.result}`).join(' | ') + '\n');
 
 ok(by('s1') && by('s1').result != null,
@@ -236,6 +239,35 @@ ok(tr.soccerMl && tr.soccerMl.byLeague && Object.keys(tr.soccerMl.byLeague).leng
   `soccer is split by league (${Object.keys((tr.soccerMl || {}).byLeague || {}).join(',')})`);
 ok(tr.ml && tr.ml.record, 'and the MLB moneyline record is untouched on its own table');
 
+
+
+// ---- totals settle on the score, not on the winner ---------------------------------------
+// The 1X2 grader asks who won. A goals total has to ask how many were scored,
+// and a whole-number line that lands exactly is a push — 2.5 cannot, but 3.0 is
+// quoted often enough to matter. Seeded directly: the board would have to be
+// coaxed into leading with each side to produce these three.
+const seedTot = (id, side, point, prevResult) => {
+  gm.set(gmKey(['soccer', yday, id, 'totals']), {
+    sport: 'soccer', date: yday, game_id: id, market: 'totals', league: 'epl', side, point,
+    pick: `${side === 'over' ? 'Over' : 'Under'} ${point}`, home: 'AFC Bournemouth', away: 'Liverpool',
+    win_prob: 50, implied: 50, edge: 0, entry_price: -110, close_price: -110,
+    book: 'draftkings', fair_src: 'sharp-pool', sharp_n: 3, result: prevResult || null,
+    home_score: null, away_score: null, model_ver: 'gm-v1',
+  });
+};
+// The ESPN fixture above is Bournemouth 0 - Liverpool 1, so one goal was scored.
+seedTot('t_under', 'under', 2.5);
+seedTot('t_over', 'over', 0.5);
+seedTot('t_push', 'under', 1);
+ESPN['eng.1'] = ESPN['eng.1'].concat([
+  espnEvent('AFC Bournemouth', 'Liverpool', 0, 1, 'STATUS_FULL_TIME'),
+]);
+cache.clear();
+await hit('/api/track-record', { DB: db });
+const t = (id) => (gm.get(gmKey(['soccer', yday, id, 'totals'])) || {}).result;
+ok(t('t_under') === 'win', `one goal against a 2.5 line grades the under a win (${t('t_under')})`);
+ok(t('t_over') === 'win', `and the over a win at 0.5 — the direction is read from the side, not assumed (${t('t_over')})`);
+ok(t('t_push') === 'push', `a whole-number line the score lands on exactly is a push (${t('t_push')})`);
 
 // ---- the cron keeps it filling -----------------------------------------------------------
 // The NFL lines used to arrive only when a one-off scheduled task fired, so a

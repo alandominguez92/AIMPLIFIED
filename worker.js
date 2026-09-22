@@ -3292,13 +3292,27 @@ function buildPpRecord(rows) {
 const GM_MODEL_VER = 'gm-v1';
 
 async function ensureGamePickSchema(db) {
+  // The first shape of this table keyed on (sport, date, game_id), which allowed
+  // one row per game and so one market. Goals totals are bought on the same call
+  // as the 1X2 and were being thrown away. The table shipped hours before that
+  // was noticed and never took a row, so it is recreated rather than migrated —
+  // guarded on being empty, so a populated table is never dropped.
+  try {
+    const cols = (await db.prepare('PRAGMA table_info(gmpicks)').all()).results || [];
+    if (cols.length && !cols.some((c) => c.name === 'market')) {
+      const n = await db.prepare('SELECT COUNT(*) AS n FROM gmpicks').first();
+      if (n && Number(n.n) === 0) await db.prepare('DROP TABLE gmpicks').run();
+    }
+  } catch (e) { /* first run: nothing to inspect */ }
   await db.prepare(`CREATE TABLE IF NOT EXISTS gmpicks (
     sport TEXT NOT NULL,
     date TEXT NOT NULL,
     game_id TEXT NOT NULL,
+    market TEXT NOT NULL DEFAULT 'h2h',
     league TEXT,
     commence TEXT,
     side TEXT,
+    point REAL,
     pick TEXT,
     home TEXT,
     away TEXT,
@@ -3314,7 +3328,7 @@ async function ensureGamePickSchema(db) {
     home_score INTEGER,
     away_score INTEGER,
     model_ver TEXT,
-    PRIMARY KEY (sport, date, game_id)
+    PRIMARY KEY (sport, date, game_id, market)
   )`).run();
   // The grader reads only ungraded rows from days already played; a partial
   // index keeps that read off the rest of the table.
@@ -3332,18 +3346,20 @@ async function logGamePicks(db, sport, date, entries) {
     // The same rule the moneyline learned: a price disagreeing with the fair
     // number by more than ML_PRICE_GAP is a bad read off the feed, not an edge.
     if (!mlPriceSane(e.price, e.win_prob)) continue;
+    const market = e.market || 'h2h';
     stmts.push(db.prepare(
-      `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,league,commence,side,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(sport, date, String(e.game_id), e.league || null, e.commence || null, e.side || null, e.pick || null,
+      `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,market,league,commence,side,point,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(sport, date, String(e.game_id), market, e.league || null, e.commence || null, e.side || null,
+      e.point == null ? null : e.point, e.pick || null,
       e.home || null, e.away || null, e.win_prob, e.implied == null ? null : e.implied, e.edge == null ? null : e.edge,
       e.price, e.price, e.book || null, e.fair_src || null, e.sharp_n == null ? null : e.sharp_n, GM_MODEL_VER));
     // Close refreshes only while the same side is still the board's lead, so a
     // flip later in the week cannot overwrite the entry side's closing number.
     stmts.push(db.prepare(
-      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=? WHERE sport=? AND date=? AND game_id=? AND side=?'
+      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
     ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied,
-      sport, date, String(e.game_id), e.side || null));
+      sport, date, String(e.game_id), market, e.side || null));
   }
   if (!stmts.length) return 0;
   await db.batch(stmts);
@@ -3429,15 +3445,25 @@ async function gradeGamePicks(env) {
         ? (clubMatch(x.homeAb, r.home) || clubMatch(x.home, r.home)) && (clubMatch(x.awayAb, r.away) || clubMatch(x.away, r.away))
         : clubMatch(x.home, r.home) && clubMatch(x.away, r.away)));
       if (!f || !isFinite(f.hs) || !isFinite(f.as)) { out.unmatched.push(`${r.sport} ${r.date} ${r.away}@${r.home}`); continue; }
-      const winner = f.hs > f.as ? 'home' : (f.as > f.hs ? 'away' : 'draw');
-      // An NFL tie is a push — no draw price is offered, so there was no such
-      // side to be on. Soccer prices the draw, so there it grades like any other.
-      const result = r.sport === 'nfl'
-        ? (winner === 'draw' ? 'push' : (winner === r.side ? 'win' : 'loss'))
-        : (winner === r.side ? 'win' : 'loss');
+      let result;
+      if (r.market === 'totals') {
+        // Settled on the score line, not on who won. A whole-number line that
+        // lands exactly is a push; 2.5 cannot, but 3.0 is quoted often enough.
+        const scored = f.hs + f.as;
+        result = r.point == null ? null
+          : (scored === r.point ? 'push' : ((scored > r.point) === (r.side === 'over') ? 'win' : 'loss'));
+        if (result == null) { out.unmatched.push(`${r.sport} ${r.date} totals with no line`); continue; }
+      } else {
+        const winner = f.hs > f.as ? 'home' : (f.as > f.hs ? 'away' : 'draw');
+        // An NFL tie is a push — no draw price is offered, so there was no such
+        // side to be on. Soccer prices the draw, so there it grades like any other.
+        result = r.sport === 'nfl'
+          ? (winner === 'draw' ? 'push' : (winner === r.side ? 'win' : 'loss'))
+          : (winner === r.side ? 'win' : 'loss');
+      }
       stmts.push(env.DB.prepare(
-        'UPDATE gmpicks SET result=?, home_score=?, away_score=? WHERE sport=? AND date=? AND game_id=?'
-      ).bind(result, f.hs, f.as, r.sport, r.date, r.game_id));
+        'UPDATE gmpicks SET result=?, home_score=?, away_score=? WHERE sport=? AND date=? AND game_id=? AND market=?'
+      ).bind(result, f.hs, f.as, r.sport, r.date, r.game_id, r.market || 'h2h'));
       out.graded++;
     }
   }
@@ -3456,6 +3482,8 @@ function buildGmRecord(rows, sport) {
   };
   const bySide = {};
   for (const sd of [...new Set(graded.map((r) => r.side))]) bySide[sd] = sum(graded.filter((r) => r.side === sd));
+  const byMarket = {};
+  for (const mk of [...new Set(graded.map((r) => r.market || 'h2h'))]) byMarket[mk] = sum(graded.filter((r) => (r.market || 'h2h') === mk));
   const byLeague = {};
   if (sport === 'soccer') for (const lg of [...new Set(graded.map((r) => r.league))]) byLeague[lg] = sum(graded.filter((r) => r.league === lg));
   let beat = 0, clvN = 0;
@@ -3470,7 +3498,7 @@ function buildGmRecord(rows, sport) {
     pending: mine.filter((r) => r.result == null).length,
     pushed: mine.filter((r) => r.result === 'push').length,
     ...sum(graded),
-    bySide,
+    bySide, byMarket,
     ...(sport === 'soccer' ? { byLeague } : {}),
     clvBeatRate: clvN ? round1(beat / clvN * 100) : null, clvN,
   };
@@ -5947,10 +5975,12 @@ async function gmExport(env, url) {
     await ensureGamePickSchema(env.DB);
     const sport = (url.searchParams.get('sport') || '').trim();
     const league = (url.searchParams.get('league') || '').trim();
+    const market = (url.searchParams.get('market') || '').trim();
     const where = [], args = [];
     if (sport) { where.push('sport = ? COLLATE NOCASE'); args.push(sport); }
     if (league) { where.push('league = ? COLLATE NOCASE'); args.push(league); }
-    const cols = ['sport', 'date', 'league', 'commence', 'away', 'home', 'side', 'pick', 'win_prob', 'implied', 'edge',
+    if (market) { where.push('market = ? COLLATE NOCASE'); args.push(market); }
+    const cols = ['sport', 'date', 'market', 'league', 'commence', 'away', 'home', 'side', 'point', 'pick', 'win_prob', 'implied', 'edge',
       'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'result', 'away_score', 'home_score', 'game_id', 'model_ver'];
     const rows = (await env.DB.prepare(
       `SELECT ${cols.join(', ')} FROM gmpicks${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY date, commence`
@@ -7198,6 +7228,28 @@ async function soccerBoardData(env, url) {
           win_prob: g.lead.fair, implied: g.lead.implied, edge: g.lead.value,
           price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN,
         })));
+        // The goals total is bought on the same call as the 1X2 and shown on the
+        // same row, so logging it costs nothing and doubles what a matchday
+        // leaves behind. Whichever side the sharp pool makes the better price.
+        const tot = [];
+        for (const g of pre) {
+          const t = g.total;
+          if (!t || t.point == null || t.sharpN < 2) continue;
+          const over = { side: 'over', fair: t.overFair, price: t.overPrice, book: t.overBook, value: t.overValue };
+          const under = { side: 'under', fair: t.underFair, price: t.underPrice, book: t.underBook, value: t.underValue };
+          const cands = [over, under].filter((x) => x.fair != null && x.price != null);
+          if (!cands.length) continue;
+          const best = cands.sort((x, y) => (y.value == null ? -1e9 : y.value) - (x.value == null ? -1e9 : x.value))[0];
+          tot.push({
+            game_id: g.id, market: 'totals', league: g.league, commence: g.commence,
+            side: best.side, point: t.point, pick: `${best.side === 'over' ? 'Over' : 'Under'} ${t.point}`,
+            home: g.home, away: g.away,
+            win_prob: best.fair, implied: best.price == null ? null : Math.round(amProb(best.price) * 1000) / 10,
+            edge: best.value, price: best.price, book: best.book,
+            fair_src: 'sharp-pool', sharp_n: t.sharpN,
+          });
+        }
+        if (tot.length) await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), tot);
       }
     } catch (e) { /* logging never breaks the board */ }
     out.empty = out.games.length === 0;
