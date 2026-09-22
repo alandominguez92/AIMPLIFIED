@@ -4622,7 +4622,13 @@ function buildMlRecord(rows, includePass) {
     if (String(r.tier) === '1') { if (win) t1w++; else t1l++; }
     if (r.entry_price != null && r.close_price != null) {
       const ie = amProb(r.entry_price), ic = amProb(r.close_price);
-      if (ie != null && ic != null) {
+      // A line that never moved is neither a beat nor a miss. Counting it in the
+      // denominator only — which is what this did — quietly scores every
+      // unrefreshed row as a CLV loss: 15% of posted rows, dragging the reported
+      // beat rate from 27.4% to 23.2%. buildTotRecord already skips them; these
+      // two numbers sit side by side on the same page and have to mean the same
+      // thing.
+      if (ie != null && ic != null && r.entry_price !== r.close_price) {
         clvN++;
         if (ic > ie) clvBeat++;   // our side shortened = market agreed
         // Magnitude, not just a beat rate: a 60% beat rate on half-point moves

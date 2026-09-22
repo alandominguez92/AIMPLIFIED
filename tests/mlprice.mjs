@@ -70,5 +70,25 @@ for (const [price, wp, want, what] of sane) {
   ok(atEntry === want, `${want ? 'kept' : 'rejected'}: ${what} (${price} @ ${wp}%)`);
 }
 
+
+// ---- CLV counts moves, not rows -------------------------------------------------------
+// A line that never moved is neither a beat nor a miss. It used to land in the
+// denominator alone, scoring every unrefreshed row as a CLV loss -- 15% of the
+// posted rows, which is the difference between a 23.2% and a 27.4% beat rate on
+// the live record. The totals record already skipped them.
+const clvRows = [
+  { date: 'd1', game_id: 'c1', team: 'A', tier: '3', win_prob: 55, edge: 1, entry_price: -120, close_price: -140, result: 'win' },  // beat
+  { date: 'd2', game_id: 'c2', team: 'B', tier: '3', win_prob: 55, edge: 1, entry_price: -120, close_price: -105, result: 'loss' }, // miss
+  { date: 'd3', game_id: 'c3', team: 'C', tier: '3', win_prob: 55, edge: 1, entry_price: -120, close_price: -120, result: 'win' },  // never moved
+  { date: 'd4', game_id: 'c4', team: 'D', tier: '3', win_prob: 55, edge: 1, entry_price: -120, close_price: -120, result: 'loss' }, // never moved
+];
+const dbc = { prepare: () => ({ bind: () => ({ run: async () => ({}), first: async () => null, all: async () => ({ results: clvRows }) }),
+  run: async () => ({}), first: async () => null, all: async () => ({ results: clvRows }) }), batch: async () => [] };
+const trc = await (await mod.default.fetch(new Request('https://x/api/track-record'), { DB: dbc }, { waitUntil() {} })).json();
+ok(trc.ml && trc.ml.clvN === 2,
+  `only the lines that actually moved are counted (${trc.ml && trc.ml.clvN} of 4 rows)`);
+ok(trc.ml && trc.ml.clvBeatRate === 50,
+  `so one beat of two moves reads 50%, not 25% (${trc.ml && trc.ml.clvBeatRate}%)`);
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
