@@ -73,7 +73,9 @@ globalThis.fetch = async (u, o) => {
   if (url.includes('/events?')) return J(slate.events);
   const m = url.match(/\/events\/ev(\d+)\/odds/);
   if (m) {
-    perEventCalls++;
+    // Baseball only: the cron also captures NFL props against the same URL
+    // shape, and this counter is about the MLB slate's per-event spend.
+    if (/baseball_mlb/.test(url)) perEventCalls++;
     if (failEveryPropCall) return J({ message: 'Usage quota has been reached' }, 401);
     return J(propBody(m[1]));
   }

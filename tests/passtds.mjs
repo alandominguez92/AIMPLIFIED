@@ -67,15 +67,44 @@ const ESPN_WEEK = [{
   ] }],
 }];
 
+// The Odds API side of the capture: one upcoming event, and the per-event prop
+// odds the capture buys. player_pass_tds is bought HERE, by ingestNflProps —
+// not by the game-line ingest — which is the thing this test exists to keep
+// straight. Hooked onto the wrong function the readback queried a table with no
+// passing row in it and logged nothing, silently, while still passing.
+const ODDS_EVENT = { id: 'e1', commence_time: KICK, home_team: 'Green Bay Packers', away_team: 'Atlanta Falcons' };
+const propBook = (bk) => ({
+  key: bk,
+  markets: [{
+    key: 'player_pass_tds',
+    outcomes: QBS.flatMap((qb) => {
+      const exec = bk === 'draftkings';
+      return [
+        { name: 'Over', description: qb.name, point: 1.5, price: exec ? -105 : qb.sharpOver },
+        { name: 'Under', description: qb.name, point: 1.5, price: exec ? qb.dkUnder : qb.sharpUnder },
+      ];
+    }),
+  }],
+});
+
 let espnCalls = [];
+let oddsCalls = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (u, o) => {
   const url = String(u);
-  const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json' } });
+  const J = (x, h) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json', 'x-requests-remaining': '100', 'x-requests-last': '3', ...(h || {}) } });
   if (url.includes('cdn.espn.com')) {
     espnCalls.push(url);
     const q = new URL(url).searchParams;
     return J({ content: { sbData: { events: q.get('week') === String(WEEK) ? ESPN_WEEK : [] } } });
+  }
+  if (url.includes('api.the-odds-api.com')) {
+    oddsCalls.push(url);
+    if (/\/events\?/.test(url)) return J([ODDS_EVENT]);
+    if (/\/events\/e1\/odds/.test(url)) {
+      return J({ bookmakers: ['betonlineag', 'novig', 'prophetx', 'draftkings'].map(propBook) });
+    }
+    return J([]);
   }
   return realFetch(u, o);
 };
@@ -109,6 +138,7 @@ const db = {
           if (/player_pass_tds/.test(sql)) return { results: nflRows.filter((r) => r.market === 'player_pass_tds') };
           return { results: nflRows };
         }
+        if (/FROM nfl_proj/i.test(sql)) return { results: [] };
         if (/FROM gmpicks/i.test(sql)) {
           let rs = [...gm.values()];
           if (/sport='nflptd'/.test(sql)) rs = rs.filter((r) => r.sport === 'nflptd');
@@ -121,7 +151,17 @@ const db = {
   },
   batch: async (l) => (l || []).map((x) => run(x.sql, x.args)),
 };
-const env = { ODDS_API_KEY: 'k', DB: db };
+const env = {
+  ODDS_API_KEY: 'k', DB: db,
+  // nflSchedule and the projection priors read off ASSETS. Neither matters to
+  // the passing-TD log, but the capture will not run without them answering.
+  ASSETS: { fetch: async (r) => {
+    const name = new URL(r.url).pathname;
+    const file = path.join(BOARD, name);
+    if (!fs.existsSync(file)) return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    return new Response(fs.readFileSync(file, 'utf8'), { status: 200, headers: { 'content-type': 'application/json' } });
+  } },
+};
 
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
@@ -137,7 +177,8 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 
 // ---- log -------------------------------------------------------------------------------
-await hit('/api/nfl-ingest?readback=1');
+const cap = await hit('/api/nfl-capture');
+console.log(`  capture: ${cap.wrote} line rows, ${cap.passTdsLogged} passing-TD rows logged`);
 const logged = [...gm.values()];
 console.log('  logged: ' + logged.map((r) => `${r.pick} fair ${r.win_prob}% @ ${r.entry_price} (${r.book}) edge ${r.edge}`).join(' | ') + '\n');
 

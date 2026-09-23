@@ -45,7 +45,11 @@ globalThis.fetch = async (u, o) => {
   if (url.includes('/schedule?')) return J(schedule);
   if (!url.includes('api.the-odds-api.com')) return realFetch(u, o);
   if (url.includes('/events?')) { eventListCalls++; return J(events); }
-  if (/\/events\/ev\d+\/odds/.test(url)) { perEventCalls++; return J({ bookmakers: [] }); }
+  // Baseball only. The cron also captures NFL props on the same tick, against
+  // the same stubbed URL shape, and this counter is about one thing: whether the
+  // MLB close capture prices the whole slate or only what is closing.
+  if (/\/baseball_mlb\/events\/ev\d+\/odds/.test(url)) { perEventCalls++; return J({ bookmakers: [] }); }
+  if (/\/events\/ev\d+\/odds/.test(url)) return J({ bookmakers: [] });
   return J({});
 };
 

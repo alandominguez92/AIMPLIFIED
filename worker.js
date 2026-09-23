@@ -4313,6 +4313,41 @@ async function ingestNflProps(env, opts, reqUrl) {
       r.proj, r.p25 ?? null, r.p50 ?? null, r.p75 ?? null, r.conf ?? null, stamp));
   }
   out.projFrozen = projStmts.length;
+  // Passing touchdowns, logged off the rows this capture just wrote.
+  //
+  // This lives here and not in nflIngest: player_pass_tds is bought by THIS
+  // function (per event, NFL_PROP_MARKETS), while nflIngest buys the game
+  // markets. Hooked onto the wrong one it read a table that never had a
+  // passing row in it and logged nothing, silently.
+  //
+  // Read back rather than logged inline: the capture writes append-on-change,
+  // so the current price for a player is whatever survived, not necessarily a
+  // row written on this pass. Nothing is posted from these — see passTdEntries.
+  try {
+    const ptdRows = (await env.DB.prepare(
+      `SELECT event_id, commence, home, away, market, player, point, book, over, under, week, season_type
+         FROM nfl_lines WHERE market = 'player_pass_tds' AND commence > ?
+        ORDER BY captured_at ASC`
+    ).bind(new Date().toISOString()).all()).results || [];
+    const latest = new Map();
+    for (const r of ptdRows) latest.set(`${r.event_id}|${r.player}|${r.book}`, r);
+    const byWeek = new Map();
+    for (const r of latest.values()) {
+      const k = `${r.week}|${r.season_type}`;
+      if (!byWeek.has(k)) byWeek.set(k, []);
+      byWeek.get(k).push(r);
+    }
+    let wrote = 0;
+    for (const [k, rs] of byWeek) {
+      const [wk, st] = k.split('|');
+      const entries = passTdEntries(rs, wk === 'null' ? null : Number(wk), st);
+      if (!entries.length) continue;
+      const day = ptDateOf(Date.parse(entries[0].commence || Date.now()));
+      wrote += await logGamePicks(env.DB, 'nflptd', day, entries);
+    }
+    out.passTdsLogged = wrote;
+  } catch (e) { out.errors.push('pass-tds: ' + String((e && e.message) || e)); }
+
 
   if (dry) { out.dryRun = true; return out; }
   for (const batch of [stmts, projStmts]) {
@@ -7256,8 +7291,19 @@ async function nflMaybeIngest(env, ctx) {
     });
     if (!soon) return null;
     const res = await nflIngest(env, new URL('https://x/api/nfl-ingest'));
+    // Player props on the same tick. They are a separate purchase — per event
+    // rather than per slate — and the game-line ingest does not touch them, so
+    // without this the passing-TD log never fills and the projections have no
+    // line to grade against. Every capture before this one came from a one-off
+    // scheduled task, every one of which is now spent.
+    //
+    // 3 markets x 1 region-equivalent per event: about 3 credits for a Thursday,
+    // 48 for a sixteen-game Sunday, so roughly 110 a week at twice a slate day.
+    let props = null;
+    try { props = await ingestNflProps(env, { sport: 'nfl' }, new URL('https://x/api/nfl-capture')); }
+    catch (e) { /* the game lines are already in; props retry next tick */ }
     await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
-    return { ran: true, n: state.n + 1, res: res && res.status };
+    return { ran: true, n: state.n + 1, res: res && res.status, props: props && props.wrote };
   } catch (e) { return null; }   // next tick
 }
 
@@ -8252,34 +8298,6 @@ async function nflIngest(env, url) {
       res.rowsWithoutWeek = nullWk ? nullWk.n : null;
     } catch (e) { res.errors.push('readback: ' + String((e && e.message) || e)); }
   }
-  // Passing touchdowns, logged off the rows this capture just wrote. Read back
-  // rather than logged inline: the capture writes append-on-change, so the
-  // current price for a player is whatever survived, not necessarily a row from
-  // this pass. Nothing is posted from these — see passTdEntries.
-  try {
-    const ptdRows = (await env.DB.prepare(
-      `SELECT event_id, commence, home, away, market, player, point, book, over, under, week, season_type
-         FROM nfl_lines WHERE market = 'player_pass_tds' AND commence > ?
-        ORDER BY captured_at ASC`
-    ).bind(new Date().toISOString()).all()).results || [];
-    const latest = new Map();
-    for (const r of ptdRows) latest.set(`${r.event_id}|${r.player}|${r.book}`, r);
-    const byWeek = new Map();
-    for (const r of latest.values()) {
-      const k = `${r.week}|${r.season_type}`;
-      if (!byWeek.has(k)) byWeek.set(k, []);
-      byWeek.get(k).push(r);
-    }
-    let wrote = 0;
-    for (const [k, rs] of byWeek) {
-      const [wk, st] = k.split('|');
-      const entries = passTdEntries(rs, wk === 'null' ? null : Number(wk), st);
-      if (!entries.length) continue;
-      const day = ptDateOf(Date.parse(entries[0].commence || Date.now()));
-      wrote += await logGamePicks(env.DB, 'nflptd', day, entries);
-    }
-    res.passTdsLogged = wrote;
-  } catch (e) { res.errors.push('pass-tds: ' + String((e && e.message) || e)); }
   return cors(json(res, 30));
 }
 
