@@ -147,7 +147,7 @@ const RL_MODEL_VER = 'rl-shin';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
@@ -212,7 +212,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/soccer-board';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -458,6 +458,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/bpicks-export') return bpicksExport(env, url);
   if (p === '/api/pppicks-export') return ppExport(env, url);
   if (p === '/api/gmpicks-export') return gmExport(env, url);
+  if (p === '/api/top-legs') return topLegs(env, url);
   if (p === '/api/mlpicks-export') return mlpicksExport(env);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
@@ -6215,6 +6216,123 @@ async function gmExport(env, url) {
   } catch (e) {
     return cors(json({ error: String((e && e.message) || e) }, 30));
   }
+}
+
+// GET /api/top-legs — does ranking by confidence beat taking one of everything?
+//
+// The finding this exists to test, on three days of PrizePicks legs: split by
+// market, nothing clears a break-even (H+R+RBI 53.7%, total bases 52.4%,
+// strikeouts 39.6%, everything 51.5%). Ranked by the model's own probability and
+// pooled across markets, the top three legs of a day ran 77.8% and the top
+// twelve 61.1%. If that holds it says the market label is not what separates a
+// winning leg from a losing one, and an entry should be built from the best legs
+// of the day whatever market they come from.
+//
+// Nine legs is not a finding, it is a hypothesis. This is the instrument, not
+// the answer: read-only, computed from rows already logged, so it applies to
+// every row already in the table and to every row added from here.
+//
+// The three sports are NOT the same experiment, and the payload says so:
+//   mlb     ranks by the model's probability that the under lands. A model claim.
+//   soccer  ranks by the gap to the sharp pool's fair line. No model exists for
+//   nfl     soccer or NFL game lines, so this tests whether disagreeing with the
+//           sharp number predicts anything — a different question with a
+//           different failure mode.
+//   nflptd  ranks by the gap to the realised 55.4% under rate.
+const TOP_LEG_BANDS = [3, 5, 8, 12];
+
+function topLegScore(sport, r) {
+  if (sport === 'mlb') {
+    // The probability claimed at the close where there is one, since that is the
+    // number the leg was actually offered at.
+    const p = r.close_model_under != null ? r.close_model_under : r.model_under;
+    return p == null ? null : p;
+  }
+  // Everything else ranks on the gap between the fair line and the price taken.
+  return r.edge == null ? null : r.edge;
+}
+function topLegWon(sport, r) {
+  if (sport === 'mlb') return r.result === 'under' ? 1 : (r.result === 'over' ? 0 : null);
+  return r.result === 'win' ? 1 : (r.result === 'loss' ? 0 : null);
+}
+
+async function topLegs(env, url) {
+  const out = {
+    note: 'LOGGED ONLY, nothing posted and nothing shown on the site. Ranks every leg already logged '
+      + 'by confidence, pools them across markets, and reports how the best N of each day actually did.',
+    rankedBy: null, sport: null, bands: {}, byDay: [], today: [],
+    breakEvens: { '6-pick flex': 54.2, '5-pick flex': 54.3, '4-pick flex': 56.9, '3-pick flex': 59.1, '2-pick power': 57.7 },
+  };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 300)); }
+  const sport = (url.searchParams.get('sport') || 'mlb').toLowerCase();
+  out.sport = sport;
+  try {
+    let rows = [];
+    if (sport === 'mlb') {
+      await ensurePpSchema(env.DB);
+      rows = ((await env.DB.prepare('SELECT * FROM pppicks').all()).results) || [];
+      out.rankedBy = "the model's probability that the under lands (a model claim)";
+      out.source = 'pppicks — PrizePicks lines at their own number';
+    } else {
+      await ensureGamePickSchema(env.DB);
+      const want = sport === 'nflptd' ? 'nflptd' : sport;
+      rows = (((await env.DB.prepare('SELECT * FROM gmpicks WHERE sport = ?').bind(want).all()).results) || []);
+      out.rankedBy = sport === 'nflptd'
+        ? 'the gap between the best price and the realised 55.4% under rate'
+        : "the gap between the sharp pool's fair line and the best price (no model exists here)";
+      out.source = `gmpicks, sport='${want}'`;
+    }
+    out.logged = rows.length;
+
+    const scored = rows.map((r) => ({ r, s: topLegScore(sport, r), w: topLegWon(sport, r) }))
+      .filter((x) => x.s != null);
+    const graded = scored.filter((x) => x.w != null);
+    out.graded = graded.length;
+
+    // Per day, best first.
+    const days = new Map();
+    for (const x of graded) {
+      if (!days.has(x.r.date)) days.set(x.r.date, []);
+      days.get(x.r.date).push(x);
+    }
+    for (const [, list] of days) list.sort((a, b) => b.s - a.s);
+
+    const band = (n) => {
+      let w = 0, tot = 0;
+      for (const [, list] of days) {
+        for (const x of list.slice(0, n)) { w += x.w; tot++; }
+      }
+      return { n: tot, hit: w, hitRate: tot ? round1(w / tot * 100) : null };
+    };
+    for (const n of TOP_LEG_BANDS) out.bands['top ' + n] = band(n);
+    out.bands.everything = band(1e9);
+    // The point of the exercise: how many of the entry break-evens each band clears.
+    for (const k of Object.keys(out.bands)) {
+      const hr = out.bands[k].hitRate;
+      out.bands[k].clears = hr == null ? null
+        : Object.entries(out.breakEvens).filter(([, be]) => hr >= be).map(([name]) => name);
+    }
+
+    const label = (r) => (sport === 'mlb'
+      ? `${r.player} ${r.market} u${r.point}`
+      : `${r.pick}${r.point != null ? ' ' + r.point : ''} (${r.away} @ ${r.home})`);
+    for (const [date, list] of [...days.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      out.byDay.push({
+        date, legs: list.length,
+        top: list.slice(0, 5).map((x) => ({ leg: label(x.r), score: x.s, result: x.r.result })),
+        topHit: list.slice(0, 3).filter((x) => x.w === 1).length,
+      });
+    }
+
+    // What it would take today, ungraded — so the idea can be watched forward
+    // rather than only backwards.
+    const todayYmd = slateDate();
+    out.today = scored.filter((x) => x.r.date === todayYmd && x.w == null)
+      .sort((a, b) => b.s - a.s).slice(0, 8)
+      .map((x) => ({ leg: label(x.r), score: x.s }));
+    if (!out.today.length) out.todayNote = `nothing ungraded logged for ${todayYmd} yet`;
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return cors(json(out, 300));
 }
 
 async function bpicksExport(env, url) {
