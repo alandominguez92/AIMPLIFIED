@@ -32,6 +32,11 @@ const iso = (ms) => new RealDate(ms).toISOString();
 const KICK = iso(NOW + 30 * 3600e3);
 const ptDay = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new RealDate(ms));
 const WEEK = 4;
+// A second game three days later, same NFL week. One capture covers the whole
+// week and a week is three slates, so this is the case that matters.
+const KICK_SUN = iso(NOW + 4 * 24 * 3600e3);
+const ODDS_EVENT_2 = { id: 'e2', commence_time: KICK_SUN, home_team: 'Buffalo Bills', away_team: 'Los Angeles Chargers' };
+const SUN_QB = { name: 'Sunday Arm', sharpUnder: -120, sharpOver: 100, dkUnder: -118 };
 
 // Two quarterbacks. CHEAP is priced under the realised rate, PRICED is above it.
 // Three sharp books each, plus DK for execution.
@@ -51,6 +56,16 @@ for (const qb of QBS) {
     });
   }
 }
+for (const book of ['betonlineag', 'novig', 'prophetx', 'draftkings']) {
+  const exec = book === 'draftkings';
+  nflRows.push({
+    event_id: 'e2', commence: KICK_SUN, home: 'Buffalo Bills', away: 'Los Angeles Chargers',
+    market: 'player_pass_tds', player: SUN_QB.name, point: 1.5, book,
+    over: exec ? -105 : SUN_QB.sharpOver, under: exec ? SUN_QB.dkUnder : SUN_QB.sharpUnder,
+    captured_at: iso(NOW - 3600e3), week: WEEK, season_type: 'REG',
+  });
+}
+
 // A receiving line in the same table, which must not end up in this log.
 nflRows.push({ event_id: 'e1', commence: KICK, home: 'Green Bay Packers', away: 'Atlanta Falcons',
   market: 'player_reception_yds', player: 'Some Receiver', point: 64.5, book: 'draftkings',
@@ -73,11 +88,11 @@ const ESPN_WEEK = [{
 // straight. Hooked onto the wrong function the readback queried a table with no
 // passing row in it and logged nothing, silently, while still passing.
 const ODDS_EVENT = { id: 'e1', commence_time: KICK, home_team: 'Green Bay Packers', away_team: 'Atlanta Falcons' };
-const propBook = (bk) => ({
+const propBook = (bk, who) => ({
   key: bk,
   markets: [{
     key: 'player_pass_tds',
-    outcomes: QBS.flatMap((qb) => {
+    outcomes: (who || QBS).flatMap((qb) => {
       const exec = bk === 'draftkings';
       return [
         { name: 'Over', description: qb.name, point: 1.5, price: exec ? -105 : qb.sharpOver },
@@ -100,9 +115,12 @@ globalThis.fetch = async (u, o) => {
   }
   if (url.includes('api.the-odds-api.com')) {
     oddsCalls.push(url);
-    if (/\/events\?/.test(url)) return J([ODDS_EVENT]);
+    if (/\/events\?/.test(url)) return J([ODDS_EVENT, ODDS_EVENT_2]);
     if (/\/events\/e1\/odds/.test(url)) {
-      return J({ bookmakers: ['betonlineag', 'novig', 'prophetx', 'draftkings'].map(propBook) });
+      return J({ bookmakers: ['betonlineag', 'novig', 'prophetx', 'draftkings'].map((b) => propBook(b, QBS)) });
+    }
+    if (/\/events\/e2\/odds/.test(url)) {
+      return J({ bookmakers: ['betonlineag', 'novig', 'prophetx', 'draftkings'].map((b) => propBook(b, [SUN_QB])) });
     }
     return J([]);
   }
@@ -182,7 +200,14 @@ console.log(`  capture: ${cap.wrote} line rows, ${cap.passTdsLogged} passing-TD 
 const logged = [...gm.values()];
 console.log('  logged: ' + logged.map((r) => `${r.pick} fair ${r.win_prob}% @ ${r.entry_price} (${r.book}) edge ${r.edge}`).join(' | ') + '\n');
 
-ok(logged.length === 2, `one row per quarterback quoted by two or more sharp books (${logged.length})`);
+ok(logged.length === 3, `one row per quarterback quoted by two or more sharp books (${logged.length})`);
+// One capture, one week, three slates. Dating every row from the first entry
+// filed Sunday's quarterbacks under Thursday, which makes the per-day ranking
+// in /api/top-legs read a whole week as a single day.
+const thuDay = ptDay(RealDate.parse(KICK)), sunDay = ptDay(RealDate.parse(KICK_SUN));
+const sun = logged.find((r) => /Sunday/.test(r.pick));
+ok(thuDay !== sunDay && sun && sun.date === sunDay && logged.filter((r) => r.date === thuDay).length === 2,
+  `each row is dated by its own kickoff, not by the first of the capture (${[...new Set(logged.map((r) => r.date))].sort().join(' + ')})`);
 ok(logged.every((r) => r.sport === 'nflptd' && r.market === 'pass_tds'),
   'kept apart from the NFL moneyline record, which is about games');
 ok(logged.every((r) => r.side === 'under' && r.point === 1.5),

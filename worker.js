@@ -4343,8 +4343,17 @@ async function ingestNflProps(env, opts, reqUrl) {
       const [wk, st] = k.split('|');
       const entries = passTdEntries(rs, wk === 'null' ? null : Number(wk), st);
       if (!entries.length) continue;
-      const day = ptDateOf(Date.parse(entries[0].commence || Date.now()));
-      wrote += await logGamePicks(env.DB, 'nflptd', day, entries);
+      // Each entry takes ITS OWN kickoff date. A capture covers the whole week
+      // and an NFL week is three slates, so dating them all from the first
+      // filed Sunday's quarterbacks under Thursday — harmless to grading, which
+      // is by week, but it makes the per-day ranking read a week as one day.
+      const byDay = new Map();
+      for (const e of entries) {
+        const day = ptDateOf(Date.parse(e.commence || Date.now()));
+        if (!byDay.has(day)) byDay.set(day, []);
+        byDay.get(day).push(e);
+      }
+      for (const [day, list] of byDay) wrote += await logGamePicks(env.DB, 'nflptd', day, list);
     }
     out.passTdsLogged = wrote;
   } catch (e) { out.errors.push('pass-tds: ' + String((e && e.message) || e)); }
