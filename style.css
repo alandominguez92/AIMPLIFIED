@@ -2338,6 +2338,28 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Today's card and its explainer exist for the phone. Off by default so the
    desktop is unchanged until it gets its own pass. */
 .today-card, .how-priced { display:none; }
+/* The card's own styles, shared by the phone layout and the wide-screen rail. */
+.tc-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.tc-title { font-family:var(--display, var(--sans)); font-weight:700; font-size:18px; letter-spacing:.01em; color:var(--text); }
+.tc-rec { font-family:var(--mono); font-size:12px; color:var(--textDim); white-space:nowrap; }
+.tc-rec b { color:var(--positive); font-weight:600; }
+.tc-sub { margin-top:4px; font-size:12px; line-height:1.45; color:var(--textDim); }
+.tc-legs { list-style:none; margin:10px 0 0; padding:0; display:grid; gap:8px; }
+.tc-leg { display:block; width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;
+  background:var(--board, transparent); border:1px solid var(--border); border-radius:10px; padding:11px 13px; }
+.tc-leg:active { border-color:var(--accent); }
+.tc-l1 { display:flex; align-items:center; gap:7px; font-size:15px; }
+.tc-l1 b { font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.tc-p { margin-left:auto; font-family:var(--mono); font-size:18px; font-weight:600; color:var(--positive);
+  font-variant-numeric:tabular-nums; }
+.tc-l2 { display:flex; justify-content:space-between; gap:10px; margin-top:4px; font-size:12.5px; color:var(--textDim); }
+.tc-book { font-family:var(--mono); font-size:12px; color:var(--textFaint); white-space:nowrap; }
+
+.how-priced { margin:0 0 14px; font-size:13px; line-height:1.55; color:var(--textDim); }
+.how-priced summary { cursor:pointer; font-size:13px; color:var(--model); padding:4px 0; }
+.how-priced p { margin:8px 0 0; }
+.how-priced b { color:var(--text); font-weight:600; }
+
 
 @media (max-width:640px) {
   /* The hero goes. Its one fade is replaced by the card's three, and its
@@ -2345,26 +2367,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .hero { display:none; }
 
   .today-card:not([hidden]) { display:block; margin:14px 0 10px; }
-  .tc-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
-  .tc-title { font-family:var(--display, var(--sans)); font-weight:700; font-size:18px; letter-spacing:.01em; color:var(--text); }
-  .tc-rec { font-family:var(--mono); font-size:12px; color:var(--textDim); white-space:nowrap; }
-  .tc-rec b { color:var(--positive); font-weight:600; }
-  .tc-sub { margin-top:4px; font-size:12px; line-height:1.45; color:var(--textDim); }
-  .tc-legs { list-style:none; margin:10px 0 0; padding:0; display:grid; gap:8px; }
-  .tc-leg { display:block; width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;
-    background:var(--board, transparent); border:1px solid var(--border); border-radius:10px; padding:11px 13px; }
-  .tc-leg:active { border-color:var(--accent); }
-  .tc-l1 { display:flex; align-items:center; gap:7px; font-size:15px; }
-  .tc-l1 b { font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-  .tc-p { margin-left:auto; font-family:var(--mono); font-size:18px; font-weight:600; color:var(--positive);
-    font-variant-numeric:tabular-nums; }
-  .tc-l2 { display:flex; justify-content:space-between; gap:10px; margin-top:4px; font-size:12.5px; color:var(--textDim); }
-  .tc-book { font-family:var(--mono); font-size:12px; color:var(--textFaint); white-space:nowrap; }
-
-  .how-priced { display:block; margin:0 0 14px; font-size:13px; line-height:1.55; color:var(--textDim); }
-  .how-priced summary { cursor:pointer; font-size:13px; color:var(--model); padding:4px 0; }
-  .how-priced p { margin:8px 0 0; }
-  .how-priced b { color:var(--text); font-weight:600; }
+  .how-priced { display:block; margin:0 0 14px; }
 
   /* Compact rows on the play board: two lines, three when PrizePicks hangs a
      different number. Name and time, then the pick, its price, the model's
@@ -2512,4 +2515,58 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .mf-leg { grid-template-columns:1fr 1fr; }
   .le-side { margin-left:0; }
   .en-v { font-size:21px; }
+}
+
+/* ==========================================================================
+   Wide screens (≥1100px): the board, with a rail beside it.
+   Measured before this at 1280x900: the slip was 6,439px down the page — 7.2
+   screens below the stars that fill it — and the first pick sat behind a 950px
+   hero. The rail holds Today's card, its explainer and the slip with "Log this
+   entry", and stays in view while the board scrolls. The hero goes, as it does
+   on a phone: Today's card is the better version of its one featured fade.
+   ========================================================================== */
+@media (min-width:1100px) {
+  body.has-rail main.wrap { display:grid; grid-template-columns:minmax(0,1fr) 320px; column-gap:24px; align-items:start; }
+  /* The board lost ~430px to the rail, and the default template gave the name
+     column 133px: the name wrapped and its sub-line ran to three lines, taking
+     rows from 117px to 154px. The name gets more, the chevron less. */
+  body.has-rail .board.view-batter { --bcols:minmax(0,1.95fr) minmax(0,1.6fr) .9fr .95fr .75fr .5fr 30px; }
+  body.has-rail main.wrap > * { grid-column:1 / -1; min-width:0; }
+  body.has-rail main.wrap > #slate { grid-column:1; }
+  body.has-rail main.wrap > #rail:not([hidden]) { display:flex; flex-direction:column; }
+  .rail.slip-active #slipSection { order:-1; margin-bottom:16px; }
+  body.has-rail main.wrap > #rail { grid-column:2; position:sticky;
+    top:calc(var(--hdrH) + var(--sportsH) + 54px);
+    max-height:calc(100vh - var(--hdrH) - var(--sportsH) - 66px); overflow:auto; overscroll-behavior:contain;
+    padding:0 2px 14px; }
+  body.has-rail .hero { display:none; }
+  .rail .today-card:not([hidden]) { display:block; margin:0 0 10px; }
+  .rail .how-priced { display:block; margin:0 0 16px; }
+  .rail #slipSection { margin:0; padding:0; }
+  .rail #slipSection .sec-head { margin-bottom:8px; }
+  .rail #slipSection .sec-head h2 { font-size:18px; }
+  /* Three metric columns do not fit 320px; the third ran past the rail's edge. */
+  .rail .slip-summary { grid-template-columns:1fr; }
+  .rail .slip-metric { padding:12px 14px; }
+}
+
+/* Desktop cell placement on the two boards that carry a PrizePicks tag.
+   The tag is emitted as its own cell after the price (oddsCell += ppTag). Left
+   to auto-placement it took the Edge column, pushing every cell after it one
+   column right — the edge sat under "Model P(under)", the probability under
+   "Call", the Play chip under the chevron's column — and the chevron wrapped to
+   a line of its own, making every row taller. That had been the desktop board
+   since 2026-09-18. Each cell now has its column, and the tag shares the price's
+   cell, anchored under it. */
+@media (min-width:901px) {
+  .board.view-batter .board-row > *, .board.view-kprops .board-row > * { grid-row:1; }
+  .board.view-batter .board-row > .matchup-cell, .board.view-kprops .board-row > .matchup-cell { grid-column:1; }
+  .board.view-batter .board-row > span:not([class]), .board.view-kprops .board-row > span:not([class]) { grid-column:2; }
+  .board.view-batter .board-row > .odds-books, .board.view-batter .board-row > .odds-cell, .board.view-batter .board-row > .odds-blank,
+  .board.view-kprops .board-row > .odds-books, .board.view-kprops .board-row > .odds-cell, .board.view-kprops .board-row > .odds-blank { grid-column:3; align-self:start; margin-top:4px; }
+  .board.view-batter .board-row > .pp-tag, .board.view-kprops .board-row > .pp-tag { grid-column:3; align-self:end; margin:0 0 2px; white-space:normal; }
+  .board.view-batter .board-row > .edge-cell, .board.view-kprops .board-row > .edge-cell { grid-column:4; }
+  .board.view-batter .board-row > .interval-cell, .board.view-kprops .board-row > .interval-cell { grid-column:5; }
+  .board.view-batter .board-row > .tier-cell, .board.view-kprops .board-row > .tier-cell { grid-column:6; }
+  .board.view-batter .board-row > .chevron, .board.view-kprops .board-row > .chevron { grid-column:7; }
 }

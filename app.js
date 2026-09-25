@@ -3053,6 +3053,10 @@
     if (!el.slip) return;
     const legs = Object.values(state.slip);
     const n = legs.length;
+    // In the wide-screen rail, a slip with legs in it goes above Today's card:
+    // below it, "Log this entry" started 879px down a 722px rail.
+    const railEl = document.getElementById('rail');
+    if (railEl) railEl.classList.toggle('slip-active', n > 0);
     if (el.slipCount) el.slipCount.textContent = `${n} leg${n === 1 ? '' : 's'}`;
     if (el.slipClearBtn) el.slipClearBtn.hidden = n === 0;
 
@@ -3141,8 +3145,12 @@
 
     const stakeInput = document.getElementById('stakeInput');
     if (stakeInput) stakeInput.addEventListener('change', (e) => setStake(e.target.value));
-    // Logging lives with the legs it logs.
-    el.slip.insertAdjacentHTML('beforeend', logFormHtml(legs));
+    // Logging lives with the legs it logs — directly under them, ahead of the
+    // parlay calculator. At the bottom of the slip it sat 1,200px down the rail,
+    // under numbers that describe a DraftKings parlay, not the entry being logged.
+    const legsBox = el.slip.querySelector('.slip-legs');
+    if (legsBox) legsBox.insertAdjacentHTML('afterend', logFormHtml(legs));
+    else el.slip.insertAdjacentHTML('beforeend', logFormHtml(legs));
   }
 
   // ROI, cumulative-units chart, per-tier / per-side / per-market breakdowns.
@@ -3300,6 +3308,48 @@
           + `</button></li>`;
       }).join('')}</ol>`;
   }
+
+  // ---------------------------------------------------------------------
+  // The rail (wide screens)
+  // ---------------------------------------------------------------------
+  // Measured at 1280x900 before this: the slip sat 6,439px down the page, 7.2
+  // screens below the stars that fill it, and the first pick 1,737px down behind
+  // a 950px hero. From 1100px wide, Today's card, its explainer and the slip move
+  // into a rail beside the board that stays in view while the board scrolls.
+  // Below that they go back where they were: the card at the top of the board,
+  // the slip after it. Moved rather than duplicated, so there is one card, one
+  // slip and one set of inputs, and the body-level click handlers never notice.
+  const RAIL_MQ = window.matchMedia ? window.matchMedia('(min-width: 1100px)') : null;
+  function placeRail() {
+    const rail = document.getElementById('rail');
+    const slate = document.getElementById('slate');
+    const card = document.getElementById('todayCard');
+    const how = document.querySelector('.how-priced');
+    const slip = document.getElementById('slipSection');
+    if (!rail || !slate || !card || !slip) return;
+    const wide = !!(RAIL_MQ && RAIL_MQ.matches);
+    document.body.classList.toggle('has-rail', wide);
+    if (wide) {
+      if (card.parentNode !== rail) rail.append(card);
+      if (how && how.parentNode !== rail) rail.append(how);
+      if (slip.parentNode !== rail) rail.append(slip);
+    } else {
+      if (card.parentNode !== slate) slate.prepend(card);
+      if (how && how.parentNode !== slate) card.after(how);
+      if (slip.parentNode === rail) rail.after(slip);
+    }
+    rail.hidden = !wide || state.sport !== 'mlb';
+  }
+  if (RAIL_MQ) {
+    if (RAIL_MQ.addEventListener) RAIL_MQ.addEventListener('change', placeRail);
+    else if (RAIL_MQ.addListener) RAIL_MQ.addListener(placeRail);
+  }
+  // Resize as well: the media-query change event did not fire on an emulated
+  // phone-to-desktop resize, which left a 1280px window with no rail. placeRail
+  // only moves nodes that are in the wrong place, so running it on every
+  // resize costs a few DOM reads.
+  window.addEventListener('resize', placeRail);
+  placeRail();
 
   async function refreshTopLegs() {
     if (!LIVE_MODE) return;
@@ -4591,7 +4641,7 @@
   // on screen under the NFL and soccer boards, which read as those sports'
   // content purely because of where it sat.
   const MLB_ONLY = ['.hero', '#liveNow', '#slate', '#slipSection', '#record',
-    '#yesterdayCard', '#mlbExtras'];
+    '#yesterdayCard', '#mlbExtras', '#rail'];
 
   function setSport(s) {
     if (state.sport === s) return;
@@ -4611,6 +4661,7 @@
     if (s === 'soccer' && !state.soccer) refreshSoccer();   // lazy first load
     const eb = document.getElementById('entriesBoard');
     if (eb) eb.hidden = s !== 'entries';
+    placeRail();
     if (s === 'entries') { if (!state.entries) refreshEntries(); else renderEntries(); }
     // Hiding on the way out was only half of it. Coming BACK to MLB left the
     // strip hidden until the next batter poll happened to re-render it, which

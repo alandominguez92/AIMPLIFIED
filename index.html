@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4bbdc4f24a">
+<link rel="stylesheet" href="style.css?v=bbb0a3c6b2">
 </head>
 <body>
 
@@ -309,6 +309,11 @@
     <div id="comparePanel"></div>
   </section>
 
+  <!-- On a wide screen, Today's card and the slip move into this rail beside the
+       board, so starring a leg and logging the entry happen side by side. On a
+       narrower one it stays empty and hidden. See placeRail() in app.js. -->
+  <aside id="rail" class="rail" hidden></aside>
+
   <!-- MY SLIP -->
   <section id="slipSection">
     <div class="sec-head">
@@ -446,6 +451,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=4bbdc4f24a"></script>
+<script src="app.js?v=bbb0a3c6b2"></script>
 </body>
 </html>
