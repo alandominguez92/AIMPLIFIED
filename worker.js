@@ -7610,6 +7610,13 @@ const PROBE_SPORTS = {
   ligamx: 'soccer_mexico_ligamx',
   mls: 'soccer_usa_mls',
   bundesliga: 'soccer_germany_bundesliga',
+  // NBA, for the coverage question before anything is built: which books quote
+  // player threes, assists and rebounds two-sided, and whether PrizePicks is on
+  // them. Those three are where the under thesis held in 2024-25 and 2025-26
+  // (55.5%, 53.4% and 53.3% under a player's last-10 average over ~23,000
+  // rotation games each); points and PRA did not (51.6%, 51.2%).
+  nba: 'basketball_nba',
+  nbapre: 'basketball_nba_preseason',
 };
 // ---------------------------------------------------------------------------
 // Soccer — game lines only, for three leagues, as CONTEXT.
