@@ -31,7 +31,7 @@ globalThis.Date = class extends RealDate {
 const iso = (ms) => new RealDate(ms).toISOString();
 const KICK = iso(NOW + 30 * 3600e3);
 const ptDay = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new RealDate(ms));
-const WEEK = 4;
+const WEEK = 3;   // the real Week 3 fixtures below
 // A second game three days later, same NFL week. One capture covers the whole
 // week and a week is three slates, so this is the case that matters.
 const KICK_SUN = iso(NOW + 4 * 24 * 3600e3);
@@ -41,8 +41,8 @@ const SUN_QB = { name: 'Sunday Arm', sharpUnder: -120, sharpOver: 100, dkUnder: 
 // Two quarterbacks. CHEAP is priced under the realised rate, PRICED is above it.
 // Three sharp books each, plus DK for execution.
 const QBS = [
-  { name: 'Cheap Arm',  sharpUnder: -118, sharpOver: -102, dkUnder: -115 },
-  { name: 'Priced Arm', sharpUnder: -150, sharpOver: +125, dkUnder: -145 },
+  { name: 'Michael Penix Jr.', sharpUnder: -118, sharpOver: -102, dkUnder: -115 },
+  { name: 'Jordan Love',       sharpUnder: -150, sharpOver: +125, dkUnder: -145 },
 ];
 const nflRows = [];
 for (const qb of QBS) {
@@ -71,16 +71,19 @@ nflRows.push({ event_id: 'e1', commence: KICK, home: 'Green Bay Packers', away: 
   market: 'player_reception_yds', player: 'Some Receiver', point: 64.5, book: 'draftkings',
   over: -110, under: -110, captured_at: iso(NOW - 3600e3), week: WEEK, season_type: 'REG' });
 
-// ESPN week scoreboard: Cheap Arm threw 1 (under wins), Priced Arm threw 3 (loses).
-const ESPN_WEEK = [{
-  status: { type: { name: 'STATUS_FINAL' } },
-  competitions: [{ competitors: [
-    { homeAway: 'home', team: { displayName: 'Green Bay Packers', abbreviation: 'GB' }, score: '24',
-      leaders: [{ name: 'passingYards', leaders: [{ athlete: { displayName: 'Cheap Arm' }, displayValue: '244 YDS, 1 TD, 0 INT' }] }] },
-    { homeAway: 'away', team: { displayName: 'Atlanta Falcons', abbreviation: 'ATL' }, score: '20',
-      leaders: [{ name: 'passingYards', leaders: [{ athlete: { displayName: 'Priced Arm' }, displayValue: '301 YDS, 3 TD, 1 INT' }] }] },
-  ] }],
-}];
+// ESPN, as ESPN actually returns it. Recorded 2026-09-25 from the Week 3
+// Thursday game, Atlanta 35 at Green Bay 14, and trimmed to what the graders read.
+//
+// The first version of this test invented a scoreboard with passing leaders on
+// each team, and the grader was written to read them there. The real payload
+// hangs leaders on the competition and lists ONE passer per game — Jordan Love
+// — so Penix never appeared and nothing graded, while this test passed. Stubs
+// written from assumption have now let four of these through (soccer URLs,
+// ESPN's ?dates=, the NFL week, this). Recorded responses cannot flatter the
+// code they test.
+const FIX = path.join(BOARD, 'tests', 'fixtures');
+const ESPN_WEEK_REAL = JSON.parse(fs.readFileSync(path.join(FIX, 'espn-nfl-2026-wk3-scoreboard.json'), 'utf8'));
+const ESPN_BOX_REAL = JSON.parse(fs.readFileSync(path.join(FIX, 'espn-nfl-boxscore-401872948.json'), 'utf8'));
 
 // The Odds API side of the capture: one upcoming event, and the per-event prop
 // odds the capture buys. player_pass_tds is bought HERE, by ingestNflProps —
@@ -111,7 +114,8 @@ globalThis.fetch = async (u, o) => {
   if (url.includes('cdn.espn.com')) {
     espnCalls.push(url);
     const q = new URL(url).searchParams;
-    return J({ content: { sbData: { events: q.get('week') === String(WEEK) ? ESPN_WEEK : [] } } });
+    if (/\/boxscore/.test(url)) return J(q.get('gameId') === '401872948' ? ESPN_BOX_REAL : {});
+    return J(q.get('week') === String(WEEK) ? ESPN_WEEK_REAL : { content: { sbData: { events: [] } } });
   }
   if (url.includes('api.the-odds-api.com')) {
     oddsCalls.push(url);
@@ -222,8 +226,8 @@ ok(logged.every((r) => r.week === WEEK),
   `the week is stored, because the NFL scoreboard can only be asked by week (${logged.map((r) => r.week).join(',')})`);
 
 // The edge is measured against the realised rate, not against a model.
-const cheap = logged.find((r) => /Cheap/.test(r.pick));
-const priced = logged.find((r) => /Priced/.test(r.pick));
+const cheap = logged.find((r) => /Penix/.test(r.pick));
+const priced = logged.find((r) => /Love/.test(r.pick));
 ok(cheap && cheap.edge > 0 && priced && priced.edge < 0,
   `edge is the price against the 55.4% baseline: cheap ${cheap && cheap.edge}, priced ${priced && priced.edge}`);
 
@@ -234,10 +238,14 @@ const tr = await hit('/api/track-record');
 console.log('\n  graded: ' + [...gm.values()].map((r) => `${r.pick} -> ${r.home_score} TD ${r.result}`).join(' | ') + '\n');
 
 const g = (n) => [...gm.values()].find((r) => new RegExp(n).test(r.pick || ''));
-ok(g('Cheap').result === 'win' && g('Cheap').home_score === 1,
-  `1 touchdown against a 1.5 line is an under win (${g('Cheap').result})`);
-ok(g('Priced').result === 'loss' && g('Priced').home_score === 3,
-  `3 touchdowns is a loss (${g('Priced').result})`);
+ok(g('Penix').result === 'win' && g('Penix').home_score === 1,
+  `Penix threw 1 against a 1.5 line — an under win (${g('Penix').result}, ${g('Penix').home_score} TD)`);
+ok(g('Love').result === 'loss' && g('Love').home_score === 2,
+  `Love threw 2 — a loss (${g('Love').result}, ${g('Love').home_score} TD)`);
+// The specific failure: Penix is not the game's passing leader, so a grader that
+// reads the scoreboard's leaders can never see him.
+ok(g('Penix').result != null && espnCalls.some((u) => /boxscore\?xhr=1&gameId=401872948/.test(u)),
+  'graded from the box score, which carries every passer — not from the leaders, which carry one');
 const nflCalls = espnCalls.filter((u) => /\/nfl\/scoreboard/.test(u));
 ok(nflCalls.length > 0 && nflCalls.every((u) => /week=/.test(u) && !/[?&]dates?=/.test(u)),
   `asked by week, never by date — the NFL scoreboard ignores a date entirely (${nflCalls.length} of ${espnCalls.length} calls)`);
@@ -254,6 +262,22 @@ ok(rec && /priced|watch/.test(rec.verdict || ''),
   `and says in words whether the market already has it (${rec && rec.verdict})`);
 ok(rec && /LOGGED ONLY/.test(rec.note || '') && /nothing posted/.test(rec.note || ''),
   'and that nothing here is posted');
+
+
+// ---- rows the earlier dating bug filed twice ----------------------------------------------
+// Before 2026-09-24 a capture dated every row from its first entry, so Sunday
+// quarterbacks were also filed under Thursday. Those copies stay in the table —
+// deleting production rows to tidy a record is not worth the risk — and the
+// record keeps one per (game, player): the copy dated by its own kickoff.
+const love = [...gm.values()].find((r) => /Love/.test(r.pick));
+const twin = { ...love, date: '2026-09-20' };              // same game, wrong day
+gm.set(key([twin.sport, twin.date, twin.game_id, twin.market]), twin);
+const tr2 = await hit('/api/track-record');
+ok(tr2.nflPassTds && tr2.nflPassTds.n === 2,
+  `a row filed under the wrong day is not counted twice (${tr2.nflPassTds && tr2.nflPassTds.n} graded, 3 rows)`);
+const tl = await hit('/api/top-legs?sport=nflptd');
+ok(tl.graded === 2 && !tl.byDay.some((d) => d.date === '2026-09-20'),
+  `and the per-day ranking does not grow a phantom day out of it (${tl.byDay.map((d) => d.date).join(', ')})`);
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exitCode = fail ? 1 : 0;

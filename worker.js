@@ -3579,29 +3579,49 @@ async function gradePassTds(env) {
     try {
       events = await espnScoreboard(`nfl/scoreboard?xhr=1&year=${yr}&seasontype=${String(lg).toUpperCase() === 'PRE' ? 1 : 2}&week=${wk}`);
     } catch (e) { continue; }
-    // The scoreboard carries per-game leaders, which is enough for a QB's
-    // passing line in the games we priced.
+    // Every passer's touchdowns come from the BOX SCORE, one fetch per game.
+    //
+    // The first version read the scoreboard's leaders, from the competitors.
+    // Checked against the real Week 3 payload it was wrong twice over: ESPN
+    // hangs leaders on the competition, not on each team, and it lists only the
+    // single game leader — Jordan Love, 312 yards — so Michael Penix never
+    // appeared at all. Nothing graded. The box score is what the projection
+    // grader has read for three weeks, and it carries both passers:
+    //   ATL  Michael Penix Jr.  18/25  256  ...  TD 1
+    //   GB   Jordan Love        28/53  312  ...  TD 2
     const tds = new Map();
+    const want = new Set(rs.map((r) => `${r.away}|${r.home}`));
     for (const ev of events) {
       const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
       if (!/FINAL/.test(String(st))) continue;
       const c = (ev.competitions || [])[0];
-      for (const comp of (c && c.competitors) || []) {
-        for (const cat of (comp.leaders || [])) {
-          if (!/passing/i.test(cat.name || '')) continue;
-          for (const l of cat.leaders || []) {
-            const nm = l.athlete && (l.athlete.displayName || l.athlete.fullName);
-            // "277 YDS, 3 TD, 1 INT"
-            const m = /(\d+)\s*TD/i.exec(l.displayValue || '');
-            if (nm && m) tds.set(nflBaseName(nm), Number(m[1]));
-          }
+      const names = ((c && c.competitors) || []).map((t) => (t.team || {}).displayName || '');
+      const hit = [...want].some((k) => { const [a, h] = k.split('|'); return names.includes(a) && names.includes(h); });
+      if (!hit || !ev.id) continue;
+      let sum;
+      try {
+        const r = await fetch(`${ESPN_CDN}/boxscore?xhr=1&gameId=${ev.id}`,
+          { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+        if (!r.ok) continue;
+        sum = await r.json();
+      } catch (e) { continue; }
+      const box = (sum.gamepackageJSON && sum.gamepackageJSON.boxscore) || sum.boxscore || {};
+      for (const team of (box.players || [])) {
+        const cat = (team.statistics || []).find((x) => x.name === 'passing');
+        if (!cat) continue;
+        const ti = (cat.labels || []).map((l) => String(l).toUpperCase()).indexOf('TD');
+        if (ti < 0) continue;
+        for (const a of (cat.athletes || [])) {
+          const nm = (a.athlete || {}).displayName;
+          const v = Number((a.stats || [])[ti]);
+          if (nm && Number.isFinite(v)) tds.set(nflBaseName(nm), v);
         }
       }
     }
     for (const r of rs) {
       const nm = String(r.pick || '').replace(/ under .*$/, '');
       const got = tds.get(nflBaseName(nm));
-      if (got == null) continue;      // leaders only carry the top passer per side
+      if (got == null) continue;      // not final yet, or the QB did not play
       const result = got === r.point ? 'push' : (got < r.point ? 'win' : 'loss');
       stmts.push(env.DB.prepare(
         "UPDATE gmpicks SET result=?, home_score=? WHERE sport='nflptd' AND date=? AND game_id=? AND market=?"
@@ -3613,8 +3633,24 @@ async function gradePassTds(env) {
   return out;
 }
 
+// Until 2026-09-24 a capture dated every passing-TD row from the first entry in
+// it, so four Sunday quarterbacks were also filed under Thursday. Those rows are
+// left in the table rather than deleted; this keeps one per (game, player) —
+// the copy whose date matches its own kickoff — so nothing is counted twice.
+function dedupePassTds(rows) {
+  const best = new Map();
+  for (const r of rows) {
+    const own = r.commence ? ptDateOf(Date.parse(r.commence)) : null;
+    const prev = best.get(r.game_id);
+    if (!prev) { best.set(r.game_id, r); continue; }
+    const prevOwn = prev.commence ? ptDateOf(Date.parse(prev.commence)) : null;
+    if (own === r.date && prevOwn !== prev.date) best.set(r.game_id, r);
+  }
+  return [...best.values()];
+}
+
 function buildPassTdRecord(rows) {
-  const mine = rows.filter((r) => r.sport === 'nflptd');
+  const mine = dedupePassTds(rows.filter((r) => r.sport === 'nflptd'));
   const graded = mine.filter((r) => r.result === 'win' || r.result === 'loss');
   const w = graded.filter((r) => r.result === 'win').length;
   let u = 0;
@@ -6286,6 +6322,7 @@ async function topLegs(env, url) {
       await ensureGamePickSchema(env.DB);
       const want = sport === 'nflptd' ? 'nflptd' : sport;
       rows = (((await env.DB.prepare('SELECT * FROM gmpicks WHERE sport = ?').bind(want).all()).results) || []);
+      if (want === 'nflptd') rows = dedupePassTds(rows);   // the ranking is per day
       out.rankedBy = sport === 'nflptd'
         ? 'the gap between the best price and the realised 55.4% under rate'
         : "the gap between the sharp pool's fair line and the best price (no model exists here)";
