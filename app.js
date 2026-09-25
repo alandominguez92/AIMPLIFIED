@@ -208,6 +208,14 @@
     ycOpen: false,           // "Yesterday's Card" collapsed by default — keeps the board up top
     boardView: 'batter', // 'batter' (Under Plays — the default) | 'kprops' | 'moneyline' | 'runline'
     topLegs: null,         // /api/top-legs?sport=mlb — the record printed on Today's card
+    entries: null,         // /api/entries — your logged entries and their summary
+    entriesError: null,
+    logBook: 'pp',         // the slip's "log this entry": PrizePicks or DraftKings
+    logKind: { pp: null, dk: null },
+    logSides: {},          // legId -> 'Under' | 'Over', when flipped from the board's side
+    logPrices: {},         // legId -> odds typed in for a DraftKings leg
+    logStake: null,
+    manualLegs: 1,         // rows in the "add by hand" form
     soccer: null,          // /api/soccer-board payload, loaded on first visit
     soccerLeague: 'all',   // 'all' | 'epl' | 'laliga' | 'ucl'
     soccerOpen: null,      // expanded fixture id
@@ -3133,6 +3141,8 @@
 
     const stakeInput = document.getElementById('stakeInput');
     if (stakeInput) stakeInput.addEventListener('change', (e) => setStake(e.target.value));
+    // Logging lives with the legs it logs.
+    el.slip.insertAdjacentHTML('beforeend', logFormHtml(legs));
   }
 
   // ROI, cumulative-units chart, per-tier / per-side / per-market breakdowns.
@@ -3306,6 +3316,243 @@
     renderBoard();
     const row = document.querySelector(`#boardWrap .board-row[data-id="${CSS.escape(String(id))}"]`);
     if (row) row.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ---------------------------------------------------------------------
+  // Your entries
+  // ---------------------------------------------------------------------
+  // What was actually played, logged from the slip or by hand, graded by the
+  // worker (see entriesApi) and summarised by entry type, market and model
+  // probability — so "which options win" is answered from real entries.
+  const ENTRY_KEY_STORE = 'aimplified_entry_key';
+  const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML' };
+  function entryKey() {
+    try {
+      let k = localStorage.getItem(ENTRY_KEY_STORE);
+      if (!k) {
+        k = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '').slice(0, 40);
+        localStorage.setItem(ENTRY_KEY_STORE, k);
+      }
+      return k;
+    } catch (e) { return null; }
+  }
+  async function entriesFetch(method, body) {
+    const key = entryKey();
+    if (!key) throw new Error('This browser is blocking storage, so it cannot hold an entries key.');
+    const r = await fetch('/api/entries', {
+      method, cache: 'no-store',
+      headers: { 'content-type': 'application/json', 'x-entry-key': key },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `The log answered ${r.status}.`);
+    return j;
+  }
+  async function refreshEntries() {
+    try { state.entries = await entriesFetch('GET'); state.entriesError = null; }
+    catch (e) { state.entriesError = e.message; }
+    renderEntries();
+  }
+
+  // One slip leg as the entry log records it, at the number the chosen book
+  // actually offers.
+  function entryLegFrom(leg, book) {
+    const s = leg.spec;
+    const side = state.logSides[leg.id] || (s ? s.side : 'Under');
+    const typed = state.logPrices[leg.id];
+    const typedPrice = typed != null && typed !== '' && isFinite(Number(typed)) ? Math.round(Number(typed)) : null;
+    if (!s) {
+      return { sport: 'mlb', player: leg.title, market: 'other', side,
+        price: book === 'dk' ? (typedPrice != null ? typedPrice : leg.odds) : null };
+    }
+    if (s.market === 'ml') {
+      return { sport: s.sport, date: s.date, gamePk: s.gamePk, player: s.player, team: s.team, market: 'ml',
+        side: s.side, price: typedPrice != null ? typedPrice : s.book.price, modelProb: s.book.win };
+    }
+    const usePP = book === 'pp' && s.pp;
+    const under = usePP ? s.pp.under : s.book.under;
+    return { sport: s.sport, date: s.date, gamePk: s.gamePk, playerId: s.playerId, player: s.player, team: s.team,
+      market: s.market, line: usePP ? s.pp.line : s.book.line, side,
+      price: book === 'dk' ? (typedPrice != null ? typedPrice : (side === s.side ? s.book.price : null)) : null,
+      modelProb: under == null ? null : (side === 'Over' ? pct1(100 - under) : under) };
+  }
+
+  function defaultKind(book, n) {
+    if (book === 'pp') return n >= 3 ? 'flex' : 'power';
+    return n === 1 ? 'straight' : 'parlay';
+  }
+
+  function logFormHtml(legs) {
+    const book = state.logBook;
+    const n = legs.length;
+    const kind = state.logKind[book] || defaultKind(book, n);
+    const kinds = book === 'pp' ? [['power', 'Power'], ['flex', 'Flex']] : [['straight', 'Straight'], ['parlay', 'Parlay']];
+    const stake = state.logStake != null ? state.logStake : (() => { try { return localStorage.getItem('aimplified_log_stake') || ''; } catch (e) { return ''; } })();
+    const rows = legs.map((leg) => {
+      const e = entryLegFrom(leg, book);
+      const what = e.market === 'ml' ? `${esc(e.player)} to win`
+        : e.market === 'other' ? esc(leg.title)
+        : `${e.line != null ? esc(String(e.line)) : '—'} ${esc(MARKET_SHORT[e.market] || e.market)}${book === 'pp' && leg.spec && leg.spec.pp ? ' <i class="le-src">PP line</i>' : ''}`;
+      const sides = (e.market === 'ml' || e.market === 'other') ? ''
+        : `<span class="le-side">${['Under', 'Over'].map((v) => `<button type="button" data-action="log-side" data-leg="${esc(leg.id)}" data-side="${v}" class="${e.side === v ? 'on' : ''}">${v}</button>`).join('')}</span>`;
+      const price = book === 'dk'
+        ? `<input class="le-price" data-action="log-price" data-leg="${esc(leg.id)}" inputmode="numeric" placeholder="odds" value="${e.price != null ? esc(String(e.price)) : ''}" aria-label="Odds for ${esc(e.player || '')}">`
+        : '';
+      const prob = e.modelProb != null ? `<span class="le-prob">${Math.round(e.modelProb)}%</span>` : '';
+      return `<div class="le-leg"><span class="le-leg-name">${esc(e.player || leg.title)}</span><span class="le-leg-what">${what}</span>${sides}${price}${prob}</div>`;
+    }).join('');
+    const noPP = book === 'pp' && legs.some((l) => l.spec && l.spec.market === 'ml');
+    return `<div class="log-entry">
+      <div class="le-head">Log this entry</div>
+      <div class="le-seg" role="group" aria-label="Book">${[['pp', 'PrizePicks'], ['dk', 'DraftKings']].map(([k, v]) =>
+        `<button type="button" data-action="log-book" data-book="${k}" class="${book === k ? 'on' : ''}">${v}</button>`).join('')}</div>
+      <div class="le-seg" role="group" aria-label="Entry type">${kinds.map(([k, v]) =>
+        `<button type="button" data-action="log-kind" data-kind="${k}" class="${kind === k ? 'on' : ''}">${n}-pick ${v}</button>`).join('')}</div>
+      <div class="le-legs">${rows}</div>
+      ${noPP ? '<div class="le-warn">PrizePicks has no moneylines — log this one on DraftKings.</div>' : ''}
+      <div class="le-foot">
+        <label class="le-stake">Stake $<input id="logStake" data-action="log-stake" inputmode="decimal" value="${esc(String(stake))}" placeholder="10"></label>
+        <button type="button" class="le-save" data-action="log-save">Save entry</button>
+      </div>
+      <div class="le-note">Graded automatically after the games. The percentages are the model's chance for that side at that line.</div>
+    </div>`;
+  }
+
+  async function saveLoggedEntry() {
+    const legs = Object.values(state.slip);
+    const book = state.logBook;
+    const kind = state.logKind[book] || defaultKind(book, legs.length);
+    const stakeEl = document.getElementById('logStake');
+    const stake = Number(stakeEl ? stakeEl.value : state.logStake);
+    if (!(stake > 0)) { toast('Enter a stake first'); return; }
+    if (book === 'pp' && legs.some((l) => l.spec && l.spec.market === 'ml')) { toast('PrizePicks has no moneylines'); return; }
+    const entry = { book, kind, stake, legs: legs.map((l) => entryLegFrom(l, book)) };
+    try {
+      const r = await entriesFetch('POST', { action: 'create', entry });
+      try { localStorage.setItem('aimplified_log_stake', String(stake)); } catch (e) {}
+      state.slip = {}; state.logSides = {}; state.logPrices = {}; state.logKind = { pp: null, dk: null };
+      persistSlip(); renderControls(); renderBoard(); renderSlip();
+      toast(r.claimed ? 'Entry logged — this device now holds your entries key' : 'Entry logged');
+      if (state.entries) refreshEntries();
+    } catch (e) { toast(e.message); }
+  }
+
+  function fmtMoney(v) { return v == null ? '—' : '$' + (Math.round(Number(v) * 100) / 100).toFixed(2); }
+  function signedMoney(v) { if (v == null) return '—'; const n = Math.round(Number(v) * 100) / 100; return (n >= 0 ? '+$' : '−$') + Math.abs(n).toFixed(2); }
+
+  function renderEntries() {
+    const box = document.getElementById('entriesBody');
+    const count = document.getElementById('entriesCount');
+    if (!box) return;
+    if (state.entriesError && !state.entries) {
+      box.innerHTML = `<div class="nfl-empty">${esc(state.entriesError)}</div>` + entryKeyHtml();
+      return;
+    }
+    if (!state.entries) { box.innerHTML = '<div class="nfl-empty">Loading your entries…</div>'; return; }
+    const { entries, summary } = state.entries;
+    const s = summary || {};
+    const o = s.overall || {};
+    if (count) count.textContent = `${entries.length} logged${s.open ? ` · ${s.open} open` : ''}`;
+    const tile = (k, v, sub, tone) => `<div class="en-tile"><div class="en-k">${k}</div><div class="en-v${tone ? ' ' + tone : ''}">${v}</div>${sub ? `<div class="en-sub">${sub}</div>` : ''}</div>`;
+    const tiles = `<div class="en-tiles">
+      ${tile('Profit', signedMoney(o.profit), o.roi != null ? `ROI ${o.roi > 0 ? '+' : ''}${o.roi}%` : 'nothing settled yet', o.profit > 0 ? 'pos' : o.profit < 0 ? 'neg' : '')}
+      ${tile('Entries', String(o.entries || 0), `${o.won || 0} paid more than the stake`)}
+      ${tile('Legs hit', s.legs && s.legs.n ? `${s.legs.hitRate}%` : '—', s.legs && s.legs.n ? `${s.legs.hit} of ${s.legs.n}` : 'no legs decided yet')}
+    </div>`;
+    const typeRows = (s.byType || []).map((t) => `<tr><td>${esc(t.key)}</td><td>${t.entries}</td><td>${fmtMoney(t.staked)}</td><td class="${t.profit > 0 ? 'pos' : t.profit < 0 ? 'neg' : ''}">${signedMoney(t.profit)}</td><td>${t.roi != null ? t.roi + '%' : '—'}</td></tr>`).join('');
+    const legTable = (title, rows) => rows && rows.length ? `<div class="en-block"><div class="en-h">${title}</div><table class="en-table"><tbody>${rows.map((g) =>
+      `<tr><td>${esc(g.key)}</td><td>${g.hit} of ${g.n}</td><td>${g.hitRate}%</td></tr>`).join('')}</tbody></table></div>` : '';
+    const analysis = (o.entries || (s.legs && s.legs.n)) ? `
+      ${typeRows ? `<div class="en-block"><div class="en-h">By entry type</div><table class="en-table"><thead><tr><th>Type</th><th>Entries</th><th>Staked</th><th>Profit</th><th>ROI</th></tr></thead><tbody>${typeRows}</tbody></table></div>` : ''}
+      <div class="en-two">${legTable('Legs by market', s.legsByMarket)}${legTable('Legs by model probability', s.legsByModelProb)}</div>
+      <div class="en-note">${esc(s.payoutNote || '')}</div>` : '';
+
+    const list = entries.map((e) => {
+      const legs = (e.legs || []).map((l) => {
+        const res = l.result;
+        const mark = res === 'win' ? '<span class="en-r win">Hit</span>' : res === 'loss' ? '<span class="en-r loss">Miss</span>'
+          : res === 'push' ? '<span class="en-r push">Push</span>' : res === 'void' ? '<span class="en-r push">Void</span>' : '<span class="en-r open">Open</span>';
+        const what = l.market === 'ml' ? `${esc(l.player)} to win${l.side && l.side !== 'home' && l.side !== 'away' ? '' : ''}`
+          : `${esc(l.side || '')} ${l.line != null ? esc(String(l.line)) : ''} ${esc(MARKET_SHORT[l.market] || l.market || '')}`;
+        const auto = l.sport === 'mlb' && l.game_id && ['tb', 'hrr', 'hr', 'K', 'ml'].includes(l.market);
+        const tap = res == null && !auto
+          ? `<span class="en-tap">${[['win', 'Hit'], ['loss', 'Miss'], ['push', 'Push']].map(([r, t]) =>
+            `<button type="button" data-action="entry-leg" data-id="${esc(e.id)}" data-idx="${l.idx}" data-result="${r}">${t}</button>`).join('')}</span>`
+          : '';
+        return `<div class="en-leg">${mark}<span class="en-leg-p">${esc(l.market === 'ml' ? '' : (l.player || ''))}</span><span class="en-leg-w">${what}</span>`
+          + `${l.model_prob != null ? `<span class="en-leg-m">${Math.round(l.model_prob)}%</span>` : ''}`
+          + `${l.actual != null ? `<span class="en-leg-a">got ${esc(String(l.actual))}</span>` : ''}${tap}</div>`;
+      }).join('');
+      const settled = e.status === 'settled';
+      const pl = settled ? Number(e.payout) - Number(e.stake) : null;
+      const day = e.date ? new Date(e.date + 'T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+      return `<div class="en-card">
+        <div class="en-card-h"><b>${esc(e.type)}</b><span>${esc(day)} · ${fmtMoney(e.stake)}${settled ? ` → ${fmtMoney(e.payout)} <span class="${pl > 0 ? 'pos' : pl < 0 ? 'neg' : ''}">${signedMoney(pl)}</span>` : ' · open'}</span></div>
+        ${legs}
+        <div class="en-card-f">
+          <label>Paid something else? $<input data-action="entry-payout" data-id="${esc(e.id)}" inputmode="decimal" value="${e.payout_src === 'manual' ? esc(String(e.payout)) : ''}" placeholder="${settled ? esc(String(e.payout)) : ''}"></label>
+          <button type="button" class="en-del" data-action="entry-delete" data-id="${esc(e.id)}">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    box.innerHTML = tiles + analysis
+      + `<div class="en-block"><div class="en-h">Entries</div>${list || '<div class="nfl-empty">Nothing logged yet. Star legs on the MLB board, then log the entry from your slip — or add one below.</div>'}</div>`
+      + manualFormHtml() + entryKeyHtml();
+  }
+
+  // For what the boards cannot star: an NFL or soccer moneyline, a DraftKings
+  // market we do not carry. These legs take a one-tap result.
+  function manualFormHtml() {
+    const n = Math.max(1, Math.min(6, state.manualLegs));
+    const legRow = (i) => `<div class="mf-leg">
+      <select data-mf="sport" data-i="${i}" aria-label="Sport"><option value="nfl">NFL</option><option value="soccer">Soccer</option><option value="nba">NBA</option><option value="mlb">MLB</option><option value="other">Other</option></select>
+      <input data-mf="player" data-i="${i}" placeholder="Player or team" aria-label="Player or team">
+      <input data-mf="market" data-i="${i}" placeholder="Market" aria-label="Market">
+      <input data-mf="line" data-i="${i}" inputmode="decimal" placeholder="Line" aria-label="Line">
+      <select data-mf="side" data-i="${i}" aria-label="Side"><option>Under</option><option>Over</option><option>Win</option></select>
+      <input data-mf="price" data-i="${i}" inputmode="numeric" placeholder="Odds" aria-label="Odds">
+    </div>`;
+    return `<details class="en-block mf"><summary>Add an entry by hand</summary>
+      <div class="mf-row"><select id="mfBook" aria-label="Book"><option value="dk">DraftKings</option><option value="pp">PrizePicks</option></select>
+        <select id="mfKind" aria-label="Entry type"><option value="straight">Straight</option><option value="parlay">Parlay</option><option value="power">Power</option><option value="flex">Flex</option></select>
+        <label>Stake $<input id="mfStake" inputmode="decimal" placeholder="10"></label></div>
+      ${Array.from({ length: n }, (_, i) => legRow(i)).join('')}
+      <div class="mf-row"><button type="button" data-action="mf-add-leg">Add a leg</button><button type="button" class="le-save" data-action="mf-save">Save entry</button></div>
+    </details>`;
+  }
+
+  async function saveManualEntry() {
+    const val = (k, i) => { const el = document.querySelector(`[data-mf="${k}"][data-i="${i}"]`); return el ? el.value.trim() : ''; };
+    const n = Math.max(1, Math.min(6, state.manualLegs));
+    const legs = [];
+    for (let i = 0; i < n; i++) {
+      const player = val('player', i);
+      if (!player) continue;
+      const line = val('line', i), price = val('price', i);
+      legs.push({ sport: val('sport', i), date: ptDayOf(Date.now()), player, market: val('market', i) || 'other',
+        line: line === '' ? null : Number(line), side: val('side', i), price: price === '' ? null : Number(price) });
+    }
+    const book = (document.getElementById('mfBook') || {}).value;
+    const kind = (document.getElementById('mfKind') || {}).value;
+    const stake = Number((document.getElementById('mfStake') || {}).value);
+    if (!legs.length) { toast('Add at least one leg'); return; }
+    try {
+      await entriesFetch('POST', { action: 'create', entry: { book, kind, stake, legs } });
+      state.manualLegs = 1;
+      toast('Entry logged');
+      refreshEntries();
+    } catch (e) { toast(e.message); }
+  }
+
+  // The key that opens the log. Shown so it can be carried to a second device.
+  function entryKeyHtml() {
+    let k = null; try { k = localStorage.getItem(ENTRY_KEY_STORE); } catch (e) {}
+    return `<details class="en-block en-key"><summary>This device's entries key</summary>
+      <p>Your entries are private to this key. To see them on another device, copy it there.</p>
+      <div class="mf-row"><code>${k ? esc(k) : 'none yet — it is created when you save your first entry'}</code>${k ? '<button type="button" data-action="entry-key-copy">Copy</button>' : ''}</div>
+      <div class="mf-row"><input id="entryKeyIn" placeholder="Paste a key from another device" aria-label="Entries key"><button type="button" data-action="entry-key-use">Use this key</button></div>
+    </details>`;
   }
 
   async function refreshTrackRecord() {
@@ -3841,25 +4088,62 @@
     if (isBatter()) return 'batter:' + g.id;
     return (isML() ? 'ml:' : 'kprops:') + g.id;
   }
+
+  // The facts a leg is graded on, captured when it is starred. The slip's title
+  // and subline are for reading; the entry log needs the player, the game and
+  // BOTH lines — PrizePicks often hangs a different number from the book, and an
+  // entry has to be graded at the number it was actually played at.
+  const ptDayOf = (ms) => (ms ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles',
+    year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms)) : null);
+  const pkOf = (id) => { const m = /(\d{5,})/.exec(String(id || '')); return m ? Number(m[1]) : null; };
+  const pct1 = (v) => (typeof v === 'number' ? Math.round(v * 10) / 10 : null);
+  function batterSpec(g) {
+    const m = (g.batterMarkets || []).find((x) => x.metric === g.metric) || {};
+    return { sport: 'mlb', date: ptDayOf(g.time || g.timeMs), gamePk: g.gamePk != null ? g.gamePk : null,
+      playerId: g.playerId != null ? g.playerId : null, player: g.name || g.matchup, team: g.team || null,
+      market: g.metric, side: g.side === 'Over' ? 'Over' : 'Under',
+      book: { line: g.line != null ? g.line : null, price: typeof g.odds === 'number' ? g.odds : null,
+        under: typeof g.modelOver === 'number' ? pct1(100 - g.modelOver) : null },
+      pp: m.pp && m.pp.point != null ? { line: m.pp.point, under: pct1(m.pp.modelUnder) } : null };
+  }
+  function kSpec(g) {
+    const ps = Array.isArray(g.projRows) ? g.projRows : [];
+    const p = ps.find((x) => x && x.name && String(g.pick || '').startsWith(x.name)) || ps.find((x) => x && x.pp) || ps[0];
+    if (!p) return null;
+    const mk = p.market || {};
+    return { sport: 'mlb', date: ptDayOf(g.timeMs || g.time), gamePk: pkOf(g.id),
+      playerId: p.id != null ? p.id : null, player: p.fullName || p.name, team: p.team || null,
+      market: 'K', side: /\bOver\b/.test(String(g.pick || '')) ? 'Over' : 'Under',
+      book: { line: mk.line != null ? mk.line : null, price: typeof g.odds === 'number' ? g.odds : null,
+        under: typeof mk.modelOver === 'number' ? pct1(100 - mk.modelOver) : null },
+      pp: p.pp && p.pp.point != null ? { line: p.pp.point, under: pct1(p.pp.modelUnder) } : null };
+  }
+  function mlSpec(g) {
+    const ml = g.ml || {};
+    if (!ml.teamAbbr) return null;
+    return { sport: 'mlb', date: ptDayOf(g.timeMs || g.time), gamePk: pkOf(g.id), player: ml.teamAbbr, team: ml.teamAbbr,
+      market: 'ml', side: ml.teamAbbr === ml.homeAbbr ? 'home' : 'away',
+      book: { line: null, price: typeof ml.price === 'number' ? ml.price : null, win: pct1(ml.winProb) }, pp: null };
+  }
   function buildLeg(g) {
     if (isML()) {
       const ml = g.ml || {};
-      return { id: legIdFor(g), board: 'ML', title: ml.pick || '—', sub: g.matchup, odds: typeof ml.price === 'number' ? ml.price : null, tier: ml.tier, edge: typeof ml.edge === 'number' ? ml.edge : null };
+      return { id: legIdFor(g), board: 'ML', title: ml.pick || '—', sub: g.matchup, odds: typeof ml.price === 'number' ? ml.price : null, tier: ml.tier, edge: typeof ml.edge === 'number' ? ml.edge : null, spec: mlSpec(g) };
     }
     if (isBatter()) {
       // g.matchup is the batter name; g.subline is "EVENT · TIME".
-      return { id: legIdFor(g), board: 'Batter', title: `${g.matchup} ${g.pick}`, sub: (g.subline || '').split(' · ')[0], odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null };
+      return { id: legIdFor(g), board: 'Batter', title: `${g.matchup} ${g.pick}`, sub: (g.subline || '').split(' · ')[0], odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null, spec: batterSpec(g) };
     }
     return buildKPropLeg(g);
   }
   // K-prop leg from a raw game, independent of the active board view — so the
   // hero's "Add to slip" adds exactly what the board's star would for that game.
   function buildKPropLeg(g) {
-    return { id: 'kprops:' + g.id, board: 'K Prop', title: g.pick, sub: g.matchup, odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null };
+    return { id: 'kprops:' + g.id, board: 'K Prop', title: g.pick, sub: g.matchup, odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null, spec: kSpec(g) };
   }
   // Batter under leg, view-independent — the hero's featured fade.
   function buildBatterLeg(g) {
-    return { id: 'batter:' + g.id, board: 'Under', title: `${g.name || g.matchup} ${g.pick}`, sub: (g.subline || g.matchup || '').split(' · ')[0], odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null };
+    return { id: 'batter:' + g.id, board: 'Under', title: `${g.name || g.matchup} ${g.pick}`, sub: (g.subline || g.matchup || '').split(' · ')[0], odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null, spec: batterSpec(g) };
   }
   function addHeroToSlip(id) {
     const g = (state.liveBatters || []).find((x) => x.id === id);
@@ -4109,6 +4393,16 @@
         break;
       case 'row-click': onRowClick(target.dataset.id); break;
       case 'today-jump': jumpToLeg(target.dataset.view, target.dataset.id); break;
+      case 'log-book': state.logBook = target.dataset.book === 'dk' ? 'dk' : 'pp'; renderSlip(); break;
+      case 'log-kind': state.logKind = { ...state.logKind, [state.logBook]: target.dataset.kind }; renderSlip(); break;
+      case 'log-side': state.logSides = { ...state.logSides, [target.dataset.leg]: target.dataset.side }; renderSlip(); break;
+      case 'log-save': saveLoggedEntry(); break;
+      case 'entry-leg': entriesFetch('POST', { action: 'leg', id: target.dataset.id, idx: Number(target.dataset.idx), result: target.dataset.result }).then(refreshEntries).catch((err) => toast(err.message)); break;
+      case 'entry-delete': if (confirm('Delete this entry? This cannot be undone.')) entriesFetch('POST', { action: 'delete', id: target.dataset.id }).then(refreshEntries).catch((err) => toast(err.message)); break;
+      case 'mf-add-leg': state.manualLegs = Math.min(6, state.manualLegs + 1); renderEntries(); { const d = document.querySelector('details.mf'); if (d) d.open = true; } break;
+      case 'mf-save': saveManualEntry(); break;
+      case 'entry-key-copy': try { navigator.clipboard.writeText(localStorage.getItem(ENTRY_KEY_STORE) || ''); toast('Key copied'); } catch (err) { toast('Copy it by hand'); } break;
+      case 'entry-key-use': { const v = ((document.getElementById('entryKeyIn') || {}).value || '').trim(); if (v.length < 16) { toast('That key is too short'); break; } try { localStorage.setItem(ENTRY_KEY_STORE, v); } catch (err) {} state.entries = null; refreshEntries(); toast('Using that key'); } break;
       case 'hero-add': if (e) e.stopPropagation(); addHeroToSlip(target.dataset.id); break;
       case 'remove-leg': if (e) e.stopPropagation(); removeLeg(target.dataset.leg); break;
       case 'clear-slip': clearSlip(); break;
@@ -4191,6 +4485,19 @@
       renderNfl();
     });
   }
+  document.body.addEventListener('change', (e) => {
+    const t = e.target;
+    if (!t || !t.dataset) return;
+    if (t.dataset.action === 'log-stake') state.logStake = t.value;
+    if (t.dataset.action === 'log-price') { state.logPrices = { ...state.logPrices, [t.dataset.leg]: t.value }; }
+    if (t.dataset.action === 'entry-payout') {
+      const v = t.value.trim();
+      entriesFetch('POST', { action: 'payout', id: t.dataset.id, payout: v === '' ? null : Number(v) })
+        .then(() => { toast(v === '' ? 'Back to the standard payout' : 'Payout saved'); refreshEntries(); })
+        .catch((err) => toast(err.message));
+    }
+  });
+
   el.searchInput.addEventListener('input', (e) => {
     state.searchQuery = e.target.value;
     renderBoard();
@@ -4302,6 +4609,9 @@
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
     if (el.soccerBoard) el.soccerBoard.hidden = s !== 'soccer';
     if (s === 'soccer' && !state.soccer) refreshSoccer();   // lazy first load
+    const eb = document.getElementById('entriesBoard');
+    if (eb) eb.hidden = s !== 'entries';
+    if (s === 'entries') { if (!state.entries) refreshEntries(); else renderEntries(); }
     // Hiding on the way out was only half of it. Coming BACK to MLB left the
     // strip hidden until the next batter poll happened to re-render it, which
     // can be minutes -- so the board you switched to was missing its own summary
@@ -5042,7 +5352,7 @@
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
   // sport switch and never changed back.
-  const DOC_TITLE = { mlb: document.title, nfl: 'Aimplified — NFL Board', soccer: 'Aimplified — Soccer Board' };
+  const DOC_TITLE = { mlb: document.title, nfl: 'Aimplified — NFL Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
 
   function applySportChrome(sport) {
     // Anything that is not the MLB board hides the MLB-only chrome. Written as

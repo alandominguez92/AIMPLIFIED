@@ -22,7 +22,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=c35289624a">
+<link rel="stylesheet" href="style.css?v=4bbdc4f24a">
 </head>
 <body>
 
@@ -47,6 +47,7 @@
     <a class="stab" href="#" data-action="set-sport" data-sport="nfl"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 19.5c-1.5-5.5 1-11 5.5-13.5 3-1.6 6.5-2 9.5-1.5.5 3 .1 6.5-1.5 9.5-2.5 4.5-8 7-13.5 5.5z"/><path d="M9 15l6-6"/><path d="M9.2 13.2l1.6 1.6M11.2 11.2l1.6 1.6M13.2 9.2l1.6 1.6"/></svg><span>NFL</span><span class="mini">Game Context</span></a>
     <a class="stab soon-tab" href="#" aria-disabled="true"><span>NBA</span><span class="mini">Scores &amp; Stats</span><span class="soon">Soon</span></a>
     <a class="stab" href="#" data-action="set-sport" data-sport="soccer"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 7.5l3.5 2.5-1.3 4.1h-4.4L8.5 10z"/><path d="M12 3v4.5M4.2 9.6l4.3.4M19.8 9.6l-4.3.4M7.2 19.4l2.6-3.3M16.8 19.4l-2.6-3.3"/></svg><span>Soccer</span><span class="mini">Game Lines</span></a>
+    <a class="stab" href="#" data-action="set-sport" data-sport="entries"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg><span>Entries</span><span class="mini">Your Bets</span></a>
   </div>
 </div>
 
@@ -129,6 +130,12 @@
     <div class="nfl-markets" id="soccerLeagues"></div>
 
     <div id="soccerGrid"></div>
+  </section>
+
+  <!-- Your entries: what was actually played, graded. Filled by renderEntries(). -->
+  <section id="entriesBoard" hidden>
+    <div class="sec-head"><h2>Your entries</h2><span class="count" id="entriesCount"></span></div>
+    <div id="entriesBody"></div>
   </section>
 
   <section id="nflBoard" hidden>
@@ -439,6 +446,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=c35289624a"></script>
+<script src="app.js?v=4bbdc4f24a"></script>
 </body>
 </html>

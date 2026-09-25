@@ -256,9 +256,33 @@ const nflDb = {
   },
   batch: async () => [],
 };
+// ENTRIESDB=1 backs the whole worker with a real in-memory SQLite (node:sqlite,
+// the D1 adapter tests/readpaths.mjs and tests/entries.mjs use), so the Entries
+// tab can be driven end to end: log from the slip, see it listed, tap a result.
+// Everything else that writes to D1 writes there too, which is harmless in memory.
+const ENTRIESDB = process.env.ENTRIESDB === '1';
+let sqliteDb = null;
+if (ENTRIESDB) {
+  const { DatabaseSync } = await import('node:sqlite');
+  const sq = new DatabaseSync(':memory:');
+  const norm = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v);
+  const exec = (sql, args, mode) => {
+    const st = sq.prepare(sql); const a = args.map(norm);
+    if (mode === 'all') return { results: st.all(...a), meta: {} };
+    if (mode === 'first') return st.get(...a) || null;
+    return { success: true, meta: { changes: Number(st.run(...a).changes) } };
+  };
+  sqliteDb = {
+    prepare: (sql) => { const s = { sql, args: [], bind: (...x) => { s.args = x; return s; },
+      all: async () => exec(s.sql, s.args, 'all'), first: async (c) => { const r = exec(s.sql, s.args, 'first'); return c && r ? r[c] : r; },
+      run: async () => exec(s.sql, s.args, 'run') }; return s; },
+    batch: async (sts) => sts.map((x) => exec(x.sql, x.args, 'run')),
+  };
+}
+
 const env = {
   ODDS_API_KEY: 'test-key',
-  DB: (NFLDEMO || SOCCERDEMO) ? nflDb : null,
+  DB: ENTRIESDB ? sqliteDb : ((NFLDEMO || SOCCERDEMO) ? nflDb : null),
   // The priors and schedule the NFL projections read, served off disk.
   ASSETS: { fetch: async (r) => {
     const name = new URL(r.url).pathname;
@@ -281,6 +305,22 @@ http.createServer(async (req, res) => {
     const body = await r.text();
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
     return res.end(body);
+  }
+  // /api/entries is private and written to: pass the method, the key header and
+  // the body straight through, and never cache it. The generic path below builds
+  // a bare GET and caches by URL, which is right for the boards and wrong here —
+  // every save arrived keyless and bodiless.
+  if (url.pathname === '/api/entries') {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const body = chunks.length ? Buffer.concat(chunks) : undefined;
+    const headers = {};
+    for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers[k] = v;
+    const wres = await mod.default.fetch(new Request('https://x/api/entries', {
+      method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body,
+    }), env, { waitUntil: () => {} });
+    res.writeHead(wres.status, { 'content-type': 'application/json', 'cache-control': 'private, no-store' });
+    return res.end(await wres.text());
   }
   if (url.pathname.startsWith('/api/')) {
     try {

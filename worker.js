@@ -147,7 +147,7 @@ const RL_MODEL_VER = 'rl-shin';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/entries',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
@@ -159,6 +159,10 @@ export default {
     if (!API_ROUTES.has(p)) return env.ASSETS.fetch(request); // static site
 
     if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
+    // Your entries: private, written to, and never cached — so it is answered
+    // before the shared edge cache, which would otherwise hand one viewer's
+    // response to the next.
+    if (p === '/api/entries') return entriesApi(request, env, url);
 
     // Shared edge cache: every viewer reuses one upstream burst per TTL (the TTL
     // is each handler's Cache-Control max-age). This is what protects the paid
@@ -240,6 +244,7 @@ export default {
     // than waiting for someone to open the track record.
     ctx.waitUntil(gradeGamePicks(env).catch(() => null));
     ctx.waitUntil(gradePassTds(env).catch(() => null));
+    ctx.waitUntil(gradeEntryLegs(env).catch(() => null));
   },
 };
 
@@ -3710,6 +3715,308 @@ function buildGmRecord(rows, sport) {
     ...(sport === 'soccer' ? { byLeague } : {}),
     clvBeatRate: clvN ? round1(beat / clvN * 100) : null, clvN,
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Your entries — what you actually bet, graded.
+//
+// Every record on this site so far grades the board's own picks. None of it
+// grades what you actually play: PrizePicks power and flex entries and
+// DraftKings straights and parlays, built before the games. "Which options win"
+// can only be answered from those, so this is where they are kept.
+//
+// Private by key. The phone generates one; the first key to save claims the log
+// and every later save or read must present it (header x-entry-key, never a URL
+// parameter). If ENTRY_KEY is set as a Worker secret, that is the key instead.
+// Responses are never cached and carry no CORS header, so another site cannot
+// read them from your browser.
+//
+// Grading reuses the PrizePicks log's machinery — the same box scores, the same
+// batterActual and pitcherKsFromBox — for MLB props, strikeouts and moneylines.
+// Anything else (NFL, soccer, NBA, other DraftKings markets) takes a one-tap
+// result until its sport grows a grader.
+//
+// Payouts: standard PrizePicks multipliers — the ones this site's break-evens
+// were computed from — and DraftKings from the odds. Goblins, demons, boosts and
+// promos pay differently, so any entry's payout can be overridden with what the
+// app actually paid.
+const PP_POWER = { 2: 3, 3: 5, 4: 10, 5: 20, 6: 37.5 };
+const PP_FLEX = { 3: { 3: 2.25, 2: 1.25 }, 4: { 4: 5, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } };
+const ENTRY_MARKETS_AUTO = new Set(['tb', 'hrr', 'hr', 'K', 'ml']);
+
+async function ensureEntrySchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS entries (
+    id TEXT PRIMARY KEY, created_at TEXT, date TEXT,
+    book TEXT, kind TEXT, legs_n INTEGER, stake REAL,
+    payout REAL, payout_src TEXT, status TEXT, note TEXT
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS entry_legs (
+    entry_id TEXT, idx INTEGER,
+    sport TEXT, date TEXT, game_id TEXT, player_id INTEGER, player TEXT, team TEXT,
+    market TEXT, line REAL, side TEXT, price INTEGER, model_prob REAL,
+    result TEXT, actual REAL, graded_by TEXT,
+    PRIMARY KEY (entry_id, idx)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS entry_legs_open ON entry_legs (game_id) WHERE result IS NULL').run();
+}
+
+async function sha256hex(str) {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+async function entryAuth(env, request) {
+  const key = (request.headers.get('x-entry-key') || '').trim();
+  if (key.length < 16) return { ok: false, status: 401, error: 'This device has no entries key yet.' };
+  if (env.ENTRY_KEY) {
+    return key === env.ENTRY_KEY ? { ok: true } : { ok: false, status: 403, error: 'That key does not open this log.' };
+  }
+  const h = await sha256hex(key);
+  const cur = await loadFeedCache(env.DB, 'entries_owner');
+  if (cur.present && cur.data && cur.data.h) {
+    return cur.data.h === h ? { ok: true } : { ok: false, status: 403, error: 'That key does not open this log.' };
+  }
+  await saveFeedCache(env.DB, 'entries_owner', { h, claimedAt: new Date().toISOString() });
+  return { ok: true, claimed: true };
+}
+
+function entryResponse(obj, status) {
+  return new Response(JSON.stringify(obj), {
+    status: status || 200,
+    headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' },
+  });
+}
+
+const amDec = (p) => (p == null || !isFinite(p) ? null : (p > 0 ? 1 + p / 100 : 1 + 100 / Math.abs(p)));
+
+// What an entry returned, from its legs. A push is removed like a void — the
+// way PrizePicks treats a tie with the line — and an entry left under its
+// minimum size is refunded.
+function entryPayout(e, legs) {
+  const stake = Number(e.stake) || 0;
+  const live = legs.filter((l) => l.result === 'win' || l.result === 'loss');
+  const wins = live.filter((l) => l.result === 'win').length;
+  const lost = live.length - wins;
+  if (e.book === 'pp') {
+    const n = live.length;
+    if (n < 2) return { payout: stake, src: 'table' };
+    if (e.kind === 'flex' && n >= 3) {
+      const mult = (PP_FLEX[Math.min(n, 6)] || {})[wins] || 0;
+      return { payout: Math.round(stake * mult * 100) / 100, src: 'table' };
+    }
+    // Power, or a flex reduced below three legs.
+    return { payout: lost ? 0 : Math.round(stake * (PP_POWER[Math.min(n, 6)] || 0) * 100) / 100, src: 'table' };
+  }
+  // DraftKings.
+  if (!live.length) return { payout: stake, src: 'odds' };
+  if (lost) return { payout: 0, src: 'odds' };
+  const dec = live.reduce((d, l) => d * (amDec(l.price) || 1), 1);
+  return { payout: Math.round(stake * dec * 100) / 100, src: 'odds' };
+}
+
+// Grade open MLB legs whose games are final. Free: StatsAPI only.
+async function gradeEntryLegs(env) {
+  const db = env.DB;
+  await ensureEntrySchema(db);
+  const open = ((await db.prepare(
+    "SELECT * FROM entry_legs WHERE result IS NULL AND sport = 'mlb' AND game_id IS NOT NULL"
+  ).all()).results || []).filter((l) => ENTRY_MARKETS_AUTO.has(l.market));
+  if (!open.length) return 0;
+  const byPk = await gamesByPk(open.map((l) => l.game_id));
+  const boxes = {};
+  const stmts = [];
+  for (const l of open) {
+    const g = byPk[l.game_id];
+    if (!g) continue;
+    if (isAbandoned(g)) {
+      stmts.push(db.prepare("UPDATE entry_legs SET result='void', graded_by='auto' WHERE entry_id=? AND idx=?").bind(l.entry_id, l.idx));
+      continue;
+    }
+    if (g.state !== 'Final') continue;
+    let result = null, actual = null;
+    if (l.market === 'ml') {
+      if (g.homeR == null || g.awayR == null) continue;
+      const homeWon = g.homeR > g.awayR;
+      result = (l.side === 'home') === homeWon ? 'win' : 'loss';
+    } else {
+      if (!boxes[l.game_id]) {
+        try {
+          const r = await fetch(`${STATS}/game/${String(l.game_id).replace(/^g/, '')}/boxscore`, { headers: { accept: 'application/json' } });
+          if (!r.ok) continue;
+          boxes[l.game_id] = await r.json();
+        } catch (e) { continue; }
+      }
+      const box = boxes[l.game_id];
+      actual = l.market === 'K' ? (pitcherKsFromBox(box)[l.player_id] ?? null) : batterActual(box, l.player_id, l.market);
+      if (actual == null) result = 'void';                         // did not play
+      else if (actual === l.line) result = 'push';
+      else result = ((actual < l.line) === (l.side === 'Under')) ? 'win' : 'loss';
+    }
+    stmts.push(db.prepare("UPDATE entry_legs SET result=?, actual=?, graded_by='auto' WHERE entry_id=? AND idx=?")
+      .bind(result, actual, l.entry_id, l.idx));
+  }
+  if (stmts.length) await db.batch(stmts);
+  await settleEntries(env);
+  return stmts.length;
+}
+
+// Close any open entry whose legs are all decided. A manual payout is kept.
+async function settleEntries(env) {
+  const db = env.DB;
+  const open = (await db.prepare("SELECT * FROM entries WHERE status = 'open'").all()).results || [];
+  if (!open.length) return;
+  const stmts = [];
+  for (const e of open) {
+    const legs = (await db.prepare('SELECT * FROM entry_legs WHERE entry_id = ?').bind(e.id).all()).results || [];
+    if (!legs.length || legs.some((l) => l.result == null)) continue;
+    if (e.payout_src === 'manual') {
+      stmts.push(db.prepare("UPDATE entries SET status='settled' WHERE id=?").bind(e.id));
+      continue;
+    }
+    const p = entryPayout(e, legs);
+    stmts.push(db.prepare("UPDATE entries SET status='settled', payout=?, payout_src=? WHERE id=?").bind(p.payout, p.src, e.id));
+  }
+  if (stmts.length) await db.batch(stmts);
+}
+
+function entryTypeLabel(e) {
+  if (e.book === 'pp') return `PrizePicks ${e.legs_n}-pick ${e.kind === 'flex' ? 'flex' : 'power'}`;
+  return e.kind === 'parlay' ? `DraftKings ${e.legs_n}-leg parlay` : 'DraftKings straight';
+}
+const ENTRY_MARKET_LABEL = { tb: 'Total bases', hrr: 'H+R+RBI', hr: 'Home runs', K: 'Strikeouts', ml: 'Moneyline' };
+
+function buildEntrySummary(entries, legs) {
+  const settled = entries.filter((e) => e.status === 'settled');
+  const money = (list) => {
+    const staked = list.reduce((a, e) => a + (Number(e.stake) || 0), 0);
+    const back = list.reduce((a, e) => a + (Number(e.payout) || 0), 0);
+    const won = list.filter((e) => (Number(e.payout) || 0) > (Number(e.stake) || 0)).length;
+    return { entries: list.length, won, staked: Math.round(staked * 100) / 100, returned: Math.round(back * 100) / 100,
+      profit: Math.round((back - staked) * 100) / 100, roi: staked ? round1((back - staked) / staked * 100) : null };
+  };
+  const group = (keyFn) => {
+    const m = new Map();
+    for (const e of settled) { const k = keyFn(e); if (!m.has(k)) m.set(k, []); m.get(k).push(e); }
+    return [...m.entries()].map(([k, list]) => ({ key: k, ...money(list) })).sort((a, b) => b.entries - a.entries);
+  };
+  const decided = legs.filter((l) => l.result === 'win' || l.result === 'loss');
+  const legGroup = (keyFn) => {
+    const m = new Map();
+    for (const l of decided) { const k = keyFn(l); if (k == null) continue; if (!m.has(k)) m.set(k, { key: k, n: 0, hit: 0 }); const g = m.get(k); g.n++; if (l.result === 'win') g.hit++; }
+    return [...m.values()].map((g) => ({ ...g, hitRate: round1(g.hit / g.n * 100) })).sort((a, b) => b.n - a.n);
+  };
+  const band = (p) => (p == null ? null : p < 50 ? 'under 50%' : p < 55 ? '50–55%' : p < 60 ? '55–60%' : p < 70 ? '60–70%' : '70%+');
+  return {
+    overall: money(settled),
+    open: entries.filter((e) => e.status === 'open').length,
+    byType: group(entryTypeLabel),
+    byBook: group((e) => (e.book === 'pp' ? 'PrizePicks' : 'DraftKings')),
+    legs: { n: decided.length, hit: decided.filter((l) => l.result === 'win').length,
+      hitRate: decided.length ? round1(decided.filter((l) => l.result === 'win').length / decided.length * 100) : null },
+    legsByMarket: legGroup((l) => ENTRY_MARKET_LABEL[l.market] || l.market || 'Other'),
+    legsByModelProb: legGroup((l) => band(l.model_prob)),
+    payoutNote: 'PrizePicks entries use standard power and flex payouts; DraftKings uses the logged odds. Override any entry with what the app actually paid.',
+  };
+}
+
+async function entriesApi(request, env, url) {
+  if (!env || !env.DB) return entryResponse({ error: 'no DB binding' }, 500);
+  const auth = await entryAuth(env, request);
+  if (!auth.ok) return entryResponse({ error: auth.error }, auth.status);
+  const db = env.DB;
+  await ensureEntrySchema(db);
+
+  if (request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch (e) { return entryResponse({ error: 'Body must be JSON.' }, 400); }
+    const act = body && body.action;
+
+    if (act === 'create') {
+      const e = body.entry || {};
+      const book = e.book === 'dk' ? 'dk' : e.book === 'pp' ? 'pp' : null;
+      const kind = String(e.kind || '');
+      const legs = Array.isArray(e.legs) ? e.legs.slice(0, 8) : [];
+      const stake = Number(e.stake);
+      if (!book) return entryResponse({ error: 'Pick PrizePicks or DraftKings.' }, 400);
+      if (!(stake > 0 && stake < 100000)) return entryResponse({ error: 'Enter a stake.' }, 400);
+      if (book === 'pp' && !['power', 'flex'].includes(kind)) return entryResponse({ error: 'PrizePicks entries are power or flex.' }, 400);
+      if (book === 'dk' && !['straight', 'parlay'].includes(kind)) return entryResponse({ error: 'DraftKings bets are straight or parlay.' }, 400);
+      if (book === 'pp' && kind === 'power' && (legs.length < 2 || legs.length > 6)) return entryResponse({ error: 'Power entries take 2 to 6 picks.' }, 400);
+      if (book === 'pp' && kind === 'flex' && (legs.length < 3 || legs.length > 6)) return entryResponse({ error: 'Flex entries take 3 to 6 picks.' }, 400);
+      if (book === 'dk' && kind === 'straight' && legs.length !== 1) return entryResponse({ error: 'A straight bet is one leg.' }, 400);
+      if (book === 'dk' && kind === 'parlay' && legs.length < 2) return entryResponse({ error: 'A parlay needs two or more legs.' }, 400);
+      if (book === 'dk' && legs.some((l) => l.price == null || !isFinite(Number(l.price)))) {
+        return entryResponse({ error: 'Every DraftKings leg needs its odds.' }, 400);
+      }
+      const id = crypto.randomUUID();
+      const dates = legs.map((l) => l.date).filter(Boolean).sort();
+      const date = dates[0] || slateDate();
+      const stmts = [db.prepare(
+        `INSERT INTO entries (id, created_at, date, book, kind, legs_n, stake, payout, payout_src, status, note)
+         VALUES (?,?,?,?,?,?,?,NULL,NULL,'open',?)`
+      ).bind(id, new Date().toISOString(), date, book, kind, legs.length, stake, e.note ? String(e.note).slice(0, 200) : null)];
+      legs.forEach((l, i) => {
+        stmts.push(db.prepare(
+          `INSERT INTO entry_legs (entry_id, idx, sport, date, game_id, player_id, player, team, market, line, side, price, model_prob, result, actual, graded_by)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,NULL)`
+        ).bind(id, i, String(l.sport || 'other').slice(0, 12), l.date || date,
+          l.gamePk != null ? 'g' + String(l.gamePk).replace(/^g/, '') : null,
+          l.playerId != null && isFinite(Number(l.playerId)) ? Number(l.playerId) : null,
+          String(l.player || '').slice(0, 80), l.team ? String(l.team).slice(0, 8) : null,
+          String(l.market || 'other').slice(0, 24),
+          l.line != null && isFinite(Number(l.line)) ? Number(l.line) : null,
+          String(l.side || '').slice(0, 12),
+          l.price != null && isFinite(Number(l.price)) ? Math.round(Number(l.price)) : null,
+          l.modelProb != null && isFinite(Number(l.modelProb)) ? Math.round(Number(l.modelProb) * 10) / 10 : null));
+      });
+      await db.batch(stmts);
+      return entryResponse({ ok: true, id, claimed: !!auth.claimed });
+    }
+
+    if (act === 'delete') {
+      await db.batch([
+        db.prepare('DELETE FROM entry_legs WHERE entry_id = ?').bind(String(body.id)),
+        db.prepare('DELETE FROM entries WHERE id = ?').bind(String(body.id)),
+      ]);
+      return entryResponse({ ok: true });
+    }
+
+    if (act === 'leg') {
+      const r = body.result;
+      if (![null, 'win', 'loss', 'push', 'void'].includes(r)) return entryResponse({ error: 'Result must be win, loss, push or void.' }, 400);
+      await db.prepare("UPDATE entry_legs SET result=?, graded_by=? WHERE entry_id=? AND idx=?")
+        .bind(r, r == null ? null : 'manual', String(body.id), Number(body.idx)).run();
+      // Reopen so a changed leg re-settles.
+      await db.prepare("UPDATE entries SET status='open' WHERE id=? AND payout_src IS NOT 'manual'").bind(String(body.id)).run();
+      await settleEntries(env);
+      return entryResponse({ ok: true });
+    }
+
+    if (act === 'payout') {
+      const v = body.payout;
+      if (v == null) {
+        await db.prepare("UPDATE entries SET payout_src=NULL, payout=NULL, status='open' WHERE id=?").bind(String(body.id)).run();
+      } else {
+        const n = Number(v);
+        if (!(n >= 0 && n < 1e7)) return entryResponse({ error: 'Enter what the app paid.' }, 400);
+        await db.prepare("UPDATE entries SET payout=?, payout_src='manual' WHERE id=?").bind(n, String(body.id)).run();
+      }
+      await settleEntries(env);
+      return entryResponse({ ok: true });
+    }
+    return entryResponse({ error: 'Unknown action.' }, 400);
+  }
+
+  // GET: grade what can be graded, then report.
+  try { await gradeEntryLegs(env); } catch (e) { /* report what is there */ }
+  const entries = (await db.prepare('SELECT * FROM entries ORDER BY date DESC, created_at DESC LIMIT 300').all()).results || [];
+  const legs = (await db.prepare('SELECT * FROM entry_legs').all()).results || [];
+  const byEntry = new Map();
+  for (const l of legs) { if (!byEntry.has(l.entry_id)) byEntry.set(l.entry_id, []); byEntry.get(l.entry_id).push(l); }
+  const list = entries.map((e) => ({ ...e, type: entryTypeLabel(e),
+    legs: (byEntry.get(e.id) || []).sort((a, b) => a.idx - b.idx) }));
+  return entryResponse({ entries: list, summary: buildEntrySummary(entries, legs.filter((l) => entries.some((e) => e.id === l.entry_id))) });
 }
 
 async function loadMlLines(db, date) {
