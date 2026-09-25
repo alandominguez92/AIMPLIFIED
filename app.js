@@ -207,6 +207,7 @@
     injuriesFetchedAt: null, // ms timestamp of the last injuries fetch (for "updated Xm ago")
     ycOpen: false,           // "Yesterday's Card" collapsed by default — keeps the board up top
     boardView: 'batter', // 'batter' (Under Plays — the default) | 'kprops' | 'moneyline' | 'runline'
+    topLegs: null,         // /api/top-legs?sport=mlb — the record printed on Today's card
     soccer: null,          // /api/soccer-board payload, loaded on first visit
     soccerLeague: 'all',   // 'all' | 'epl' | 'laliga' | 'ucl'
     soccerOpen: null,      // expanded fixture id
@@ -603,6 +604,7 @@
       if (board.length) {
         const firstLoad = !state.liveBoard;
         state.liveBoard = board;
+        renderTodayCard();
         if (firstLoad && !boardModeled()) state.filter = 'all';
         const ids = new Set(board.map((g) => g.id));
         state.compareIds = state.compareIds.filter((id) => ids.has(id));
@@ -671,6 +673,7 @@
       });
       state.liveBatters = mapped;
       renderHero(); // the hero is now the top batter under
+      renderTodayCard();
       if (isBatter()) {
         const ids = new Set(mapped.map((g) => g.id));
         if (state.expandedId && !ids.has(state.expandedId)) state.expandedId = null;
@@ -1217,6 +1220,14 @@
   // about what order the board is in.
   const effectiveSortKey = () => availableSortKeys().includes(state.sortBy) ? state.sortBy : 'time';
   const SORT_DEFAULT_DIR = { edge: 'desc', model: 'desc', odds: 'desc', ks: 'desc', time: 'asc' };
+  // On a phone the board opens sorted by the model's probability, best first.
+  // Entries get built before the games, from the top of the list down, and a
+  // board in first-pitch order put the strongest legs wherever their game
+  // happened to start. The desktop keeps first-pitch order, where the grouped
+  // game-by-game read still earns its place.
+  const isPhone = () => !!(window.matchMedia && window.matchMedia('(max-width: 640px)').matches);
+  const defaultSortKey = () => (isPhone() ? 'model' : 'time');
+  if (isPhone()) state.sortBy = 'model';
   // Resolved against the key actually in effect, not the one last chosen. With
   // the feed down state.sortBy stays 'edge' (default desc) while the board is
   // really ordered by first pitch ascending, so the chip drew a down arrow over
@@ -3201,12 +3212,109 @@
   }
 
   // Real, self-building track record from graded picks (via /api/track-record).
+  // ---------------------------------------------------------------------
+  // Today's card
+  // ---------------------------------------------------------------------
+  // The day's best PrizePicks legs, batter props and strikeouts pooled, ranked
+  // by the model's probability that the under lands AT THE PRIZEPICKS NUMBER.
+  // That is the same number and the same pooling /api/top-legs measures, so the
+  // record printed on the card describes exactly what the card is showing — the
+  // book-line P(under) would rank a different list and borrow a record it never
+  // earned.
+  const PP_MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR' };
+  function todayLegs() {
+    const legs = [];
+    const upcoming = (s) => s !== 'Live' && s !== 'Final';
+    for (const g of state.liveBatters || []) {
+      if (!g || g.pulled || !upcoming(g.status)) continue;
+      for (const m of g.batterMarkets || []) {
+        if (!m || m.none || !m.pp || m.pp.modelUnder == null || m.pp.point == null) continue;
+        legs.push({ id: g.id, view: 'batter', player: g.matchup, team: g.team,
+          market: PP_MARKET_SHORT[m.metric] || m.metric, point: m.pp.point, prob: m.pp.modelUnder,
+          bookLine: m.line, bookPrice: m.price, when: g.timeLabel });
+      }
+    }
+    for (const g of Array.isArray(state.liveBoard) ? state.liveBoard : []) {
+      if (!g || !upcoming(g.status)) continue;
+      for (const p of g.projRows || []) {
+        if (!p || !p.pp || p.pp.modelUnder == null || p.pp.point == null) continue;
+        legs.push({ id: g.id, view: 'kprops', player: p.name, team: p.team,
+          market: 'Ks', point: p.pp.point, prob: p.pp.modelUnder,
+          bookLine: p.market ? p.market.line : null, bookPrice: null, when: g.timeLabel });
+      }
+    }
+    return legs.sort((x, y) => y.prob - x.prob);
+  }
+
+  // The posted record over the last five slates that have one, from the log the
+  // track record already carries.
+  function recentPostedRecord(days) {
+    const log = (state.trackRecord && Array.isArray(state.trackRecord.log)) ? state.trackRecord.log : [];
+    const dates = [...new Set(log.map((r) => r.date))].sort().slice(-days);
+    let w = 0, l = 0, u = 0;
+    for (const r of log) {
+      if (!dates.includes(r.date) || (r.result !== 'win' && r.result !== 'loss')) continue;
+      if (r.result === 'win') { w++; u += r.price > 0 ? r.price / 100 : 100 / Math.abs(r.price); }
+      else { l++; u -= 1; }
+    }
+    return (w + l) ? { w, l, u: Math.round(u * 10) / 10, days: dates.length } : null;
+  }
+
+  function renderTodayCard() {
+    const box = document.getElementById('todayCard');
+    if (!box) return;
+    const legs = todayLegs();
+    if (!legs.length) { box.hidden = true; box.innerHTML = ''; return; }
+    const top = legs.slice(0, 3);
+    const band = state.topLegs && state.topLegs.bands && state.topLegs.bands['top 3'];
+    const since = state.topLegs && state.topLegs.byDay && state.topLegs.byDay[0] ? state.topLegs.byDay[0].date : null;
+    const sinceLabel = since ? new Date(since + 'T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+    // The record is small and the card says so: 15 legs is a hypothesis, and a
+    // number printed without its sample reads as a promise.
+    const rec = band && band.n
+      ? `<span class="tc-rec">Top 3 a day: <b>${band.hit} of ${band.n}</b>${sinceLabel ? ` since ${esc(sinceLabel)}` : ''}</span>`
+      : '';
+    const posted = recentPostedRecord(5);
+    const postedLine = posted
+      ? `Posted plays, last ${posted.days} days: ${posted.w}–${posted.l}, ${posted.u >= 0 ? '+' : ''}${posted.u}u`
+      : '';
+    box.hidden = false;
+    box.innerHTML = `<div class="tc-head"><span class="tc-title">Today's card</span>${rec}</div>`
+      + `<div class="tc-sub">Ranked by the model's chance the under lands at the PrizePicks line${postedLine ? ` · ${esc(postedLine)}` : ''}</div>`
+      + `<ol class="tc-legs">${top.map((x) => {
+        const book = x.bookLine != null
+          ? `<span class="tc-book">book u${esc(String(x.bookLine))}${x.bookPrice != null ? ' ' + esc(AM(x.bookPrice)) : ''}</span>` : '';
+        return `<li><button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
+          + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p">${Math.round(x.prob)}%</span></span>`
+          + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(x.market)} · PrizePicks${x.when ? ' · ' + esc(String(x.when).replace(/ PT$/, '')) : ''}</span>${book}</span>`
+          + `</button></li>`;
+      }).join('')}</ol>`;
+  }
+
+  async function refreshTopLegs() {
+    if (!LIVE_MODE) return;
+    try {
+      const d = await fetchJson('/api/top-legs?sport=mlb');
+      if (d && d.bands) { state.topLegs = d; renderTodayCard(); }
+    } catch (e) { /* the card still shows its legs without the record */ }
+  }
+
+  // Tapping a leg on the card opens its row on the board below.
+  function jumpToLeg(view, id) {
+    if (view && view !== state.boardView) setView(view);
+    state.expandedId = id;
+    renderBoard();
+    const row = document.querySelector(`#boardWrap .board-row[data-id="${CSS.escape(String(id))}"]`);
+    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   async function refreshTrackRecord() {
     if (!LIVE_MODE) return;
     try {
       const tr = await fetchJson('/api/track-record');
       if (tr && typeof tr === 'object') {
         state.trackRecord = tr;
+        renderTodayCard();
         renderEraNote();
         renderProofStrip();
         renderRecord();
@@ -3495,7 +3603,7 @@
     // meaningless on the next view, and a search for a batter's name matches
     // nothing on a board of games — leaving either in place makes the new tab
     // open filtered or reordered for reasons the reader cannot see.
-    state.sortBy = 'time';
+    state.sortBy = defaultSortKey();
     state.sortDir = null;
     state.searchQuery = '';
     if (el.searchInput) el.searchInput.value = '';
@@ -4000,6 +4108,7 @@
         onLeadingClick(target.dataset.id);
         break;
       case 'row-click': onRowClick(target.dataset.id); break;
+      case 'today-jump': jumpToLeg(target.dataset.view, target.dataset.id); break;
       case 'hero-add': if (e) e.stopPropagation(); addHeroToSlip(target.dataset.id); break;
       case 'remove-leg': if (e) e.stopPropagation(); removeLeg(target.dataset.leg); break;
       case 'clear-slip': clearSlip(); break;
@@ -4126,6 +4235,8 @@
     // Track record grades finished games on read — refresh every 10 min.
     refreshTrackRecord();
     setInterval(refreshTrackRecord, 600000);
+    refreshTopLegs();
+    setInterval(refreshTopLegs, 600000);
     // Injury wire (recent IL moves) — refresh every 10 min.
     refreshInjuries();
     setInterval(refreshInjuries, 600000);

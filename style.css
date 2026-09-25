@@ -1459,7 +1459,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    kept a permanently unreachable tab in view. Spread rather than bunched, so
    each one is its own thumb target. */
 @media (max-width:640px) {
-  :root { --sportsH:40px; }
+  /* Measured, not estimated: the bar is 44px at 375, and scroll-padding reads
+     this to keep a scrolled-to row out from under it. At 40 a jumped-to row sat
+     with its top edge hidden. */
+  :root { --sportsH:44px; }
   .stab .mini { display:none; }
   .stab { padding:11px 12px 10px; gap:6px; font-size:13px; }
   .sports-inner { width:auto; justify-content:space-between; gap:0; }
@@ -2323,3 +2326,115 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    still on the board, so it is tinted rather than ghosted. */
 .nfl-gate-off { border-color:color-mix(in srgb, var(--warm) 45%, var(--borderSoft)); }
 .nfl-gate-off .nfl-gate-h { color:var(--warm); }
+
+/* ==========================================================================
+   Phone layout (≤640px) — built for picking entries, not for reading about
+   them. Measured before this at 375×812: the first pick sat 2,300px down, 2.8
+   screens, behind a 1,331px hero and 354 words of explanation; rows were 156–
+   174px, about five to a screen; the probability you would actually use was
+   hidden while a 9.5px line carried the PrizePicks number.
+   ========================================================================== */
+
+/* Today's card and its explainer exist for the phone. Off by default so the
+   desktop is unchanged until it gets its own pass. */
+.today-card, .how-priced { display:none; }
+
+@media (max-width:640px) {
+  /* The hero goes. Its one fade is replaced by the card's three, and its
+     explanation moves behind "How these are priced". */
+  .hero { display:none; }
+
+  .today-card:not([hidden]) { display:block; margin:14px 0 10px; }
+  .tc-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .tc-title { font-family:var(--display, var(--sans)); font-weight:700; font-size:18px; letter-spacing:.01em; color:var(--text); }
+  .tc-rec { font-family:var(--mono); font-size:12px; color:var(--textDim); white-space:nowrap; }
+  .tc-rec b { color:var(--positive); font-weight:600; }
+  .tc-sub { margin-top:4px; font-size:12px; line-height:1.45; color:var(--textDim); }
+  .tc-legs { list-style:none; margin:10px 0 0; padding:0; display:grid; gap:8px; }
+  .tc-leg { display:block; width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;
+    background:var(--board, transparent); border:1px solid var(--border); border-radius:10px; padding:11px 13px; }
+  .tc-leg:active { border-color:var(--accent); }
+  .tc-l1 { display:flex; align-items:center; gap:7px; font-size:15px; }
+  .tc-l1 b { font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .tc-p { margin-left:auto; font-family:var(--mono); font-size:18px; font-weight:600; color:var(--positive);
+    font-variant-numeric:tabular-nums; }
+  .tc-l2 { display:flex; justify-content:space-between; gap:10px; margin-top:4px; font-size:12.5px; color:var(--textDim); }
+  .tc-book { font-family:var(--mono); font-size:12px; color:var(--textFaint); white-space:nowrap; }
+
+  .how-priced { display:block; margin:0 0 14px; font-size:13px; line-height:1.55; color:var(--textDim); }
+  .how-priced summary { cursor:pointer; font-size:13px; color:var(--model); padding:4px 0; }
+  .how-priced p { margin:8px 0 0; }
+  .how-priced b { color:var(--text); font-weight:600; }
+
+  /* Compact rows on the play board: two lines, three when PrizePicks hangs a
+     different number. Name and time, then the pick, its price, the model's
+     probability and the edge. The bar and cushion are a picture of the
+     probability printed beside them, so they wait for the expanded row, which
+     keeps the full layout. The whole row is the tap target, so the chevron goes
+     too. */
+  .board.view-batter .board-row:not(.expanded) {
+    grid-template-columns:minmax(0,1fr) auto auto auto;
+    grid-template-areas:
+      "matchup matchup matchup tier"
+      "pick    odds    interval edge";
+    row-gap:5px; column-gap:12px; padding:11px 14px 12px;
+  }
+  .board.view-batter .board-row:not(.expanded) > .interval-cell {
+    display:block; grid-area:interval; align-self:center; font-size:15px; font-weight:600; }
+  .board.view-batter .board-row:not(.expanded) > .interval-cell i,
+  .board.view-batter .board-row:not(.expanded) > .interval-cell small { display:none; }
+  .board.view-batter .board-row:not(.expanded) > .pp-tag {
+    grid-column:1 / -1; margin-top:0; font-size:11.5px; color:var(--textDim); }
+  .board.view-batter .board-row:not(.expanded) .bmini,
+  .board.view-batter .board-row:not(.expanded) .bw-cush,
+  .board.view-batter .board-row:not(.expanded) .cell-src,
+  .board.view-batter .board-row:not(.expanded) > .chevron { display:none; }
+  .board.view-batter .board-row:not(.expanded) > .edge-cell { align-self:center; font-size:13px; }
+  .board.view-batter .board-row:not(.expanded) > .matchup-cell { gap:0; }
+  .board.view-batter .board-row:not(.expanded) .fade-pick { font-size:13.5px; white-space:nowrap; }
+  /* The +1 book counter made the price cell 93px wide and squeezed the pick to
+     58px, so "Under 1.5 TB" wrapped. Every book is listed in the expanded row. */
+  .board.view-batter .board-row:not(.expanded) .bk-more { display:none; }
+  .board.view-batter .board-row:not(.expanded) > .odds-books { gap:5px; align-self:center; }
+  .board.view-batter .board-row:not(.expanded) .bk-name { min-width:0; }
+  /* The play-board note says what "How these are priced" now says, at 241px. */
+  .tabnote { display:none; }
+  /* The star keeps its 44px hit area — that floor exists because a near-miss on
+     a 16px star opened the row instead of tracking the pick — but negative
+     vertical margins stop the area setting the height of the name line. It
+     overhangs the row padding, which is empty, rather than doubling the line. */
+  .board.view-batter .board-row:not(.expanded) .leading { margin-top:-12px; margin-bottom:-12px; }
+
+  /* Moneyline, compact, because it is the main market. Line one is the game and
+     first pitch; line two is the side, its price, the win probability and the
+     edge. The bar was a line of its own drawing the win probability printed
+     beneath it. The "check news" flag stays — it marks a 2.5+ point gap to
+     Pinnacle, which went 22–38 — while the plain source labels wait for the
+     expanded row. */
+  .board.view-moneyline .board-row:not(.expanded) {
+    grid-template-columns:minmax(0,1fr) auto auto auto;
+    grid-template-areas:
+      "matchup matchup matchup matchup"
+      "pick    odds    interval edge";
+    row-gap:6px; column-gap:12px; padding:11px 14px 12px;
+  }
+  .board.view-moneyline .board-row:not(.expanded) .bmini,
+  .board.view-moneyline .board-row:not(.expanded) .bw-cush,
+  .board.view-moneyline .board-row:not(.expanded) > .chevron,
+  .board.view-moneyline .board-row:not(.expanded) .ml-edge-tag:not(.check) { display:none; }
+  .board.view-moneyline .board-row:not(.expanded) > .interval-cell {
+    grid-area:interval; align-self:center; font-size:17px; font-weight:600; text-align:right; }
+  .board.view-moneyline .board-row:not(.expanded) > .edge-cell { align-self:center; font-size:13px; }
+  .board.view-moneyline .board-row:not(.expanded) > .odds-cell { align-self:center; }
+  .board.view-moneyline .board-row:not(.expanded) .ctx-pick { white-space:nowrap; }
+  .ml-edge-tag { font-size:11px; }
+
+  /* Text you read to decide a bet does not go below 11px on a phone. The +1
+     book count and the game-group count were 9.5–11px in --textGhost, 2.6:1
+     against the page — below the 4.5:1 that small text needs. */
+  .board-row:not(.expanded) .row-when { font-size:11.5px; }
+  .odds-books .bk-name, .bk.one .bk-name { font-size:11px; }
+  .bk-more { font-size:11px; color:var(--textFaint); }
+  .game-group .gg-n { color:var(--textFaint); }
+  .pp-tag { font-size:11px; }
+}
