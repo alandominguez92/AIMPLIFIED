@@ -81,5 +81,21 @@ ok(model.edgeCheck === false, 'and the Pinnacle-gap flag never applies to a mode
 const recSrc = src.slice(src.indexOf('function buildMlRecord'), src.indexOf('function buildMlRecord') + 600);
 ok(/r\.tier !== 'check'/.test(recSrc), 'flagged rows are graded but kept out of the moneyline headline record');
 
+// ?summary=1: one line per game for the scheduled checks, read off the same
+// board. The cache stub always misses, so this is a second full board() run.
+const sum = await (await mod.default.fetch(new Request('https://x/api/board?summary=1'), { ODDS_API_KEY: 'k' }, { waitUntil() {} })).json();
+ok(sum && sum.games === rows.length && Array.isArray(sum.byGame) && sum.byGame.length === rows.length,
+  `the summary covers every game (${sum && sum.games} of ${rows.length})`);
+const sTrap = sum && Array.isArray(sum.byGame) ? sum.byGame.find((g) => g.ml && g.ml.pick === trap.pick) : null;
+ok(!!sTrap && sTrap.ml.price === trap.price && sTrap.ml.edge === trap.edge && sTrap.ml.edgeCheck === true
+  && sTrap.ml.fairWinProb === trap.winProb,
+  'and carries the moneyline exactly as the board has it, check flag included');
+ok(!!sTrap && sTrap.ml.modelWinProb === (trap.teamAbbr === trap.homeAbbr ? trap.homeModelProb : trap.awayModelProb),
+  `with the model's win probability for the side it picks (${sTrap && sTrap.ml.modelWinProb})`);
+ok(!!(sum && Array.isArray(sum.byGame)) && sum.byGame.every((g) => Array.isArray(g.k) && g.k.length > 0),
+  'and the strikeout read per starter');
+ok(JSON.stringify(sum).length < JSON.stringify(rows).length / 2,
+  `and is much smaller (${JSON.stringify(sum).length} vs ${JSON.stringify(rows).length} bytes)`);
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

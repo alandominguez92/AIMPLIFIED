@@ -216,7 +216,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -448,7 +448,10 @@ async function captureCloses(env, ctx) {
 async function handleApi(p, env, ctx, url) {
   if (p === '/api/hitters') return hitters();
   if (p === '/api/pitchers') return pitchers();
-  if (p === '/api/board') return board(env, ctx);
+  if (p === '/api/board') {
+    const full = await board(env, ctx);
+    return url && url.searchParams.get('summary') ? boardSummary(full) : full;
+  }
   if (p === '/api/batters') {
     const full = await batters(env, ctx);
     return url.searchParams.get('summary') ? battersSummary(full) : full;
@@ -1839,6 +1842,36 @@ function soonestStart(rows, field) {
 //
 // Derived from the real response rather than computed alongside it, so it cannot
 // drift from what the board actually shows.
+// The MLB game board, one line per game, for the scheduled checks: the full
+// board carries every pitcher's projection detail, and a check only needs the
+// moneyline and the strikeout read. Same fields the page shows, nothing derived.
+async function boardSummary(res) {
+  let games = null;
+  try { games = await res.clone().json(); } catch (e) { return res; }
+  if (!Array.isArray(games)) return res;
+  const ttl = Number((/max-age=(\d+)/.exec(res.headers.get('cache-control') || '') || [])[1]) || null;
+  const out = games.map((g) => {
+    const ml = g.ml || null;
+    const pickModel = ml && ml.teamAbbr
+      ? (ml.teamAbbr === ml.homeAbbr ? ml.homeModelProb : ml.awayModelProb) : null;
+    return {
+      matchup: g.matchup, time: g.timeLabel, status: g.status, score: g.score || null,
+      ml: ml ? {
+        pick: ml.pick, price: ml.price, fairWinProb: ml.winProb, modelWinProb: pickModel,
+        edge: ml.edge, tier: ml.tier, fairSource: ml.fairSource,
+        edgeCheck: !!ml.edgeCheck, lineStale: !!ml.lineStale,
+      } : null,
+      k: (g.pitchers || []).map((p) => ({
+        name: p.name, team: p.team, proj: p.proj,
+        line: p.market ? p.market.line : null, price: p.market ? p.market.price : null,
+        edge: p.market ? p.market.edge : null,
+        pp: p.pp ? { point: p.pp.point, modelUnder: p.pp.modelUnder } : null,
+      })),
+    };
+  });
+  return cors(json({ games: out.length, priced: out.filter((g) => g.ml && g.ml.price != null).length, byGame: out }, ttl || 300));
+}
+
 async function battersSummary(res) {
   let body = null;
   try { body = await res.clone().json(); } catch (e) { return res; }
