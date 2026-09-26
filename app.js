@@ -3229,7 +3229,29 @@
           <span class="${x.roi == null ? '' : (x.roi >= 0 ? 'g' : 'r')}">${x.roi == null ? '—' : (x.roi > 0 ? '+' : '') + x.roi + '%'}</span>
         </div>`).join('')}
       </div>` : '';
-    el.roiTables.innerHTML = tbl('By market', marketRows) + tbl('By tier', tierRows) + tbl('By side', sideRows);
+    el.roiTables.innerHTML = tbl('By market', marketRows) + tbl('By tier', tierRows) + tbl('By side', sideRows)
+      + mlPriceTable(tr.ml && tr.ml.byPriceBand);
+  }
+
+  // Moneyline by price range: how often each range won against how often its
+  // prices said it needed to. Every graded pick, pass included (see
+  // buildMlPriceBands). Green only where a range won more than it needed.
+  const ML_BAND_SHORT = {
+    'fav -200 and shorter': '−200 or less', 'fav -140 to -199': '−140 to −199', 'fav -100 to -139': '−100 to −139',
+    'dog +100 to +139': '+100 to +139', 'dog +140 to +199': '+140 to +199', 'dog +200 and longer': '+200 or more',
+  };
+  function mlPriceTable(bands) {
+    const rows = Object.entries(bands || {}).filter(([, b]) => b && b.n);
+    if (!rows.length) return '';
+    return `<div class="roi-table">
+        <div class="roi-table-head"><span>ML by price</span><span>Won</span><span>Needed</span><span>Units</span></div>
+        ${rows.map(([k, b]) => `<div class="roi-table-row">
+          <span>${esc(ML_BAND_SHORT[k] || k)}<i class="ml-band-n">${b.n}</i></span>
+          <span class="${b.winRate > b.implied ? 'g' : ''}">${b.winRate}%</span>
+          <span>${b.implied}%</span>
+          <span class="${b.units >= 0 ? 'g' : 'r'}">${(b.units > 0 ? '+' : '') + b.units}u</span>
+        </div>`).join('')}
+      </div>`;
   }
 
   function renderRoiChart(series) {

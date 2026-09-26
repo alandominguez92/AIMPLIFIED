@@ -3012,6 +3012,7 @@ async function trackRecord(env) {
       const mlres = await env.DB.prepare('SELECT * FROM mlpicks').all();
       mlRows = mlres.results || [];
       out.ml = buildMlRecord(mlRows);
+      out.ml.byPriceBand = buildMlPriceBands(mlRows);
     } catch (e) { /* ML record is additive — never break the props track record */ }
     try {
       // Reuses buildMlRecord: an rlpicks row is shaped the same as an mlpicks
@@ -5513,6 +5514,41 @@ function mlR2(v) { return (v == null || !isFinite(v)) ? null : Math.round(v * 10
 // never happened. The run line is different: under current pricing every one of
 // its picks is pass, so excluding them leaves a record of 0-0 no matter how many
 // games grade, and the reason for grading it at all disappears.
+// The moneyline log split by the price each pick was graded at, for the owner's
+// question "which price ranges win more often than their odds say". Every
+// graded pick, pass and check included: over 827 picks to 2026-09-25 the tiers
+// did not separate winners from losers (tier 1 was the worst), so this is about
+// price, not tier. Graded at the same price as the headline (mlGradePrice).
+// `implied` is the average win rate those prices needed; a winRate above it is
+// a range beating its odds. The +140 to +199 dogs were the only such range on
+// Sep 25, on 87 picks, which is too few to call.
+const ML_PRICE_BANDS = [
+  ['fav -200 and shorter', -Infinity, -200], ['fav -140 to -199', -199, -140], ['fav -100 to -139', -139, -100],
+  ['dog +100 to +139', 100, 139], ['dog +140 to +199', 140, 199], ['dog +200 and longer', 200, Infinity],
+];
+function buildMlPriceBands(rows) {
+  const priced = [];
+  for (const r of rows) {
+    if (r.result !== 'win' && r.result !== 'loss') continue;
+    const p = mlGradePrice(r);
+    if (p == null || !isFinite(p) || Math.abs(p) < 100 || Math.abs(p) > ML_PRICE_MAX) continue;
+    priced.push({ r, p });
+  }
+  const out = {};
+  for (const [label, lo, hi] of ML_PRICE_BANDS) {
+    const b = priced.filter((x) => x.p >= lo && x.p <= hi);
+    let w = 0, u = 0, imp = 0;
+    for (const x of b) { if (x.r.result === 'win') w++; u += profitUnits(x.r.result, x.p); imp += amProb(x.p) * 100; }
+    out[label] = {
+      n: b.length, record: `${w}–${b.length - w}`,
+      winRate: b.length ? round1(w / b.length * 100) : null,
+      implied: b.length ? round1(imp / b.length) : null,
+      units: Math.round(u * 10) / 10, roi: b.length ? round1(u / b.length * 100) : null,
+    };
+  }
+  return out;
+}
+
 function buildMlRecord(rows, includePass) {
   // 'check' rows are graded but kept out of the headline alongside pass: the
   // board told nobody to bet them, it told them to check the news first.

@@ -90,5 +90,28 @@ ok(trc.ml && trc.ml.clvN === 2,
 ok(trc.ml && trc.ml.clvBeatRate === 50,
   `so one beat of two moves reads 50%, not 25% (${trc.ml && trc.ml.clvBeatRate}%)`);
 
+// ---- by price range ------------------------------------------------------------
+// Every graded pick, pass included, at the price the headline grades it at: the
+// +1500 row lands in its close's range (-118), not off the end of the scale.
+const bandRows = rows.concat([
+  { date: '2026-07-25', game_id: 'g5', team: 'NYY', tier: 'pass', win_prob: 62, edge: 0, entry_price: -150, close_price: -155, result: 'win' },
+  { date: '2026-07-26', game_id: 'g6', team: 'COL', tier: '1', win_prob: 30, edge: 2, entry_price: 900, close_price: 850, result: 'loss' }, // off the scale both ways
+]);
+const dbb = { prepare: () => ({ bind: () => ({ run: async () => ({}), first: async () => null, all: async () => ({ results: bandRows }) }),
+  run: async () => ({}), first: async () => null, all: async () => ({ results: bandRows }) }), batch: async () => [] };
+const trb = await (await mod.default.fetch(new Request('https://x/api/track-record'), { DB: dbb }, { waitUntil() {} })).json();
+const bb = (trb.ml && trb.ml.byPriceBand) || {};
+console.log('  bands: ' + Object.entries(bb).map(([k, b]) => `${k} ${b.record} ${b.winRate}%/${b.implied}%`).join(' | '));
+const short = bb['fav -100 to -139'] || {};
+ok(short.n === 2 && short.record === '2–0' && Math.abs(short.units - (100 / 118 + 100 / 130)) < 0.15,
+  `the +1500 row sits at its -118 close beside the -130 pick (${short.record}, ${short.units}u)`);
+ok(Math.abs(short.implied - (118 / 218 + 130 / 230) / 2 * 100) < 0.2,
+  `implied is the average win rate those prices needed (${short.implied}%)`);
+ok((bb['fav -140 to -199'] || {}).n === 1, 'a pass-tier pick is counted: the split is about price, not tier');
+ok((bb['dog +140 to +199'] || {}).record === '0–1' && (bb['dog +200 and longer'] || {}).record === '1–0',
+  'the +168 loss and the +230 win land in their own ranges');
+ok(Object.values(bb).reduce((s, b) => s + b.n, 0) === 5,
+  `a price off the scale at entry and close is left out rather than guessed (${Object.values(bb).reduce((s, b) => s + b.n, 0)} of 6 counted)`);
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
