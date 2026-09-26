@@ -1843,18 +1843,43 @@ async function battersSummary(res) {
   let body = null;
   try { body = await res.clone().json(); } catch (e) { return res; }
   const rows = (body && body.rows) || [];
+  // A play is what the board marks Play: a priced under the model backs.
+  const isPlay = (r) => !r.pulled && r.odds != null && (r.tier === 'play' || ['1', '2', '3'].includes(String(r.tier)));
   const byGame = new Map();
   for (const r of rows) {
-    const g = byGame.get(r.matchup) || { matchup: r.matchup, timeLabel: r.timeLabel, rows: 0, priced: 0, status: r.status };
+    const g = byGame.get(r.matchup) || { matchup: r.matchup, timeLabel: r.timeLabel, rows: 0, priced: 0, plays: 0, pulled: 0, inLineup: 0, status: r.status };
     g.rows++;
     if (r.odds != null) g.priced++;
+    if (isPlay(r)) g.plays++;
+    // Pulled and in-lineup are how a check can tell a posted card from a game
+    // still waiting on one: before the card, both are zero.
+    if (r.pulled) g.pulled++;
+    if (r.lineupSlot) g.inLineup++;
     byGame.set(r.matchup, g);
   }
+  // Named, not just counted, so a check after lineups post can say which plays
+  // survived and which were scratched. Capped: the summary stays a summary.
+  const plays = rows.filter(isPlay)
+    .sort((a, b) => (b.edge ?? -99) - (a.edge ?? -99))
+    .slice(0, 20)
+    .map((r) => ({ name: r.name, team: r.team, game: r.matchup, time: r.timeLabel, pick: r.pick, odds: r.odds, edge: r.edge }));
+  const pulledPlays = rows.filter((r) => r.pulled && r.wasEdge != null)
+    .sort((a, b) => b.wasEdge - a.wasEdge)
+    .slice(0, 15)
+    .map((r) => ({ name: r.name, team: r.team, game: r.matchup, wasPick: r.wasPick, wasEdge: r.wasEdge }));
   const games = [...byGame.values()].sort((a, b) => (a.timeLabel || '').localeCompare(b.timeLabel || ''));
   const ttl = Number((/max-age=(\d+)/.exec(res.headers.get('cache-control') || '') || [])[1]) || null;
   return cors(json({
     rows: rows.length,
     priced: rows.filter((r) => r.odds != null).length,
+    pulled: rows.filter((r) => r.pulled).length,
+    playCount: rows.filter(isPlay).length,
+    plays,
+    pulledPlays,
+    // Every scratched batter, as "Name TEAM". /api/top-legs ranks legs from the
+    // morning's log and cannot see a scratch, so this is what a check reads to
+    // flag a Today's-card leg whose player is not in tonight's lineup.
+    pulledNames: rows.filter((r) => r.pulled).map((r) => `${r.name} ${r.team || ''}`.trim()),
     games: games.length,
     gamesWithALine: games.filter((g) => g.priced > 0).length,
     slate: (body && body.slate) || null,

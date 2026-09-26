@@ -214,6 +214,21 @@ ok(!loggedTeams.some((t) => ['LAD', 'CIN', 'MIL', 'PIT'].includes(t)),
     'each game carries its own row and price counts');
   ok(JSON.stringify(sum).length < JSON.stringify({ rows, slate: null }).length / 5,
     `and it is far smaller (${JSON.stringify(sum).length} bytes vs ${JSON.stringify(rows).length})`);
+  // Named plays and pulls, for the check that runs after lineups post. Counted
+  // against the full board so the summary cannot drift from what the page shows.
+  const fullPlays = rows.filter((r) => !r.pulled && r.odds != null
+    && (r.tier === 'play' || ['1', '2', '3'].includes(String(r.tier))));
+  ok(sum.playCount === fullPlays.length && Array.isArray(sum.plays)
+    && sum.plays.length === Math.min(20, fullPlays.length),
+    `plays match the board (${sum.playCount} vs ${fullPlays.length}, listed ${sum.plays && sum.plays.length})`);
+  ok(sum.plays.every((p, i, a) => p.name && p.pick && typeof p.odds === 'number' && (i === 0 || (a[i - 1].edge ?? -99) >= (p.edge ?? -99))),
+    'each play is named, priced, and they run best edge first');
+  ok(sum.pulled === rows.filter((r) => r.pulled).length && Array.isArray(sum.pulledPlays)
+    && sum.pulledPlays.length <= 15
+    && Array.isArray(sum.pulledNames) && sum.pulledNames.length === sum.pulled,
+    `pulled count matches the board (${sum.pulled})`);
+  ok(sum.byGame.every((g) => typeof g.plays === 'number' && typeof g.pulled === 'number' && typeof g.inLineup === 'number'),
+    'each game says how many plays, pulls and lineup batters it has');
   // The collision guard. Same path, different query — if the cache key dropped
   // the query, this would come back as the full board.
   ok(sum.byGame !== undefined, 'a summary request is not served the full board from cache');
