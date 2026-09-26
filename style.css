@@ -2571,3 +2571,118 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board.view-batter .board-row > .tier-cell, .board.view-kprops .board-row > .tier-cell { grid-column:6; }
   .board.view-batter .board-row > .chevron, .board.view-kprops .board-row > .chevron { grid-column:7; }
 }
+
+/* ==========================================================================
+   Polish pass, 2026-09-25
+   ==========================================================================
+   Measured on the phone before this: the first pick sat 1,137px down the page,
+   1.4 screens, behind a stat strip that wrapped to 95px, three card-sized view
+   tabs, two boxed notes and a four-row toolbar. On a live slate 18 of the 25
+   board rows were greyed-out "not playing". Everything here is subtraction or
+   alignment; no data moves and no control goes away.                         */
+
+/* Pulled rows fold at every width behind one button (see pulledFolds() in
+   app.js). The lineup-alerts bar above the board still names them. */
+#boardRows:not(.show-pulled) .bp-pulled,
+#boardRows:not(.show-pulled) .bp-pulled + .expanded-detail { display:none; }
+#pulledMore:not([hidden]) { display:block; }
+
+/* The board views become one segmented control, drawn the same way as the sort
+   chips beside the board so the page has one kind of switch rather than two.
+   The cards were 64px tall on desktop and left a fourth, empty grid column. */
+.board-view { display:grid; grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:1fr;
+  gap:2px; width:max-content; max-width:100%; padding:3px; margin-bottom:14px;
+  border:1px solid var(--border); border-radius:11px; background:var(--board3); }
+.board-view .viewtab { flex-direction:row; align-items:baseline; justify-content:center; gap:8px;
+  min-height:0; height:36px; align-content:center; padding:0 18px; border:0; border-radius:8px;
+  background:transparent; font-size:12.5px; letter-spacing:.05em; white-space:nowrap; line-height:36px; }
+.board-view .viewtab:hover { border:0; background:color-mix(in srgb, var(--text) 6%, transparent); color:var(--text); }
+.board-view .viewtab.active { border:0; background:var(--accentFill); color:var(--onAccent); }
+.board-view .vt-tag { font-size:9px; letter-spacing:.12em; }
+
+/* The notes under the switch lose their boxes and share one quiet line. The
+   long "Plays = batter unders only" paragraph is retired: it called everything
+   but batter unders "not bets", which is not how this board is used, and its
+   one practical line now lives in "How these are priced". */
+.tabnote { display:none !important; }
+.tabrow { align-items:center; gap:4px 18px; margin-bottom:14px; }
+.tabrow .pin-note, .tabrow .era-note { border:0; background:none; padding:0; border-radius:0; }
+.tabrow .era-note { white-space:normal; }
+
+@media (max-width:720px) {
+  /* Four stats on one row, label over number, instead of a strip that wrapped
+     three-and-one with uneven gaps. */
+  .slate-summary .ss-in { display:grid; grid-template-columns:repeat(4, auto); justify-content:space-between;
+    align-items:start; gap:0 12px; padding:8px 16px 9px; }
+  .slate-summary .ss-in > span:not(.upd) { display:block; min-width:0; white-space:nowrap; }
+  .slate-summary .k { display:block; font-size:9.5px; letter-spacing:.08em; margin-bottom:1px; }
+  .slate-summary b { margin-left:0; font-size:16px; }
+}
+
+@media (max-width:640px) {
+  .board-view { width:auto; margin-bottom:12px; }
+  .board-view .viewtab { height:36px; line-height:36px; padding:0 6px; font-size:12px; }
+  .board-view .vt-tag { display:none; }
+  .tabrow { gap:2px 14px; margin-bottom:12px; }
+  .tabrow .pin-note, .tabrow .era-note { font-size:10px; }
+
+  /* Four toolbar rows become three: Compare moves up beside the search field,
+     and the sort chips take a row of their own, so "First pitch" stops
+     breaking onto two lines inside its chip. The Show row measured 245px, too
+     wide to share 311px with Compare, which is why it had a row to itself. */
+  #slate .board-controls { display:contents; }
+  #slate .board-search { flex:1 1 0; min-width:0; }
+  #slate .board-controls .compare-btn { order:1; margin-left:0; }
+  #slate .board-controls .filter-group { order:2; flex:1 1 100%; }
+  #slate .board-controls .sort-group { order:3; flex:1 1 100%; }
+  #slate .board-controls .sort-chips { flex:1; }
+  #slate .board-controls .sort-chips .sort-btn { flex:1 1 auto; white-space:nowrap; padding:0 8px; }
+
+  /* 44px of section padding sat between the stat strip and the first thing on
+     the board: the gap under the sports tabs. */
+  #slate { padding-top:16px; }
+}
+
+@media (max-width:640px) {
+  /* Track record at 375px: "1474–1214" broke across two lines inside its cell,
+     and the ROI tables' W-L column wrapped every row while the ROI column ran
+     past the card's edge. The card keeps a phone-sized inset, and the table
+     columns get fixed widths the numbers actually fit. */
+  .record .v { font-size:clamp(19px, 5.8vw, 23px); white-space:nowrap; }
+  #record > .card { padding:20px 16px; }
+  .roi-table-head, .roi-table-row { grid-template-columns:minmax(0,1fr) 62px 50px 42px; gap:6px; padding:9px 10px; }
+  .roi-table-row { font-size:11.5px; }
+  .roi-table-row > span:not(:first-child) { white-space:nowrap; }
+  .roi-table-row span:first-child { font-size:11.5px; }
+}
+
+/* Desktop alignment. The rail started 44px above the board beside it, because
+   the section's padding pushed only the board down, so the slip's heading and
+   the injury bar sat on different lines. Both now start on one line. */
+@media (min-width:1100px) {
+  body.has-rail #slate { padding-top:28px; }
+  body.has-rail main.wrap > #rail { margin-top:28px; }
+}
+/* "18 pulled" rides beside the batter count instead of under it, which had made
+   the whole strip a line taller for one caption. */
+.slate-summary .ss-pulled { display:inline; margin:0 0 0 6px; }
+/* A link that goes nowhere yet ("Full slate · Soon") is the one dead item on
+   the board's heading; the phone already hid it. */
+.sec-head .all.soon-link { display:none; }
+
+/* Soccer league picker: one row of pills instead of seven cards (330px on a
+   phone). It borrowed the NFL market cards, whose selected state is .is-on, so
+   the league the board was filtered to was never highlighted at all; the
+   picker sets .active. Wraps on a wide screen, scrolls sideways on a phone. */
+#soccerLeagues { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0 16px; }
+#soccerLeagues .nflm { flex:none; width:auto; display:inline-flex; align-items:baseline; gap:7px;
+  height:36px; line-height:34px; padding:0 14px; border-radius:999px; white-space:nowrap; }
+#soccerLeagues .nflm .nflm-k { display:inline; font-size:13px; }
+#soccerLeagues .nflm .nflm-t { display:inline; margin:0; font-size:9.5px; }
+#soccerLeagues .nflm.active { background:var(--accentFill); border-color:var(--accentGrad); }
+#soccerLeagues .nflm.active .nflm-k, #soccerLeagues .nflm.active .nflm-t { color:var(--onAccent); }
+@media (max-width:640px) {
+  #soccerLeagues { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin:10px 0 14px; }
+  #soccerLeagues::-webkit-scrollbar { display:none; }
+  #soccerLeagues .nflm .nflm-t { display:none; }
+}

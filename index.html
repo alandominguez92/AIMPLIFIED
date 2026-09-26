@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=8257c9a622">
+<link rel="stylesheet" href="style.css?v=48381e664c">
 </head>
 <body>
 
@@ -219,6 +219,7 @@
       <p><b>Edge</b> is our fair price against the market's. <b>P(under)</b> is the model's chance the under lands at the book's line; the PrizePicks figure is the same chance at PrizePicks' own number, which is often different.</p>
       <p><b>Play / pass</b> marks whether the price beats the model. Plays aren't tiered, because the posted record doesn't separate them. Today's card is a separate, early test: it ranks PrizePicks legs by the model's probability and prints its own record beside it.</p>
       <p><b>CLV</b> is whether the line moved our way after we posted.</p>
+      <p>Lines vary by book and app, so confirm the under is offered at that number before placing.</p>
     </details>
     <div id="injuryAlerts" class="injury-grid"></div>
     <div id="injuryBar" class="injury-bar"></div>
@@ -311,6 +312,8 @@
     <!-- Phone-only fold for Pass rows. Sits outside the board so it can never be
          hidden by the rule it controls. Plays are never folded. -->
     <button class="np-more" id="passMore" data-action="toggle-pass" hidden></button>
+    <!-- Pulled rows fold at every width; see pulledFolds() in app.js. -->
+    <button class="np-more" id="pulledMore" data-action="toggle-pulled" hidden></button>
 
     <div class="board-foot">
       <span id="shownLabel"></span>
@@ -462,6 +465,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=8257c9a622"></script>
+<script src="app.js?v=48381e664c"></script>
 </body>
 </html>

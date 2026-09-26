@@ -169,6 +169,7 @@
     nflSortAsc: false,
     nflSearch: '',
     batterShowPass: false,
+    showPulled: false,
     alertsAll: false,
     theme: 'dark',
     filter: 'all',
@@ -369,6 +370,7 @@
     nflPostable: document.getElementById('nflPostable'),
     nflGrid: document.getElementById('nflGrid'),
     passMore: document.getElementById('passMore'),
+    pulledMore: document.getElementById('pulledMore'),
     nflStrip: document.getElementById('nflStrip'),
     nflEmpty: document.getElementById('nflEmpty'),
     nflFoot: document.getElementById('nflFoot'),
@@ -790,24 +792,24 @@
       .ab2{border:1px solid var(--border);border-left:3px solid var(--danger);border-radius:12px;background:var(--board3,#0C1A26);overflow:hidden;}
       .ab2-rows{display:block;}
       .ab2-head{display:flex;align-items:center;gap:11px;padding:13px 16px;background:var(--board,#10202F);flex-wrap:wrap;}
-      .ab2-dot{width:8px;height:8px;border-radius:99px;background:var(--danger);animation:ab2pulse 2s infinite;flex:none;}
+      .ab2-dot{width:8px;height:8px;border-radius:99px;background:var(--danger);flex:none;}
       @keyframes ab2pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--danger) 70%,transparent);}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
-      .ab2-kicker{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--danger);font-weight:700;}
-      .ab2-badge{font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--field,#0A1622);background:var(--danger);border-radius:99px;padding:3px 10px;}
-      .ab2-meta{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);}
-      .ab2-collapse{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
+      .ab2-kicker{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--danger);font-weight:700;}
+      .ab2-badge{font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--danger);background:color-mix(in srgb,var(--danger) 10%,transparent);border:1px solid color-mix(in srgb,var(--danger) 40%,var(--border));border-radius:99px;padding:2px 9px;}
+      .ab2-meta{font-family:var(--mono);font-size:11.5px;color:var(--textDim);}
+      .ab2-collapse{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
       .ab2-collapse:hover{color:var(--text);border-color:var(--accent);}
       .ab2-row{display:flex;align-items:flex-start;gap:11px;padding:11px 16px;border-top:1px solid var(--border);min-width:0;}
       .ab2-row.impact{background:color-mix(in srgb,var(--danger) 5%,transparent);}
-      .ab2-tag{font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:3px 7px;white-space:nowrap;flex:none;margin-top:1px;}
+      .ab2-tag{font-family:var(--mono);font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:3px 7px;white-space:nowrap;flex:none;margin-top:1px;}
       .ab2-tag.hit{color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 50%,var(--border));background:color-mix(in srgb,var(--danger) 10%,transparent);}
       .ab2-tag.soft{color:var(--warm);border:1px solid color-mix(in srgb,var(--warm) 50%,var(--border));background:color-mix(in srgb,var(--warm) 10%,transparent);}
       .ab2-txt{flex:1;min-width:0;font-size:12.5px;line-height:1.5;color:var(--text);overflow-wrap:anywhere;}
-      .ab2-hit{flex:none;display:flex;align-items:center;gap:9px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--warm);white-space:nowrap;margin-top:1px;}
+      .ab2-hit{flex:none;display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--warm);white-space:nowrap;margin-top:1px;}
       .ab2-hit b{color:var(--text);font-weight:600;}
       .ab2-jump{flex:none;color:var(--accent);cursor:pointer;text-decoration:none;white-space:nowrap;background:none;border:none;font:inherit;font-size:11.5px;padding:0;}
       .ab2-jump:hover{text-decoration:underline;}
-      .ab2-more{display:block;width:100%;text-align:left;padding:11px 16px;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--accent);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
+      .ab2-more{display:block;width:100%;text-align:left;padding:11px 16px;font-family:var(--mono);font-size:11.5px;color:var(--accent);background:none;border:none;border-top:1px solid var(--border);cursor:pointer;}
       .ab2-more:hover{color:var(--text);}
       @media(max-width:620px){.ab2-row{flex-wrap:wrap;gap:6px 9px;}.ab2-hit{flex-basis:100%;order:3;}.ab2-head{gap:8px 10px;}.ab2-collapse{margin-left:0;}}`;
     document.head.appendChild(s);
@@ -842,7 +844,7 @@
     const agoStr = ago == null ? '' : ` · updated ${ago === 0 ? 'just now' : ago + 'm ago'}`;
     const open = state.alertsOpen;
     const badge = impact.length ? `<span class="ab2-badge">${impact.length} impact tonight</span>` : '';
-    const head = `<div class="ab2-head"><span class="ab2-dot"></span><span class="ab2-kicker">Lineup Alerts</span>${badge}<span class="ab2-meta">${alerts.length} total${agoStr}</span><button class="ab2-collapse" data-action="alerts-toggle">${open ? 'Collapse ▴' : 'Expand ▾'}</button></div>`;
+    const head = `<div class="ab2-head"><span class="ab2-dot"></span><span class="ab2-kicker">Injury report</span>${badge}<span class="ab2-meta">${alerts.length} total${agoStr}</span><button class="ab2-collapse" data-action="alerts-toggle">${open ? 'Collapse ▴' : 'Expand ▾'}</button></div>`;
 
     let body = '';
     if (open) {
@@ -871,19 +873,19 @@
       #yesterdayCard:empty{display:none;}
       .yc{border:1px solid var(--border);border-radius:10px;background:var(--board3,#0C1A26);overflow:hidden;}
       .yc-ribbon{display:flex;align-items:center;gap:11px;padding:12px 16px;flex-wrap:wrap;}
-      .yc-lead{font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--textDim);font-weight:700;}
-      .yc-rec{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:var(--text);}
-      .yc-units{font-family:ui-monospace,monospace;font-size:12px;font-weight:600;color:var(--textDim);}
+      .yc-lead{font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--textDim);font-weight:700;}
+      .yc-rec{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text);}
+      .yc-units{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--textDim);}
       .yc-units.up{color:var(--positive);}
       .yc-units.down{color:var(--danger);}
       .yc-sep{color:var(--border);}
-      .yc-clv{font-family:ui-monospace,monospace;font-size:12px;color:var(--textDim);}
+      .yc-clv{font-family:var(--mono);font-size:12px;color:var(--textDim);}
       .yc-clv b{color:var(--clv);font-weight:600;}
-      .yc-season{font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);}
+      .yc-season{font-family:var(--mono);font-size:11px;color:var(--textDim);}
       .yc-season b{color:var(--text);font-weight:600;}
-      .yc-view{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;white-space:nowrap;}
+      .yc-view{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;white-space:nowrap;}
       .yc-view:hover{text-decoration:underline;}
-      .yc-scope{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--border);font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--textDim);background:color-mix(in srgb,var(--accent) 4%,transparent);}
+      .yc-scope{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--border);font-family:var(--mono);font-size:10.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--textDim);background:color-mix(in srgb,var(--accent) 4%,transparent);}
       .yc-scope b{color:var(--text);font-weight:700;}
       .yc-rows{display:grid;grid-template-columns:1fr 1fr;}
       .yc-row{display:flex;align-items:center;gap:10px;padding:10px 15px;border-top:1px solid var(--border);min-width:0;}
@@ -893,15 +895,15 @@
       .yc-res.l{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger);border-color:color-mix(in srgb,var(--danger) 50%,var(--border));}
       .yc-pick{flex:none;display:flex;align-items:baseline;gap:7px;min-width:0;}
       .yc-nm{font-weight:700;font-size:13px;white-space:nowrap;}
-      .yc-bet{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);white-space:nowrap;}
+      .yc-bet{font-family:var(--mono);font-size:11.5px;color:var(--textDim);white-space:nowrap;}
       .yc-bet b{color:var(--text);font-weight:600;}
-      .yc-actual{flex:1;min-width:0;text-align:right;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--textDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+      .yc-actual{flex:1;min-width:0;text-align:right;font-family:var(--mono);font-size:11.5px;color:var(--textDim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       .yc-actual b{font-weight:700;font-size:13px;}
       .yc-actual .aw{color:var(--positive);}
       .yc-actual .al{color:var(--danger);}
-      .yc-tier{flex:none;font-family:ui-monospace,monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;color:var(--textDim);border:1px solid var(--border);}
+      .yc-tier{flex:none;font-family:var(--mono);font-size:9px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;color:var(--textDim);border:1px solid var(--border);}
       .yc-tier.t1{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:color-mix(in srgb,var(--accent) 8%,transparent);}
-      .yc-foot{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 16px;border-top:1px solid var(--border);font-family:ui-monospace,monospace;font-size:11px;color:var(--textDim);flex-wrap:wrap;}
+      .yc-foot{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 16px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--textDim);flex-wrap:wrap;}
       .yc-foot b{color:var(--text);}
       .yc-foot .up{color:var(--positive);}
       .yc-foot a{color:var(--accent);text-decoration:none;margin-left:auto;}
@@ -1392,6 +1394,7 @@
       : `${n} ${noun}<span class="gc-more"> · ${qualifier}</span>`;
     const trackedCount = Object.keys(state.slip).length;
     el.trackedPill.textContent = `${trackedCount} tracked`;
+    el.trackedPill.hidden = trackedCount === 0;
     renderSortChips();
 
     document.querySelectorAll('.viewtab').forEach((btn) => {
@@ -1999,6 +2002,16 @@
   // didn't already know it.
   const MARKET_NAME = { tb: 'total bases', hrr: 'hits + runs + RBI', hr: 'home runs' };
 
+  // Pulled rows fold away at every width. On a live slate they were 18 of 25
+  // rows: 1,370px of greyed-out "not playing" on a phone, pushing the seven real
+  // plays into a sliver at the top. The lineup-alerts bar above the board still
+  // names them and why, and one button below the board brings them all back, so
+  // nothing disappears silently. A search always shows them, because "Filter to
+  // this player" from that bar is a search and must land on his row.
+  function pulledFolds() {
+    return isBatter() && !String(state.searchQuery || '').trim();
+  }
+
   function gameGroupHeader(lead, games) {
     const rows = games.filter((g) => g.gamePk === lead.gamePk);
     const matchup = lead.gameMatchup || '';
@@ -2022,7 +2035,8 @@
     // shows a header standing over nothing.
     const allPass = rows.every((r) => String(activeTier(r)) === 'pass');
     const foldable = allPass && state.filter !== 'pass';
-    return `<div class="game-group${foldable ? ' bp-pass' : ''}" role="presentation">
+    const allPulled = pulledFolds() && rows.every((r) => r.pulled);
+    return `<div class="game-group${foldable ? ' bp-pass' : ''}${allPulled ? ' bp-pulled' : ''}" role="presentation">
         <span class="gg-match">${esc(matchup)}</span>
         ${when ? `<span class="gg-when">${esc(when)}</span>` : ''}
         ${arms ? `<span class="gg-arms">${esc(arms)}</span>` : ''}
@@ -2131,8 +2145,12 @@
       el.boardRows.innerHTML = renderRunlineRows(games);
       el.boardRows.className = '';
       if (el.passMore) el.passMore.hidden = true;
+      if (el.pulledMore) el.pulledMore.hidden = true;
       return;
     }
+
+    const foldPulled = pulledFolds();
+    const pulledN = foldPulled ? games.filter((g) => g.pulled).length : 0;
 
     el.boardRows.innerHTML = games.map((g, i) => {
       // Emitted ahead of the row it belongs to, so it inherits the row's place
@@ -2278,6 +2296,7 @@
 
       const rowClasses = ['board-row'];
       if (g.pulled) rowClasses.push('bp-out');
+      if (g.pulled && foldPulled) rowClasses.push('bp-pulled');
       // Keyed on the row, so a batter's bar fills when he first reaches the
       // board and stays put through every later refresh.
       const rowAnim = barsIn('row:' + g.id);
@@ -2549,7 +2568,14 @@
     // Pass-fold plumbing, set after the rows exist. The container class drives
     // the CSS; the button names how many rows are folded so the count is never a
     // mystery. Desktop ignores both -- see the 640px rule.
-    el.boardRows.className = state.batterShowPass ? 'show-pass' : '';
+    el.boardRows.className = [state.batterShowPass ? 'show-pass' : '',
+      state.showPulled ? 'show-pulled' : ''].filter(Boolean).join(' ');
+    if (el.pulledMore) {
+      el.pulledMore.hidden = pulledN === 0;
+      el.pulledMore.textContent = state.showPulled
+        ? `Hide ${pulledN} pulled row${pulledN === 1 ? '' : 's'}`
+        : `Show ${pulledN} pulled row${pulledN === 1 ? '' : 's'}`;
+    }
     if (el.passMore) {
       const passN = passCount;
       el.passMore.hidden = passN === 0;
@@ -4030,7 +4056,9 @@
           + `<span class="la-impact">pulled from the board — ${esc(was)}</span>`
           // The phone gets the verdict alone, on the same line. The full sentence
           // needs a second row at 375px, which is what made the bar enormous.
-          + `<span class="la-short">pulled · ${esc(was.replace(/^was /, 'was '))}</span>`
+          // The bar's heading already says "pulled", so the phone line is only
+          // what he was worth; the name gets the width back.
+          + `<span class="la-short">${esc(r.wasEdge != null ? `was +${r.wasEdge.toFixed(1)}%` : was)}</span>`
           + `<button type="button" class="la-view" data-action="alert-view" data-name="${esc(r.name)}">View →</button>`
           + `</div>`;
       }).join('')
@@ -4413,6 +4441,7 @@
       case 'nfl-filter': setNflFilter(target.dataset.nflfilter); break;
       case 'nfl-sort': setNflSort(target.dataset.nflsort); break;
       case 'toggle-pass': state.batterShowPass = !state.batterShowPass; renderBoard(); break;
+      case 'toggle-pulled': state.showPulled = !state.showPulled; renderBoard(); break;
       // Filter, don't scroll. Scroll-to-row breaks when the row is filtered out
       // of the current view, which is precisely the case an alert creates.
       case 'alerts-more':
