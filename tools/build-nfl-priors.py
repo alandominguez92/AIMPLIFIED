@@ -270,10 +270,18 @@ def build(D, w25, through26=None):
             'n': (i26 or i25)['n'], 'pos': 'RB' if pos == 'FB' else pos,
             'tm': i25['tm'] if i25 else None, 'tm26': (i26 or i25)['tm'], 'status': status, 'g': g, **prior,
         }
-    # League constants from both seasons, 2025 weighted the same as the players'.
+    # League constants. Pace and pass rate from both seasons, 2025 weighted the
+    # same as the players'. The two cohort rates are pooled over the players in
+    # the file, which is how the original defined them: it reproduces its
+    # 10.922 yards per catch and 4.372 per carry exactly, where league-wide
+    # play-by-play gives 10.897 and 4.347.
     l25, l26 = league_consts(plays25), league_consts(plays26)
     wt = w25 * 17 / (w25 * 17 + last26)
-    league = {k: round(wt * l25[k] + (1 - wt) * l26[k], 4) for k in LEAGUE_KEYS}
+    league = {k: round(wt * l25[k] + (1 - wt) * l26[k], 4) for k in ('playsPerTeamGame', 'passRate')}
+    rec_n = sum(p['recN'] for p in players.values() if p['recN'] > 0)
+    car_n = sum(p['carN'] for p in players.values() if p['carN'] > 0)
+    league['yprCohort'] = round(sum(p['ypr'] * p['recN'] for p in players.values() if p['recN'] > 0) / rec_n, 3)
+    league['ypcCohort'] = round(sum(p['ypc'] * p['carN'] for p in players.values() if p['carN'] > 0) / car_n, 3)
     meta = {'builtFrom': '2025+2026', 'through2026Week': last26, 'w25': w25, 'snapK': round(snap_k, 4),
             'built': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'league': league,
             'statusCounts': dict(statuses)}
