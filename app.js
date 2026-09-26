@@ -2718,7 +2718,7 @@
     batter: 'Both rows are priced the same way, so the numbers are directly comparable. '
       + 'Cushion is the line minus our projection — a bigger cushion is more room for the batter to beat us and still miss.',
     kprops: 'Context only. Neither of these is posted or graded, whatever the edge column says.',
-    moneyline: 'Context only. Our graded record shows no reliable edge in moneylines, so this compares two reads, not two bets.',
+    moneyline: 'Model win probability against the de-vigged market, game by game.',
   };
 
   function renderHittersGrid() {
