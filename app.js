@@ -3276,7 +3276,8 @@
         if (!m || m.none || !m.pp || m.pp.modelUnder == null || m.pp.point == null) continue;
         legs.push({ id: g.id, view: 'batter', player: g.matchup, team: g.team,
           market: PP_MARKET_SHORT[m.metric] || m.metric, point: m.pp.point, prob: m.pp.modelUnder,
-          bookLine: m.line, bookPrice: m.price, when: g.timeLabel });
+          bookLine: m.line, bookPrice: m.price, when: g.timeLabel,
+          confirmed: g.lineupSlot != null, game: g.gamePk });
       }
     }
     for (const g of Array.isArray(state.liveBoard) ? state.liveBoard : []) {
@@ -3285,7 +3286,8 @@
         if (!p || !p.pp || p.pp.modelUnder == null || p.pp.point == null) continue;
         legs.push({ id: g.id, view: 'kprops', player: p.name, team: p.team,
           market: 'Ks', point: p.pp.point, prob: p.pp.modelUnder,
-          bookLine: p.market ? p.market.line : null, bookPrice: null, when: g.timeLabel });
+          bookLine: p.market ? p.market.line : null, bookPrice: null, when: g.timeLabel,
+          confirmed: true, game: g.id });
       }
     }
     return legs.sort((x, y) => y.prob - x.prob);
@@ -3310,7 +3312,16 @@
     if (!box) return;
     const legs = todayLegs();
     if (!legs.length) { box.hidden = true; box.innerHTML = ''; return; }
-    const top = legs.slice(0, 3);
+    // Confirmed players only, once there are any. On Sep 25, 28 of 200 logged
+    // legs never played, two of them in the card's top five: the highest
+    // under-probabilities belong to part-time players, and a PrizePicks leg that
+    // does not play shrinks the entry. So the card ranks players in a posted
+    // lineup, and before any lineup is out it shows the ranking tagged as
+    // unconfirmed rather than showing nothing.
+    const ready = legs.filter((x) => x.confirmed);
+    const waiting = legs.filter((x) => !x.confirmed);
+    const top = (ready.length ? ready : waiting).slice(0, 3);
+    const waitGames = new Set(waiting.map((x) => x.game).filter((x) => x != null)).size;
     const band = state.topLegs && state.topLegs.bands && state.topLegs.bands['top 3'];
     const since = state.topLegs && state.topLegs.byDay && state.topLegs.byDay[0] ? state.topLegs.byDay[0].date : null;
     const sinceLabel = since ? new Date(since + 'T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
@@ -3324,14 +3335,19 @@
       ? `Posted plays, last ${posted.days} days: ${posted.w}–${posted.l}, ${posted.u >= 0 ? '+' : ''}${posted.u}u`
       : '';
     box.hidden = false;
+    const waitLine = !ready.length
+      ? '<div class="tc-wait-note">Lineups aren\u2019t out yet, so any of these can still be scratched. Build after they post.</div>'
+      : (waitGames ? `<div class="tc-wait-note">${waitGames} game${waitGames === 1 ? '' : 's'} still waiting on lineups; their players join once the cards post.</div>` : '');
     box.innerHTML = `<div class="tc-head"><span class="tc-title">Today's card</span>${rec}</div>`
       + `<div class="tc-sub">Ranked by the model's chance the under lands at the PrizePicks line${postedLine ? ` · ${esc(postedLine)}` : ''}</div>`
+      + waitLine
       + `<ol class="tc-legs">${top.map((x) => {
         const book = x.bookLine != null
           ? `<span class="tc-book">book u${esc(String(x.bookLine))}${x.bookPrice != null ? ' ' + esc(AM(x.bookPrice)) : ''}</span>` : '';
         return `<li><button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
           + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p">${Math.round(x.prob)}%</span></span>`
-          + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(x.market)} · PrizePicks${x.when ? ' · ' + esc(String(x.when).replace(/ PT$/, '')) : ''}</span>${book}</span>`
+          + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(x.market)} · PrizePicks${x.when ? ' · ' + esc(String(x.when).replace(/ PT$/, '')) : ''}`
+          + `${x.confirmed ? '' : ' <span class="tc-wait">lineup not out</span>'}</span>${book}</span>`
           + `</button></li>`;
       }).join('')}</ol>`;
   }
@@ -5585,7 +5601,7 @@
   function soccerFavCard(games) {
     const now = Date.now();
     const favs = games.filter((g) => g.fav && g.fav.fair != null && g.fav.price != null
-      && g.sharpN >= 2 && Date.parse(g.commence || 0) > now)
+      && g.fairSrc !== 'MKT' && Date.parse(g.commence || 0) > now)
       .sort((x, y) => y.fav.fair - x.fav.fair).slice(0, 5);
     if (!favs.length) return '';
     const rec = state.trackRecord && state.trackRecord.soccerFav;
@@ -5612,7 +5628,8 @@
 
   function soccerRow(g) {
     const open = state.soccerOpen === g.id;
-    const isMkt = g.fairSrc !== 'sharp-pool';
+    // 'pinnacle' is a fair line too: Pinnacle alone, where a league allows it.
+    const isMkt = !g.fairSrc || g.fairSrc === 'MKT';
     const lead = g.lead && g.lead.value != null ? g.lead : null;
     const val = lead ? lead.value : null;
     const valColor = val == null ? 'var(--textFaint)' : (val > 0 ? 'var(--positive)' : 'var(--textDim)');
@@ -5654,7 +5671,7 @@
         ${odds}
         <span class="edge-cell" style="color:${valColor}">${val == null ? '—' : (val > 0 ? '+' : '') + val + '%'}</span>
         <span class="interval-cell" style="color:var(--model)">${lead && lead.fair != null ? lead.fair + '%' : '—'}</span>
-        <span class="tier-cell"><span class="ctx-chip">${isMkt ? 'MKT' : 'sharp ' + g.sharpN}</span></span>
+        <span class="tier-cell"><span class="ctx-chip">${isMkt ? 'MKT' : g.fairSrc === 'pinnacle' ? 'Pinnacle' : 'sharp ' + g.sharpN}</span></span>
         <span class="chevron">${open ? '▲' : '▼'}</span>
       </div>`;
     return row + (open ? soccerDetail(g) : '');
@@ -5677,7 +5694,10 @@
     const read = g.fairSrc === 'sharp-pool'
       ? `Fair from ${g.sharpN} sharp book${g.sharpN === 1 ? '' : 's'}, de-vigged across <b>all three outcomes</b> — home, draw and away — then medianed. `
         + `Value is that fair number minus what the best DraftKings or FanDuel price implies.`
-      : `Fewer than two sharp books quoted this fixture, so there is no fair line to price against. The prices shown are the market's, not a value read.`;
+      : g.fairSrc === 'pinnacle'
+        ? `Fair from <b>Pinnacle alone</b> — the other sharp books have not posted this fixture — de-vigged across all three outcomes. `
+          + `Value is that fair number minus what the best DraftKings or FanDuel price implies.`
+        : `Fewer than two sharp books quoted this fixture, so there is no fair line to price against. The prices shown are the market's, not a value read.`;
     return `<div class="expanded-detail nfl-detail">
       <div class="nfd-k">Price read</div>
       <div class="nfd-read">${read}</div>

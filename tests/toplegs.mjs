@@ -41,6 +41,9 @@ for (const date of ['2026-09-20', '2026-09-21']) {
 // grader counting them would put them in the top three.
 pp.push({ ...mk('2026-09-20', 900, 99, 'push', 'tb') });
 pp.push({ ...mk('2026-09-20', 901, 98, null, 'hrr'), actual: null });
+// A leg whose player sat: graded 'void'. Ranked second that day, it is exactly
+// the kind of leg the played-only bands hide.
+pp.push({ ...mk('2026-09-20', 902, 97, 'void', 'tb'), actual: null });
 
 // Today's ungraded legs, dated the way the worker dates its slate. Two share a
 // game (g500, one from each club) and one stands alone, so the same-game count
@@ -93,6 +96,10 @@ ok(m.bands.everything.n === 14 && m.bands.everything.hitRate < 50,
   `taking everything is the comparison, and it is worse (${m.bands.everything.hit}/${m.bands.everything.n} = ${m.bands.everything.hitRate}%)`);
 ok(m.bands['top 3'].hitRate > m.bands.everything.hitRate,
   'which is the whole question: does ranking beat taking one of everything');
+ok(m.bands['top 3'].voided === 1 && m.bands['top 3'].slots === 6 && m.bands.everything.voided === 1,
+  `a leg that never played is counted against the band it would have sat in (top 3: ${m.bands['top 3'].voided} of ${m.bands['top 3'].slots} slots voided)`);
+ok(m.bands['top 3'].n === 6 && m.bands['top 3'].hit === 6,
+  'while the played-only record is unchanged, so both readings are there side by side');
 ok(m.graded === 14, `a push and an ungraded leg are neither hit nor miss and take no slot (${m.graded} graded of ${m.logged} logged)`);
 ok(!JSON.stringify(m.byDay).includes('P900') && !JSON.stringify(m.byDay).includes('P901'),
   'and neither appears in a day\'s top legs, though both outrank every real one');

@@ -55,10 +55,19 @@ const sEv = (id, commence, home, away) => ({
   })),
 });
 // The odds feed's names, which are NOT ESPN's.
+// Pinnacle and the two books you can bet, and no other sharp book: the state
+// every Nations League fixture was in on 2026-09-26.
+const pinOnlyEv = (id, commence, home, away) => {
+  const e = sEv(id, commence, home, away);
+  e.bookmakers = e.bookmakers.filter((b) => ['pinnacle', 'draftkings', 'fanduel'].includes(b.key));
+  return e;
+};
 const SOCCER_EVENTS = {
   soccer_epl: [sEv('s1', SOON, 'Bournemouth', 'Liverpool')],
   soccer_spain_la_liga: [sEv('s2', SOON, 'Malaga', 'Getafe')],
-  soccer_uefa_champs_league: [],
+  // A league without the fallback, in the same one-book state: must stay MKT.
+  soccer_uefa_champs_league: [pinOnlyEv('c1', SOON, 'Arsenal', 'Inter')],
+  soccer_uefa_nations_league: [pinOnlyEv('u1', SOON, 'England', 'Spain')],
 };
 
 // ---- NFL lines -------------------------------------------------------------------------
@@ -209,11 +218,11 @@ console.log('  logged: ' + logged.map((r) => `${r.sport}:${r.pick}@${r.entry_pri
 const soc = logged.filter((r) => r.sport === 'soccer');
 const nfl = logged.filter((r) => r.sport === 'nfl');
 const socH2h = soc.filter((r) => r.market === 'h2h'), socTot = soc.filter((r) => r.market === 'totals');
-ok(socH2h.length === 2 && nfl.length === 2, `both boards write the 1X2 / moneyline row per game (soccer ${socH2h.length}, nfl ${nfl.length})`);
+ok(socH2h.length === 3 && nfl.length === 2, `both boards write the 1X2 / moneyline row per game (soccer ${socH2h.length}, nfl ${nfl.length})`);
 ok(socTot.length === 2 && socTot.every((r) => r.point === 2.5 && (r.side === 'over' || r.side === 'under') && r.entry_price != null),
   `the goals total is kept too — bought on the same call, so it costs nothing (${socTot.map((r) => r.pick + '@' + r.entry_price).join(', ')})`);
 ok(nfl.every((r) => r.game_id !== 'n3'), 'a game that already kicked off is not logged as a pick');
-ok(soc.every((r) => r.win_prob != null && r.entry_price != null && r.sharp_n >= 2),
+ok(soc.every((r) => r.win_prob != null && r.entry_price != null && (r.sharp_n >= 2 || r.fair_src === 'pinnacle')),
   'each row carries the fair number, the price taken against it and how many sharp books were behind it');
 ok(logged.every((r) => r.date === ptDay(NOW)), `dated by Pacific slate day (${[...new Set(logged.map((r) => r.date))].join(',')})`);
 ok(socH2h.some((r) => r.side === 'draw'), `the draw is logged as a side of its own (${socH2h.map((r) => r.side).join(',')})`);
@@ -222,19 +231,34 @@ ok(nfl.every((r) => r.side === 'home' || r.side === 'away'), `NFL has no draw si
 // the side the sharp pool rates higher, whatever the board's value pick was.
 const socFav = soc.filter((r) => r.market === 'fav');
 const socBoard = await hit('/api/soccer-board');
-ok(socFav.length === 2 && socFav.every((r) => r.side === 'home' || r.side === 'away'),
+ok(socFav.length === 3 && socFav.every((r) => r.side === 'home' || r.side === 'away'),
   `each fixture logs its likeliest winner, never the draw (${socFav.map((r) => r.pick + ' ' + r.win_prob + '%').join(', ')})`);
-ok(socFav.length === 2 && socFav.every((r) => {
+ok(socFav.length === 3 && socFav.every((r) => {
   const g = (socBoard.games || []).find((x) => x.id === r.game_id);
   const teams = g ? g.oneXtwo.filter((p) => p.selection !== 'Draw') : [];
   return g && teams.length === 2 && r.win_prob === Math.max(...teams.map((p) => p.fair)) && g.fav && g.fav.selection === r.pick;
 }), 'and it is the team with the higher sharp win probability, as the board shows it');
 
+// The Nations League follows Pinnacle alone when the sharp pool is short; a
+// league without that setting, in exactly the same state, stays unpriced.
+const u1 = (socBoard.games || []).find((g) => g.id === 'u1');
+const c1 = (socBoard.games || []).find((g) => g.id === 'c1');
+const pinFairHome = (() => { const p = SP.pinnacle; const q = [p.home, p.draw, p.away].map((x) => (x < 0 ? -x / (-x + 100) : 100 / (x + 100))); return q[0] / q.reduce((s, x) => s + x, 0) * 100; })();
+ok(u1 && u1.sharpN === 1 && u1.fairSrc === 'pinnacle' && u1.fav && u1.fav.selection === 'England',
+  `a Nations League fixture with only Pinnacle gets Pinnacle's fair line (${u1 && u1.fairSrc}, fav ${u1 && u1.fav && u1.fav.selection} ${u1 && u1.fav && u1.fav.fair}%)`);
+ok(u1 && Math.abs(u1.oneXtwo[0].fair - pinFairHome) < 1.5,
+  `and it is Pinnacle's own number, de-vigged (${u1 && u1.oneXtwo[0].fair}% vs ~${pinFairHome.toFixed(1)}% proportional)`);
+ok(soc.some((r) => r.game_id === 'u1' && r.market === 'h2h' && r.fair_src === 'pinnacle' && r.sharp_n === 1)
+  && soc.some((r) => r.game_id === 'u1' && r.market === 'fav'),
+  'it is logged, and the log says the fair line was Pinnacle alone');
+ok(c1 && c1.fairSrc === 'MKT' && !c1.fav && !soc.some((r) => r.game_id === 'c1'),
+  `a Champions League fixture in the same state stays MKT and is not logged (${c1 && c1.fairSrc})`);
+
 // Logging twice must not double up, and must not move the entry price.
 const before = JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price]));
 await hit('/api/nfl-board');
 await hit('/api/soccer-board');
-ok(gm.size === 8 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price])) === before,
+ok(gm.size === 10 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price])) === before,
   `a second board load re-freezes nothing (${gm.size} rows)`);
 
 // ---- grade -----------------------------------------------------------------------------

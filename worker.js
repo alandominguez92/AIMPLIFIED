@@ -6756,6 +6756,24 @@ async function topLegs(env, url) {
     };
     for (const n of TOP_LEG_BANDS) out.bands['top ' + n] = band(n);
     out.bands.everything = band(1e9);
+    // The bands above rank only legs that played: a leg voided because the
+    // player sat is dropped and the next one moves up, which nobody building
+    // before lineups could have done. `voided` counts how many of each day's
+    // top N, ranked over every settled leg, never played -- out of `slots`.
+    const settledDays = new Map();
+    for (const x of scored) {
+      if (x.r.result == null) continue;
+      if (!settledDays.has(x.r.date)) settledDays.set(x.r.date, []);
+      settledDays.get(x.r.date).push(x);
+    }
+    for (const [, list] of settledDays) list.sort((a, b) => b.s - a.s);
+    const voidsIn = (n) => {
+      let v = 0, t = 0;
+      for (const [, list] of settledDays) for (const x of list.slice(0, n)) { t++; if (x.r.result === 'void') v++; }
+      return { voided: v, slots: t, voidRate: t ? round1(v / t * 100) : null };
+    };
+    for (const n of TOP_LEG_BANDS) Object.assign(out.bands['top ' + n], voidsIn(n));
+    Object.assign(out.bands.everything, voidsIn(1e9));
     // The point of the exercise: how many of the entry break-evens each band clears.
     for (const k of Object.keys(out.bands)) {
       const hr = out.bands[k].hitRate;
@@ -7759,7 +7777,11 @@ const SOCCER_LEAGUES = {
   // European leagues until Oct 10: 18 fixtures that weekend and 8 more on Oct 3,
   // all priced by Pinnacle. Friendlies are not in the odds feed at all, so this
   // is the one international competition the sharp-pool method can price.
-  uefanl: { key: 'soccer_uefa_nations_league', label: 'Nations League', country: 'UEFA' },
+  // pinnacleFallback: on Sep 26 every Nations League fixture had one sharp book
+  // or none, so none had a fair line. The owner chose to follow Pinnacle's line
+  // alone for it when the pool is short (fairSrc 'pinnacle'); the other leagues
+  // keep the two-book rule.
+  uefanl: { key: 'soccer_uefa_nations_league', label: 'Nations League', country: 'UEFA', pinnacleFallback: true },
 };
 const SOCCER_SHARP = ['pinnacle', 'lowvig', 'betonlineag'];
 const SOCCER_EXEC = ['draftkings', 'fanduel'];
@@ -7988,9 +8010,18 @@ async function soccerBoardData(env, url) {
         if (dv) fairs.push(dv);
       }
       const sharpN = fairs.length;
-      const fair = sharpN >= 2
+      let fair = sharpN >= 2
         ? sides.map((_, i) => median(fairs.map((f) => f[i])))
         : null;
+      let fairSrc = fair ? 'sharp-pool' : 'MKT';
+      // Short of a pool, a league that allows it takes Pinnacle's own three-way
+      // line, de-vigged the same way. Only Pinnacle: a lone lowvig or BetOnline
+      // quote stays MKT.
+      if (!fair && SOCCER_LEAGUES[g.league] && SOCCER_LEAGUES[g.league].pinnacleFallback) {
+        const ps = sides.map((s) => (g.h2h[s] || {}).pinnacle);
+        const dv = ps.every((x) => typeof x === 'number') ? devigThreeWay(ps) : null;
+        if (dv) { fair = dv; fairSrc = 'pinnacle'; }
+      }
       const best = (sel) => {
         let bp = null, bb = null;
         for (const bk of SOCCER_EXEC) {
@@ -8050,7 +8081,7 @@ async function soccerBoardData(env, url) {
       }
       out.games.push({
         id: g.id, league: g.league, leagueLabel: g.leagueLabel, commence: g.commence,
-        home: g.home, away: g.away, sharpN, fairSrc: sharpN >= 2 ? 'sharp-pool' : 'MKT',
+        home: g.home, away: g.away, sharpN, fairSrc,
         oneXtwo: picks, lead, fav, total: totalRead,
       });
     }
@@ -8074,12 +8105,12 @@ async function soccerBoardData(env, url) {
       // 18 days away; it was that one book had quoted it and there was no fair
       // line behind it. So test for the fair line.
       const dayOf = (g) => ptDateOf(Date.parse(g.commence));
-      const priced = out.games.filter((g) => g.sharpN >= 2);
+      const priced = out.games.filter((g) => g.fairSrc !== 'MKT');
       const target = priced.length ? dayOf(priced[0]) : null;
       if (target) {
         out.slateDay = target;
         out.games = out.games.filter((g) => g.commence && dayOf(g) === target);
-        const withFair = out.games.filter((g) => g.sharpN >= 2).length;
+        const withFair = out.games.filter((g) => g.fairSrc !== 'MKT').length;
         out.slateNote = `next matchday: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming fixtures, ${withFair} with a sharp fair line)`;
       } else {
         // Fixtures exist but nothing carries two sharp books yet. Name the day
@@ -8095,7 +8126,7 @@ async function soccerBoardData(env, url) {
     // posts nothing — this is written down, not shown.
     try {
       const pre = out.games.filter((g) => g.lead && g.lead.price != null && g.lead.fair != null
-        && g.sharpN >= 2 && Date.parse(g.commence || 0) > Date.now());
+        && g.fairSrc !== 'MKT' && Date.parse(g.commence || 0) > Date.now());
       if (pre.length && !showAll) {
         await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), pre.map((g) => ({
           game_id: g.id, league: g.league, commence: g.commence,

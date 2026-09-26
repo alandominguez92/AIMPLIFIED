@@ -2695,3 +2695,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .soc-fav .tc-l1 b { flex:none; }
 .soc-fav-opp { min-width:0; font-size:12.5px; color:var(--textDim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .soc-fav .tc-book b { font-weight:600; }
+
+/* Today's card before lineups post: amber is the data-caveat colour, not a call. */
+.tc-wait { font-family:var(--mono); font-size:10px; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--caution); border:1px solid color-mix(in srgb, var(--caution) 45%, var(--border)); border-radius:4px; padding:1px 5px; white-space:nowrap; }
+.tc-wait-note { margin-top:6px; font-size:12px; line-height:1.45; color:var(--caution); }
