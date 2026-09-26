@@ -3506,7 +3506,13 @@
     const count = document.getElementById('entriesCount');
     if (!box) return;
     if (state.entriesError && !state.entries) {
-      box.innerHTML = `<div class="nfl-empty">${esc(state.entriesError)}</div>` + entryKeyHtml();
+      // A home-screen app on iPhone keeps its own storage, separate from
+      // Safari's, so it arrives with a new key while the log belongs to the old
+      // one. Say what to do, and open the box to do it in.
+      const wrongKey = /does not open this log/.test(state.entriesError);
+      box.innerHTML = `<div class="nfl-empty">${esc(state.entriesError)}${wrongKey
+        ? ' This device has its own key — the Aimplified app on your home screen keeps its storage apart from Safari. Paste the key from the device you logged on below.'
+        : ''}</div>` + entryKeyHtml(wrongKey);
       return;
     }
     if (!state.entries) { box.innerHTML = '<div class="nfl-empty">Loading your entries…</div>'; return; }
@@ -3607,9 +3613,9 @@
   }
 
   // The key that opens the log. Shown so it can be carried to a second device.
-  function entryKeyHtml() {
+  function entryKeyHtml(open) {
     let k = null; try { k = localStorage.getItem(ENTRY_KEY_STORE); } catch (e) {}
-    return `<details class="en-block en-key"><summary>This device's entries key</summary>
+    return `<details class="en-block en-key"${open ? ' open' : ''}><summary>This device's entries key</summary>
       <p>Your entries are private to this key. To see them on another device, copy it there.</p>
       <div class="mf-row"><code>${k ? esc(k) : 'none yet — it is created when you save your first entry'}</code>${k ? '<button type="button" data-action="entry-key-copy">Copy</button>' : ''}</div>
       <div class="mf-row"><input id="entryKeyIn" placeholder="Paste a key from another device" aria-label="Entries key"><button type="button" data-action="entry-key-use">Use this key</button></div>
