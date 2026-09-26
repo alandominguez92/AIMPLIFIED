@@ -214,6 +214,7 @@
     logKind: { pp: null, dk: null },
     logSides: {},          // legId -> 'Under' | 'Over', when flipped from the board's side
     logPrices: {},         // legId -> odds typed in for a DraftKings leg
+    logLines: {},          // legId -> the line actually taken, when it differs from the board's
     logStake: null,
     manualLegs: 1,         // rows in the "add by hand" form
     soccer: null,          // /api/soccer-board payload, loaded on first visit
@@ -3420,9 +3421,17 @@
         side: s.side, price: typedPrice != null ? typedPrice : s.book.price, modelProb: s.book.win };
     }
     const usePP = book === 'pp' && s.pp;
-    const under = usePP ? s.pp.under : s.book.under;
+    const boardLine = usePP ? s.pp.line : s.book.line;
+    // The line actually taken. The odds feed can lag the app, and a goblin or
+    // demon is a different number altogether; grading at the board's line when
+    // the entry was played at another would score the wrong bet. A typed line
+    // keeps the model's probability only if it is one the model priced.
+    const typedLine = state.logLines[leg.id];
+    const line = typedLine != null && typedLine !== '' && isFinite(Number(typedLine)) ? Number(typedLine) : boardLine;
+    const under = line === boardLine ? (usePP ? s.pp.under : s.book.under)
+      : (s.pp && line === s.pp.line ? s.pp.under : (line === s.book.line ? s.book.under : null));
     return { sport: s.sport, date: s.date, gamePk: s.gamePk, playerId: s.playerId, player: s.player, team: s.team,
-      market: s.market, line: usePP ? s.pp.line : s.book.line, side,
+      market: s.market, line, side,
       price: book === 'dk' ? (typedPrice != null ? typedPrice : (side === s.side ? s.book.price : null)) : null,
       modelProb: under == null ? null : (side === 'Over' ? pct1(100 - under) : under) };
   }
@@ -3440,9 +3449,11 @@
     const stake = state.logStake != null ? state.logStake : (() => { try { return localStorage.getItem('aimplified_log_stake') || ''; } catch (e) { return ''; } })();
     const rows = legs.map((leg) => {
       const e = entryLegFrom(leg, book);
+      const edited = state.logLines[leg.id] != null && state.logLines[leg.id] !== '';
       const what = e.market === 'ml' ? `${esc(e.player)} to win`
         : e.market === 'other' ? esc(leg.title)
-        : `${e.line != null ? esc(String(e.line)) : '—'} ${esc(MARKET_SHORT[e.market] || e.market)}${book === 'pp' && leg.spec && leg.spec.pp ? ' <i class="le-src">PP line</i>' : ''}`;
+        : `<input class="le-line" data-action="log-line" data-leg="${esc(leg.id)}" inputmode="decimal" value="${e.line != null ? esc(String(e.line)) : ''}" aria-label="Line taken for ${esc(e.player || '')}"> ${esc(MARKET_SHORT[e.market] || e.market)}`
+          + (edited ? ' <i class="le-src">your line</i>' : (book === 'pp' && leg.spec && leg.spec.pp ? ' <i class="le-src">PP line</i>' : ''));
       const sides = (e.market === 'ml' || e.market === 'other') ? ''
         : `<span class="le-side">${['Under', 'Over'].map((v) => `<button type="button" data-action="log-side" data-leg="${esc(leg.id)}" data-side="${v}" class="${e.side === v ? 'on' : ''}">${v}</button>`).join('')}</span>`;
       const price = book === 'dk'
@@ -3464,7 +3475,7 @@
         <label class="le-stake">Stake $<input id="logStake" data-action="log-stake" inputmode="decimal" value="${esc(String(stake))}" placeholder="10"></label>
         <button type="button" class="le-save" data-action="log-save">Save entry</button>
       </div>
-      <div class="le-note">Graded automatically after the games. The percentages are the model's chance for that side at that line.</div>
+      <div class="le-note">Check each line matches the app before saving — change it if you took a goblin, a demon or a moved number. Graded automatically after the games. The percentages are the model's chance for that side at that line, and disappear for a line the model didn't price.</div>
     </div>`;
   }
 
@@ -3480,7 +3491,7 @@
     try {
       const r = await entriesFetch('POST', { action: 'create', entry });
       try { localStorage.setItem('aimplified_log_stake', String(stake)); } catch (e) {}
-      state.slip = {}; state.logSides = {}; state.logPrices = {}; state.logKind = { pp: null, dk: null };
+      state.slip = {}; state.logSides = {}; state.logPrices = {}; state.logLines = {}; state.logKind = { pp: null, dk: null };
       persistSlip(); renderControls(); renderBoard(); renderSlip();
       toast(r.claimed ? 'Entry logged — this device now holds your entries key' : 'Entry logged');
       if (state.entries) refreshEntries();
@@ -4540,6 +4551,7 @@
     if (!t || !t.dataset) return;
     if (t.dataset.action === 'log-stake') state.logStake = t.value;
     if (t.dataset.action === 'log-price') { state.logPrices = { ...state.logPrices, [t.dataset.leg]: t.value }; }
+    if (t.dataset.action === 'log-line') { state.logLines = { ...state.logLines, [t.dataset.leg]: t.value.trim() }; renderSlip(); }
     if (t.dataset.action === 'entry-payout') {
       const v = t.value.trim();
       entriesFetch('POST', { action: 'payout', id: t.dataset.id, payout: v === '' ? null : Number(v) })
