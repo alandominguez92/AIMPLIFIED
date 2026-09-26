@@ -322,6 +322,13 @@ await runCron();
 ok(eventCalls > 0 && ingested === 0,
   `nothing inside 36h: the free events read runs, the paid capture does not (${eventCalls} free, ${ingested} paid)`);
 
+// And the NEXT tick, five minutes later, does not ask again. Every tick used to,
+// ~1,400 free calls a day across the soccer leagues and the NFL, each one a
+// ledger write and a subrequest out of the closing-line capture's budget.
+const quietCalls = eventCalls;
+await runCron();
+ok(eventCalls === quietCalls, `a quiet answer is trusted for an hour — the next tick asks nothing (${eventCalls - quietCalls} new calls)`);
+
 // A game tomorrow: it captures, once.
 nflEvents = [{ id: 'near', commence_time: iso(NOW + 20 * HOUR) }];
 cache.delete(`nfl_cap:${ptDay(NOW)}`);

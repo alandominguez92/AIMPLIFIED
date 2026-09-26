@@ -7744,6 +7744,13 @@ async function soccerIngest(env, url) {
 //
 // 3 markets x 1 region-equivalent = 3 credits a call, so a slate day costs 6 and
 // a full NFL week about 18 — against a quota in the tens of thousands.
+// How long a "nothing inside the window" answer is trusted before the free
+// events list is asked again. Every 5-minute tick asked it, which on 2026-09-25
+// was ~1,400 calls across six soccer leagues and the NFL — free in credits, but
+// each one a usage-ledger write and each one a subrequest drawn from the same
+// scheduled invocation that captures closing lines. A fixture entering the 36h
+// window is still seen within the hour.
+const EVENTS_RECHECK_MS = 60 * 60 * 1000;
 const NFL_MAX_PER_DAY = 2;
 const NFL_MIN_GAP_MS = 5 * 3600 * 1000;
 const NFL_HORIZON_MS = 36 * 3600 * 1000;
@@ -7756,6 +7763,7 @@ async function nflMaybeIngest(env, ctx) {
     const state = (hit.present && hit.data) || { n: 0, last: 0 };
     if (state.n >= NFL_MAX_PER_DAY) return null;
     if (state.last && Date.now() - state.last < NFL_MIN_GAP_MS) return null;
+    if (state.checked && Date.now() - state.checked < EVENTS_RECHECK_MS) return null;
     // Is anything coming? The events list is free, so this question costs nothing
     // on the many days the answer is no.
     const evR = await fetch(`https://api.the-odds-api.com/v4/sports/americanfootball_nfl/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`,
@@ -7767,7 +7775,7 @@ async function nflMaybeIngest(env, ctx) {
       const t = Date.parse(e.commence_time);
       return isFinite(t) && t > Date.now() && t - Date.now() <= NFL_HORIZON_MS;
     });
-    if (!soon) return null;
+    if (!soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: Date.now() }); return null; }
     const res = await nflIngest(env, new URL('https://x/api/nfl-ingest'));
     // Player props on the same tick. They are a separate purchase — per event
     // rather than per slate — and the game-line ingest does not touch them, so
@@ -7796,6 +7804,7 @@ async function soccerMaybeIngest(env, ctx) {
       const state = (hit.present && hit.data) || { n: 0, last: 0 };
       if (state.n >= SOCCER_MAX_PER_DAY) continue;
       if (state.last && Date.now() - state.last < SOCCER_MIN_GAP_MS) continue;
+      if (state.checked && Date.now() - state.checked < EVENTS_RECHECK_MS) continue;
       // Is anything coming? The events list is free.
       const evR = await fetch(`https://api.the-odds-api.com/v4/sports/${SOCCER_LEAGUES[lg].key}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`, { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, evR, `soccer:${lg}:events`);
@@ -7805,7 +7814,7 @@ async function soccerMaybeIngest(env, ctx) {
         const t = Date.parse(e.commence_time);
         return isFinite(t) && t > Date.now() && t - Date.now() <= SOCCER_HORIZON_MS;
       });
-      if (!soon) continue;
+      if (!soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: Date.now() }); continue; }
       const res = await soccerIngest(env, new URL(`https://x/api/soccer-ingest?league=${lg}`));
       await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
       out.push({ league: lg, ...(res.leagues[0] || {}), credits: res.credits });
