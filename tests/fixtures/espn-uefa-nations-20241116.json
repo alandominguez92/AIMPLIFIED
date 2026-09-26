@@ -1,0 +1,315 @@
+{
+ "_recorded": "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.nations&date=20241116 on 2026-09-26, trimmed to the fields gradeGamePicks reads",
+ "content": {
+  "sbData": {
+   "events": [
+    {
+     "id": "699003",
+     "date": "2024-11-16T14:00Z",
+     "name": "Estonia at Azerbaijan",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "0",
+         "team": {
+          "displayName": "Azerbaijan",
+          "name": "Azerbaijan",
+          "abbreviation": "AZE"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "0",
+         "team": {
+          "displayName": "Estonia",
+          "name": "Estonia",
+          "abbreviation": "EST"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "699004",
+     "date": "2024-11-16T17:00Z",
+     "name": "Moldova at Andorra",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "0",
+         "team": {
+          "displayName": "Andorra",
+          "name": "Andorra",
+          "abbreviation": "AND"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "1",
+         "team": {
+          "displayName": "Moldova",
+          "name": "Moldova",
+          "abbreviation": "MDA"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "699007",
+     "date": "2024-11-16T17:00Z",
+     "name": "Ukraine at Georgia",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "1",
+         "team": {
+          "displayName": "Georgia",
+          "name": "Georgia",
+          "abbreviation": "GEO"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "1",
+         "team": {
+          "displayName": "Ukraine",
+          "name": "Ukraine",
+          "abbreviation": "UKR"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "699006",
+     "date": "2024-11-16T17:00Z",
+     "name": "Iceland at Montenegro",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "0",
+         "team": {
+          "displayName": "Montenegro",
+          "name": "Montenegro",
+          "abbreviation": "MNE"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "2",
+         "team": {
+          "displayName": "Iceland",
+          "name": "Iceland",
+          "abbreviation": "ISL"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "699005",
+     "date": "2024-11-16T17:00Z",
+     "name": "Wales at Türkiye",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "0",
+         "team": {
+          "displayName": "Türkiye",
+          "name": "Türkiye",
+          "abbreviation": "TUR"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "0",
+         "team": {
+          "displayName": "Wales",
+          "name": "Wales",
+          "abbreviation": "WAL"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "699009",
+     "date": "2024-11-16T19:45Z",
+     "name": "Czechia at Albania",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "0",
+         "team": {
+          "displayName": "Albania",
+          "name": "Albania",
+          "abbreviation": "ALB"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "0",
+         "team": {
+          "displayName": "Czechia",
+          "name": "Czechia",
+          "abbreviation": "CZE"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "699011",
+     "date": "2024-11-16T19:45Z",
+     "name": "Bosnia-Herzegovina at Germany",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "7",
+         "team": {
+          "displayName": "Germany",
+          "name": "Germany",
+          "abbreviation": "GER"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "0",
+         "team": {
+          "displayName": "Bosnia-Herzegovina",
+          "name": "Bosnia-Herzegovina",
+          "abbreviation": "BIH"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "699010",
+     "date": "2024-11-16T19:45Z",
+     "name": "Hungary at Netherlands",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "4",
+         "team": {
+          "displayName": "Netherlands",
+          "name": "Netherlands",
+          "abbreviation": "NED"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "0",
+         "team": {
+          "displayName": "Hungary",
+          "name": "Hungary",
+          "abbreviation": "HUN"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "699008",
+     "date": "2024-11-16T19:45Z",
+     "name": "Slovakia at Sweden",
+     "status": {
+      "type": {
+       "name": "STATUS_FULL_TIME"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "2",
+         "team": {
+          "displayName": "Sweden",
+          "name": "Sweden",
+          "abbreviation": "SWE"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "1",
+         "team": {
+          "displayName": "Slovakia",
+          "name": "Slovakia",
+          "abbreviation": "SVK"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

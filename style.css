@@ -2689,3 +2689,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* Soccer's one-line note under the heading, replacing a 240px context box. */
 .soc-note { margin:-4px 0 0; font-family:var(--mono); font-size:11px; letter-spacing:.02em; color:var(--textFaint); }
+
+/* Soccer's "Most likely to win" card: Today's card layout, above the fixtures. */
+.soc-fav { margin:0 0 18px; max-width:640px; }
+.soc-fav .tc-l1 b { flex:none; }
+.soc-fav-opp { min-width:0; font-size:12.5px; color:var(--textDim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.soc-fav .tc-book b { font-weight:600; }

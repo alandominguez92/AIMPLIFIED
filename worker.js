@@ -3040,7 +3040,8 @@ async function trackRecord(env) {
       // table, so its 763 rows keep running without a schema change under them.
       const gm = ((await env.DB.prepare('SELECT * FROM gmpicks').all()).results) || [];
       out.nflMl = buildGmRecord(gm, 'nfl');
-      out.soccerMl = buildGmRecord(gm, 'soccer');
+      out.soccerMl = buildGmRecord(gm.filter((r) => r.market !== 'fav'), 'soccer');
+      out.soccerFav = buildSoccerFavRecord(gm);
       out.nflPassTds = buildPassTdRecord(gm);
     } catch (e) { /* additive */ }
     out.recent = buildRecent(unified, mlRows);
@@ -3440,7 +3441,7 @@ async function logGamePicks(db, sport, date, entries) {
 // ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
 // Cloudflare (see the nfl-grade probe). Free either way, like every other score
 // read in this file.
-const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', seriea: 'ita.1', ligamx: 'mex.1', mls: 'usa.1' };
+const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', seriea: 'ita.1', ligamx: 'mex.1', mls: 'usa.1', uefanl: 'uefa.nations' };
 async function espnScoreboard(path) {
   const r = await fetch(`https://cdn.espn.com/core/${path}`, { headers: { accept: 'application/json' } });
   if (!r.ok) return [];
@@ -3451,9 +3452,17 @@ async function espnScoreboard(path) {
 // Bournemouth", "Malaga" against "Málaga"). Strip the accents and the club-form
 // words and match on what is left.
 const CLUB_NOISE = /\b(afc|fc|cf|sc|ud|cd|rcd|ac|as|ss|sv|bv|club|de|the)\b/g;
+// Countries the two feeds spell differently. Keys and values are clubKey form.
+// Substring matching already covers "North Macedonia"/"Macedonia" and
+// "Republic of Ireland"/"Ireland"; these are the ones it cannot.
+const NATION_ALIAS = {
+  czechrepublic: 'czechia', turkey: 'turkiye',
+  bosniaandherzegovina: 'bosniaherzegovina',
+};
 function clubKey(s) {
-  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const k = String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(CLUB_NOISE, ' ').replace(/[^a-z0-9]+/g, '');
+  return NATION_ALIAS[k] || k;
 }
 function clubMatch(a, b) {
   const x = clubKey(a), y = clubKey(b);
@@ -3526,9 +3535,16 @@ async function gradeGamePicks(env) {
       });
     }
     for (const r of job.rows) {
-      const f = finals.find((x) => (r.sport === 'nfl'
+      let f = finals.find((x) => (r.sport === 'nfl'
         ? (clubMatch(x.homeAb, r.home) || clubMatch(x.home, r.home)) && (clubMatch(x.awayAb, r.away) || clubMatch(x.away, r.away))
         : clubMatch(x.home, r.home) && clubMatch(x.away, r.away)));
+      // National teams play at neutral grounds, and the two feeds do not always
+      // agree which side is "home". Found reversed, the scores are flipped back
+      // into our orientation so r.side still means what it meant when logged.
+      if (!f && r.sport === 'soccer') {
+        const x = finals.find((y) => clubMatch(y.home, r.away) && clubMatch(y.away, r.home));
+        if (x) f = { ...x, hs: x.as, as: x.hs };
+      }
       if (!f || !isFinite(f.hs) || !isFinite(f.as)) { out.unmatched.push(`${r.sport} ${r.date} ${r.away}@${r.home}`); continue; }
       let result;
       if (r.market === 'totals') {
@@ -3739,6 +3755,28 @@ function buildPassTdRecord(rows) {
       : (avg(fair) >= NFL_PASS_TD_BASE
         ? 'sharp pool is at or above the realised rate — priced, no edge visible'
         : 'sharp pool is below the realised rate — worth continuing to watch'),
+  };
+}
+
+// "Do the teams rated likeliest to win, win often enough to pay?" Banded by the
+// sharp win probability, because a 70% favourite at -300 and a 45% one at +150
+// are different bets and a single record would average them into nothing.
+function buildSoccerFavRecord(rows) {
+  const fav = rows.filter((r) => r.sport === 'soccer' && r.market === 'fav');
+  const base = buildGmRecord(fav, 'soccer');
+  const graded = fav.filter((r) => r.result === 'win' || r.result === 'loss');
+  const band = (lo, hi) => {
+    const b = graded.filter((r) => r.win_prob >= lo && r.win_prob < hi);
+    let w = 0, u = 0;
+    for (const r of b) { if (r.result === 'win') w++; u += profitUnits(r.result, mlGradePrice(r)); }
+    const exp = b.length ? round1(b.reduce((s, r) => s + r.win_prob, 0) / b.length) : null;
+    return { n: b.length, record: `${w}–${b.length - w}`, winRate: b.length ? round1(w / b.length * 100) : null,
+      expected: exp, units: Math.round(u * 10) / 10, roi: b.length ? round1(u / b.length * 100) : null };
+  };
+  return {
+    ...base,
+    note: 'Soccer: the side the sharp books rate likeliest to win in each fixture, at the best DK/FD price. LOGGED ONLY. expected = the average sharp win probability in the band; a winRate above it means the favourites beat their own odds.',
+    byBand: { '65+': band(65, 101), '55-65': band(55, 65), '45-55': band(45, 55), 'under 45': band(0, 45) },
   };
 }
 
@@ -6686,7 +6724,8 @@ async function topLegs(env, url) {
     } else {
       await ensureGamePickSchema(env.DB);
       const want = sport === 'nflptd' ? 'nflptd' : sport;
-      rows = (((await env.DB.prepare('SELECT * FROM gmpicks WHERE sport = ?').bind(want).all()).results) || []);
+      rows = (((await env.DB.prepare('SELECT * FROM gmpicks WHERE sport = ?').bind(want).all()).results) || [])
+        .filter((r) => r.market !== 'fav');
       if (want === 'nflptd') rows = dedupePassTds(rows);   // the ranking is per day
       out.rankedBy = sport === 'nflptd'
         ? 'the gap between the best price and the realised 55.4% under rate'
@@ -7716,6 +7755,11 @@ const SOCCER_LEAGUES = {
   // while the European four go to May. They are a seven-week source that covers
   // this FIFA window, not a permanent fifth and sixth league.
   mls: { key: 'soccer_usa_mls', label: 'MLS', country: 'USA' },
+  // National teams. Added 2026-09-26 for the double FIFA window that stops the
+  // European leagues until Oct 10: 18 fixtures that weekend and 8 more on Oct 3,
+  // all priced by Pinnacle. Friendlies are not in the odds feed at all, so this
+  // is the one international competition the sharp-pool method can price.
+  uefanl: { key: 'soccer_uefa_nations_league', label: 'Nations League', country: 'UEFA' },
 };
 const SOCCER_SHARP = ['pinnacle', 'lowvig', 'betonlineag'];
 const SOCCER_EXEC = ['draftkings', 'fanduel'];
@@ -7969,6 +8013,13 @@ async function soccerBoardData(env, url) {
         };
       });
       const lead = picks.filter((p) => p.value != null).sort((a, b) => b.value - a.value)[0] || null;
+      // The side the sharp books make likeliest to WIN (never the draw), whatever
+      // its price. A different question from `lead`, which is the best value and
+      // is often the draw; this one is logged under its own market so the two
+      // records never mix.
+      const fav = fair
+        ? [picks[0], picks[2]].filter((p) => p.fair != null).sort((a, b) => b.fair - a.fair)[0] || null
+        : null;
       // The most-quoted goals line, with both sides de-vigged two-way (Over/Under
       // is a true two-way market, so Shin applies as it does everywhere else).
       const points = [...new Set(Object.keys(g.totals).map((k) => Number(k.split('|')[0])).filter((x) => isFinite(x)))];
@@ -8000,7 +8051,7 @@ async function soccerBoardData(env, url) {
       out.games.push({
         id: g.id, league: g.league, leagueLabel: g.leagueLabel, commence: g.commence,
         home: g.home, away: g.away, sharpN, fairSrc: sharpN >= 2 ? 'sharp-pool' : 'MKT',
-        oneXtwo: picks, lead, total: totalRead,
+        oneXtwo: picks, lead, fav, total: totalRead,
       });
     }
     out.games.sort((a, b) => Date.parse(a.commence || 0) - Date.parse(b.commence || 0));
@@ -8075,6 +8126,14 @@ async function soccerBoardData(env, url) {
           });
         }
         if (tot.length) await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), tot);
+        const favs = pre.filter((g) => g.fav && g.fav.price != null && g.fav.fair != null).map((g) => ({
+          game_id: g.id, market: 'fav', league: g.league, commence: g.commence,
+          side: g.fav.selection === g.home ? 'home' : 'away',
+          pick: g.fav.selection, home: g.home, away: g.away,
+          win_prob: g.fav.fair, implied: g.fav.implied, edge: g.fav.value,
+          price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN,
+        }));
+        if (favs.length) await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), favs);
       }
     } catch (e) { /* logging never breaks the board */ }
     out.empty = out.games.length === 0;

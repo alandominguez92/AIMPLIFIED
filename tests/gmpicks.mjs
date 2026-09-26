@@ -218,12 +218,23 @@ ok(soc.every((r) => r.win_prob != null && r.entry_price != null && r.sharp_n >= 
 ok(logged.every((r) => r.date === ptDay(NOW)), `dated by Pacific slate day (${[...new Set(logged.map((r) => r.date))].join(',')})`);
 ok(socH2h.some((r) => r.side === 'draw'), `the draw is logged as a side of its own (${socH2h.map((r) => r.side).join(',')})`);
 ok(nfl.every((r) => r.side === 'home' || r.side === 'away'), `NFL has no draw side (${nfl.map((r) => r.side).join(',')})`);
+// The likeliest winner, logged under its own market: never the draw, and always
+// the side the sharp pool rates higher, whatever the board's value pick was.
+const socFav = soc.filter((r) => r.market === 'fav');
+const socBoard = await hit('/api/soccer-board');
+ok(socFav.length === 2 && socFav.every((r) => r.side === 'home' || r.side === 'away'),
+  `each fixture logs its likeliest winner, never the draw (${socFav.map((r) => r.pick + ' ' + r.win_prob + '%').join(', ')})`);
+ok(socFav.length === 2 && socFav.every((r) => {
+  const g = (socBoard.games || []).find((x) => x.id === r.game_id);
+  const teams = g ? g.oneXtwo.filter((p) => p.selection !== 'Draw') : [];
+  return g && teams.length === 2 && r.win_prob === Math.max(...teams.map((p) => p.fair)) && g.fav && g.fav.selection === r.pick;
+}), 'and it is the team with the higher sharp win probability, as the board shows it');
 
 // Logging twice must not double up, and must not move the entry price.
 const before = JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price]));
 await hit('/api/nfl-board');
 await hit('/api/soccer-board');
-ok(gm.size === 6 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price])) === before,
+ok(gm.size === 8 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price])) === before,
   `a second board load re-freezes nothing (${gm.size} rows)`);
 
 // ---- grade -----------------------------------------------------------------------------
@@ -290,6 +301,48 @@ const t = (id) => (gm.get(gmKey(['soccer', yday, id, 'totals'])) || {}).result;
 ok(t('t_under') === 'win', `one goal against a 2.5 line grades the under a win (${t('t_under')})`);
 ok(t('t_over') === 'win', `and the over a win at 0.5 — the direction is read from the side, not assumed (${t('t_over')})`);
 ok(t('t_push') === 'push', `a whole-number line the score lands on exactly is a push (${t('t_push')})`);
+
+// ---- Nations League: national-team names and neutral grounds ----------------------------
+// A real ESPN matchday (2024-11-16), recorded and trimmed. ESPN writes Türkiye,
+// Czechia and Bosnia-Herzegovina; the odds feed writes Turkey, Czech Republic and
+// Bosnia and Herzegovina. And ESPN lists Bosnia v Germany the other way round
+// from how the row was logged — which side is "home" at a national-team game is
+// not something the two feeds agree on.
+const NL = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'fixtures', 'espn-uefa-nations-20241116.json'), 'utf8'));
+ESPN['uefa.nations'] = NL.content.sbData.events;
+const seedNl = (id, market, home, away, side, winProb) => {
+  gm.set(gmKey(['soccer', yday, id, market]), {
+    sport: 'soccer', date: yday, game_id: id, market, league: 'uefanl', side, point: null,
+    pick: side === 'draw' ? 'Draw' : (side === 'home' ? home : away), home, away,
+    win_prob: winProb, implied: winProb, edge: 0, entry_price: -150, close_price: -150,
+    book: 'draftkings', fair_src: 'sharp-pool', sharp_n: 3, result: null,
+    home_score: null, away_score: null, model_ver: 'gm-v1',
+  });
+};
+seedNl('nl1', 'fav', 'Turkey', 'Wales', 'home', 58);                  // ESPN: Wales 0-0 Türkiye
+seedNl('nl2', 'fav', 'Bosnia and Herzegovina', 'Germany', 'away', 80); // ESPN: Bosnia-Herzegovina 0 @ Germany 7
+seedNl('nl3', 'h2h', 'Albania', 'Czech Republic', 'draw', 30);          // ESPN: Czechia 0-0 Albania
+cache.clear();
+const trNl = await hit('/api/track-record', { DB: db });
+const nl = (id, mkt) => gm.get(gmKey(['soccer', yday, id, mkt])) || {};
+ok(nl('nl1', 'fav').result === 'loss',
+  `"Turkey" finds ESPN's "Türkiye", and a 0-0 is a loss for the favourite (${nl('nl1', 'fav').result})`);
+ok(nl('nl2', 'fav').result === 'win' && nl('nl2', 'fav').home_score === 0 && nl('nl2', 'fav').away_score === 7,
+  `Bosnia v Germany is found with home and away reversed, and the 7-0 is stored our way round (${nl('nl2', 'fav').result} ${nl('nl2', 'fav').home_score}-${nl('nl2', 'fav').away_score})`);
+ok(nl('nl3', 'h2h').result === 'win',
+  `"Czech Republic" finds ESPN's "Czechia", and the draw pick on a 0-0 wins (${nl('nl3', 'h2h').result})`);
+
+// The favourites keep a record of their own, banded by how likely the sharp
+// books made them, and stay out of the soccer game-line record.
+const sf = trNl.soccerFav || {};
+const bandN = Object.values(sf.byBand || {}).reduce((s, b) => s + b.n, 0);
+console.log('  soccerFav: ' + JSON.stringify({ n: sf.n, record: sf.record, units: sf.units, byBand: sf.byBand }));
+ok(sf.n === 4 && bandN === 4,
+  `the favourite record counts the four graded favourites, each in one band (${sf.record}, ${bandN} banded)`);
+ok(sf.byBand && sf.byBand['65+'].n === 1 && sf.byBand['65+'].expected === 80 && sf.byBand['65+'].winRate === 100,
+  'a band says how often its favourites won against how often the sharp books said they would');
+ok(trNl.soccerMl && !((trNl.soccerMl.byMarket || {}).fav),
+  `and the soccer game-line record does not count them (${Object.keys((trNl.soccerMl || {}).byMarket || {}).join(',')})`);
 
 // ---- the cron keeps it filling -----------------------------------------------------------
 // The NFL lines used to arrive only when a one-off scheduled task fired, so a

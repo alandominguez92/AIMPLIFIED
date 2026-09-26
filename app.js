@@ -4438,6 +4438,15 @@
         renderSoccer();
         break;
       }
+      case 'soccer-fav-jump': {
+        const sid = target.dataset.id;
+        state.soccerOpen = sid;
+        renderSoccer();
+        const row = [...document.querySelectorAll('#soccerGrid [data-action="soccer-toggle"]')]
+          .find((r) => r.dataset.id === sid);
+        if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        break;
+      }
       case 'nfl-view': setNflView(target.dataset.nflview); break;
       case 'nfl-filter': setNflFilter(target.dataset.nflfilter); break;
       case 'nfl-sort': setNflSort(target.dataset.nflsort); break;
@@ -5547,7 +5556,8 @@
     // carries the note; soccer was written without one.
     const head = ['Fixture', '1X2 lead', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    el.soccerGrid.innerHTML = `<div class="board view-moneyline"><div class="board-inner">`
+    el.soccerGrid.innerHTML = soccerFavCard(games)
+      + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map(soccerRow).join('')}</div>`
       + `</div></div>`;
@@ -5565,6 +5575,39 @@
     // the strip wrapped to two lines inside the matchup column — "Bournemouth
     // +400" alone is most of the width — and cost 60px on every row.
     return (keep[0] || parts[0]).slice(0, 3).toUpperCase();
+  }
+
+  // The likeliest winners on the slate, by the sharp books' win probability --
+  // "the highest rated teams to win", as asked. It answers that and nothing more,
+  // so the price and the value sit beside every one: a 75% favourite at -400 and
+  // a 55% one at +110 are both likely, and only the price says which one pays.
+  // Kicked-off fixtures drop out; the board is built before games, not during.
+  function soccerFavCard(games) {
+    const now = Date.now();
+    const favs = games.filter((g) => g.fav && g.fav.fair != null && g.fav.price != null
+      && g.sharpN >= 2 && Date.parse(g.commence || 0) > now)
+      .sort((x, y) => y.fav.fair - x.fav.fair).slice(0, 5);
+    if (!favs.length) return '';
+    const rec = state.trackRecord && state.trackRecord.soccerFav;
+    const recHtml = rec && rec.n
+      ? `<span class="tc-rec">So far <b>${esc(rec.record)}</b> · ${rec.units >= 0 ? '+' : ''}${rec.units}u</span>`
+      : '<span class="tc-rec">tracked from Sep 26</span>';
+    return `<div class="soc-fav">`
+      + `<div class="tc-head"><span class="tc-title">Most likely to win</span>${recHtml}</div>`
+      + `<div class="tc-sub">Ranked by the sharp books' win probability. Value is that probability minus what the price implies.</div>`
+      + `<ol class="tc-legs">${favs.map((g) => {
+        const f = g.fav;
+        const isHome = f.selection === g.home;
+        const opp = isHome ? g.away : g.home;
+        const v = f.value;
+        const vc = v == null ? 'var(--textFaint)' : (v > 0 ? 'var(--positive)' : 'var(--textDim)');
+        return `<li><button type="button" class="tc-leg" data-action="soccer-fav-jump" data-id="${esc(g.id)}">`
+          + `<span class="tc-l1"><b>${esc(f.selection)}</b><span class="soc-fav-opp">${isHome ? 'vs' : '@'} ${esc(opp || '')}</span>`
+          + `<span class="tc-p">${Math.round(f.fair)}%</span></span>`
+          + `<span class="tc-l2"><span>${esc(g.leagueLabel || '')}${g.commence ? ' · ' + esc(soccerKick(g.commence)) : ''}</span>`
+          + `<span class="tc-book">${esc(AM(f.price))} ${esc(bkLabel(f.book))} · <b style="color:${vc}">${v == null ? '—' : (v > 0 ? '+' : '') + v}</b> value</span></span>`
+          + `</button></li>`;
+      }).join('')}</ol></div>`;
   }
 
   function soccerRow(g) {
