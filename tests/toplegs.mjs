@@ -42,6 +42,14 @@ for (const date of ['2026-09-20', '2026-09-21']) {
 pp.push({ ...mk('2026-09-20', 900, 99, 'push', 'tb') });
 pp.push({ ...mk('2026-09-20', 901, 98, null, 'hrr'), actual: null });
 
+// Today's ungraded legs, dated the way the worker dates its slate. Two share a
+// game (g500, one from each club) and one stands alone, so the same-game count
+// has something real to find.
+const todayYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+pp.push({ ...mk(todayYmd, 501, 70, null, 'tb'), game_id: 'g500', team: 'SEA', actual: null });
+pp.push({ ...mk(todayYmd, 502, 68, null, 'hrr'), game_id: 'g500', team: 'LAA', actual: null });
+pp.push({ ...mk(todayYmd, 503, 66, null, 'tb'), game_id: 'g600', team: 'HOU', actual: null });
+
 const gm = [
   // soccer, ranked on edge rather than on a model probability
   { sport: 'soccer', date: '2026-09-20', game_id: 's1', market: 'h2h', league: 'epl', side: 'home', pick: 'Liverpool',
@@ -106,6 +114,16 @@ ok(nf.graded === 1 && !JSON.stringify(nf.byDay).includes('Liverpool'),
   'and the sports do not bleed into each other');
 ok(/LOGGED ONLY/.test(m.note) && /nothing shown on the site/.test(m.note),
   'nothing here is posted or shown — it is an instrument');
+
+// Today's legs carry their club and game, and count how many of the list share
+// that game, so a check can warn about stacking one game into an entry.
+const byLeg = Object.fromEntries((m.today || []).map((t) => [String(t.leg).split(' ')[0], t]));
+console.log('\n  today: ' + (m.today || []).map((t) => `${t.leg} ${t.team} ${t.game} x${t.sameGame}`).join(' | '));
+ok((m.today || []).length === 3, `today lists the three ungraded legs dated ${todayYmd} (${(m.today || []).length})`);
+ok(byLeg.P501 && byLeg.P501.team === 'SEA' && byLeg.P501.game === 'g500', 'each leg says which club and game it is from');
+ok(byLeg.P501 && byLeg.P502 && byLeg.P501.sameGame === 2 && byLeg.P502.sameGame === 2,
+  'the two legs from one game are marked as sharing it');
+ok(byLeg.P503 && byLeg.P503.sameGame === 1, 'and the leg on its own is not');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exitCode = fail ? 1 : 0;
