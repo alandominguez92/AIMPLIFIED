@@ -136,10 +136,17 @@
         + 'so carrying it to a new team silently re-points it at a different denominator. Moved rows keep the '
         + 'old team visible and render the share amber rather than pretending it transfers.'],
       ['02', 'Arizona is ARI in one file and AZ in another',
-        'The 2025 play-by-play writes ARI, the 2026 rosters write AZ, and the schedule uses ARI throughout. '
-        + 'Taken raw, ' + azNames.length + ' players read as transfers when they never moved — and joining priors '
-        + 'to the schedule on team code drops <b>' + azJoin + '</b> players, not ' + azNames.length + ', because two '
-        + 'genuinely moved to Arizona and share the broken code. Normalised here before any count or join.'],
+        azNames.length
+          ? 'The 2025 play-by-play writes ARI, the 2026 rosters write AZ, and the schedule uses ARI throughout. '
+            + 'Taken raw, ' + azNames.length + ' players read as transfers when they never moved — and joining priors '
+            + 'to the schedule on team code drops <b>' + azJoin + '</b> players, not ' + azNames.length + ', because two '
+            + 'genuinely moved to Arizona and share the broken code. Normalised here before any count or join.'
+          // Since the Sep 26 rebuild the builder writes ARI at the source. Until
+          // then the model skipped every Cardinal as "moved" and never found them
+          // on the board, which writes ARI.
+          : 'Some sources write the Cardinals as AZ and the schedule and board write ARI. The priors builder '
+            + 'normalises it at the source, so no Cardinal reads as a transfer; this page still maps AZ to ARI '
+            + 'in case a future file reintroduces it.'],
       ['03', 'Rate stats die on small denominators',
         lowCar + ' players’ yards-per-carry rests on five carries or fewer and ' + negCar + ' are negative — '
         + 'Chris Olave’s −3.0 is one carry for −3 yards. Below ' + MIN_REC + ' receptions or ' + MIN_CAR

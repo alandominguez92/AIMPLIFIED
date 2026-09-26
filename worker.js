@@ -9781,6 +9781,7 @@ const NFL_RUSH_SHIFT = 3;       // a carry can lose yards; gamma cannot go negat
 const NFL_PACE_COEF = 0.006;    // plays per point of total
 const NFL_SCRIPT_COEF = 0.0075; // pass rate per point of spread
 const NFL_MIN_RP = 0.5;         // participation gate — RECEIVING only
+const NFL_PRIOR_ELIGIBLE = new Set(['same-team', 'moved-current', 'rookie-current']);
 const NFL_MIN_CARRIES = 20;     // rushing gate: volume, not routes
 const NFL_DRAWS = 400;          // enough for the quantiles reported; see nflPropsCost
 
@@ -9947,9 +9948,11 @@ async function nflProps(env, url) {
 
     const byTeam = {};
     for (const [pid, p] of Object.entries(pri.players)) {
-      // Week-1 carry-over rule: only a player still on the team he earned the
-      // prior with is eligible. Movers and rookies wait for current-season reps.
-      if (p.status !== 'same-team') continue;
+      // Only a prior earned with the club he plays for now. 'same-team' pools
+      // last season with this one; a mover or rookie becomes '-current' once he
+      // has three games of reps with his new club (tools/build-nfl-priors.py).
+      // 'moved' and 'rookie-or-absent' are in the file for the priors page only.
+      if (!NFL_PRIOR_ELIGIBLE.has(p.status)) continue;
       (byTeam[p.tm26 || p.tm] = byTeam[p.tm26 || p.tm] || []).push({ pid, ...p });
     }
 

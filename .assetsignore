@@ -10,3 +10,4 @@ wrangler.toml
 worker.js
 DEPLOY.md
 aimplified.bundle
+tools/

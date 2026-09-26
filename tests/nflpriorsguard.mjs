@@ -51,18 +51,19 @@ console.log('\n-- ARI / AZ is normalised before anything counts or joins --');
 ok(/TEAM_ALIAS\s*=\s*\{\s*AZ:\s*'ARI'/.test(js), 'the alias maps AZ onto ARI');
 ok(/hasMoved\s*=.*team25\(p\)\s*!==\s*team26\(p\)/s.test(js), 'a move is only a move after both sides are normalised');
 
-// The damage the alias prevents, measured from the real files.
+// Since the Sep 26 rebuild the builder writes ARI at the source. The old file
+// wrote AZ, so the model marked every Cardinal "moved" and, keyed on AZ, could
+// not have found them on a board that writes ARI either: no Cardinal was
+// projected all season. Guarded on the real file, plus the page's alias stays
+// in case a future source reintroduces AZ.
 const P = Object.values(priors.players);
 const schedTeams = new Set();
 for (const g of sched.games) { schedTeams.add(g.away); schedTeams.add(g.home); }
-const wouldDrop = P.filter((p) => p.tm26 && !schedTeams.has(p.tm26));
-const renames = P.filter((p) => p.tm === 'ARI' && p.tm26 === 'AZ');
-console.log(`   naive join would drop ${wouldDrop.length} players; ${renames.length} of them are renames, `
-  + `${wouldDrop.length - renames.length} genuinely moved to Arizona`);
-ok(wouldDrop.length > 0, 'the hazard is real in the current files (guard is not vacuous)');
-ok(wouldDrop.every((p) => p.tm26 === 'AZ'), 'every unmatched code is AZ — the alias covers the whole hazard');
-ok(renames.length < wouldDrop.length,
-  `the join drops MORE than the rename count (${wouldDrop.length} vs ${renames.length}) — counting only renames understates it`);
+const cards = P.filter((p) => p.tm === 'ARI' && p.tm26 === 'ARI');
+console.log(`   ${cards.length} Cardinals on the same club both seasons; statuses ${[...new Set(cards.map((p) => p.status))].join(',')}`);
+ok(P.length > 300 && P.every((p) => p.tm !== 'AZ' && p.tm26 !== 'AZ'), 'the model file carries no AZ code — normalised at the source');
+ok(cards.length >= 5 && cards.every((p) => p.status !== 'moved'), 'no Cardinal is marked as moved for a code change');
+ok(P.every((p) => !p.tm26 || schedTeams.has(p.tm26)), 'every 2026 club in the file joins the schedule');
 
 console.log('\n-- the rate guard exists and matches the stated thresholds --');
 ok(/MIN_REC\s*=\s*20/.test(js) && /MIN_CAR\s*=\s*25/.test(js), 'thresholds are 20 receptions / 25 carries');
