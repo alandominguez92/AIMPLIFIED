@@ -2686,3 +2686,6 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   #soccerLeagues::-webkit-scrollbar { display:none; }
   #soccerLeagues .nflm .nflm-t { display:none; }
 }
+
+/* Soccer's one-line note under the heading, replacing a 240px context box. */
+.soc-note { margin:-4px 0 0; font-family:var(--mono); font-size:11px; letter-spacing:.02em; color:var(--textFaint); }

@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=48381e664c">
+<link rel="stylesheet" href="style.css?v=3d04ef5b26">
 </head>
 <body>
 
@@ -120,20 +120,15 @@
        no tier filters, no track-record chip and no play/pin notes, because none
        of those would be telling the truth yet. -->
   <section id="soccerBoard" hidden>
-    <!-- Same disclosure the NFL board carries, for the same reason: there is no
-         model here. The fair line is the sharp books' own number, so every row is
-         a price comparison, not a projection — and the markets a pick'em entry
-         would use (shots, shots on target) are quoted one-sided by a single book,
-         so they are absent rather than half-built. -->
-    <div class="ctx-banner nfl-banner">
-      <span class="ctx-banner-tag">Context · not plays</span>
-      <span>The <b>1X2 and goals lines</b> priced against the sharp pool — Pinnacle, lowvig and BetOnline — with the best DraftKings or FanDuel price beside it. <b>No model and no player props</b>: shots and shots-on-target are quoted over-only by one book, so there is no under to fade and no independent fair line. Nothing here is posted as a play — the lines are kept and settled quietly, so there is a record to read once these leagues have played a few weeks.</span>
-    </div>
-
     <div class="sec-head">
       <h2 id="soccerTitle">Soccer Board</h2>
       <span class="count" id="soccerCount"></span>
     </div>
+    <!-- One line, not a 240px box. There is no model here: the fair line is the
+         sharp books' own number (Pinnacle, lowvig, BetOnline), so every row is a
+         price comparison. Player props are absent because shots are quoted
+         over-only by one book. -->
+    <p class="soc-note">Sharp-book fair line · best DK/FD price</p>
 
     <!-- Filled from the board payload's leagueList. Hardcoded here, these chips
          went stale the moment a league was added: the list said "three leagues"
@@ -465,6 +460,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=48381e664c"></script>
+<script src="app.js?v=3d04ef5b26"></script>
 </body>
 </html>

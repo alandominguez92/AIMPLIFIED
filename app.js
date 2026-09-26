@@ -3958,9 +3958,10 @@
   // Honest "context, not plays" banner on the de-listed markets (K props and
   // moneyline). The batter board is the only one that posts plays; these show the
   // model's read so nothing's hidden, but the graded record has no edge to bet.
+  // No moneyline entry: moneyline is the owner's main market, and a banner
+  // arguing against it on every visit was noise, not disclosure (2026-09-25).
   const CTX_BANNERS = {
     kprops: ['Projections · not plays', 'Our graded record found <b>no betting edge in strikeout props</b> — the market prices them efficiently. The projections stay because they’re honest analysis, but we don’t post K bets we wouldn’t make ourselves.'],
-    moneyline: ['Context · not plays', 'Our graded record shows <b>no reliable edge in moneylines</b> — a heavy favorite can show a number and still be a bad bet. Win probability is shown as context (model vs. the market), not posted as a play.'],
     runline: ['Context · not plays', 'The run line is <b>not graded and not posted</b> — no track record stands behind it. It is shown so the model’s read on the 1.5 is visible next to the moneyline, and the two can be compared. Treat it as analysis only.'],
   };
   // True when the batter board is populated but nothing on it carries a price --
