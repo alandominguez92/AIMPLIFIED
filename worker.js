@@ -8092,10 +8092,32 @@ async function soccerBoardData(env, url) {
       const points = [...new Set(Object.keys(g.totals).map((k) => Number(k.split('|')[0])).filter((x) => isFinite(x)))];
       let totalRead = null;
       if (points.length) {
-        const point = points.sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5))[0];
+        // Which line to read. "Nearest to 2.5" was the first rule and it never
+        // logged a single total in production: the nearest line was usually one
+        // only Pinnacle hangs (2.75, an Asian quarter line), with no DraftKings
+        // or FanDuel price at it. The line has to be one we can both price (two
+        // sharp books quoting both sides, or Pinnacle alone where the league
+        // allows it, same as the 1X2) and bet (a DK or FD price). Nearest to 2.5
+        // only breaks ties. `lines` keeps what each game offered, for checking.
+        const pinOk = !!(SOCCER_LEAGUES[g.league] && SOCCER_LEAGUES[g.league].pinnacleFallback);
+        const lineStats = points.map((pt) => {
+          const o = g.totals[`${pt}|Over`] || {}, u = g.totals[`${pt}|Under`] || {};
+          const sharp = SOCCER_SHARP.filter((bk) => typeof o[bk] === 'number' && typeof u[bk] === 'number');
+          const exec = SOCCER_EXEC.filter((bk) => typeof o[bk] === 'number' || typeof u[bk] === 'number').length;
+          const priceable = sharp.length >= 2 || (pinOk && sharp.includes('pinnacle'));
+          return { pt, sharp: sharp.length, exec, usable: priceable && exec > 0 };
+        });
+        lineStats.sort((a, b) => (b.usable - a.usable) || (b.sharp - a.sharp) || (b.exec - a.exec)
+          || (Math.abs(a.pt - 2.5) - Math.abs(b.pt - 2.5)));
+        const point = lineStats[0].pt;
         const ov = g.totals[`${point}|Over`] || {}, un = g.totals[`${point}|Under`] || {};
         const dvs = SOCCER_SHARP.map((bk) => (typeof ov[bk] === 'number' && typeof un[bk] === 'number' ? shinDevig(ov[bk], un[bk]) : null)).filter((x) => x != null);
-        const fairOver = dvs.length >= 2 ? median(dvs) : null;
+        let fairOver = dvs.length >= 2 ? median(dvs) : null;
+        let totFairSrc = fairOver != null ? 'sharp-pool' : null;
+        if (fairOver == null && pinOk && typeof ov.pinnacle === 'number' && typeof un.pinnacle === 'number') {
+          fairOver = shinDevig(ov.pinnacle, un.pinnacle);
+          totFairSrc = fairOver != null ? 'pinnacle' : null;
+        }
         const bestSide = (rec) => {
           let bp = null, bb = null;
           for (const bk of SOCCER_EXEC) {
@@ -8108,7 +8130,8 @@ async function soccerBoardData(env, url) {
         const bo = bestSide(ov), bu = bestSide(un);
         const val = (f, pr) => (f != null && pr != null && amProb(pr) != null) ? Math.round((f - amProb(pr)) * 1000) / 10 : null;
         totalRead = {
-          point, sharpN: dvs.length,
+          point, sharpN: dvs.length, fairSrc: totFairSrc,
+          lines: lineStats.map((x) => `${x.pt}:${x.sharp}s/${x.exec}x`).join(' '),
           overFair: fairOver != null ? Math.round(fairOver * 1000) / 10 : null,
           overPrice: bo.price, overBook: bo.book, overValue: val(fairOver, bo.price),
           underFair: fairOver != null ? Math.round((1 - fairOver) * 1000) / 10 : null,
@@ -8177,7 +8200,7 @@ async function soccerBoardData(env, url) {
         const tot = [];
         for (const g of pre) {
           const t = g.total;
-          if (!t || t.point == null || t.sharpN < 2) continue;
+          if (!t || t.point == null || t.overFair == null) continue;
           const over = { side: 'over', fair: t.overFair, price: t.overPrice, book: t.overBook, value: t.overValue };
           const under = { side: 'under', fair: t.underFair, price: t.underPrice, book: t.underBook, value: t.underValue };
           const cands = [over, under].filter((x) => x.fair != null && x.price != null);
@@ -8189,7 +8212,7 @@ async function soccerBoardData(env, url) {
             home: g.home, away: g.away,
             win_prob: best.fair, implied: best.price == null ? null : Math.round(amProb(best.price) * 1000) / 10,
             edge: best.value, price: best.price, book: best.book,
-            fair_src: 'sharp-pool', sharp_n: t.sharpN,
+            fair_src: t.fairSrc || 'sharp-pool', sharp_n: t.sharpN,
           });
         }
         if (tot.length) await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), tot);
