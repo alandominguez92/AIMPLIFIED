@@ -60,7 +60,7 @@
       return;
     }
 
-    $('trEyebrow').textContent = bu.n.toLocaleString() + ' graded picks · batter unders · every result public';
+    $('trEyebrow').textContent = bu.n.toLocaleString() + ' graded picks · batter unders';
 
     // ---- Headline strip -------------------------------------------------
     // Median, not mean: these prices straddle zero, and an averaged American

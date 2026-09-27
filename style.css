@@ -2703,3 +2703,21 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* Moneyline by price: the pick count rides under the range, quietly. */
 .ml-band-n { display:block; font-style:normal; font-family:var(--mono); font-size:10px; font-weight:400; color:var(--textFaint); letter-spacing:0; text-transform:none; }
+
+/* Cleanup (2026-09-27): the header's record chip is gone, and it was what
+   pushed the theme toggle to the right edge. */
+.bar .theme-toggle { margin-left:auto; }
+
+/* Track record: moneyline by price sits with the record; model health folds. */
+.ml-bands { max-width:560px; margin:0 0 18px; }
+.model-health { margin-top:6px; }
+.model-health > summary { cursor:pointer; list-style:none; display:flex; align-items:baseline; gap:10px;
+  font-family:var(--sans); font-weight:700; font-size:15px; letter-spacing:-.01em; text-transform:uppercase; color:var(--text);
+  padding:14px 16px; border:1px solid var(--border); border-radius:10px; background:var(--board); }
+.model-health > summary span { font-family:var(--mono); font-weight:400; font-size:11px; letter-spacing:.04em; color:var(--textFaint); }
+.model-health > summary::-webkit-details-marker { display:none; }
+.model-health > summary::after { content:'\25BE'; margin-left:auto; color:var(--textDim); }
+.model-health[open] > summary::after { content:'\25B4'; }
+.model-health[open] > summary { margin-bottom:16px; }
+.model-health > .card + .card { margin-top:16px; }
+@media (max-width:640px) { .model-health > summary span { display:none; } }

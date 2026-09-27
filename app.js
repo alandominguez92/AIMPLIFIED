@@ -101,33 +101,6 @@
     { text: 'Padres OF Fernando Tatis Jr. is a late scratch (back tightness) — lineup shifted.', time: '6:15 PM' },
   ];
 
-  const HOT_HITTERS = [
-    { name: 'A. Judge', team: 'NYY · RF', woba: '.512', streak: '11-game hit streak', hrs: 6, lhp: 402, rhp: 425 },
-    { name: 'S. Ohtani', team: 'LAD · DH', woba: '.489', streak: '9-game hit streak', hrs: 5, lhp: 388, rhp: 401 },
-    { name: 'B. Witt Jr.', team: 'KC · SS', woba: '.461', streak: '.410 AVG L10', hrs: 4, lhp: 355, rhp: 372 },
-    { name: 'J. Chisholm Jr.', team: 'NYY · 2B', woba: '.447', streak: '6-game hit streak', hrs: 3, lhp: 298, rhp: 361 },
-    { name: 'G. Stanton', team: 'NYY · DH', woba: '.431', streak: '7 XBH in L10', hrs: 4, lhp: 365, rhp: 340 },
-    { name: 'C. Raleigh', team: 'SEA · C', woba: '.419', streak: '5-game hit streak', hrs: 4, lhp: 312, rhp: 355 },
-    { name: 'F. Freeman', team: 'LAD · 1B', woba: '.408', streak: '.395 AVG L10', hrs: 2, lhp: 340, rhp: 348 },
-    { name: 'K. Tucker', team: 'CHC · RF', woba: '.401', streak: '8-game hit streak', hrs: 3, lhp: 330, rhp: 342 },
-    { name: 'J. Ramírez', team: 'CLE · 3B', woba: '.394', streak: '6 XBH in L10', hrs: 3, lhp: 322, rhp: 335 },
-    { name: 'W. Contreras', team: 'MIL · C', woba: '.388', streak: '7-game hit streak', hrs: 2, lhp: 288, rhp: 330 },
-  ];
-
-  // vsL / vsR = opponent wOBA-against by batter handedness (lower = better).
-  const HOT_PITCHERS = [
-    { name: 'T. Skubal', team: 'DET · LHP', csw: 34.1, kRate: '12.4', era: '2.61', vsL: 258, vsR: 289 },
-    { name: 'P. Skenes', team: 'PIT · RHP', csw: 33.6, kRate: '11.8', era: '2.02', vsL: 271, vsR: 244 },
-    { name: 'Y. Yamamoto', team: 'LAD · RHP', csw: 31.2, kRate: '10.6', era: '3.08', vsL: 295, vsR: 268 },
-    { name: 'G. Crochet', team: 'BOS · LHP', csw: 30.8, kRate: '11.1', era: '2.84', vsL: 262, vsR: 301 },
-    { name: 'Z. Wheeler', team: 'PHI · RHP', csw: 30.1, kRate: '10.3', era: '2.71', vsL: 288, vsR: 275 },
-    { name: 'C. Sale', team: 'ATL · LHP', csw: 29.7, kRate: '10.9', era: '3.15', vsL: 279, vsR: 312 },
-    { name: 'L. Gilbert', team: 'SEA · RHP', csw: 29.2, kRate: '9.8', era: '3.22', vsL: 318, vsR: 284 },
-    { name: 'H. Bello', team: 'BOS · RHP', csw: 28.6, kRate: '9.1', era: '3.34', vsL: 322, vsR: 297 },
-    { name: 'F. Valdez', team: 'HOU · LHP', csw: 27.9, kRate: '8.7', era: '3.02', vsL: 290, vsR: 331 },
-    { name: 'K. Gausman', team: 'TOR · RHP', csw: 27.3, kRate: '9.4', era: '3.41', vsL: 335, vsR: 308 },
-  ];
-
   const CALIBRATION_BUCKETS = [
     { predicted: 10, actual: 12, n: 84 },
     { predicted: 20, actual: 18, n: 112 },
@@ -183,17 +156,11 @@
     tracked: {},
     compareMode: false,
     compareIds: [],
-    hitterCompareMode: false,
-    hitterCompareIds: [],
-    pitcherCompareMode: false,
-    pitcherCompareIds: [],
     searchQuery: '',
     winProb: 64,
     tickerScores: { g1: '0-0', g2: '2-1', g3: '0-2', g4: '3-3', g5: '1-0', g6: '0-0' },
     // Live feeds (null until the proxy returns data; each falls back to mock).
     liveTicker: null,
-    liveHitters: null,
-    livePitchers: null,
     liveBoard: null,
     batterSlate: null,   // { rows, started, allFinal } — see slateStarted()
     liveBatters: null,
@@ -229,8 +196,6 @@
   // Real data when the feed has loaded. The built-in samples are ONLY for the
   // offline demo (file:// / localhost) — on the live site an empty/failed feed
   // shows an honest empty state, never fabricated data dressed up as real.
-  const getHitters = () => (state.liveHitters && state.liveHitters.length ? state.liveHitters : (LIVE_MODE ? [] : HOT_HITTERS));
-  const getPitchers = () => (state.livePitchers && state.livePitchers.length ? state.livePitchers : (LIVE_MODE ? [] : HOT_PITCHERS));
   const boardIsLive = () => !!(state.liveBoard && state.liveBoard.length);
   const isML = () => state.boardView === 'moneyline';
   const isBatter = () => state.boardView === 'batter';
@@ -388,16 +353,6 @@
     boardHead: document.getElementById('boardHead'),
     noResults: document.getElementById('noResults'),
     comparePanel: document.getElementById('comparePanel'),
-    hitterCompareModeBtn: document.getElementById('hitterCompareModeBtn'),
-    hitterCompareHint: document.getElementById('hitterCompareHint'),
-    hittersGrid: document.getElementById('hittersGrid'),
-    hitterComparePanel: document.getElementById('hitterComparePanel'),
-    splitRows: document.getElementById('splitRows'),
-    pitchersGrid: document.getElementById('pitchersGrid'),
-    pitcherCompareModeBtn: document.getElementById('pitcherCompareModeBtn'),
-    pitcherCompareHint: document.getElementById('pitcherCompareHint'),
-    pitcherComparePanel: document.getElementById('pitcherComparePanel'),
-    pitcherSplitRows: document.getElementById('pitcherSplitRows'),
     calibrationPoints: document.getElementById('calibrationPoints'),
     calibrationVerdict: document.getElementById('calibrationVerdict'),
     calibrationTiers: document.getElementById('calibrationTiers'),
@@ -415,10 +370,6 @@
     trkVal3: document.getElementById('trkVal3'),
     trkVal4: document.getElementById('trkVal4'),
     trkAggregate: document.getElementById('trkAggregate'),
-    clvChipText: document.getElementById('clvChipText'),
-    whyTitle: document.getElementById('whyTitle'),
-    whyBody: document.getElementById('whyBody'),
-    whyStats: document.getElementById('whyStats'),
     pinNote: document.getElementById('pinNote'),
     slip: document.getElementById('slip'),
     slipCount: document.getElementById('slipCount'),
@@ -703,41 +654,6 @@
       renderSlip();
     } catch (e) {
       console.warn('Batters refresh failed:', e.message);
-    }
-  }
-
-  // Real season hitting leaders from MLB StatsAPI (via /api/hitters).
-  async function refreshHitters() {
-    if (!LIVE_MODE) return;
-    try {
-      const rows = await fetchJson('/api/hitters');
-      if (Array.isArray(rows) && rows.length) {
-        state.liveHitters = rows;
-        // A live refresh can invalidate index-based compare selections.
-        state.hitterCompareIds = state.hitterCompareIds.filter((i) => i < rows.length);
-        renderHittersGrid();
-        renderHitterComparePanel();
-        renderSplits();
-      }
-    } catch (e) {
-      console.warn('Hitters refresh failed:', e.message);
-    }
-  }
-
-  // Real season pitching leaders from MLB StatsAPI (via /api/pitchers).
-  async function refreshPitchers() {
-    if (!LIVE_MODE) return;
-    try {
-      const rows = await fetchJson('/api/pitchers');
-      if (Array.isArray(rows) && rows.length) {
-        state.livePitchers = rows;
-        state.pitcherCompareIds = state.pitcherCompareIds.filter((i) => i < rows.length);
-        renderPitchers();
-        renderPitcherComparePanel();
-        renderPitcherSplits();
-      }
-    } catch (e) {
-      console.warn('Pitchers refresh failed:', e.message);
     }
   }
 
@@ -1543,18 +1459,6 @@
       // selection vanish and leaving the reader to work out which one went.
       ? `Compare mode — ${cmpNoun} selected. Tapping a third replaces the one you picked first.`
       : `Compare mode — pick ${cmpNoun} to compare side by side (${state.compareIds.length}/2 selected)`;
-
-    el.hitterCompareModeBtn.textContent = state.hitterCompareMode ? 'Exit Compare' : 'Compare';
-    el.hitterCompareModeBtn.classList.toggle('active', state.hitterCompareMode);
-    el.hitterCompareModeBtn.setAttribute('aria-pressed', state.hitterCompareMode);
-    el.hitterCompareHint.classList.toggle('visible', state.hitterCompareMode);
-    el.hitterCompareHint.textContent = `Compare mode — pick up to 2 hitters (${state.hitterCompareIds.length}/2 selected)`;
-
-    el.pitcherCompareModeBtn.textContent = state.pitcherCompareMode ? 'Exit Compare' : 'Compare';
-    el.pitcherCompareModeBtn.classList.toggle('active', state.pitcherCompareMode);
-    el.pitcherCompareModeBtn.setAttribute('aria-pressed', state.pitcherCompareMode);
-    el.pitcherCompareHint.classList.toggle('visible', state.pitcherCompareMode);
-    el.pitcherCompareHint.textContent = `Compare mode — pick up to 2 pitchers (${state.pitcherCompareIds.length}/2 selected)`;
 
     el.compareModeBtn.setAttribute('aria-pressed', state.compareMode);
   }
@@ -2721,184 +2625,6 @@
     moneyline: 'Model win probability against the de-vigged market, game by game.',
   };
 
-  function renderHittersGrid() {
-    if (!getHitters().length) {
-      el.hittersGrid.innerHTML = `<div class="leaders-empty">${state.liveHitters === null ? 'Loading season leaders…' : 'Leaders appear once the season’s stats post.'}</div>`;
-      return;
-    }
-    el.hittersGrid.innerHTML = getHitters().map((h, i) => {
-      const isSelected = state.hitterCompareIds.includes(i);
-      const cardClasses = ['hitter-card'];
-      if (state.hitterCompareMode) cardClasses.push('compare-active');
-      if (isSelected) cardClasses.push('selected');
-      const checkboxHtml = state.hitterCompareMode
-        ? `<span class="checkbox${isSelected ? ' selected' : ''}">${isSelected ? '✓' : ''}</span>`
-        : '';
-      const clickAttr = state.hitterCompareMode
-        ? ` data-action="hitter-card-click" data-idx="${i}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(h.name)} to compare"`
-        : '';
-      const statVal = h.statVal || h.woba;
-      const statLabel = h.statLabel || 'wOBA · L10';
-      return `
-        <div class="${cardClasses.join(' ')}"${clickAttr}>
-          <div class="top-row">
-            <span class="rank">#${i + 1}</span>
-            ${checkboxHtml}
-            <span class="stat-num">${esc(statVal)}</span>
-          </div>
-          <div class="name">${esc(h.name)}</div>
-          <div class="team">${esc(h.team)}</div>
-          <div class="stat-sub">${esc(statLabel)}</div>
-          <div class="chip-row">
-            <span class="chip positive">${esc(h.streak)}</span>
-            <span class="chip plain">${h.hrs} HR</span>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  function renderHitterComparePanel() {
-    const showPanel = state.hitterCompareMode && state.hitterCompareIds.length === 2;
-    if (!showPanel) { el.hitterComparePanel.innerHTML = ''; return; }
-    const hitters = getHitters();
-    const compareHitters = state.hitterCompareIds.map((i) => hitters[i]).filter(Boolean);
-    const sidesHtml = compareHitters.map((h) => `
-      <div class="compare-side">
-        <div class="name">${esc(h.name)}</div>
-        <div class="sub">${esc(h.team)}</div>
-        <div class="stats-row">
-          <div><div class="stat-k">${esc(h.statLabel ? h.statLabel.split(' · ')[0] : 'wOBA L10')}</div><div class="stat-v big accent">${esc(h.statVal || h.woba)}</div></div>
-          <div><div class="stat-k">HR</div><div class="stat-v big">${h.hrs}</div></div>
-          <div><div class="stat-k">${h.statLabel ? 'AVG' : 'Streak'}</div><div class="stat-v positive">${esc(h.streak)}</div></div>
-        </div>
-      </div>
-    `).join('');
-    el.hitterComparePanel.innerHTML = `
-      <div class="compare-panel">
-        <div class="compare-panel-head">
-          <span class="title">Hitter comparison</span>
-          <button class="clear-btn" data-action="clear-hitter-compare">Clear</button>
-        </div>
-        <div class="compare-grid">${sidesHtml}</div>
-      </div>
-    `;
-  }
-
-  function renderSplits() {
-    // Live = OPS split (higher better); mock = wOBA-ish integer.
-    const opsTone = (v) => v >= 800 ? 'var(--positive)' : v >= 700 ? 'var(--accent)' : 'var(--textDim)';
-    const wobaTone = (v) => v >= 370 ? 'var(--positive)' : v >= 330 ? 'var(--accent)' : 'var(--textDim)';
-    el.splitRows.innerHTML = getHitters().map((h) => {
-      let lL = '—', rL = '—', lT = 'var(--textDim)', rT = 'var(--textDim)';
-      if (h.splitL != null || h.splitR != null) {
-        if (h.splitL != null) { lL = h.splitL; lT = opsTone(h.splitLnum || 0); }
-        if (h.splitR != null) { rL = h.splitR; rT = opsTone(h.splitRnum || 0); }
-      } else if (typeof h.lhp === 'number') {
-        lL = '.' + h.lhp; rL = '.' + h.rhp; lT = wobaTone(h.lhp); rT = wobaTone(h.rhp);
-      }
-      return `
-        <div class="split-row">
-          <span class="split-name">${esc(h.name)}</span>
-          <span class="split-val" style="color:${lT}">${esc(lL)}</span>
-          <span class="split-val" style="color:${rT}">${esc(rL)}</span>
-        </div>`;
-    }).join('');
-  }
-
-  function renderPitchers() {
-    if (!getPitchers().length) {
-      el.pitchersGrid.innerHTML = `<div class="leaders-empty">${state.livePitchers === null ? 'Loading season leaders…' : 'Leaders appear once the season’s stats post.'}</div>`;
-      return;
-    }
-    el.pitchersGrid.innerHTML = getPitchers().map((p, i) => {
-      const isSelected = state.pitcherCompareIds.includes(i);
-      const cardClasses = ['hitter-card'];
-      if (state.pitcherCompareMode) cardClasses.push('compare-active');
-      if (isSelected) cardClasses.push('selected');
-      const checkboxHtml = state.pitcherCompareMode
-        ? `<span class="checkbox${isSelected ? ' selected' : ''}">${isSelected ? '✓' : ''}</span>`
-        : '';
-      const clickAttr = state.pitcherCompareMode
-        ? ` data-action="pitcher-card-click" data-idx="${i}" role="checkbox" tabindex="0" aria-checked="${isSelected}" aria-label="Select ${esc(p.name)} to compare"`
-        : '';
-      const statVal = p.statVal || (p.csw + '%');
-      const statLabel = p.statLabel || 'CSW% · L3 starts';
-      const chip1 = p.chip1 || (p.kRate + ' K/9');
-      const chip2 = p.chip2 || (p.era + ' ERA');
-      return `
-        <div class="${cardClasses.join(' ')}"${clickAttr}>
-          <div class="top-row">
-            <span class="rank">#${i + 1}</span>
-            ${checkboxHtml}
-            <span class="stat-num">${esc(statVal)}</span>
-          </div>
-          <div class="name">${esc(p.name)}</div>
-          <div class="team">${esc(p.team)}</div>
-          <div class="stat-sub">${esc(statLabel)}</div>
-          <div class="chip-row">
-            <span class="chip positive">${esc(chip1)}</span>
-            <span class="chip plain">${esc(chip2)}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  function renderPitcherComparePanel() {
-    const showPanel = state.pitcherCompareMode && state.pitcherCompareIds.length === 2;
-    if (!showPanel) { el.pitcherComparePanel.innerHTML = ''; return; }
-    const pitchers = getPitchers();
-    const comparePitchers = state.pitcherCompareIds.map((i) => pitchers[i]).filter(Boolean);
-    const sidesHtml = comparePitchers.map((p) => {
-      const cmp = p.cmp || [
-        { k: 'CSW% L3', v: p.csw + '%' },
-        { k: 'K/9', v: p.kRate },
-        { k: 'ERA', v: p.era },
-      ];
-      const cls = ['big accent', 'big', 'positive'];
-      const cells = cmp.map((m, j) => `<div><div class="stat-k">${esc(m.k)}</div><div class="stat-v ${cls[j] || ''}">${esc(m.v)}</div></div>`).join('');
-      return `
-      <div class="compare-side">
-        <div class="name">${esc(p.name)}</div>
-        <div class="sub">${esc(p.team)}</div>
-        <div class="stats-row">${cells}</div>
-      </div>
-    `;
-    }).join('');
-    el.pitcherComparePanel.innerHTML = `
-      <div class="compare-panel">
-        <div class="compare-panel-head">
-          <span class="title">Pitcher comparison</span>
-          <button class="clear-btn" data-action="clear-pitcher-compare">Clear</button>
-        </div>
-        <div class="compare-grid">${sidesHtml}</div>
-      </div>
-    `;
-  }
-
-  function renderPitcherSplits() {
-    if (!el.pitcherSplitRows) return; // section removed — nothing to render
-    // Opponent OPS-against — lower is better for a pitcher, so tone inverts.
-    const opsTone = (v) => v <= 650 ? 'var(--positive)' : v <= 720 ? 'var(--accent)' : 'var(--textDim)';
-    const wobaTone = (v) => v <= 275 ? 'var(--positive)' : v <= 305 ? 'var(--accent)' : 'var(--textDim)';
-    el.pitcherSplitRows.innerHTML = getPitchers().map((p) => {
-      let lL = '—', rL = '—', lT = 'var(--textDim)', rT = 'var(--textDim)';
-      if (p.splitL != null || p.splitR != null) {
-        if (p.splitL != null) { lL = p.splitL; lT = opsTone(p.splitLnum || 999); }
-        if (p.splitR != null) { rL = p.splitR; rT = opsTone(p.splitRnum || 999); }
-      } else if (typeof p.vsL === 'number') {
-        lL = '.' + p.vsL; rL = '.' + p.vsR; lT = wobaTone(p.vsL); rT = wobaTone(p.vsR);
-      }
-      return `
-        <div class="split-row">
-          <span class="split-name">${esc(p.name)}</span>
-          <span class="split-val" style="color:${lT}">${esc(lL)}</span>
-          <span class="split-val" style="color:${rT}">${esc(rL)}</span>
-        </div>`;
-    }).join('');
-  }
-
   function renderCalibration() {
     const tr = state.trackRecord;
     // Sample dots only in the offline demo; live shows real buckets or nothing.
@@ -2965,32 +2691,22 @@
     strip.hidden = false;
   }
 
-  // Full-model aggregate, phrased as honest disclosure — never the headline.
-  // These are every graded output including the K/ML/RL context we DON'T post as
-  // plays, so the winning batter-under slice can't read as cherry-picked.
+  // Everything the model grades, not just the posted batter unders, in one line
+  // under the tiles. Personal tool: it states the numbers and stops.
   function aggregateDisclosure(tr) {
     if (!tr || tr.empty || !tr.tracked) return '';
     const bits = [`${tr.tracked} graded`];
     if (tr.winRate != null) bits.push(`${tr.winRate}% win`);
     if (typeof tr.units === 'number') bits.push(`${tr.units > 0 ? '+' : ''}${tr.units}u flat`);
     if (tr.clv != null) bits.push(`${tr.clv > 0 ? '+' : ''}${tr.clv}% CLV`);
-    // The closing clause used to assert "the one market with a proven edge".
-    // That was hardcoded, and it kept asserting a proof while the same page
-    // showed an era note saying the edge had not cleared a test — the two lines
-    // contradicted each other on screen. Gate it on the same field the note
-    // uses, so the strongest claim the page makes is the one the record earns.
-    const ee = tr.eraEdge;
-    const proven = ee && ee.established;
-    const claim = proven
-      ? `it’s the one market whose edge has cleared a significance test (p ${ee.roiP}), not the only one we track.`
-      : `it’s the only market we post, and on the current record that edge is not yet statistically separable from break-even. That’s why the losses stay up too.`;
-    return `<b>Full model log</b>, including the K / moneyline / run-line context we grade but don’t post as plays: ${bits.join(' · ')}. `
-      + `We show the whole thing so the batter-under record above can’t read as cherry-picked — ${claim}`;
+    return `<b>Full model log</b> (strikeouts, moneyline and run line included): ${bits.join(' · ')}.`;
   }
 
   function renderRecord() {
     const tr = state.trackRecord;
     if (!tr) return;
+    const bands = document.getElementById('mlPriceBands');
+    if (bands) bands.innerHTML = mlPriceTable(tr.ml && tr.ml.byPriceBand);
     const bu = tr.batterUnders;
     // Headline the tiles on batter unders — the posted product — whenever we have
     // a graded under sample. The full aggregate drops to a labeled note below.
@@ -3003,7 +2719,7 @@
       el.trkVal3.textContent = bu.record;
       el.trkLabel4.textContent = 'Units (flat)';
       el.trkVal4.textContent = (bu.units > 0 ? '+' : '') + bu.units + 'u';
-      el.trkNote.textContent = `${bu.n} graded batter unders · hit rate is the number that transfers to any platform`;
+      el.trkNote.textContent = `${bu.n} graded batter unders`;
       if (el.trkAggregate) {
         el.trkAggregate.innerHTML = aggregateDisclosure(tr);
         el.trkAggregate.hidden = !el.trkAggregate.innerHTML;
@@ -3033,38 +2749,8 @@
       el.trkVal4.textContent = '—';
       el.trkNote.textContent = tr.logged > 0
         ? `${tr.logged} picks logged · grading as tonight's games finalize`
-        : 'Tracking begins with tonight’s slate · wins and losses both stay up';
+        : 'Tracking begins with tonight’s slate';
       if (el.trkAggregate) { el.trkAggregate.hidden = true; el.trkAggregate.innerHTML = ''; }
-    }
-    renderClvChip();
-  }
-
-  // Header chip: real season numbers from the track record, or an honest
-  // "tracking" state. Never the old hardcoded "CLV +2.4% · 312 bets".
-  function renderClvChip() {
-    if (!el.clvChipText) return;
-    if (!LIVE_MODE) { el.clvChipText.textContent = 'Model preview'; return; }
-    const tr = state.trackRecord;
-    const bu = tr && tr.batterUnders;
-    // Lead with the batter-under proof — it's the posted product and the one
-    // number with a real edge. Full-model CLV (~0%) would undercut it up here.
-    if (bu && bu.n > 0) {
-      const cls = bu.units >= 0 ? 'clv-pos' : 'clv-neg';
-      const u = (bu.units > 0 ? '+' : '') + bu.units + 'u';
-      el.clvChipText.innerHTML = `BATTER UNDERS <b class="${cls}">${esc(u)}</b> · ${bu.winRate}% · ${bu.n} graded`;
-    } else if (tr && tr.clvN > 0 && tr.clv != null) {
-      // Real closing-line value — the truest credibility metric.
-      const cls = tr.clv >= 0 ? 'clv-pos' : 'clv-neg';
-      const v = (tr.clv > 0 ? '+' : '') + tr.clv + '%';
-      el.clvChipText.innerHTML = `SEASON CLV <b class="${cls}">${esc(v)}</b> · ${tr.clvN} picks`;
-    } else if (tr && !tr.empty && tr.tracked > 0) {
-      const cls = tr.roi >= 0 ? 'clv-pos' : 'clv-neg';
-      const roi = (tr.roi > 0 ? '+' : '') + tr.roi + '%';
-      el.clvChipText.innerHTML = `SEASON ROI <b class="${cls}">${esc(roi)}</b> · ${tr.tracked} graded picks`;
-    } else if (tr && tr.logged > 0) {
-      el.clvChipText.textContent = `${tr.logged} picks logged · grading nightly`;
-    } else {
-      el.clvChipText.textContent = 'Model live · tracking picks';
     }
   }
 
@@ -3229,8 +2915,7 @@
           <span class="${x.roi == null ? '' : (x.roi >= 0 ? 'g' : 'r')}">${x.roi == null ? '—' : (x.roi > 0 ? '+' : '') + x.roi + '%'}</span>
         </div>`).join('')}
       </div>` : '';
-    el.roiTables.innerHTML = tbl('By market', marketRows) + tbl('By tier', tierRows) + tbl('By side', sideRows)
-      + mlPriceTable(tr.ml && tr.ml.byPriceBand);
+    el.roiTables.innerHTML = tbl('By market', marketRows) + tbl('By tier', tierRows) + tbl('By side', sideRows);
   }
 
   // Moneyline by price range: how often each range won against how often its
@@ -3910,25 +3595,6 @@
       </div>`;
   }
 
-  // Fill the "Why" card with the hero pick's real model numbers (no fabricated
-  // narrative). Leaves the methodology default in place if elements are absent.
-  function renderWhyCard(lead, m, modelPct) {
-    if (!el.whyTitle || !el.whyBody || !el.whyStats) return;
-    const side = m.side.toLowerCase();
-    let parkNote = '';
-    if (typeof lead.parkK === 'number' && lead.parkK !== 1) {
-      const pct = Math.round((lead.parkK - 1) * 100);
-      parkNote = `, in a park that runs ${pct > 0 ? '+' : ''}${pct}% on strikeouts`;
-    }
-    const wxNote = (typeof lead.temp === 'number' && lead.temp > 0) ? ` with ${lead.temp}°F conditions` : '';
-    el.whyTitle.textContent = `Why ${lead.name} ${m.side} ${m.line} — the model's read`;
-    el.whyBody.innerHTML = `The model projects <b>${lead.proj} strikeouts</b> for ${esc(lead.name)} against a line of <b>${m.line}</b> — about a <b>${modelPct}%</b> chance to land ${esc(side)}. The opposing lineup strikes out <b>${lead.oppKpct}%</b> of the time${parkNote}${wxNote}. That puts the model <b>${m.edge}%</b> ahead of the vig-free line.`;
-    el.whyStats.innerHTML = [
-      ['K/9', lead.k9], ['Opp K%', lead.oppKpct + '%'],
-      [`Model ${m.side}`, modelPct + '%'], ['Proj', lead.proj + ' K'],
-    ].map(([k, v]) => `<span>${esc(k)} <i>${esc(String(v))}</i></span>`).join('');
-  }
-
   function renderAll() {
     renderTheme();
     renderTicker();
@@ -3940,13 +3606,6 @@
     renderBoard();
     renderComparePanel();
     renderSlip();
-    renderClvChip();
-    renderHittersGrid();
-    renderHitterComparePanel();
-    renderSplits();
-    renderPitchers();
-    renderPitcherComparePanel();
-    renderPitcherSplits();
     renderCalibration();
   }
 
@@ -4382,62 +4041,6 @@
     renderComparePanel();
   }
 
-  function toggleHitterCompareMode() {
-    state.hitterCompareMode = !state.hitterCompareMode;
-    state.hitterCompareIds = [];
-    renderControls();
-    renderHittersGrid();
-    renderHitterComparePanel();
-  }
-
-  function toggleHitterCompareSelect(idx) {
-    if (state.hitterCompareIds.includes(idx)) {
-      state.hitterCompareIds = state.hitterCompareIds.filter((x) => x !== idx);
-    } else if (state.hitterCompareIds.length >= 2) {
-      state.hitterCompareIds = [state.hitterCompareIds[1], idx];
-    } else {
-      state.hitterCompareIds = [...state.hitterCompareIds, idx];
-    }
-    renderControls();
-    renderHittersGrid();
-    renderHitterComparePanel();
-  }
-
-  function clearHitterCompare() {
-    state.hitterCompareIds = [];
-    renderControls();
-    renderHittersGrid();
-    renderHitterComparePanel();
-  }
-
-  function togglePitcherCompareMode() {
-    state.pitcherCompareMode = !state.pitcherCompareMode;
-    state.pitcherCompareIds = [];
-    renderControls();
-    renderPitchers();
-    renderPitcherComparePanel();
-  }
-
-  function togglePitcherCompareSelect(idx) {
-    if (state.pitcherCompareIds.includes(idx)) {
-      state.pitcherCompareIds = state.pitcherCompareIds.filter((x) => x !== idx);
-    } else if (state.pitcherCompareIds.length >= 2) {
-      state.pitcherCompareIds = [state.pitcherCompareIds[1], idx];
-    } else {
-      state.pitcherCompareIds = [...state.pitcherCompareIds, idx];
-    }
-    renderControls();
-    renderPitchers();
-    renderPitcherComparePanel();
-  }
-
-  function clearPitcherCompare() {
-    state.pitcherCompareIds = [];
-    renderControls();
-    renderPitchers();
-    renderPitcherComparePanel();
-  }
-
   function onRowClick(id) {
     if (state.compareMode) toggleCompareSelect(id);
     else toggleExpand(id);
@@ -4446,14 +4049,6 @@
   function onLeadingClick(id) {
     if (state.compareMode) toggleCompareSelect(id);
     else toggleSlip(id);
-  }
-
-  function onHitterCardClick(idx) {
-    if (state.hitterCompareMode) toggleHitterCompareSelect(idx);
-  }
-
-  function onPitcherCardClick(idx) {
-    if (state.pitcherCompareMode) togglePitcherCompareSelect(idx);
   }
 
   // ---------------------------------------------------------------------
@@ -4525,11 +4120,7 @@
       }
       case 'set-sort': setSort(target.dataset.sort); break;
       case 'toggle-compare-mode': toggleCompareMode(); break;
-      case 'toggle-hitter-compare-mode': toggleHitterCompareMode(); break;
-      case 'toggle-pitcher-compare-mode': togglePitcherCompareMode(); break;
       case 'clear-compare': clearCompare(); break;
-      case 'clear-hitter-compare': clearHitterCompare(); break;
-      case 'clear-pitcher-compare': clearPitcherCompare(); break;
       case 'leading-click':
         // Star/checkbox sits inside a clickable row — don't also toggle the row.
         if (e) e.stopPropagation();
@@ -4550,8 +4141,6 @@
       case 'hero-add': if (e) e.stopPropagation(); addHeroToSlip(target.dataset.id); break;
       case 'remove-leg': if (e) e.stopPropagation(); removeLeg(target.dataset.leg); break;
       case 'clear-slip': clearSlip(); break;
-      case 'hitter-card-click': onHitterCardClick(Number(target.dataset.idx)); break;
-      case 'pitcher-card-click': onPitcherCardClick(Number(target.dataset.idx)); break;
       case 'injbar-toggle': state.injBarOpen = !state.injBarOpen; renderInjuryAlerts(); break;
       case 'alerts-toggle': state.alertsOpen = !state.alertsOpen; renderInjuryAlerts(); break;
       case 'yc-toggle': state.ycOpen = !state.ycOpen; renderYesterdayCard(); break;
@@ -4658,10 +4247,6 @@
     refreshLiveData();
     setInterval(refreshLiveData, 60000);
     // Season leaderboards change slowly — load once, refresh every 10 min.
-    refreshHitters();
-    setInterval(refreshHitters, 600000);
-    refreshPitchers();
-    setInterval(refreshPitchers, 600000);
     // Board carries the model + real prop lines (credits) — poll every 5 min.
     refreshBoard();
     setInterval(refreshBoard, 300000);
@@ -4730,13 +4315,12 @@
   // than trying to make them sport-agnostic: the hero argues the batter-unders
   // thesis and the track record is an MLB record, so showing either under an NFL
   // tab would be a claim we have not earned.
-  // Everything on the page that is MLB and only MLB. #yesterdayCard and
-  // #mlbExtras were missing: yesterday's receipt, the hottest hitters, the
-  // handedness splits, the hottest pitchers and the methodology note all stayed
-  // on screen under the NFL and soccer boards, which read as those sports'
-  // content purely because of where it sat.
+  // Everything on the page that is MLB and only MLB. #yesterdayCard was once
+  // missing and stayed on screen under the NFL and soccer boards, reading as
+  // those sports' content purely because of where it sat. (The leaderboards
+  // section that had the same problem was removed on 2026-09-27.)
   const MLB_ONLY = ['.hero', '#liveNow', '#slate', '#slipSection', '#record',
-    '#yesterdayCard', '#mlbExtras', '#rail'];
+    '#yesterdayCard', '#rail'];
 
   function setSport(s) {
     if (state.sport === s) return;
@@ -5506,8 +5090,6 @@
     // board's CLV chip and nav links by default.
     const away = sport !== 'mlb';
     document.title = DOC_TITLE[sport] || DOC_TITLE.mlb;
-    const chip = document.getElementById('clvChip');
-    if (chip) chip.hidden = away;
     document.querySelectorAll('.nav-links a').forEach((a) => {
       const href = a.getAttribute('href');
       if (MLB_ONLY_NAV.includes(href)) a.hidden = away;
