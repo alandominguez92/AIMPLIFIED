@@ -132,5 +132,23 @@ ok(byLeg.P501 && byLeg.P502 && byLeg.P501.sameGame === 2 && byLeg.P502.sameGame 
   'the two legs from one game are marked as sharing it');
 ok(byLeg.P503 && byLeg.P503.sameGame === 1, 'and the leg on its own is not');
 
+// Passing TDs key on "event|player", so the two quarterbacks of one game carry
+// different game_ids. They are still one game.
+gm.push(
+  { sport: 'nflptd', date: todayYmd, game_id: 'ev9|Lamar Jackson', market: 'pass_tds', side: 'under', point: 1.5, pick: 'Lamar Jackson under 1.5',
+    home: 'Dallas Cowboys', away: 'Baltimore Ravens', win_prob: 55.4, implied: 45, edge: 10.6, entry_price: 125, close_price: 125, result: null },
+  { sport: 'nflptd', date: todayYmd, game_id: 'ev9|Dak Prescott', market: 'pass_tds', side: 'under', point: 1.5, pick: 'Dak Prescott under 1.5',
+    home: 'Dallas Cowboys', away: 'Baltimore Ravens', win_prob: 55.4, implied: 46, edge: 9.3, entry_price: 117, close_price: 117, result: null },
+  { sport: 'nflptd', date: todayYmd, game_id: 'ev7|Josh Allen', market: 'pass_tds', side: 'under', point: 1.5, pick: 'Josh Allen under 1.5',
+    home: 'Buffalo Bills', away: 'Los Angeles Chargers', win_prob: 55.4, implied: 44, edge: 10.8, entry_price: 127, close_price: 127, result: null },
+);
+const pt = await hit('/api/top-legs?sport=nflptd');
+const qb = Object.fromEntries((pt.today || []).map((x) => [x.leg.split(' under')[0], x]));
+console.log('  nflptd today: ' + (pt.today || []).map((x) => `${x.leg} ${x.game} x${x.sameGame}`).join(' | '));
+ok(qb['Lamar Jackson'] && qb['Dak Prescott'] && qb['Lamar Jackson'].sameGame === 2 && qb['Dak Prescott'].sameGame === 2
+  && qb['Lamar Jackson'].game === 'ev9',
+  'both quarterbacks of one game are marked as sharing it, though their rows key on the player too');
+ok(qb['Josh Allen'] && qb['Josh Allen'].sameGame === 1, 'and a quarterback alone in his game is not');
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exitCode = fail ? 1 : 0;

@@ -6836,12 +6836,15 @@ async function topLegs(env, url) {
     // Legs from one game tend to land or miss together, which a PrizePicks entry
     // pays for all at once. sameGame counts the legs in THIS list that share the
     // leg's game, so a check can warn without knowing anything about the slate.
+    // Passing-TD rows key on "event|player" so both quarterbacks of a game can
+    // be logged; the game is the part before the bar.
+    const gameOf = (r) => (r.game_id ? String(r.game_id).split('|')[0] : null);
     const perGame = {};
-    for (const x of todayList) if (x.r.game_id) perGame[x.r.game_id] = (perGame[x.r.game_id] || 0) + 1;
+    for (const x of todayList) { const k = gameOf(x.r); if (k) perGame[k] = (perGame[k] || 0) + 1; }
     out.today = todayList.map((x) => ({
       leg: label(x.r), score: x.s,
-      team: x.r.team || null, game: x.r.game_id || null,
-      sameGame: x.r.game_id ? perGame[x.r.game_id] : 1,
+      team: x.r.team || null, game: gameOf(x.r),
+      sameGame: gameOf(x.r) ? perGame[gameOf(x.r)] : 1,
     }));
     if (!out.today.length) out.todayNote = `nothing ungraded logged for ${todayYmd} yet`;
   } catch (e) { out.error = String((e && e.message) || e); }
