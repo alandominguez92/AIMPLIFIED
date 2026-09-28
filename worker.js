@@ -7992,6 +7992,14 @@ async function soccerMaybeIngest(env, ctx) {
       out.push({ league: lg, ...(res.leagues[0] || {}), credits: res.credits });
     } catch (e) { /* next tick */ }
   }
+  // Soccer picks used to be written only when someone opened the soccer board,
+  // so Sunday 2026-09-27's Nations League, which nobody opened before kickoff,
+  // left no record at all. A capture is the only moment the stored prices
+  // change, so logging right after one is the same as a reader opening the
+  // board then. One read of the stored lines, no odds calls.
+  if (out.length) {
+    try { await soccerBoardData(env, new URL('https://x/api/soccer-board?all=1'), { log: true }); } catch (e) { /* next capture */ }
+  }
   return out.length ? out : null;
 }
 
@@ -8007,7 +8015,10 @@ function devigThreeWay(prices) {
   return sum > 0 ? imps.map((x) => x / sum) : null;
 }
 
-async function soccerBoardData(env, url) {
+// opts.log: write the picks even for an ?all=1 read, limited to fixtures inside
+// the capture horizon. The cron uses it after every capture (see
+// soccerMaybeIngest), so a matchday nobody opened still leaves a record.
+async function soccerBoardData(env, url, opts = {}) {
   // leagueList, not just the keys: the chips used to be hardcoded in the HTML and
   // would have silently kept saying "three leagues" with two of them missing.
   const out = {
@@ -8187,10 +8198,24 @@ async function soccerBoardData(env, url) {
     // fair line and have not kicked off. The tab still says context and still
     // posts nothing — this is written down, not shown.
     try {
+      const horizon = opts.log ? Date.now() + SOCCER_HORIZON_MS : Infinity;
       const pre = out.games.filter((g) => g.lead && g.lead.price != null && g.lead.fair != null
-        && g.fairSrc !== 'MKT' && Date.parse(g.commence || 0) > Date.now());
-      if (pre.length && !showAll) {
-        await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), pre.map((g) => ({
+        && g.fairSrc !== 'MKT' && Date.parse(g.commence || 0) > Date.now()
+        && Date.parse(g.commence || 0) <= horizon);
+      // Each pick is dated by its own kickoff's Pacific day. A page read only
+      // ever logs one matchday, so this changes nothing there; the cron's read
+      // spans two, and a Sunday fixture logged on Saturday is still Sunday's.
+      const logByDay = async (rows) => {
+        const days = new Map();
+        for (const r of rows) {
+          const d = ptDateOf(Date.parse(r.commence || 0));
+          if (!days.has(d)) days.set(d, []);
+          days.get(d).push(r);
+        }
+        for (const [d, list] of days) await logGamePicks(env.DB, 'soccer', d, list);
+      };
+      if (pre.length && (!showAll || opts.log)) {
+        await logByDay(pre.map((g) => ({
           game_id: g.id, league: g.league, commence: g.commence,
           side: g.lead.selection === 'Draw' ? 'draw' : (g.lead.selection === g.home ? 'home' : 'away'),
           pick: g.lead.selection, home: g.home, away: g.away,
@@ -8218,7 +8243,7 @@ async function soccerBoardData(env, url) {
             fair_src: t.fairSrc || 'sharp-pool', sharp_n: t.sharpN,
           });
         }
-        if (tot.length) await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), tot);
+        if (tot.length) await logByDay(tot);
         const favs = pre.filter((g) => g.fav && g.fav.price != null && g.fav.fair != null).map((g) => ({
           game_id: g.id, market: 'fav', league: g.league, commence: g.commence,
           side: g.fav.selection === g.home ? 'home' : 'away',
@@ -8226,7 +8251,7 @@ async function soccerBoardData(env, url) {
           win_prob: g.fav.fair, implied: g.fav.implied, edge: g.fav.value,
           price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN,
         }));
-        if (favs.length) await logGamePicks(env.DB, 'soccer', out.slateDay || ptDateOf(Date.now()), favs);
+        if (favs.length) await logByDay(favs);
       }
     } catch (e) { /* logging never breaks the board */ }
     out.empty = out.games.length === 0;

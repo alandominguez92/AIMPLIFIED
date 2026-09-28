@@ -436,5 +436,24 @@ await runCron();
 ok(ingested === afterFirst, `the next tick five minutes later buys nothing (${ingested} total)`);
 globalThis.fetch = oddsFetch;
 
+// ---- soccer picks are written by the cron, not only by a board read ---------------------
+// Sunday 2026-09-27's Nations League was never logged: soccer picks were only
+// written when someone opened the board. After a capture the cron now logs
+// every priced fixture inside 36h, each dated by its own kickoff day.
+gm.clear();
+for (const k of [...cache.keys()]) if (k.startsWith('soccer_cap:')) cache.delete(k);
+const TOMORROW_KO = iso(NOW + 30 * HOUR);
+SOCCER_EVENTS.soccer_epl = [sEv('s1', SOON, 'Bournemouth', 'Liverpool'), sEv('s9', TOMORROW_KO, 'Arsenal', 'Chelsea')];
+await runCron();
+const cronRows = [...gm.values()].filter((r) => r.sport === 'soccer');
+const s9 = cronRows.filter((r) => r.game_id === 's9');
+console.log('  cron-logged soccer: ' + cronRows.map((r) => `${r.game_id}/${r.market}@${r.date}`).join(' '));
+ok(cronRows.some((r) => r.game_id === 's1') && s9.length > 0,
+  `a capture logs the fixtures with no board read at all (${cronRows.length} rows)`);
+ok(s9.length > 0 && s9.every((r) => r.date === ptDay(Date.parse(TOMORROW_KO))) && ptDay(Date.parse(TOMORROW_KO)) !== ptDay(Date.parse(SOON)),
+  `a fixture on the next day is dated by its own kickoff (${s9[0] && s9[0].date}), not today's matchday`);
+ok(s9.some((r) => r.market === 'fav') && s9.some((r) => (r.market || 'h2h') === 'h2h'),
+  'and both the 1X2 lead and the likeliest winner are written');
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
