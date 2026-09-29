@@ -216,7 +216,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -456,7 +456,10 @@ async function handleApi(p, env, ctx, url) {
     const full = await batters(env, ctx);
     return url.searchParams.get('summary') ? battersSummary(full) : full;
   }
-  if (p === '/api/track-record') return trackRecordCached(env);
+  if (p === '/api/track-record') {
+    const full = await trackRecordCached(env);
+    return url && url.searchParams.get('summary') ? trackRecordSummary(full) : full;
+  }
   if (p === '/api/injuries') return injuries();
   if (p === '/api/live-now') return liveNow(env);
   if (p === '/api/ml-debug') return mlDebug(env);
@@ -467,7 +470,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/pppicks-export') return ppExport(env, url);
   if (p === '/api/gmpicks-export') return gmExport(env, url);
   if (p === '/api/top-legs') return topLegs(env, url);
-  if (p === '/api/mlpicks-export') return mlpicksExport(env);
+  if (p === '/api/mlpicks-export') return mlpicksExport(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
   if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
@@ -2963,6 +2966,28 @@ function battingLive(box, pid, market) {
 // therefore reach the page within about ten minutes, rather than two.
 const TRACK_RECORD_TTL_MS = 10 * 60 * 1000;
 const TRACK_RECORD_KEY = 'track-record:v1';
+
+// ?summary=1: the headline numbers only, for scheduled checks. The full record
+// carries every graded row (~96KB), more than a check can read in one go.
+async function trackRecordSummary(res) {
+  let d = null;
+  try { d = await res.clone().json(); } catch (e) { return res; }
+  if (!d || d.error) return res;
+  const pick = (o, keys) => (o ? Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]])) : null);
+  const gm = ['logged', 'pending', 'n', 'record', 'winRate', 'units', 'roi'];
+  const out = {
+    summary: true, cachedAgeSec: d.cachedAgeSec ?? null,
+    recent: d.recent ? { date: d.recent.date, record: d.recent.record, units: d.recent.units, total: d.recent.total } : null,
+    batterUnders: pick(d.batterUnders, ['n', 'record', 'winRate', 'breakEven', 'units', 'roi']),
+    ml: pick(d.ml, ['tracked', 'record', 'winRate', 'units', 'roi', 'pending', 'byPriceBand']),
+    prizepicks: pick(d.prizepicks, ['graded', 'underRate', 'byMarket']),
+    soccerFav: pick(d.soccerFav, [...gm, 'byBand']),
+    soccerMl: pick(d.soccerMl, gm),
+    nflMl: pick(d.nflMl, gm),
+    nflPassTds: pick(d.nflPassTds, [...gm, 'verdict']),
+  };
+  return cors(json(out, 300));
+}
 
 async function trackRecordCached(env) {
   if (!env || !env.DB) return trackRecord(env);
@@ -6903,14 +6928,18 @@ async function bpicksExport(env, url) {
 // made of (Pinnacle-priced vs not, favourite vs dog, entry vs close) needs the
 // rows, not a summary written before the question existed. Read-only, graded
 // rows only, positional columns.
-async function mlpicksExport(env) {
+async function mlpicksExport(env, url) {
   if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
   try {
     await ensureMlPickSchema(env.DB);
     const cols = ['date', 'game_id', 'team', 'opp', 'is_home', 'tier', 'win_prob', 'edge', 'entry_price', 'close_price', 'result', 'team_score', 'opp_score', 'model_ver', 'fair_source'];
+    // ?date=YYYY-MM-DD: one day's graded picks. The whole log is ~100KB, more
+    // than a scheduled check can read in one go.
+    const date = url && url.searchParams ? String(url.searchParams.get('date') || '').trim() : '';
+    const oneDay = /^\d{4}-\d{2}-\d{2}$/.test(date);
     const rows = (await env.DB.prepare(
-      `SELECT ${cols.join(', ')} FROM mlpicks WHERE result IN ('win','loss') ORDER BY date`
-    ).all()).results || [];
+      `SELECT ${cols.join(', ')} FROM mlpicks WHERE result IN ('win','loss')${oneDay ? ' AND date = ?' : ''} ORDER BY date`
+    ).bind(...(oneDay ? [date] : [])).all()).results || [];
     return cors(json({ n: rows.length, cols, rows: rows.map((r) => cols.map((c) => r[c])) }, 600));
   } catch (e) {
     return cors(json({ error: String((e && e.message) || e) }, 30));
