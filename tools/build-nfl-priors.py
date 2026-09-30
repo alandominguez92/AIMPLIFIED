@@ -17,7 +17,10 @@ recovered on 2026-09-26 by reproducing it exactly from raw 2025 play-by-play
 2026 part of rp comes from PFR offensive snap share, scaled by a factor fitted
 on 2025 where both exist.
 
-Blending (the w25 weight was chosen by backtest; see --backtest):
+Blending (the w25 weight was chosen by backtest; see --backtest). w25 = 0.15
+since 2026-09-30: out of sample on Weeks 2 and 3, a lower 2025 weight predicted
+better in both markets (Week 3 receiving MAE 25.8 vs 26.4 at 0.5, rushing 19.9
+vs 21.1). 2025's 17 games count as ~2.5, so current-season roles take over fast:
   same club both seasons  -> 2025 counts x w25 pooled with 2026 counts
   new club, or a rookie   -> role (shares, rp) from 2026 alone, and only with
                              MIN_NEW_GAMES games for the new club; efficiency
@@ -35,6 +38,11 @@ import argparse, collections, csv, gzip, io, json, math, os, datetime
 
 POS = {'WR', 'TE', 'RB', 'FB'}
 TEAM_FIX = {'AZ': 'ARI'}                 # the board writes ARI; one source wrote AZ
+# Off: tested 2026-09-30 and it lost. Counting only the weeks a player played
+# was slightly WORSE out of sample (Week 3 receiving MAE 25.17 vs 24.93,
+# rushing 20.36 vs 19.86; Week 2 identical) -- a missed game says something
+# about the weeks after it. Kept as a switch so it can be re-tested later.
+PLAYED_WEEKS_ONLY_2026 = False
 MIN_NEW_GAMES = 3               # a new club needs three games of reps; two was unvalidated (Sep 26)
 LEAGUE_KEYS = ('yprCohort', 'ypcCohort', 'playsPerTeamGame', 'passRate')
 
@@ -109,7 +117,18 @@ def season_agg(plays, wk_team, info, onfield=None, snaps=None, snap_k=1.0):
             tr[(p['tm'], p['wk'])] += 1
     agg = collections.defaultdict(lambda: collections.Counter())
     games = collections.defaultdict(set)
+    # Every rostered week counts, a missed one included (the original,
+    # reproduced definition). The alternative -- only weeks played, for 2026 --
+    # was motivated by Puka Nacua: missing Week 3 moved his on-field share from
+    # 58% to 43% at w25 0.15, under the 50% gate. It tested worse out of sample,
+    # so it stays off (PLAYED_WEEKS_ONLY_2026). Played = a snap that week.
+    played = None
+    if onfield is None and snaps is not None and PLAYED_WEEKS_ONLY_2026:
+        played = {(g, wk) for (g, wk) in wk_team
+                  if (info.get(g) or {}).get('pfr') and snaps.get(((info.get(g) or {}).get('pfr'), wk))}
     for (gsis, wk), tm in wk_team.items():
+        if played is not None and (gsis, wk) not in played:
+            continue
         a = agg[gsis]
         a['tp'] += tp[(tm, wk)]
         a['tr'] += tr[(tm, wk)]
@@ -352,7 +371,7 @@ def backtest(D, weights):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('--data', required=True)
-    ap.add_argument('--w25', type=float, default=0.5)
+    ap.add_argument('--w25', type=float, default=0.15)
     ap.add_argument('--out', default=os.path.join(os.path.dirname(__file__), '..', 'nfl-model-priors.json'))
     ap.add_argument('--backtest', action='store_true')
     a = ap.parse_args()
