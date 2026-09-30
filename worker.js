@@ -244,6 +244,7 @@ export default {
     // than waiting for someone to open the track record.
     ctx.waitUntil(gradeGamePicks(env).catch(() => null));
     ctx.waitUntil(gradePassTds(env).catch(() => null));
+    ctx.waitUntil(nflGradeCron(env).catch(() => null));
     ctx.waitUntil(gradeEntryLegs(env).catch(() => null));
   },
 };
@@ -9153,6 +9154,21 @@ const ESPN_UA = 'aimplified-grader/1.0 (+https://aimplified.delexe.workers.dev)'
 const NFL_NAME_SUFFIX = /\s+(jr|sr|ii|iii|iv|v)$/;
 const nflBaseName = (s) => normName(s).replace(NFL_NAME_SUFFIX, '');
 
+// Yardage projections used to be graded only when something called
+// /api/nfl-grade: a one-off scheduled task did Week 1, and Weeks 2 and 3 sat
+// ungraded. The cron now runs it every three hours. Free (ESPN box scores), and
+// a run with nothing pending is one D1 query.
+const NFL_GRADE_EVERY_MS = 3 * 3600e3;
+async function nflGradeCron(env) {
+  if (!env || !env.DB) return null;
+  const key = 'nfl_grade_last';
+  const hit = await loadFeedCache(env.DB, key);
+  if (hit.present && hit.data && Date.now() - hit.data.at < NFL_GRADE_EVERY_MS) return null;
+  await saveFeedCache(env.DB, key, { at: Date.now() });
+  const res = await nflGrade(env, new URL('https://x/api/nfl-grade'));
+  try { return await res.json(); } catch (e) { return null; }
+}
+
 async function nflGrade(env, url) {
   const out = { note: 'fills nfl_proj.actual from ESPN box scores — no Odds API call, no credits',
     pending: 0, events: 0, graded: 0, dnp: 0, unmatched: [], errors: [] };
@@ -9205,7 +9221,7 @@ async function nflGrade(env, url) {
     }
 
     const pend = (await env.DB.prepare(
-      `SELECT event_id, player, market, game, commence FROM nfl_proj
+      `SELECT event_id, player, market, game, commence, season, week FROM nfl_proj
         WHERE graded_at IS NULL AND commence IS NOT NULL AND commence < ? ORDER BY commence`
     ).bind(cutoff).all()).results || [];
     out.pending = pend.length;
@@ -9219,29 +9235,36 @@ async function nflGrade(env, url) {
     for (let i = 0; i < evIds.length; i += 20) {
       const chunk = evIds.slice(i, i + 20);
       const q = await env.DB.prepare(
-        'SELECT DISTINCT event_id, home, away, commence FROM nfl_lines WHERE event_id IN ('
+        'SELECT DISTINCT event_id, home, away, commence, season_type FROM nfl_lines WHERE event_id IN ('
         + chunk.map(() => '?').join(',') + ')'
       ).bind(...chunk).all();
       for (const r of (q.results || [])) if (r.home && r.away) names.set(r.event_id, r);
     }
 
     const dayCache = new Map();
-    const scoreboard = async (yyyymmdd) => {
-      if (dayCache.has(yyyymmdd)) return dayCache.get(yyyymmdd);
+    // ESPN's NFL scoreboard ignores a date and always answers with the CURRENT
+    // week, so asking by date only ever worked during Week 1: by Sep 30 every
+    // Week 2 and 3 projection (317 rows) matched no game and none was graded.
+    // Asked by season/type/week instead, the same fix gradeGamePicks carries.
+    // `key` is "year|seasontype|week", or a bare yyyymmdd for a row with no week.
+    const scoreboard = async (key) => {
+      if (dayCache.has(key)) return dayCache.get(key);
       let d = null;
+      const [yr, st, wk] = String(key).split('|');
+      const q = wk ? `year=${yr}&seasontype=${st}&week=${wk}` : `dates=${key}`;
       try {
         // A User-Agent is sent deliberately. ESPN serves this endpoint happily to
         // a browser and can refuse a datacenter request that arrives without one,
         // which is invisible from a laptop and total from a Worker.
-        const r = await fetch(`${ESPN_CDN}/scoreboard?xhr=1&dates=${yyyymmdd}`,
+        const r = await fetch(`${ESPN_CDN}/scoreboard?xhr=1&${q}`,
           { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
         // A non-OK response used to set nothing and record nothing, so an ESPN
         // refusal came back as "no ESPN event matched" -- indistinguishable from
         // a game that was never played. Status is captured either way.
         if (r.ok) d = await r.json();
-        else out.errors.push(`scoreboard ${yyyymmdd}: HTTP ${r.status}`);
-      } catch (e) { out.errors.push('scoreboard ' + yyyymmdd + ': ' + String((e && e.message) || e)); }
-      dayCache.set(yyyymmdd, d);
+        else out.errors.push(`scoreboard ${key}: HTTP ${r.status}`);
+      } catch (e) { out.errors.push('scoreboard ' + key + ': ' + String((e && e.message) || e)); }
+      dayCache.set(key, d);
       return d;
     };
 
@@ -9255,7 +9278,10 @@ async function nflGrade(env, url) {
       // Kickoff is stored in UTC; a Sunday 13:00 ET game is already the next day
       // in UTC for late windows, so both days are tried rather than assuming.
       const t = Date.parse(meta.commence || rows[0].commence);
-      const days = [new Date(t), new Date(t - 864e5)].map((d) => d.toISOString().slice(0, 10).replace(/-/g, ''));
+      const wk = rows[0].week;
+      const days = wk != null
+        ? [`${rows[0].season || new Date(t).getUTCFullYear()}|${String(meta.season_type || 'REG').toUpperCase() === 'PRE' ? 1 : 2}|${wk}`]
+        : [new Date(t), new Date(t - 864e5)].map((d) => d.toISOString().slice(0, 10).replace(/-/g, ''));
       let espnId = null, final = false;
       for (const day of days) {
         const sb = await scoreboard(day);

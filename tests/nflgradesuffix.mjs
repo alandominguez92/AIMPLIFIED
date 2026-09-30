@@ -47,9 +47,18 @@ const box = { gamepackageJSON: { boxscore: { players: [{
 globalThis.fetch = async (u) => {
   const url = String(u);
   const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json' } });
-  if (url.includes('/scoreboard')) return J({ content: { sbData: { events: [{ id: '999', competitions: [{
-    competitors: [{ team: { displayName: HOME } }, { team: { displayName: AWAY } }],
-    status: { type: { name: 'STATUS_FINAL' } } }] }] } } });
+  // Answer like the real scoreboard: by season/type/week. A ?dates= request is
+  // ignored and gets the CURRENT week, which here is a different game -- the
+  // stub used to answer any scoreboard URL, so the grader asking by date (and
+  // matching nothing after Week 1) could never fail this test.
+  if (url.includes('/scoreboard')) {
+    const q = new URL(url).searchParams;
+    const ours = q.get('year') === '2026' && q.get('seasontype') === '2' && q.get('week') === '1';
+    const teams = ours ? [HOME, AWAY] : ['Some Other Team', 'Not This Game'];
+    return J({ content: { sbData: { events: [{ id: ours ? '999' : '111', competitions: [{
+      competitors: [{ team: { displayName: teams[0] } }, { team: { displayName: teams[1] } }],
+      status: { type: { name: 'STATUS_FINAL' } } }] }] } } });
+  }
   if (url.includes('/boxscore')) return J(box);
   return new Response('{}', { status: 404 });
 };
@@ -108,6 +117,18 @@ ok(row('Sam Smith').actual === null, 'the ambiguous base name is still refused o
 const g3 = await grade('?regrade=dnp');
 ok(row('Kyle Pitts').actual === 52 && row('Already Done').actual === 40,
   'running the repair twice changes nothing that is already right');
+
+// ---- the cron grades without anyone calling /api/nfl-grade --------------------------------
+// Weeks 2 and 3 went ungraded because only a one-off scheduled task ever called
+// the endpoint. Re-open one graded row and let the cron find it.
+sq.prepare(`UPDATE nfl_proj SET actual = NULL, graded_at = NULL WHERE player = 'Brian Thomas Jr.'`).run();
+const tick = async () => { const held = []; await mod.default.scheduled({}, env, { waitUntil: (p) => held.push(p) }); await Promise.allSettled(held); };
+await tick();
+ok(row('Brian Thomas Jr.').actual === 71, `a cron tick grades a pending projection on its own (${row('Brian Thomas Jr.').actual})`);
+// Throttled: a second tick inside three hours does not grade again.
+sq.prepare(`UPDATE nfl_proj SET actual = NULL, graded_at = NULL WHERE player = 'Brian Thomas Jr.'`).run();
+await tick();
+ok(row('Brian Thomas Jr.').actual === null, 'and a second tick inside three hours leaves it for the next window');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
