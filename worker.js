@@ -3479,17 +3479,21 @@ async function espnScoreboard(path) {
 // Bournemouth", "Malaga" against "Málaga"). Strip the accents and the club-form
 // words and match on what is left.
 const CLUB_NOISE = /\b(afc|fc|cf|sc|ud|cd|rcd|ac|as|ss|sv|bv|club|de|the)\b/g;
-// Countries the two feeds spell differently. Keys and values are clubKey form.
+// Teams the two feeds spell differently. Keys and values are clubKey form.
 // Substring matching already covers "North Macedonia"/"Macedonia" and
-// "Republic of Ireland"/"Ireland"; these are the ones it cannot.
-const NATION_ALIAS = {
+// "Republic of Ireland"/"Ireland"; these are the ones it cannot. The MLS pair
+// is ESPN's "Red Bull New York" and "LAFC" against the feed's "New York Red
+// Bulls" and "Los Angeles FC" -- neither ever graded, and the other 28 MLS
+// clubs match as they are.
+const TEAM_ALIAS = {
   czechrepublic: 'czechia', turkey: 'turkiye',
   bosniaandherzegovina: 'bosniaherzegovina',
+  redbullnewyork: 'newyorkredbulls', lafc: 'losangeles',
 };
 function clubKey(s) {
   const k = String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase().replace(CLUB_NOISE, ' ').replace(/[^a-z0-9]+/g, '');
-  return NATION_ALIAS[k] || k;
+  return TEAM_ALIAS[k] || k;
 }
 function clubMatch(a, b) {
   const x = clubKey(a), y = clubKey(b);
@@ -3497,9 +3501,13 @@ function clubMatch(a, b) {
   return x === y || x.includes(y) || y.includes(x);
 }
 
+// How far ahead a re-listed fixture is looked for. See `stuck` below.
+const MOVED_FIXTURE_MS = 21 * 864e5;
+
 // Grade every ungraded row from a day that has finished. ESPN only, no credits.
 async function gradeGamePicks(env) {
-  const out = { graded: 0, pending: 0, unmatched: [] };
+  const out = { graded: 0, pending: 0, unmatched: [], voidedMoved: [] };
+  const stuck = [];
   if (!env || !env.DB) return out;
   await ensureGamePickSchema(env.DB);
   const today = slateDate();
@@ -3572,7 +3580,11 @@ async function gradeGamePicks(env) {
         const x = finals.find((y) => clubMatch(y.home, r.away) && clubMatch(y.away, r.home));
         if (x) f = { ...x, hs: x.as, as: x.hs };
       }
-      if (!f || !isFinite(f.hs) || !isFinite(f.as)) { out.unmatched.push(`${r.sport} ${r.date} ${r.away}@${r.home}`); continue; }
+      if (!f || !isFinite(f.hs) || !isFinite(f.as)) {
+        out.unmatched.push(`${r.sport} ${r.date} ${r.away}@${r.home}`);
+        if (r.sport === 'soccer' && !f) stuck.push(r);
+        continue;
+      }
       let result;
       if (r.market === 'totals') {
         // Settled on the score line, not on who won. A whole-number line that
@@ -3596,6 +3608,34 @@ async function gradeGamePicks(env) {
     }
   }
   if (stmts.length) await env.DB.batch(stmts);
+
+  // A fixture the odds feed listed and then moved. St. Louis at the Red Bulls
+  // was listed for Sep 26 under one event id and played Sep 30 under another;
+  // ESPN has no Sep 26 game, so the first rows matched nothing and would have
+  // sat pending for good. They are voided once the same pairing has graded on a
+  // later date -- not before, so a name that fails to match on BOTH dates still
+  // shows up as unmatched rather than being voided out of sight.
+  if (stuck.length) {
+    const since = stuck.reduce((m, r) => (r.date < m ? r.date : m), stuck[0].date);
+    const later = ((await env.DB.prepare(
+      "SELECT game_id, league, home, away, commence, result FROM gmpicks WHERE sport='soccer' AND result IS NOT NULL AND date >= ?"
+    ).bind(since).all()).results || []).filter((g) => g.result != null && g.result !== 'void');
+    const voids = [];
+    for (const r of stuck) {
+      const t = Date.parse(r.commence);
+      const moved = later.find((g) => {
+        const tg = Date.parse(g.commence);
+        return g.game_id !== r.game_id && g.league === r.league && g.home === r.home && g.away === r.away
+          && tg > t && tg - t <= MOVED_FIXTURE_MS;
+      });
+      if (!moved) continue;
+      voids.push(env.DB.prepare(
+        'UPDATE gmpicks SET result=?, home_score=?, away_score=? WHERE sport=? AND date=? AND game_id=? AND market=?'
+      ).bind('void', null, null, r.sport, r.date, r.game_id, r.market || 'h2h'));
+      out.voidedMoved.push(`${r.date} ${r.away}@${r.home} (${r.market || 'h2h'}), played under ${moved.game_id}`);
+    }
+    if (voids.length) await env.DB.batch(voids);
+  }
   return out;
 }
 

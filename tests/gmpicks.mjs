@@ -386,6 +386,48 @@ ok(sf.byBand && sf.byBand['65+'].n === 1 && sf.byBand['65+'].expected === 80 && 
 ok(trNl.soccerMl && !((trNl.soccerMl.byMarket || {}).fav),
   `and the soccer game-line record does not count them (${Object.keys((trNl.soccerMl || {}).byMarket || {}).join(',')})`);
 
+// ---- MLS: two clubs ESPN names its own way, and a fixture that moved ----------------------
+// ESPN writes "Red Bull New York" and "LAFC"; the odds feed writes "New York Red
+// Bulls" and "Los Angeles FC", so neither club had ever graded. And St. Louis at
+// the Red Bulls was listed for Sep 26 under one event id, then played Sep 30
+// under another: ESPN has no Sep 26 game, so those rows would sit pending for good.
+const shiftDay = (d, n) => new RealDate(RealDate.parse(d + 'T12:00:00Z') + n * 86400e3).toISOString().slice(0, 10);
+const early = shiftDay(yday, -4);
+const seedMls = (id, date, market, home, away, side) => {
+  gm.set(gmKey(['soccer', date, id, market]), {
+    sport: 'soccer', date, game_id: id, market, league: 'mls', side, point: null,
+    pick: side === 'home' ? home : away, home, away, commence: `${date}T23:30:00Z`,
+    win_prob: 50, implied: 50, edge: 0, entry_price: -105, close_price: -105,
+    book: 'draftkings', fair_src: 'sharp-pool', sharp_n: 3, result: null,
+    home_score: null, away_score: null, model_ver: 'gm-v1',
+  });
+};
+ESPN['usa.1'] = [
+  espnEvent('Red Bull New York', 'St. Louis CITY SC', 0, 3, 'STATUS_FULL_TIME'),
+  espnEvent('FC Dallas', 'LAFC', 1, 0, 'STATUS_FULL_TIME'),
+];
+seedMls('m_rb', yday, 'fav', 'New York Red Bulls', 'St. Louis City SC', 'away');
+seedMls('m_la', yday, 'h2h', 'FC Dallas', 'Los Angeles FC', 'away');
+seedMls('m_rb_old', early, 'fav', 'New York Red Bulls', 'St. Louis City SC', 'away');   // the Sep 26 listing
+// A pairing whose later game ALSO fails to match: nothing graded later, so
+// nothing may be voided -- both stay pending, where an unmatched name is seen.
+seedMls('m_ax_old', early, 'fav', 'Real Salt Lake', 'Austin FC', 'home');
+seedMls('m_ax', yday, 'fav', 'Real Salt Lake', 'Austin FC', 'home');
+cache.clear();
+const trMls = await hit('/api/track-record', { DB: db });
+const mls = (id, date, mkt) => gm.get(gmKey(['soccer', date, id, mkt])) || {};
+const rb = mls('m_rb', yday, 'fav');
+ok(rb.result === 'win' && rb.away_score === 3 && rb.home_score === 0,
+  `"New York Red Bulls" finds ESPN's "Red Bull New York", and St. Louis's 3-0 away win grades (${rb.result} ${rb.away_score}-${rb.home_score})`);
+ok(mls('m_la', yday, 'h2h').result === 'loss',
+  `"Los Angeles FC" finds ESPN's "LAFC", and Dallas's 1-0 is a loss for the LAFC pick (${mls('m_la', yday, 'h2h').result})`);
+ok(mls('m_rb_old', early, 'fav').result === 'void',
+  `the earlier listing of a fixture played later is voided, not left pending forever (${mls('m_rb_old', early, 'fav').result})`);
+ok(mls('m_ax_old', early, 'fav').result == null && mls('m_ax', yday, 'fav').result == null,
+  'a pairing that matches on NEITHER date is left pending, not voided out of sight');
+ok(trMls.soccerFav && trMls.soccerFav.n === sf.n + 1,
+  `the void counts in no record: the favourites add only the Red Bulls game (${sf.n} -> ${trMls.soccerFav && trMls.soccerFav.n})`);
+
 // ---- the cron keeps it filling -----------------------------------------------------------
 // The NFL lines used to arrive only when a one-off scheduled task fired, so a
 // week nobody set one up left no record at all. The gate now sits on the cron
