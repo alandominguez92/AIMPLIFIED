@@ -9578,10 +9578,21 @@ async function nflCompare(env, url) {
   // exactly there, writing a script to parse a response it could not read.
   if (url && url.searchParams && url.searchParams.get('summary') === '1') {
     out.rowCount = out.rows.length;
+    // The scheduled pre-kickoff check reads this form too, and the one list it
+    // reports is the largest projection/line disagreements for the upcoming
+    // games -- so those ride along, trimmed to the fields it reads. Played
+    // games (?all=1) are the grading run's business and get the verdict alone.
+    if (url.searchParams.get('all') !== '1') {
+      out.biggestGaps = out.rows.filter((r) => r.line != null && r.gap != null)
+        .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap)).slice(0, NFL_GAPS_TOP)
+        .map((r) => ({ player: r.player, team: r.team, game: r.game, market: r.market,
+          proj: r.proj, line: r.line, gap: r.gap, conf: r.conf }));
+    }
     delete out.rows;
   }
   return cors(json(out, 60));
 }
+const NFL_GAPS_TOP = 20;
 
 // Split so the projection endpoint can reuse the same slate without re-querying
 // D1 or re-deriving fair from scratch. nflBoard is now only the response wrapper.

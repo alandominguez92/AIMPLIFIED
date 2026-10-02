@@ -100,5 +100,21 @@ ok(Array.isArray(board2.body.rows) && board2.body.rows.length === 40,
   `the board still gets its rows after a summary request was cached (${board2.body.rows && board2.body.rows.length})`);
 ok(store.size === 2, `two cache entries, one per form (${store.size})`);
 
+console.log('\n-- the pre-kickoff summary carries the biggest gaps --');
+// A scheduled Saturday-night check reads ?summary=1 for the upcoming games and
+// has to list the largest projection/line gaps. With the rows dropped and
+// nothing in their place it had nothing to list.
+const nextFull = await get('');
+const nextSum = await get('?summary=1');
+const gaps = nextSum.body.biggestGaps || [];
+const maxGap = Math.max(...nextFull.body.rows.filter((r) => r.gap != null).map((r) => Math.abs(r.gap)));
+ok(gaps.length > 0 && gaps.length <= 20, `up to 20 gaps listed (${gaps.length})`);
+ok(gaps.length > 0 && Math.abs(gaps[0].gap) === maxGap && gaps.every((g, i) => i === 0 || Math.abs(gaps[i - 1].gap) >= Math.abs(g.gap)),
+  `largest first (${gaps[0] && gaps[0].gap}, max ${maxGap})`);
+ok(gaps.length > 0 && gaps.every((g) => g.game === 'CCC @ DDD' && g.line != null && g.player && g.market && !('p25' in g)),
+  'upcoming games only, each with player, market, projection and line, and nothing else bulky');
+ok(!('rows' in nextSum.body) && nextSum.bytes < nextFull.bytes / 2, `still small (${nextSum.bytes} vs ${nextFull.bytes} bytes)`);
+ok(!('biggestGaps' in sum.body), 'and the ?all=1 grading summary stays verdict-only');
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
