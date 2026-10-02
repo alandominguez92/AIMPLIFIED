@@ -279,5 +279,29 @@ const tl = await hit('/api/top-legs?sport=nflptd');
 ok(tl.graded === 2 && !tl.byDay.some((d) => d.date === '2026-09-20'),
   `and the per-day ranking does not grow a phantom day out of it (${tl.byDay.map((d) => d.date).join(', ')})`);
 
+// ---- a quarterback who never played -----------------------------------------------------
+// Week 3's Tyson Bagent row (Eagles at Bears) sat pending for good: Case Keenum
+// started, the game was final, and the grader read "no stat line" as "not final
+// yet" forever. Seeded into the recorded ATL @ GB game, whose box score has two
+// passers, Penix and Love.
+const penix = g('Penix');
+const seedQb = (name) => {
+  const r = { ...penix, game_id: `e1|${name}`, pick: `${name} under 1.5`, result: null, home_score: null };
+  gm.set(key([r.sport, r.date, r.game_id, r.market]), r);
+  return r;
+};
+seedQb('Kirk Cousins');                 // the backup, who did not throw a pass
+seedQb('M. Penix');                     // a name that fails to match, but shares a passer's surname
+const sunArm = [...gm.values()].find((r) => /Sunday Arm/.test(r.pick));
+await hit('/api/track-record');
+const by = (n) => [...gm.values()].find((r) => r.pick === `${n} under 1.5`) || {};
+ok(by('Kirk Cousins').result === 'void',
+  `a quarterback absent from a final box score is void, not pending forever (${by('Kirk Cousins').result})`);
+ok(by('M. Penix').result == null,
+  `a name sharing a passer's surname stays pending, where the mismatch can be seen (${by('M. Penix').result})`);
+ok(sunArm && sunArm.result == null,
+  `a game whose box score was never read voids nothing (${sunArm && sunArm.result})`);
+ok(g('Penix').result === 'win' && g('Love').result === 'loss', 'and the real results are untouched');
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exitCode = fail ? 1 : 0;

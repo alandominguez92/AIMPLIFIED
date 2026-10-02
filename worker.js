@@ -3702,7 +3702,7 @@ function passTdEntries(rows, week, seasonType) {
 // Grades from the box score the NFL projections already read, not from a
 // scoreboard: the result needed is one player's passing touchdowns.
 async function gradePassTds(env) {
-  const out = { graded: 0, pending: 0 };
+  const out = { graded: 0, pending: 0, voided: 0 };
   if (!env || !env.DB) return out;
   await ensureGamePickSchema(env.DB);
   const today = slateDate();
@@ -3736,14 +3736,17 @@ async function gradePassTds(env) {
     //   ATL  Michael Penix Jr.  18/25  256  ...  TD 1
     //   GB   Jordan Love        28/53  312  ...  TD 2
     const tds = new Map();
+    // Everyone who threw a pass, per game whose box score was read, keyed like
+    // `want`. See the void below.
+    const passersBy = new Map();
     const want = new Set(rs.map((r) => `${r.away}|${r.home}`));
     for (const ev of events) {
       const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
       if (!/FINAL/.test(String(st))) continue;
       const c = (ev.competitions || [])[0];
       const names = ((c && c.competitors) || []).map((t) => (t.team || {}).displayName || '');
-      const hit = [...want].some((k) => { const [a, h] = k.split('|'); return names.includes(a) && names.includes(h); });
-      if (!hit || !ev.id) continue;
+      const keys = [...want].filter((k) => { const [a, h] = k.split('|'); return names.includes(a) && names.includes(h); });
+      if (!keys.length || !ev.id) continue;
       let sum;
       try {
         const r = await fetch(`${ESPN_CDN}/boxscore?xhr=1&gameId=${ev.id}`,
@@ -3752,6 +3755,7 @@ async function gradePassTds(env) {
         sum = await r.json();
       } catch (e) { continue; }
       const box = (sum.gamepackageJSON && sum.gamepackageJSON.boxscore) || sum.boxscore || {};
+      const passers = [];
       for (const team of (box.players || [])) {
         const cat = (team.statistics || []).find((x) => x.name === 'passing');
         if (!cat) continue;
@@ -3760,14 +3764,30 @@ async function gradePassTds(env) {
         for (const a of (cat.athletes || [])) {
           const nm = (a.athlete || {}).displayName;
           const v = Number((a.stats || [])[ti]);
-          if (nm && Number.isFinite(v)) tds.set(nflBaseName(nm), v);
+          if (nm && Number.isFinite(v)) { tds.set(nflBaseName(nm), v); passers.push(nflBaseName(nm)); }
         }
       }
+      if (passers.length) for (const k2 of keys) passersBy.set(k2, passers);
     }
     for (const r of rs) {
       const nm = String(r.pick || '').replace(/ under .*$/, '');
       const got = tds.get(nflBaseName(nm));
-      if (got == null) continue;      // not final yet, or the QB did not play
+      if (got == null) {
+        // Not final yet, or the quarterback did not play. Week 3's Tyson Bagent
+        // row sat pending for good because Case Keenum started. Once the game's
+        // box score has been read and no passer in it shares even his surname,
+        // he did not play and the row is void. A surname match (a "Cam" against
+        // a "Cameron") stays pending instead, where a name mismatch can be seen.
+        const passers = passersBy.get(`${r.away}|${r.home}`);
+        const last = nflBaseName(nm).split(' ').pop();
+        if (passers && last && !passers.some((p) => p.split(' ').pop() === last)) {
+          stmts.push(env.DB.prepare(
+            "UPDATE gmpicks SET result=?, home_score=? WHERE sport='nflptd' AND date=? AND game_id=? AND market=?"
+          ).bind('void', null, r.date, r.game_id, r.market));
+          out.voided++;
+        }
+        continue;
+      }
       const result = got === r.point ? 'push' : (got < r.point ? 'win' : 'loss');
       stmts.push(env.DB.prepare(
         "UPDATE gmpicks SET result=?, home_score=? WHERE sport='nflptd' AND date=? AND game_id=? AND market=?"
