@@ -50,7 +50,10 @@
   var mdy = function (d) { var p = String(d).split('-'); return MONTHS[+p[1] - 1] + ' ' + (+p[2]); };
 
   try {
-    var saved = localStorage.getItem('aimplified-theme');
+    // The board's key is aimplified_theme (underscore). This page used
+    // aimplified-theme (hyphen), so light chosen on the board never reached
+    // here. The board's key first; the old one as a fallback.
+    var saved = localStorage.getItem('aimplified_theme') || localStorage.getItem('aimplified-theme');
     if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
   } catch (e) { /* private mode — the default is fine */ }
   document.addEventListener('click', function (e) {
@@ -58,7 +61,7 @@
     if (!t) return;
     var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('aimplified-theme', next); } catch (err) { /* not essential */ }
+    try { localStorage.setItem('aimplified_theme', next); localStorage.setItem('aimplified-theme', next); } catch (err) { /* not essential */ }
   });
 
   var S = { pos: 'all', qual: 'all', team: 'all', sort: 'tgt', q: '', week: 1 };

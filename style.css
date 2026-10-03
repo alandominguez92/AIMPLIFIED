@@ -85,8 +85,10 @@
   --borderSoft:#E6EAF0;
   --borderFaint:#C9D0DA;
   --text:#141a23;
-  --textDim:#4a5462;  /* 7.8:1 on white */
-  --textFaint:#6b7684;
+  /* Both darkened 2026-10-03 (from #4a5462 at 7.8:1 and #6b7684 at 4.6:1):
+     light mode read faint, and these two carry most of the page's small type. */
+  --textDim:#3b4452;  /* 9.8:1 on white */
+  --textFaint:#586271; /* 6.2:1 on white */
   --accent:#8a610a;   /* gold as TEXT: darkened for AA on white (5.5:1) */
   --accentDim:#6f4e08;
   /* gold as a FILL: real gold, with dark glyphs on it (#E8B33A + ink = 8.4:1) */
@@ -224,6 +226,15 @@ body {
   background-attachment: fixed;
   transition: background-color .2s ease, color .2s ease;
 }
+/* Light mode sets its type one step heavier. The same weight reads thinner as
+   dark strokes on white than as light strokes on near-black, and antialiased
+   smoothing thins it further on a Mac; on 2026-10-03 light mode was hard to
+   read. Regular text goes to 500, which both fonts load (no faux bold), and the
+   few rules pinned to 400 follow it. Everything at 600 and up stays where it
+   was, so the hierarchy holds and only its floor moves. */
+[data-theme="light"] body { font-weight:500; -webkit-font-smoothing:auto; -moz-osx-font-smoothing:auto; }
+/* (The rules pinned to 400 are lifted at the very end of this file, where a
+   tie in specificity goes to the light theme.) */
 .wrap { max-width:1320px; margin:0 auto; padding:0 32px; }
 a { color:inherit; text-decoration:none; }
 a:focus-visible, button:focus-visible, input:focus-visible,
@@ -2161,7 +2172,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tr-scope-n { font-variant-numeric:tabular-nums; opacity:.7; font-size:10.5px; }
 @media (max-width:900px) {
   .tr-scopes { width:100%; }
-  .tr-scope { flex:1; justify-content:center; min-height:40px; }
+  /* min-width:0 and wrapping: "Posted unders 2,757" and "Full model log
+     15,345" measured 163 + 177px against a 311px strip, and with nowrap they
+     pushed a 375px phone 5px wide. A label wraps inside its own button now. */
+  .tr-scope { flex:1; min-width:0; justify-content:center; min-height:40px; padding:0 8px;
+    white-space:normal; flex-wrap:wrap; row-gap:0; text-align:center; line-height:1.2; }
 }
 
 /* A control that is temporarily out of data, as opposed to one that never
@@ -2743,3 +2758,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .slip-read-n { border:1px solid var(--border); border-left:3px solid var(--warm); border-radius:10px;
   padding:10px 13px; font-size:12.5px; line-height:1.55; color:var(--textDim); text-wrap:pretty; }
 .slip-read-n b { color:var(--text); font-weight:600; }
+
+/* Light mode: the rules pinned to regular weight follow the body to 500 (see
+   the note at body). Last in the file on purpose, so a tie in specificity --
+   the phone rule for .row-when is one -- goes to the light theme. */
+[data-theme="light"] :is(.fc-odds, .ab-rest, .vt-tag, .pick-strip .pick-odds, .ml-band-n, .model-health > summary span) { font-weight:500; }
+[data-theme="light"] .board-row .row-when { font-weight:500; }

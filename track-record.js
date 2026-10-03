@@ -29,7 +29,10 @@
   // Theme toggle, kept in step with the board so a reader who set light there
   // does not land on a dark page here.
   try {
-    var saved = localStorage.getItem('aimplified-theme');
+    // The board's key is aimplified_theme (underscore). This page used
+    // aimplified-theme (hyphen), so light chosen on the board never reached
+    // here. The board's key first; the old one as a fallback.
+    var saved = localStorage.getItem('aimplified_theme') || localStorage.getItem('aimplified-theme');
     if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
   } catch (e) { /* private mode — the default theme is fine */ }
   document.addEventListener('click', function (e) {
@@ -37,7 +40,7 @@
     if (!t) return;
     var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
-    try { localStorage.setItem('aimplified-theme', next); } catch (err) { /* not essential */ }
+    try { localStorage.setItem('aimplified_theme', next); localStorage.setItem('aimplified-theme', next); } catch (err) { /* not essential */ }
   });
 
   fetch(API + '/api/track-record', { headers: { accept: 'application/json' } })
