@@ -1,0 +1,244 @@
+{
+ "content": {
+  "sbData": {
+   "events": [
+    {
+     "id": "401812691",
+     "date": "2025-10-09T23:30Z",
+     "name": "Minnesota Timberwolves at New York Knicks",
+     "shortName": "MIN @ NY",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": false,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "100",
+         "winner": true,
+         "team": {
+          "displayName": "New York Knicks",
+          "abbreviation": "NY",
+          "name": "Knicks",
+          "location": "New York"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "95",
+         "winner": false,
+         "team": {
+          "displayName": "Minnesota Timberwolves",
+          "abbreviation": "MIN",
+          "name": "Timberwolves",
+          "location": "Minnesota"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401812692",
+     "date": "2025-10-10T00:00Z",
+     "name": "Cleveland Cavaliers at Chicago Bulls",
+     "shortName": "CLE @ CHI",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": false,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "119",
+         "winner": true,
+         "team": {
+          "displayName": "Chicago Bulls",
+          "abbreviation": "CHI",
+          "name": "Bulls",
+          "location": "Chicago"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "112",
+         "winner": false,
+         "team": {
+          "displayName": "Cleveland Cavaliers",
+          "abbreviation": "CLE",
+          "name": "Cavaliers",
+          "location": "Cleveland"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401812693",
+     "date": "2025-10-10T00:00Z",
+     "name": "Detroit Pistons at Milwaukee Bucks",
+     "shortName": "DET @ MIL",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": false,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "117",
+         "winner": true,
+         "team": {
+          "displayName": "Milwaukee Bucks",
+          "abbreviation": "MIL",
+          "name": "Bucks",
+          "location": "Milwaukee"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "111",
+         "winner": false,
+         "team": {
+          "displayName": "Detroit Pistons",
+          "abbreviation": "DET",
+          "name": "Pistons",
+          "location": "Detroit"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401812694",
+     "date": "2025-10-10T00:00Z",
+     "name": "Charlotte Hornets at Oklahoma City Thunder",
+     "shortName": "CHA @ OKC",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": false,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "122",
+         "winner": true,
+         "team": {
+          "displayName": "Oklahoma City Thunder",
+          "abbreviation": "OKC",
+          "name": "Thunder",
+          "location": "Oklahoma City"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "116",
+         "winner": false,
+         "team": {
+          "displayName": "Charlotte Hornets",
+          "abbreviation": "CHA",
+          "name": "Hornets",
+          "location": "Charlotte"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401812695",
+     "date": "2025-10-10T02:30Z",
+     "name": "Guangzhou Loong-Lions at LA Clippers",
+     "shortName": "GUA VS LAC",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": true,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "142",
+         "winner": true,
+         "team": {
+          "displayName": "LA Clippers",
+          "abbreviation": "LAC",
+          "name": "Clippers",
+          "location": "LA"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "95",
+         "winner": false,
+         "team": {
+          "displayName": "Guangzhou Loong-Lions",
+          "abbreviation": "GUA",
+          "name": "Loong-Lions",
+          "location": "Guangzhou"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "_recorded": "cdn.espn.com/core/nba/scoreboard?xhr=1&date=20251009, recorded 2026-10-03, trimmed to the fields the grader reads"
+}

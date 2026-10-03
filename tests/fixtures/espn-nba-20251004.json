@@ -1,0 +1,241 @@
+{
+ "content": {
+  "sbData": {
+   "events": [
+    {
+     "id": "401812483",
+     "date": "2025-10-04T15:00Z",
+     "name": "New York Knicks at Philadelphia 76ers",
+     "shortName": "NY VS PHI",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": true,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "104",
+         "winner": false,
+         "team": {
+          "displayName": "Philadelphia 76ers",
+          "abbreviation": "PHI",
+          "name": "76ers",
+          "location": "Philadelphia"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "113",
+         "winner": true,
+         "team": {
+          "displayName": "New York Knicks",
+          "abbreviation": "NY",
+          "name": "Knicks",
+          "location": "New York"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401812484",
+     "date": "2025-10-05T00:00Z",
+     "name": "null Hapoel Jerusalem at Brooklyn Nets",
+     "shortName": "HAPOEL @ BKN",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": false,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "123",
+         "winner": true,
+         "team": {
+          "displayName": "Brooklyn Nets",
+          "abbreviation": "BKN",
+          "name": "Nets",
+          "location": "Brooklyn"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "88",
+         "winner": false,
+         "team": {
+          "displayName": "Hapoel Jerusalem",
+          "abbreviation": "HAPOEL",
+          "name": "Hapoel Jerusalem"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401812485",
+     "date": "2025-10-05T00:00Z",
+     "name": "Orlando Magic at Miami Heat",
+     "shortName": "ORL VS MIA",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": true,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "118",
+         "winner": false,
+         "team": {
+          "displayName": "Miami Heat",
+          "abbreviation": "MIA",
+          "name": "Heat",
+          "location": "Miami"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "126",
+         "winner": true,
+         "team": {
+          "displayName": "Orlando Magic",
+          "abbreviation": "ORL",
+          "name": "Magic",
+          "location": "Orlando"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401812486",
+     "date": "2025-10-05T01:00Z",
+     "name": "Minnesota Timberwolves at Denver Nuggets",
+     "shortName": "MIN VS DEN",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": true,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "116",
+         "winner": false,
+         "team": {
+          "displayName": "Denver Nuggets",
+          "abbreviation": "DEN",
+          "name": "Nuggets",
+          "location": "Denver"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "126",
+         "winner": true,
+         "team": {
+          "displayName": "Minnesota Timberwolves",
+          "abbreviation": "MIN",
+          "name": "Timberwolves",
+          "location": "Minnesota"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401812487",
+     "date": "2025-10-05T03:00Z",
+     "name": "Melbourne Pnx at New Orleans Pelicans",
+     "season": {
+      "year": 2026,
+      "type": 1,
+      "slug": "preseason"
+     },
+     "status": {
+      "type": {
+       "name": "STATUS_FINAL",
+       "completed": true,
+       "description": "Final"
+      }
+     },
+     "competitions": [
+      {
+       "neutralSite": true,
+       "competitors": [
+        {
+         "homeAway": "home",
+         "score": "127",
+         "winner": true,
+         "team": {
+          "displayName": "New Orleans Pelicans",
+          "abbreviation": "NO",
+          "name": "Pelicans",
+          "location": "New Orleans"
+         }
+        },
+        {
+         "homeAway": "away",
+         "score": "92",
+         "winner": false,
+         "team": {
+          "displayName": "Melbourne Pnx",
+          "name": "Pnx",
+          "location": "Melbourne"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "_recorded": "cdn.espn.com/core/nba/scoreboard?xhr=1&date=20251004, recorded 2026-10-03, trimmed to the fields the grader reads"
+}
