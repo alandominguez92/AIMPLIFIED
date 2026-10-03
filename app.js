@@ -2081,8 +2081,13 @@
       const corrN = isBatter() && g.gamePk != null ? (gameCounts[g.gamePk] || 0) : 0;
 
       // Post-pivot: only batter unders are plays. Context views (K/ML) show an
-      // "analysis" chip instead of a tier, and no slip star.
+      // "analysis" chip instead of a tier. The K board has its slip star back
+      // (2026-10-03): strikeout legs are played on PrizePicks and in parlays
+      // beside batter unders, and a slip that could not hold them could not
+      // build those entries. Still no tier on it — the star takes a leg, it
+      // does not rank one.
       const isPlayView = isBatter();
+      const canStar = isPlayView || isK();
       // Built here rather than beside the row template because the batter cell
       // renders the star inline with the name — it tracks that pick, so it sits
       // with it instead of floating in a column of its own.
@@ -2098,7 +2103,7 @@
         // A pulled row loses its star outright rather than rendering it inert \u2014
         // the board's rule is that a dead affordance disappears. A dim em-dash
         // holds the slot so the name column does not shift under it.
-        : (isPlayView
+        : (canStar
           ? (g.pulled
             ? '<span class="leading leading-out" aria-hidden="true">\u2014</span>'
             : `<span class="leading${isTracked ? ' tracked' : ''}" data-action="leading-click" data-id="${g.id}" role="button" tabindex="0" aria-pressed="${isTracked}" aria-label="Track ${esc(g.matchup)}" title="Track this pick">${isTracked ? '\u2605' : '\u2606'}</span>`)
@@ -2450,9 +2455,16 @@
                  ${consensusStr ? `<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)" title="median de-vigged P(over) across the books that posted this line">${esc(consensusStr)}</span>` : ''}
                  ${booksStr ? `<span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--textDim)">${esc(booksStr)}</span>` : ''}`
               : `<span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">no prop line</span>`;
+            // Either arm can go in the slip from here — the row star only ever
+            // took the one it headlines, so a game's second starter had no way in.
+            const kId = (m || p.pp) && !g.closed ? kLegIdFor(g, p) : null;
+            const kOn = !!(kId && state.slip[kId]);
+            const addHtml = kId
+              ? `<button type="button" class="k-add${kOn ? ' on' : ''}" data-action="k-add" data-id="${esc(String(g.id))}" data-p="${esc(String(p.id != null ? p.id : p.name))}" aria-pressed="${kOn}">${kOn ? '★ In slip' : '☆ Add to slip'}</button>`
+              : '';
             return `
             <div style="display:flex;align-items:baseline;gap:10px;margin-top:10px;flex-wrap:wrap">
-              <span style="font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;min-width:120px">${esc(p.name)}${espnTag(p)}</span>
+              <span style="font-family:'Archivo',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;min-width:120px">${esc(p.name)}${espnTag(p)}</span>${addHtml}
               <span style="font-family:'IBM Plex Mono';font-size:14px;color:var(--accent);font-weight:600">${p.proj} K</span>
               <span style="font-family:'IBM Plex Mono';font-size:12.5px;color:var(--textDim)">80% ${p.lo} – ${p.hi}</span>
               <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--textDim)">opp K ${p.oppKpct}%</span>
@@ -2782,7 +2794,11 @@
     // place a dead leg costs money, so it says so before the totals rather than
     // leaving the reader to notice the row greyed out on the board.
     const pulledIds = new Set(pulledRows().map((r) => legIdFor(r)));
-    const deadLegs = legs.filter((leg) => pulledIds.has(leg.id));
+    // By player too: a Today's-card leg is keyed by market, not by board row,
+    // and a scratched batter is just as dead in it.
+    const pulledPlayers = new Set(pulledRows().map((r) => r.playerId).filter((x) => x != null));
+    const deadLegs = legs.filter((leg) => pulledIds.has(leg.id)
+      || (leg.spec && leg.spec.market !== 'K' && leg.spec.playerId != null && pulledPlayers.has(leg.spec.playerId)));
     const deadHtml = deadLegs.length
       ? `<div class="slip-dead"><b>${deadLegs.length === 1
           ? 'One leg is off the board' : deadLegs.length + ' legs are off the board'}</b> — `
@@ -2791,7 +2807,7 @@
         + `Remove ${deadLegs.length === 1 ? 'it' : 'them'} before you bet the rest.</div>`
       : '';
 
-    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter' };
+    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter', 'PrizePicks': 'pp' };
     const legHtml = legs.map((leg) => `
       <div class="slip-leg">
         <span class="slip-tag ${boardTag[leg.board] || ''}">${esc(leg.board)}</span>
@@ -2854,16 +2870,65 @@
           <span class="slip-avg-v ${avgEdge >= 0 ? 'pos' : 'neg'}">${avgEdge > 0 ? '+' : ''}${avgEdge}%</span>
           <span class="slip-avg-note">Each leg is priced on its own — a parlay's true edge is lower after combined vig${withEdge.length > 1 ? ' and any correlation' : ''}.</span>
         </div>` : '';
-    el.slip.innerHTML = `${deadHtml}<div class="slip-legs">${legHtml}</div>${avgHtml}${summaryHtml}`;
+    el.slip.innerHTML = `${deadHtml}<div class="slip-legs">${legHtml}</div>${slipReadHtml(legs)}${avgHtml}${summaryHtml}`;
 
     const stakeInput = document.getElementById('stakeInput');
     if (stakeInput) stakeInput.addEventListener('change', (e) => setStake(e.target.value));
     // Logging lives with the legs it logs — directly under them, ahead of the
     // parlay calculator. At the bottom of the slip it sat 1,200px down the rail,
     // under numbers that describe a DraftKings parlay, not the entry being logged.
-    const legsBox = el.slip.querySelector('.slip-legs');
+    // The read, when there is one, stays between the legs and the form: it is
+    // about the legs, and is meant to be seen before the entry is saved.
+    const legsBox = el.slip.querySelector('.slip-read') || el.slip.querySelector('.slip-legs');
     if (legsBox) legsBox.insertAdjacentHTML('afterend', logFormHtml(legs));
     else el.slip.insertAdjacentHTML('beforeend', logFormHtml(legs));
+  }
+
+  // The slip read as ONE entry, which is how it is played. Three things a list
+  // of legs does not say on its own:
+  //   - legs from the same game win or lose together, and a strikeout leg can
+  //     point with or against the hitters facing that pitcher;
+  //   - PrizePicks will not take an entry whose players all come from one team;
+  //   - what each leg has to land for the entry type to break even.
+  const PP_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 4: ['4-pick flex', 56.9], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
+  function slipReadHtml(legs) {
+    const notes = [];
+    const sideOf = (l) => state.logSides[l.id] || (l.spec && l.spec.side);
+    const surname = (s) => String(s || '').trim().split(/\s+/).pop();
+    const byGame = new Map();
+    for (const l of legs) {
+      const s = l.spec;
+      if (!s || s.gamePk == null) continue;
+      if (!byGame.has(s.gamePk)) byGame.set(s.gamePk, []);
+      byGame.get(s.gamePk).push(l);
+    }
+    for (const gl of byGame.values()) {
+      if (gl.length < 2) continue;
+      const parts = [];
+      const unders = gl.filter((l) => l.spec.market !== 'K' && l.spec.market !== 'ml' && sideOf(l) === 'Under');
+      for (const k of gl.filter((l) => l.spec.market === 'K')) {
+        // Only the hitters he is facing: his own lineup's at-bats have nothing
+        // to do with his strikeouts.
+        if (!unders.some((b) => b.spec.team && k.spec.team && b.spec.team !== k.spec.team)) continue;
+        parts.push(sideOf(k) === 'Over'
+          ? `${esc(surname(k.spec.player))} over and the hitters facing him under point the same way: a dominant start helps both`
+          : `${esc(surname(k.spec.player))} under points against the hitters facing him going under: a short, hittable start sinks them together`);
+      }
+      notes.push(`<b>${gl.length} legs from one game</b> (${gl.map((l) => esc(surname(l.spec.player))).join(', ')}) win or lose together.`
+        + (parts.length ? ' ' + parts.join('. ') + '.' : ''));
+    }
+    if (state.logBook === 'pp' && legs.length >= 2) {
+      const teams = new Set(legs.map((l) => l.spec && l.spec.team).filter(Boolean));
+      if (teams.size === 1) notes.push(`<b>PrizePicks needs two teams.</b> Every leg here is ${esc([...teams][0])} — swap one for another club's player.`);
+      const be = PP_BREAK_EVEN[legs.length];
+      const probs = legs.map((l) => entryLegFrom(l, 'pp').modelProb).filter((v) => typeof v === 'number');
+      if (be && probs.length === legs.length) {
+        const avg = Math.round(probs.reduce((a, b) => a + b, 0) / probs.length * 10) / 10;
+        notes.push(`Model's average leg <b>${avg}%</b> · a ${be[0]} needs <b>${be[1]}%</b> a leg to break even. `
+          + 'These are the model’s chances, which have run high; Track Record shows how its legs actually landed.');
+      }
+    }
+    return notes.length ? `<div class="slip-read">${notes.map((n) => `<div class="slip-read-n">${n}</div>`).join('')}</div>` : '';
   }
 
   // ROI, cumulative-units chart, per-tier / per-side / per-market breakdowns.
@@ -2984,17 +3049,34 @@
         legs.push({ id: g.id, view: 'batter', player: g.matchup, team: g.team,
           market: PP_MARKET_SHORT[m.metric] || m.metric, point: m.pp.point, prob: m.pp.modelUnder,
           bookLine: m.line, bookPrice: m.price, when: g.timeLabel,
-          confirmed: g.lineupSlot != null, game: g.gamePk });
+          confirmed: g.lineupSlot != null, game: g.gamePk,
+          // What the slip and the entry log need to take this exact leg: the
+          // under, at PrizePicks' number, in this market.
+          legId: `pp:${g.id}:${m.metric}`,
+          spec: { sport: 'mlb', date: ptDayOf(g.time || g.timeMs), gamePk: g.gamePk != null ? g.gamePk : null,
+            playerId: g.playerId != null ? g.playerId : null, player: g.name || g.matchup, team: g.team || null,
+            market: m.metric, side: 'Under',
+            book: { line: m.line != null ? m.line : null, price: m.side === 'Under' && typeof m.price === 'number' ? m.price : null,
+              under: typeof m.modelOver === 'number' ? pct1(100 - m.modelOver) : null },
+            pp: { line: m.pp.point, under: pct1(m.pp.modelUnder) } } });
       }
     }
     for (const g of Array.isArray(state.liveBoard) ? state.liveBoard : []) {
       if (!g || !upcoming(g.status)) continue;
       for (const p of g.projRows || []) {
         if (!p || !p.pp || p.pp.modelUnder == null || p.pp.point == null) continue;
+        const mk = p.market || {};
         legs.push({ id: g.id, view: 'kprops', player: p.name, team: p.team,
           market: 'Ks', point: p.pp.point, prob: p.pp.modelUnder,
           bookLine: p.market ? p.market.line : null, bookPrice: null, when: g.timeLabel,
-          confirmed: true, game: g.id });
+          confirmed: true, game: g.id,
+          legId: `pp:${g.id}:K:${p.id != null ? p.id : p.name}`,
+          spec: { sport: 'mlb', date: ptDayOf(g.timeMs || g.time), gamePk: pkOf(g.id),
+            playerId: p.id != null ? p.id : null, player: p.fullName || p.name, team: p.team || null,
+            market: 'K', side: 'Under',
+            book: { line: mk.line != null ? mk.line : null, price: mk.side === 'Under' && typeof mk.price === 'number' ? mk.price : null,
+              under: typeof mk.modelOver === 'number' ? pct1(100 - mk.modelOver) : null },
+            pp: { line: p.pp.point, under: pct1(p.pp.modelUnder) } } });
       }
     }
     return legs.sort((x, y) => y.prob - x.prob);
@@ -3051,7 +3133,11 @@
       + `<ol class="tc-legs">${top.map((x) => {
         const book = x.bookLine != null
           ? `<span class="tc-book">book u${esc(String(x.bookLine))}${x.bookPrice != null ? ' ' + esc(AM(x.bookPrice)) : ''}</span>` : '';
-        return `<li><button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
+        // The star sits beside the leg, not inside it: the leg itself is a button
+        // that jumps to the board, and a button cannot hold another.
+        const on = !!state.slip[x.legId];
+        const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="today-add" data-leg="${esc(x.legId)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.player || '')} under ${esc(String(x.point))} ${esc(x.market)} ${on ? 'from' : 'to'} your slip" title="${on ? 'In your slip' : 'Add to slip'}">${on ? '★' : '☆'}</button>`;
+        return `<li>${star}<button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
           + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p">${Math.round(x.prob)}%</span></span>`
           + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(x.market)} · PrizePicks${x.when ? ' · ' + esc(String(x.when).replace(/ PT$/, '')) : ''}`
           + `${x.confirmed ? '' : ' <span class="tc-wait">lineup not out</span>'}</span>${book}</span>`
@@ -3899,15 +3985,28 @@
         under: typeof g.modelOver === 'number' ? pct1(100 - g.modelOver) : null },
       pp: m.pp && m.pp.point != null ? { line: m.pp.point, under: pct1(m.pp.modelUnder) } : null };
   }
-  function kSpec(g) {
+  // The starter a K row headlines: the one its pick names.
+  function kLeadOf(g) {
     const ps = Array.isArray(g.projRows) ? g.projRows : [];
-    const p = ps.find((x) => x && x.name && String(g.pick || '').startsWith(x.name)) || ps.find((x) => x && x.pp) || ps[0];
+    return ps.find((x) => x && x.name && String(g.pick || '').startsWith(x.name)) || ps.find((x) => x && x.pp) || ps[0] || null;
+  }
+  // `pIn` names a starter outright (the breakdown's per-arm add); without it the
+  // spec follows the row's headline, as the row star and the hero always have.
+  function kSpec(g, pIn) {
+    const p = pIn || kLeadOf(g);
     if (!p) return null;
     const mk = p.market || {};
+    // From the arm's own market, which the row's pick is built from. The pick
+    // TEXT abbreviates ("H. Smith O 4.5 Ks"), and reading it for "Over" scored
+    // every starred K over as an under — in the parlay read and in the entry
+    // log's default side alike. The text is the fallback for a row with no market.
+    const side = mk.side === 'Over' || mk.side === 'Under' ? mk.side
+      : (/\b(Over|O)\s+\d/.test(String(g.pick || '')) ? 'Over' : 'Under');
     return { sport: 'mlb', date: ptDayOf(g.timeMs || g.time), gamePk: pkOf(g.id),
       playerId: p.id != null ? p.id : null, player: p.fullName || p.name, team: p.team || null,
-      market: 'K', side: /\bOver\b/.test(String(g.pick || '')) ? 'Over' : 'Under',
-      book: { line: mk.line != null ? mk.line : null, price: typeof g.odds === 'number' ? g.odds : null,
+      market: 'K', side,
+      book: { line: mk.line != null ? mk.line : null,
+        price: pIn ? (typeof mk.price === 'number' ? mk.price : null) : (typeof g.odds === 'number' ? g.odds : null),
         under: typeof mk.modelOver === 'number' ? pct1(100 - mk.modelOver) : null },
       pp: p.pp && p.pp.point != null ? { line: p.pp.point, under: pct1(p.pp.modelUnder) } : null };
   }
@@ -3933,6 +4032,37 @@
   // hero's "Add to slip" adds exactly what the board's star would for that game.
   function buildKPropLeg(g) {
     return { id: 'kprops:' + g.id, board: 'K Prop', title: g.pick, sub: g.matchup, odds: typeof g.odds === 'number' ? g.odds : null, tier: g.tier, edge: typeof g.edge === 'number' ? g.edge : null, spec: kSpec(g) };
+  }
+  // Either starter, from the breakdown. The arm the row headlines keeps the row
+  // star's id, so starring him in either place is the same leg, never two.
+  function kLegIdFor(g, p) {
+    return p === kLeadOf(g) ? 'kprops:' + g.id : `kprops:${g.id}:${p.id != null ? p.id : p.name}`;
+  }
+  function buildKPitcherLeg(g, p) {
+    if (p === kLeadOf(g)) return buildKPropLeg(g);
+    const m = p.market || {};
+    return { id: kLegIdFor(g, p), board: 'K Prop',
+      // The row's own format, so the two arms of one game read alike in the slip.
+      title: m.line != null ? `${p.name} ${m.side === 'Over' ? 'O' : 'U'} ${m.line} Ks` : `${p.name} Ks`, sub: g.matchup,
+      odds: typeof m.price === 'number' ? m.price : null, tier: m.tier,
+      edge: typeof m.edge === 'number' ? m.edge : null, spec: kSpec(g, p) };
+  }
+  // A Today's-card leg, at PrizePicks' number. It is a different bet from the
+  // board row's — the card ranks the under at PP's line in whichever market
+  // ranks best, the row leads with the book line — so it is its own leg.
+  function buildPpLeg(x) {
+    return { id: x.legId, board: 'PrizePicks', title: `${x.player} Under ${x.point} ${x.market}`,
+      sub: x.when ? String(x.when).replace(/ PT$/, '') : '', odds: null, tier: null, edge: null, spec: x.spec };
+  }
+  function toggleLeg(leg) {
+    const next = { ...state.slip };
+    const adding = !next[leg.id];
+    if (adding) next[leg.id] = leg; else delete next[leg.id];
+    state.slip = next;
+    persistSlip();
+    renderControls(); renderBoard(); renderSlip(); renderTodayCard();
+    const n = Object.keys(state.slip).length;
+    toast(adding ? `★ Added ${leg.title} · ${n} leg${n === 1 ? '' : 's'}` : `Removed ${leg.title}`);
   }
   // Batter under leg, view-independent — the hero's featured fade.
   function buildBatterLeg(g) {
@@ -4128,6 +4258,21 @@
         break;
       case 'row-click': onRowClick(target.dataset.id); break;
       case 'today-jump': jumpToLeg(target.dataset.view, target.dataset.id); break;
+      case 'today-add': {
+        if (e) e.stopPropagation();
+        const x = todayLegs().find((l) => l.legId === target.dataset.leg);
+        if (x) toggleLeg(buildPpLeg(x));
+        else if (state.slip[target.dataset.leg]) removeLeg(target.dataset.leg);
+        break;
+      }
+      case 'k-add': {
+        if (e) e.stopPropagation();
+        const g = (Array.isArray(state.liveBoard) ? state.liveBoard : []).find((r) => String(r.id) === target.dataset.id)
+          || getGames().find((r) => String(r.id) === target.dataset.id);
+        const p = g && (g.projRows || []).find((r) => r && String(r.id != null ? r.id : r.name) === target.dataset.p);
+        if (g && p) toggleLeg(buildKPitcherLeg(g, p));
+        break;
+      }
       case 'log-book': state.logBook = target.dataset.book === 'dk' ? 'dk' : 'pp'; renderSlip(); break;
       case 'log-kind': state.logKind = { ...state.logKind, [state.logBook]: target.dataset.kind }; renderSlip(); break;
       case 'log-side': state.logSides = { ...state.logSides, [target.dataset.leg]: target.dataset.side }; renderSlip(); break;

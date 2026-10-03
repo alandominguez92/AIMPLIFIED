@@ -2634,9 +2634,14 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   #slate .board-search { flex:1 1 0; min-width:0; }
   #slate .board-controls .compare-btn { order:1; margin-left:0; }
   #slate .board-controls .filter-group { order:2; flex:1 1 100%; }
-  #slate .board-controls .sort-group { order:3; flex:1 1 100%; }
-  #slate .board-controls .sort-chips { flex:1; }
-  #slate .board-controls .sort-chips .sort-btn { flex:1 1 auto; white-space:nowrap; padding:0 8px; }
+  #slate .board-controls .sort-group { order:3; flex:1 1 100%; min-width:0; }
+  /* min-width + overflow: the K board's five chips (First pitch, Proj Ks,
+     Edge, Model P, Odds) measured 333px against ~305 free, and with nowrap they
+     pushed the whole page 22px wider than a 375px phone. They scroll inside
+     their own pill instead. */
+  #slate .board-controls .sort-chips { flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; }
+  #slate .board-controls .sort-chips::-webkit-scrollbar { display:none; }
+  #slate .board-controls .sort-chips .sort-btn { flex:1 0 auto; white-space:nowrap; padding:0 8px; }
 
   /* 44px of section padding sat between the stat strip and the first thing on
      the board: the gap under the sports tabs. */
@@ -2721,3 +2726,20 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .model-health[open] > summary { margin-bottom:16px; }
 .model-health > .card + .card { margin-top:16px; }
 @media (max-width:640px) { .model-health > summary span { display:none; } }
+
+/* Slip stars beyond the batter board (2026-10-03): either starter from the K
+   breakdown, and any leg on Today's card. The card's star sits beside its leg,
+   which is itself a button. */
+.k-add { font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--accent); background:transparent;
+  border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:999px; padding:3px 10px; cursor:pointer; }
+.k-add.on { color:var(--onAccent); background:var(--accentFill); border-color:var(--accentFill); }
+.tc-legs li { display:flex; align-items:stretch; gap:8px; }
+.tc-legs li .tc-leg { flex:1; min-width:0; }
+.tc-add { flex:none; width:40px; font-size:18px; line-height:1; color:var(--textDim); cursor:pointer;
+  background:var(--board, transparent); border:1px solid var(--border); border-radius:10px; }
+.tc-add.on { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 55%, transparent); }
+.slip-tag.pp { background:var(--model); }
+.slip-read { margin:12px 0 0; display:grid; gap:8px; }
+.slip-read-n { border:1px solid var(--border); border-left:3px solid var(--warm); border-radius:10px;
+  padding:10px 13px; font-size:12.5px; line-height:1.55; color:var(--textDim); text-wrap:pretty; }
+.slip-read-n b { color:var(--text); font-weight:600; }
