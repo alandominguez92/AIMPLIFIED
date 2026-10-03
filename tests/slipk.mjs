@@ -98,5 +98,21 @@ ok(!/PrizePicks needs two teams/.test(F.slipReadHtml([kanes, batter(502, 'Jose R
   'on DraftKings the two-team rule does not apply and is not shown');
 ok(F.slipReadHtml([kanes]) === '', 'a single leg has nothing to read');
 
+console.log('\n-- a moneyline beside the props in its game --');
+// The moneyline star came back the same day, for DraftKings parlays.
+const ml = (team) => ({ id: `ml:g849829:${team}`, board: 'ML', title: `${team} ML`, odds: -150,
+  spec: { sport: 'mlb', date: '2026-10-03', gamePk: 849829, player: team, team, market: 'ml', side: 'home', book: { line: null, price: -150, win: 58 } } });
+const cws = batter(503, 'Andrew Benintendi', 'CWS', 55);
+const messickOver = { ...F.buildKPitcherLeg(row, messick), spec: { ...F.buildKPitcherLeg(row, messick).spec, side: 'Over' } };
+const readMl = F.slipReadHtml([ml('CLE'), kanes, cws, messickOver, lead]);
+ok(/CLE to win pulls against Kwan/.test(readMl), 'a team to win pulls against its own hitters going under');
+ok(/CLE to win points the same way as [^.]*Benintendi/.test(readMl) && /CLE to win points the same way as [^.]*Messick/.test(readMl),
+  'and points the same way as the other club’s hitters under and its own starter over');
+ok(/CLE to win pulls against [^.]*Smith/.test(readMl), 'while the other starter’s strikeout over pulls against it');
+ok(/both teams are here to win/.test(F.slipReadHtml([ml('CLE'), ml('CWS')])), 'both sides of one game are called out: one of them loses');
+state.logBook = 'pp';
+ok(!/break even/.test(F.slipReadHtml([ml('CLE'), batter(504, 'Some Bat', 'NYY', 60)])),
+  'and with a moneyline in it there is no PrizePicks entry to break even');
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

@@ -2087,7 +2087,9 @@
       // build those entries. Still no tier on it — the star takes a leg, it
       // does not rank one.
       const isPlayView = isBatter();
-      const canStar = isPlayView || isK();
+      // And the moneyline, the user's main market: DraftKings parlays put a
+      // side beside the props. Only a row with a side to take gets one.
+      const canStar = isPlayView || isK() || (isML() && !!(g.ml && g.ml.teamAbbr));
       // Built here rather than beside the row template because the batter cell
       // renders the star inline with the name — it tracks that pick, so it sits
       // with it instead of floating in a column of its own.
@@ -2914,6 +2916,24 @@
           ? `${esc(surname(k.spec.player))} over and the hitters facing him under point the same way: a dominant start helps both`
           : `${esc(surname(k.spec.player))} under points against the hitters facing him going under: a short, hittable start sinks them together`);
       }
+      // A side to win, against everything else in its game. A team that wins
+      // has usually hit and usually pitched well, so its own hitters' unders and
+      // its starter's strikeout under pull against it; the other club's point
+      // the same way. Both sides of one game cannot both win.
+      const mls = gl.filter((l) => l.spec.market === 'ml');
+      if (new Set(mls.map((l) => l.spec.team)).size > 1) parts.push('both teams are here to win: one of those legs loses');
+      for (const m of mls) {
+        const t = m.spec.team;
+        const withIt = [], against = [];
+        for (const l of gl) {
+          if (l === m || !l.spec.team || l.spec.market === 'ml') continue;
+          const mine = l.spec.team === t;
+          const helps = l.spec.market === 'K' ? (sideOf(l) === 'Over') === mine : (sideOf(l) === 'Under') !== mine;
+          (helps ? withIt : against).push(esc(surname(l.spec.player)));
+        }
+        if (withIt.length) parts.push(`${esc(t)} to win points the same way as ${withIt.join(', ')}`);
+        if (against.length) parts.push(`${esc(t)} to win pulls against ${against.join(', ')}`);
+      }
       notes.push(`<b>${gl.length} legs from one game</b> (${gl.map((l) => esc(surname(l.spec.player))).join(', ')}) win or lose together.`
         + (parts.length ? ' ' + parts.join('. ') + '.' : ''));
     }
@@ -2921,8 +2941,11 @@
       const teams = new Set(legs.map((l) => l.spec && l.spec.team).filter(Boolean));
       if (teams.size === 1) notes.push(`<b>PrizePicks needs two teams.</b> Every leg here is ${esc([...teams][0])} — swap one for another club's player.`);
       const be = PP_BREAK_EVEN[legs.length];
+      // A moneyline cannot be played on PrizePicks at all (the log form says
+      // so), so there is no PrizePicks entry to break even.
+      const hasMl = legs.some((l) => l.spec && l.spec.market === 'ml');
       const probs = legs.map((l) => entryLegFrom(l, 'pp').modelProb).filter((v) => typeof v === 'number');
-      if (be && probs.length === legs.length) {
+      if (be && !hasMl && probs.length === legs.length) {
         const avg = Math.round(probs.reduce((a, b) => a + b, 0) / probs.length * 10) / 10;
         notes.push(`Model's average leg <b>${avg}%</b> · a ${be[0]} needs <b>${be[1]}%</b> a leg to break even. `
           + 'These are the model’s chances, which have run high; Track Record shows how its legs actually landed.');
@@ -4100,6 +4123,10 @@
     // still allow removing one added earlier while the line was live).
     if (adding && g.closed && !isML() && !isBatter() && !isRL()) {
       toast('Line closed — no longer bettable'); return;
+    }
+    // A moneyline on a game already under way is not the price on the row.
+    if (adding && isML() && (g.status === 'Live' || g.status === 'Final')) {
+      toast('Game already started — that moneyline is gone'); return;
     }
     const next = { ...state.slip };
     if (next[leg.id]) delete next[leg.id];
