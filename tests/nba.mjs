@@ -193,6 +193,28 @@ ok(miaClose && miaClose.entry_price === -140 && miaClose.close_price === -155,
 await tick();
 ok(nbaOdds().length === 2, 'and two a day is the cap');
 
+// ---- the board ---------------------------------------------------------------------------
+// The NBA tab (2026-10-04) reads what the captures saved. A read buys nothing,
+// except once for a league never captured since the board shipped -- here the
+// regular season, which the cron had no reason to capture yet.
+console.log('\n-- the board reads the captures --');
+const paidBefore = nbaOdds().length;
+const board = await hit('/api/nba-board');
+const bg = (id) => (board.games || []).find((x) => x.id === id) || {};
+console.log('  board: ' + (board.games || []).map((x) => `${x.away}@${x.home} ${x.fairSrc} ${x.awayPrice}/${x.homePrice}`).join(' | '));
+ok(bg('n1').pickSide === 'home' && bg('n1').fairSrc === 'pinnacle' && bg('n1').homeFair > 50,
+  `Heat-Raptors carries Pinnacle's fair and its favourite (${bg('n1').pickSide}, ${bg('n1').homeFair}%)`);
+ok(bg('n1').homePrice === -155 && bg('n1').awayPrice === 138 && bg('n1').awayBook === 'betrivers',
+  `and BOTH sides' best price from the latest capture, the close (${bg('n1').homePrice} / ${bg('n1').awayPrice} ${bg('n1').awayBook})`);
+ok(bg('n3').fairSrc === 'MKT' && bg('n3').pickSide == null && bg('n3').homePrice != null,
+  'a game no sharp book prices is listed with its prices and no fair, rather than dropped');
+ok(board.asOf && (board.games || []).every((x) => Date.parse(x.commence) > Date.now()), `it says how old the prices are (${board.asOf}), and lists only games not yet started`);
+const extra = nbaOdds().slice(paidBefore);
+ok(extra.length === 1 && /basketball_nba\/odds/.test(extra[0]),
+  `the one purchase is the never-captured regular season, once (${extra.map((u) => new URL(u).pathname).join(', ')})`);
+await hit('/api/nba-board');
+ok(nbaOdds().length === paidBefore + 1, 'and the next read buys nothing at all');
+
 // ---- grade -----------------------------------------------------------------------------------
 console.log('\n-- graded off the recorded ESPN days --');
 const seed = (id, date, home, away, side) => gm.set(gmKey(['nba', date, id, 'h2h']), {

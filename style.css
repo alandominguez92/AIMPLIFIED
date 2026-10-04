@@ -2770,3 +2770,4 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .leg-adds { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 4px; }
 .slip-tag.nfl { background:var(--positive); }
 .slip-tag.soc { background:var(--clv); }
+.slip-tag.nba { background:var(--caution, #d18a47); }

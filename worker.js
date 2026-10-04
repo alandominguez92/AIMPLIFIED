@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/entries',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/nba-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
 export default {
@@ -477,6 +477,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
   if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
+  if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-compare') return nflCompare(env, url);
@@ -4091,16 +4092,19 @@ function entryNflKey(gameId) {
 }
 async function gradeEntryLegsOther(db) {
   const open = ((await db.prepare(
-    "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer') AND game_id IS NOT NULL"
+    "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer','nba') AND game_id IS NOT NULL"
   ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market]));
   if (!open.length) return [];
   const winnerOf = (hs, as) => (hs > as ? 'home' : as > hs ? 'away' : 'draw');
-  const socIds = [...new Set(open.filter((l) => l.sport === 'soccer').map((l) => String(l.game_id).replace(/^g/, '')))];
+  // Soccer and the NBA keep the odds feed's event id on both sides: the log's
+  // game_id and the leg's.
+  const byIdLegs = open.filter((l) => l.sport === 'soccer' || l.sport === 'nba');
+  const socIds = [...new Set(byIdLegs.map((l) => String(l.game_id).replace(/^g/, '')))];
   let soc = [];
   if (socIds.length) {
     await ensureGamePickSchema(db);
     soc = ((await db.prepare(
-      `SELECT game_id, result, home_score, away_score FROM gmpicks WHERE sport='soccer' AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})`
+      `SELECT sport, game_id, result, home_score, away_score FROM gmpicks WHERE sport IN ('soccer','nba') AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})`
     ).bind(...socIds).all()).results || []);
   }
   const keys = open.filter((l) => l.sport === 'nfl').map((l) => entryNflKey(l.game_id)).filter(Boolean);
@@ -4127,13 +4131,18 @@ async function gradeEntryLegsOther(db) {
   const stmts = [];
   for (const l of open) {
     let result = null, actual = null;
-    if (l.sport === 'soccer') {
-      const g = soc.find((x) => x.game_id === String(l.game_id).replace(/^g/, ''));
+    if (l.sport === 'soccer' || l.sport === 'nba') {
+      const g = soc.find((x) => x.sport === l.sport && x.game_id === String(l.game_id).replace(/^g/, ''));
       if (!g) continue;
       // A fixture the log voided (listed, then moved) voids the leg with it.
       if (g.result === 'void') result = 'void';
       else if (g.home_score == null || g.away_score == null) continue;
-      else result = winnerOf(g.home_score, g.away_score) === l.side ? 'win' : 'loss';
+      else {
+        const w = winnerOf(g.home_score, g.away_score);
+        // The draw is a side in soccer; an NBA final cannot be level, and if one
+        // ever read that way it pushes.
+        result = l.sport === 'nba' && w === 'draw' ? 'push' : (w === l.side ? 'win' : 'loss');
+      }
     } else {
       const k = entryNflKey(l.game_id);
       if (!k) continue;
@@ -8236,11 +8245,13 @@ const NBA_MIN_GAP_MS = 3600 * 1000;
 const NBA_HORIZON_MS = 36 * 3600 * 1000;
 const NBA_CLOSE_MS = 3 * 3600 * 1000;
 
-// Pure: an /odds response in, gmpicks entries out. Fair is the median Shin
-// de-vig of two or more sharp books; with fewer, Pinnacle alone (fair_src
-// 'pinnacle'), the same fallback the Nations League uses -- preseason has
-// nothing else. A game with neither, or no executable price, logs nothing.
-function nbaEntries(evs, lg, now) {
+// Pure: an /odds response in, one read per game inside the window -- both
+// sides' fair and best executable price. Fair is the median Shin de-vig of two
+// or more sharp books; with fewer, Pinnacle alone (fair_src 'pinnacle'), the
+// same fallback the Nations League uses -- preseason has nothing else. With
+// neither, the game is still listed (the board shows its prices) but carries
+// no fair and logs nothing.
+function nbaGames(evs, lg, now) {
   const out = [];
   for (const e of (Array.isArray(evs) ? evs : [])) {
     const t = Date.parse(e && e.commence_time);
@@ -8259,25 +8270,53 @@ function nbaEntries(evs, lg, now) {
       const f = q ? shinDevig(q.home, q.away) : null;
       if (f != null && isFinite(f)) fairs.push(f);
     }
-    let fairHome = null, fairSrc = null;
+    let fairHome = null, fairSrc = 'MKT';
     if (fairs.length >= 2) { fairHome = median(fairs); fairSrc = 'sharp-pool'; }
     else if (px.pinnacle) { fairHome = shinDevig(px.pinnacle.home, px.pinnacle.away); fairSrc = 'pinnacle'; }
-    if (fairHome == null || !isFinite(fairHome)) continue;
-    const side = fairHome >= 0.5 ? 'home' : 'away';
-    const winProb = side === 'home' ? fairHome : 1 - fairHome;
-    let price = null, book = null;
-    for (const bk of NBA_EXEC) {
-      const p = px[bk] && px[bk][side];
-      if (typeof p !== 'number') continue;
-      if (price == null || amProb(p) < amProb(price)) { price = p; book = bk; }
-    }
+    if (fairHome != null && !isFinite(fairHome)) fairHome = null;
+    if (fairHome == null) fairSrc = 'MKT';
+    const best = (side) => {
+      let price = null, book = null;
+      for (const bk of NBA_EXEC) {
+        const q = px[bk] && px[bk][side];
+        if (typeof q !== 'number') continue;
+        if (price == null || amProb(q) < amProb(price)) { price = q; book = bk; }
+      }
+      return { price, book };
+    };
+    const bh = best('home'), ba = best('away');
+    if (bh.price == null && ba.price == null) continue;
+    const value = (fair, price) => (fair != null && price != null ? round1((fair - amProb(price)) * 100) : null);
+    const pickSide = fairHome == null ? null : (fairHome >= 0.5 ? 'home' : 'away');
+    out.push({
+      id: e.id, league: lg, commence: e.commence_time, home, away,
+      fairSrc, sharpN: fairSrc === 'pinnacle' ? 1 : fairs.length,
+      homeFair: fairHome == null ? null : round1(fairHome * 100),
+      awayFair: fairHome == null ? null : round1((1 - fairHome) * 100),
+      homePrice: bh.price, homeBook: bh.book, awayPrice: ba.price, awayBook: ba.book,
+      homeValue: value(fairHome, bh.price), awayValue: value(fairHome == null ? null : 1 - fairHome, ba.price),
+      pickSide,
+    });
+  }
+  return out;
+}
+
+// gmpicks entries from those reads: the side the sharp books favour, at its
+// best price. A game with no fair, or no price on that side, logs nothing.
+function nbaEntries(evs, lg, now) {
+  const out = [];
+  for (const g of nbaGames(evs, lg, now)) {
+    if (!g.pickSide) continue;
+    const side = g.pickSide;
+    const price = side === 'home' ? g.homePrice : g.awayPrice;
     if (price == null) continue;
+    const winProb = (side === 'home' ? g.homeFair : g.awayFair) / 100;
     const imp = amProb(price);
     out.push({
-      game_id: e.id, league: lg, commence: e.commence_time, side,
-      pick: side === 'home' ? home : away, home, away,
+      game_id: g.id, league: lg, commence: g.commence, side,
+      pick: side === 'home' ? g.home : g.away, home: g.home, away: g.away,
       win_prob: round1(winProb * 100), implied: round1(imp * 100), edge: round1((winProb - imp) * 100),
-      price, book, fair_src: fairSrc, sharp_n: fairSrc === 'pinnacle' ? 1 : fairs.length,
+      price, book: side === 'home' ? g.homeBook : g.awayBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
     });
   }
   return out;
@@ -8299,7 +8338,34 @@ async function nbaCapture(env, lg) {
   }
   let logged = 0;
   for (const [d, list] of byDay) logged += await logGamePicks(env.DB, 'nba', d, list);
+  // The board reads this snapshot, so it costs nothing to open: its prices are
+  // the ones the last capture bought, and it says how old they are.
+  await saveFeedCache(env.DB, `nba_board:${lg}`, { asOf: new Date().toISOString(), games: nbaGames(evs, lg, Date.now()) });
   return { league: lg, events: Array.isArray(evs) ? evs.length : 0, logged, credits: r.headers.get('x-requests-last') };
+}
+
+// GET /api/nba-board. The upcoming games of both leagues from the captures'
+// snapshots -- no Odds API call on a read. The one exception is a league that
+// has never been captured since the board shipped: that read buys one capture
+// (1 credit) under a lease, so the tab is not blank until the next cron window.
+async function nbaBoardData(env) {
+  const out = { games: [], asOf: null, note: 'Sharp-book fair line against the best DK/FD/BetMGM/BetRivers/Caesars price. Not modelled and not posted; the side the sharp books favour is logged and graded.' };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
+  const now = Date.now();
+  for (const lg of Object.keys(NBA_LEAGUES)) {
+    const key = `nba_board:${lg}`;
+    let snap = await loadFeedCache(env.DB, key);
+    if (!snap.present && env.ODDS_API_KEY && await claimFeedRefresh(env.DB, key, 120000)) {
+      try { await nbaCapture(env, lg); snap = await loadFeedCache(env.DB, key); } catch (e) { /* next read */ }
+    }
+    const d = snap.present && snap.data ? snap.data : null;
+    if (!d) continue;
+    if (d.asOf && (!out.asOf || d.asOf < out.asOf)) out.asOf = d.asOf;
+    for (const g of (d.games || [])) if (Date.parse(g.commence) > now) out.games.push(g);
+  }
+  out.games.sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
+  out.empty = out.games.length === 0;
+  return out;
 }
 
 // Cron gate, the soccer and NFL shape: a free events read first, a paid capture

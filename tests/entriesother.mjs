@@ -67,6 +67,7 @@ gm.run('nfl', '2026-10-04', 'evTIE', 'h2h', 'REG', 4, '2026-10-04T17:00:00Z', 'h
 gm.run('soccer', '2026-10-03', 'sx1', 'fav', 'uefanl', null, '2026-10-03T18:45:00Z', 'away', 'England', 'Croatia', 'England', 'loss', 1, 1);
 gm.run('soccer', '2026-10-03', 'sx1', 'h2h', 'uefanl', null, '2026-10-03T18:45:00Z', 'draw', 'Draw', 'Croatia', 'England', 'win', 1, 1);
 gm.run('soccer', '2026-09-26', 'sx2', 'fav', 'mls', null, '2026-09-26T23:30:00Z', 'away', 'St. Louis City SC', 'New York Red Bulls', 'St. Louis City SC', 'void', null, null);
+gm.run('nba', '2026-10-03', 'nb1', 'h2h', 'pre', null, '2026-10-03T23:00:00Z', 'home', 'Toronto Raptors', 'Toronto Raptors', 'Miami Heat', 'win', 110, 104);
 const proj = sq.prepare(`INSERT INTO nfl_proj (season, week, event_id, player, market, team, pos, game, commence, proj, actual, captured_at, graded_at)
   VALUES (2026, 4, 'evDC', ?, ?, ?, 'X', 'DET @ CAR', ?, 60, ?, '1', '2026-10-05T05:30:00Z')`);
 proj.run('Jahmyr Gibbs', 'rushing', 'DET', KO, 112);
@@ -93,6 +94,11 @@ const E = await create({ book: 'dk', kind: 'parlay', stake: 10, legs: [
   { sport: 'nfl', date: '2026-10-04', gamePk: 'NE @ BUF|2026-10-04', player: 'BUF', team: 'BUF', market: 'ml', side: 'home', price: -290 },  // tie -> push
   { sport: 'nfl', date: '2026-10-05', gamePk: 'ATL @ NO|2026-10-05', player: 'ATL', team: 'ATL', market: 'ml', side: 'away', price: -150 },  // not graded yet
 ] });
+
+// The NBA tab (2026-10-04): a moneyline keyed by the odds feed's event id,
+// which is the id the NBA log keeps.
+const F = await create({ book: 'dk', kind: 'straight', stake: 10, legs: [
+  { sport: 'nba', date: '2026-10-03', gamePk: 'nb1', player: 'Miami Heat', team: 'Heat', market: 'ml', side: 'away', price: 125 } ] });
 
 fetches = 0;
 await call('GET');      // the read grades what it can, as the cron does
@@ -123,6 +129,11 @@ const d = legsOf(D);
 ok(d[0].result === 'void', `a fixture the log voided (listed, then moved) voids the leg (${d[0].result})`);
 ok(d[1].result === 'win' && entry(D).status === 'settled' && entry(D).payout === Math.round(10 * (1 + 100 / 110) * 100) / 100,
   `and the parlay pays on what is left (${d[1].result}, ${entry(D).payout})`);
+
+console.log('\n-- NBA --');
+const f = legsOf(F)[0];
+ok(f.result === 'loss' && entry(F).status === 'settled' && entry(F).payout === 0,
+  `the Heat at Toronto lost 110-104: the moneyline loses and the bet settles (${f.result}, ${entry(F).payout})`);
 
 console.log('\n-- from stored rows only --');
 ok(fetches === 0, `graded without a single fetch (${fetches})`);

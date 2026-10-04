@@ -2809,7 +2809,7 @@
         + `Remove ${deadLegs.length === 1 ? 'it' : 'them'} before you bet the rest.</div>`
       : '';
 
-    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter', 'PrizePicks': 'pp', 'NFL': 'nfl', 'NFL ML': 'nfl', 'Soccer': 'soc' };
+    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter', 'PrizePicks': 'pp', 'NFL': 'nfl', 'NFL ML': 'nfl', 'Soccer': 'soc', 'NBA ML': 'nba' };
     const legHtml = legs.map((leg) => `
       <div class="slip-leg">
         <span class="slip-tag ${boardTag[leg.board] || ''}">${esc(leg.board)}</span>
@@ -4141,6 +4141,22 @@
         player: r.player, team: r.team || null, market: mk, side: 'Under',
         book: { line: r.line, price: typeof r.underPrice === 'number' ? r.underPrice : null, under: null }, pp: null } };
   }
+  // NBA names are city plus nickname, and every nickname is unique; the
+  // nickname is what fits a phone row (the "Trail Blazers" are "Blazers").
+  const nbaNick = (name) => String(name || '').trim().split(/\s+/).pop();
+  function nbaMlLeg(g, side) {
+    const team = side === 'home' ? g.home : g.away;
+    const price = side === 'home' ? g.homePrice : g.awayPrice;
+    const fair = side === 'home' ? g.homeFair : g.awayFair;
+    const value = side === 'home' ? g.homeValue : g.awayValue;
+    return { id: `nba:ml:${g.id}:${side}`, board: 'NBA ML', title: `${nbaNick(team)} ML`, sub: `${nbaNick(g.away)} @ ${nbaNick(g.home)}`,
+      odds: typeof price === 'number' ? price : null, tier: null, edge: typeof value === 'number' ? value : null,
+      // gamePk is the odds feed's event id, the same id the NBA log keeps, so
+      // the entry log grades this leg straight from it.
+      spec: { sport: 'nba', date: ptDayOf(Date.parse(g.commence)), gamePk: g.id,
+        player: team, team: nbaNick(team), market: 'ml', side,
+        book: { line: null, price: typeof price === 'number' ? price : null, win: fair != null ? fair : null }, pp: null } };
+  }
   function soccerMlLeg(g, p) {
     const side = p.selection === 'Draw' ? 'draw' : (p.selection === g.home ? 'home' : 'away');
     return { id: `soc:${g.id}:${side}`, board: 'Soccer',
@@ -4161,6 +4177,7 @@
     // The other sports' boards draw their own stars.
     if (state.sport === 'nfl') renderNfl();
     if (state.sport === 'soccer') renderSoccer();
+    if (state.sport === 'nba') renderNba();
     const n = Object.keys(state.slip).length;
     toast(adding ? `★ Added ${leg.title} · ${n} leg${n === 1 ? '' : 's'}` : `Removed ${leg.title}`);
   }
@@ -4299,6 +4316,12 @@
       case 'soccer-league': setSoccerLeague(target.dataset.league); break;
       // Its own toggle, not the NFL one: sharing 'nfl-toggle' re-rendered the NFL
       // grid, so a soccer row opened its panel into a board nobody was looking at.
+      case 'nba-toggle': {
+        const nid = target.dataset.id;
+        state.nbaOpen = state.nbaOpen === nid ? null : nid;
+        renderNba();
+        break;
+      }
       case 'soccer-toggle': {
         const sid = target.dataset.id;
         state.soccerOpen = state.soccerOpen === sid ? null : sid;
@@ -4595,6 +4618,9 @@
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
     if (el.soccerBoard) el.soccerBoard.hidden = s !== 'soccer';
     if (s === 'soccer' && !state.soccer) refreshSoccer();   // lazy first load
+    const nbaBoard = document.getElementById('nbaBoard');
+    if (nbaBoard) nbaBoard.hidden = s !== 'nba';
+    if (s === 'nba' && !state.nba) refreshNba();             // lazy first load
     const eb = document.getElementById('entriesBoard');
     if (eb) eb.hidden = s !== 'entries';
     placeRail();
@@ -5354,7 +5380,7 @@
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
   // sport switch and never changed back.
-  const DOC_TITLE = { mlb: document.title, nfl: 'Aimplified — NFL Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
+  const DOC_TITLE = { mlb: document.title, nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
 
   function applySportChrome(sport) {
     // Anything that is not the MLB board hides the MLB-only chrome. Written as
@@ -5370,6 +5396,114 @@
     // only force it off rather than on.
     const live = document.getElementById('navLive');
     if (live && away) live.hidden = true;
+  }
+
+  // -------------------------------------------------------------------------
+  // NBA — moneylines (2026-10-04)
+  // -------------------------------------------------------------------------
+  // The same shape as the soccer board, two-way: the sharp books' fair line
+  // against the best executable price, one row a game, a star for the side the
+  // sharp books favour and both sides in the breakdown. Prices are the last
+  // capture's (two a day: one early, one inside three hours of tip), and the
+  // board says how old they are rather than implying they are live.
+  async function refreshNba() {
+    if (!LIVE_MODE) return;
+    try {
+      const d = await fetchJson('/api/nba-board');
+      state.nba = (d && Array.isArray(d.games)) ? d : { games: [], empty: true };
+    } catch (e) {
+      state.nba = { games: [], empty: true, error: 'unreachable' };
+    }
+    renderNba();
+  }
+  function renderNba() {
+    const grid = document.getElementById('nbaGrid');
+    if (!grid) return;
+    const d = state.nba;
+    const count = document.getElementById('nbaCount');
+    const note = document.getElementById('nbaNote');
+    if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
+    if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
+    const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
+    if (count) count.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}` : '';
+    const pre = games.some((g) => g.league === 'pre');
+    if (note) {
+      note.textContent = 'Sharp-book fair line · best DK/FD price'
+        + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '')
+        + (pre ? ' · preseason: starters sit, and Pinnacle is the only sharp book' : '');
+    }
+    if (!games.length) {
+      grid.innerHTML = `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+      return;
+    }
+    const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
+      .map((h) => `<span>${h}</span>`).join('');
+    grid.innerHTML = `<div class="board view-moneyline"><div class="board-inner">`
+      + `<div class="board-head-row">${head}</div>`
+      + `<div>${games.map(nbaRow).join('')}</div>`
+      + `</div></div>`;
+  }
+  function nbaRow(g) {
+    const open = state.nbaOpen === g.id;
+    const isMkt = !g.pickSide;
+    const side = g.pickSide;
+    const fair = side ? (side === 'home' ? g.homeFair : g.awayFair) : null;
+    const price = side ? (side === 'home' ? g.homePrice : g.awayPrice) : null;
+    const book = side ? (side === 'home' ? g.homeBook : g.awayBook) : null;
+    const val = side ? (side === 'home' ? g.homeValue : g.awayValue) : null;
+    const valColor = val == null ? 'var(--textFaint)' : (val > 0 ? 'var(--positive)' : 'var(--textDim)');
+    const upcoming = Date.parse(g.commence) > Date.now();
+    const star = upcoming && side && typeof price === 'number' ? offerStar(nbaMlLeg(g, side)) : '';
+    const imp = impliedPct(price);
+    const bar = !isMkt && fair != null
+      ? miniBar(fair, imp, (v) => v) + `<span class="bw-cush">fair <b>${fair}%</b>${imp != null ? ` · tick: price <b>${r1(imp)}%</b>` : ''}</span>`
+      : '';
+    const pick = isMkt ? '<span class="odds-blank">no sharp book yet</span>'
+      : `<span class="ctx-pick">${esc(nbaNick(side === 'home' ? g.home : g.away))}</span>${bar}`;
+    const odds = typeof price === 'number'
+      ? `<span class="odds-cell mono">${AM(price)}<i class="bk-tag">${bkLabel(book)}</i></span>`
+      : (g.awayPrice != null || g.homePrice != null
+        ? `<span class="odds-cell mono">${AM(g.awayPrice)} / ${AM(g.homePrice)}</span>` : '<span class="odds-blank">no price</span>');
+    const chip = isMkt ? 'MKT' : g.fairSrc === 'pinnacle' ? 'Pinnacle' : 'sharp ' + g.sharpN;
+    const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="nba-toggle" data-id="${esc(g.id)}"
+        role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
+        aria-label="${esc(g.away)} at ${esc(g.home)} — toggle breakdown">
+        <div class="matchup-cell">
+          <span class="mc-head">${star}<b>${esc(nbaNick(g.away))}</b><span class="at-sep">@</span><b>${esc(nbaNick(g.home))}</b>${
+            g.commence ? `<span class="row-when">${esc(soccerKick(g.commence))}</span>` : ''}</span>
+          <span class="matchup-sub">${esc(g.away)} at ${esc(g.home)}${g.league === 'pre' ? ' · preseason' : ''}</span>
+        </div>
+        <span>${pick}</span>
+        ${odds}
+        <span class="edge-cell" style="color:${valColor}">${val == null ? '—' : (val > 0 ? '+' : '') + val + '%'}</span>
+        <span class="interval-cell" style="color:var(--model)">${fair != null ? fair + '%' : '—'}</span>
+        <span class="tier-cell"><span class="ctx-chip">${chip}</span></span>
+        <span class="chevron">${open ? '▲' : '▼'}</span>
+      </div>`;
+    return row + (open ? nbaDetail(g) : '');
+  }
+  function nbaDetail(g) {
+    const cell = (k, v) => `<div class="nfd-c"><span>${esc(k)}</span><b>${v}</b></div>`;
+    const sideCell = (team, fair, price, book, value) => cell(nbaNick(team),
+      `${fair != null ? fair + '%' : '—'} fair · ${AM(price)}${book ? ' ' + bkLabel(book) : ''}`
+      + `<span class="rl-cov">${value == null ? '' : (value > 0 ? '+' : '') + value + '% vs fair'}</span>`);
+    const upcoming = Date.parse(g.commence) > Date.now();
+    const adds = upcoming
+      ? ['away', 'home'].filter((sd) => typeof (sd === 'home' ? g.homePrice : g.awayPrice) === 'number')
+        .map((sd) => { const leg = nbaMlLeg(g, sd); return offerButton(leg, `${nbaNick(sd === 'home' ? g.home : g.away)} ML ${AM(leg.odds)}`); }).join('')
+      : '';
+    const read = g.fairSrc === 'sharp-pool'
+      ? `Fair from ${g.sharpN} sharp books, Shin de-vigged and medianed. Value is that fair number minus what the best price implies.`
+      : g.fairSrc === 'pinnacle'
+        ? 'Fair from <b>Pinnacle alone</b> — no other sharp book has posted this game — Shin de-vigged. Value is that fair number minus what the best price implies.'
+        : 'No sharp book has posted this game, so there is no fair line to price against. The prices shown are the market\u2019s.';
+    return `<div class="expanded-detail nfl-detail">
+      <div class="nfd-k">Price read</div>
+      <div class="nfd-read">${read}</div>
+      ${adds ? `<div class="leg-adds">${adds}</div>` : ''}
+      <div class="nfd-grid">${sideCell(g.away, g.awayFair, g.awayPrice, g.awayBook, g.awayValue)}${sideCell(g.home, g.homeFair, g.homePrice, g.homeBook, g.homeValue)}</div>
+      <div class="nfd-foot">Not modelled and not posted. The side the sharp books favour is logged and graded on the site's own record${g.league === 'pre' ? '; preseason rows are kept apart from the regular season' : ''}.</div>
+    </div>`;
   }
 
   // -------------------------------------------------------------------------
