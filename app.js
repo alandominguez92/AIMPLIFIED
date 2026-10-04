@@ -2941,11 +2941,10 @@
       const teams = new Set(legs.map((l) => l.spec && l.spec.team).filter(Boolean));
       if (teams.size === 1) notes.push(`<b>PrizePicks needs two teams.</b> Every leg here is ${esc([...teams][0])} — swap one for another club's player.`);
       const be = PP_BREAK_EVEN[legs.length];
-      // A moneyline cannot be played on PrizePicks at all (the log form says
-      // so), so there is no PrizePicks entry to break even.
-      const hasMl = legs.some((l) => l.spec && l.spec.market === 'ml');
+      // A moneyline leg counts like any other here: PrizePicks offers them
+      // now (the user, 2026-10-04), and its chance is the sharp fair win %.
       const probs = legs.map((l) => entryLegFrom(l, 'pp').modelProb).filter((v) => typeof v === 'number');
-      if (be && !hasMl && probs.length === legs.length) {
+      if (be && probs.length === legs.length) {
         const avg = Math.round(probs.reduce((a, b) => a + b, 0) / probs.length * 10) / 10;
         notes.push(`Model's average leg <b>${avg}%</b> · a ${be[0]} needs <b>${be[1]}%</b> a leg to break even. `
           + 'These are the model’s chances, which have run high; Track Record shows how its legs actually landed.');
@@ -3320,7 +3319,6 @@
       const prob = e.modelProb != null ? `<span class="le-prob">${Math.round(e.modelProb)}%</span>` : '';
       return `<div class="le-leg"><span class="le-leg-name">${esc(e.player || leg.title)}</span><span class="le-leg-what">${what}</span>${sides}${price}${prob}</div>`;
     }).join('');
-    const noPP = book === 'pp' && legs.some((l) => l.spec && l.spec.market === 'ml');
     return `<div class="log-entry">
       <div class="le-head">Log this entry</div>
       <div class="le-seg" role="group" aria-label="Book">${[['pp', 'PrizePicks'], ['dk', 'DraftKings']].map(([k, v]) =>
@@ -3328,7 +3326,6 @@
       <div class="le-seg" role="group" aria-label="Entry type">${kinds.map(([k, v]) =>
         `<button type="button" data-action="log-kind" data-kind="${k}" class="${kind === k ? 'on' : ''}">${n}-pick ${v}</button>`).join('')}</div>
       <div class="le-legs">${rows}</div>
-      ${noPP ? '<div class="le-warn">PrizePicks has no moneylines — log this one on DraftKings.</div>' : ''}
       <div class="le-foot">
         <label class="le-stake">Stake $<input id="logStake" data-action="log-stake" inputmode="decimal" value="${esc(String(stake))}" placeholder="10"></label>
         <button type="button" class="le-save" data-action="log-save">Save entry</button>
@@ -3344,7 +3341,6 @@
     const stakeEl = document.getElementById('logStake');
     const stake = Number(stakeEl ? stakeEl.value : state.logStake);
     if (!(stake > 0)) { toast('Enter a stake first'); return; }
-    if (book === 'pp' && legs.some((l) => l.spec && l.spec.market === 'ml')) { toast('PrizePicks has no moneylines'); return; }
     const entry = { book, kind, stake, legs: legs.map((l) => entryLegFrom(l, book)) };
     try {
       const r = await entriesFetch('POST', { action: 'create', entry });

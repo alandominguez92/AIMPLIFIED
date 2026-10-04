@@ -110,9 +110,11 @@ ok(/CLE to win points the same way as [^.]*Benintendi/.test(readMl) && /CLE to w
   'and points the same way as the other club’s hitters under and its own starter over');
 ok(/CLE to win pulls against [^.]*Smith/.test(readMl), 'while the other starter’s strikeout over pulls against it');
 ok(/both teams are here to win/.test(F.slipReadHtml([ml('CLE'), ml('CWS')])), 'both sides of one game are called out: one of them loses');
+// PrizePicks offers moneylines now (the user, 2026-10-04), so a moneyline leg
+// counts toward the entry's break-even read at its sharp fair win %.
 state.logBook = 'pp';
-ok(!/break even/.test(F.slipReadHtml([ml('CLE'), batter(504, 'Some Bat', 'NYY', 60)])),
-  'and with a moneyline in it there is no PrizePicks entry to break even');
+ok(/Model's average leg <b>59%<\/b> · a 2-pick power/.test(F.slipReadHtml([ml('CLE'), batter(504, 'Some Bat', 'NYY', 60)])),
+  'a moneyline leg on PrizePicks counts toward the break-even read at its fair win %');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
