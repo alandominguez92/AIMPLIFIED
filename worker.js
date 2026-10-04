@@ -4024,17 +4024,21 @@ function entryPayout(e, legs) {
   return { payout: Math.round(stake * dec * 100) / 100, src: 'odds' };
 }
 
-// Grade open MLB legs whose games are final. Free: StatsAPI only.
+// Grade open MLB legs whose games are final (free: StatsAPI only), and the NFL
+// and soccer legs the site's own graded rows can settle (see
+// gradeEntryLegsOther: no fetch at all).
 async function gradeEntryLegs(env) {
   const db = env.DB;
   await ensureEntrySchema(db);
   const open = ((await db.prepare(
     "SELECT * FROM entry_legs WHERE result IS NULL AND sport = 'mlb' AND game_id IS NOT NULL"
   ).all()).results || []).filter((l) => ENTRY_MARKETS_AUTO.has(l.market));
-  if (!open.length) return 0;
-  const byPk = await gamesByPk(open.map((l) => l.game_id));
+  const byPk = open.length ? await gamesByPk(open.map((l) => l.game_id)) : {};
   const boxes = {};
   const stmts = [];
+  // The other sports first: they need no fetch at all, and an MLB pass with
+  // nothing open used to return before reaching them.
+  try { stmts.push(...(await gradeEntryLegsOther(db))); } catch (e) { /* next pass */ }
   for (const l of open) {
     const g = byPk[l.game_id];
     if (!g) continue;
@@ -4070,6 +4074,93 @@ async function gradeEntryLegs(env) {
   return stmts.length;
 }
 
+// NFL and soccer legs (2026-10-04, when the slip began taking them), graded
+// from what this site has ALREADY graded, never from a fresh read: the game-
+// line log's final scores (gmpicks) for a moneyline, and the frozen
+// projections' box-score actuals (nfl_proj) for yardage. No new ESPN calls and
+// no second set of matching rules to drift from the ones the records use. A
+// leg whose game those rows do not cover stays open for its one-tap result.
+const ENTRY_NFL_YDS = { rec_yds: 'receiving', rush_yds: 'rushing' };
+// An NFL leg's game is keyed "AWAY @ HOME|YYYY-MM-DD" (Pacific day): the
+// moneyline and yardage rows share no event id, but both write the matchup.
+function entryNflKey(gameId) {
+  const m = /^g?(.+? @ .+?)\|(\d{4}-\d{2}-\d{2})$/.exec(String(gameId || ''));
+  if (!m) return null;
+  const [away, home] = m[1].split(' @ ');
+  return { game: m[1], away, home, date: m[2] };
+}
+async function gradeEntryLegsOther(db) {
+  const open = ((await db.prepare(
+    "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer') AND game_id IS NOT NULL"
+  ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market]));
+  if (!open.length) return [];
+  const winnerOf = (hs, as) => (hs > as ? 'home' : as > hs ? 'away' : 'draw');
+  const socIds = [...new Set(open.filter((l) => l.sport === 'soccer').map((l) => String(l.game_id).replace(/^g/, '')))];
+  let soc = [];
+  if (socIds.length) {
+    await ensureGamePickSchema(db);
+    soc = ((await db.prepare(
+      `SELECT game_id, result, home_score, away_score FROM gmpicks WHERE sport='soccer' AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})`
+    ).bind(...socIds).all()).results || []);
+  }
+  const keys = open.filter((l) => l.sport === 'nfl').map((l) => entryNflKey(l.game_id)).filter(Boolean);
+  let nflGames = [], nflYds = [];
+  if (keys.length) {
+    // Commence is UTC and the key's day is Pacific, so read a day either side
+    // and match on the Pacific day of each row.
+    const days = keys.map((k) => Date.parse(k.date + 'T12:00:00Z'));
+    const lo = new Date(Math.min(...days) - 2 * 864e5).toISOString();
+    const hi = new Date(Math.max(...days) + 2 * 864e5).toISOString();
+    await ensureGamePickSchema(db);
+    nflGames = ((await db.prepare(
+      "SELECT away, home, commence, home_score, away_score FROM gmpicks WHERE sport='nfl' AND result IS NOT NULL AND commence >= ? AND commence < ?"
+    ).bind(lo, hi).all()).results || []);
+    if (open.some((l) => ENTRY_NFL_YDS[l.market])) {
+      try {
+        nflYds = ((await db.prepare(
+          'SELECT player, market, game, commence, actual, graded_at FROM nfl_proj WHERE graded_at IS NOT NULL AND commence >= ? AND commence < ?'
+        ).bind(lo, hi).all()).results || []);
+      } catch (e) { /* no NFL projections table yet */ }
+    }
+  }
+  const sameDay = (iso, day) => ptDateOf(Date.parse(iso)) === day;
+  const stmts = [];
+  for (const l of open) {
+    let result = null, actual = null;
+    if (l.sport === 'soccer') {
+      const g = soc.find((x) => x.game_id === String(l.game_id).replace(/^g/, ''));
+      if (!g) continue;
+      // A fixture the log voided (listed, then moved) voids the leg with it.
+      if (g.result === 'void') result = 'void';
+      else if (g.home_score == null || g.away_score == null) continue;
+      else result = winnerOf(g.home_score, g.away_score) === l.side ? 'win' : 'loss';
+    } else {
+      const k = entryNflKey(l.game_id);
+      if (!k) continue;
+      if (l.market === 'ml') {
+        const g = nflGames.find((x) => x.away === k.away && x.home === k.home && sameDay(x.commence, k.date));
+        if (!g || g.home_score == null || g.away_score == null) continue;
+        const w = winnerOf(g.home_score, g.away_score);
+        result = w === 'draw' ? 'push' : (w === l.side ? 'win' : 'loss');    // an NFL tie pushes
+      } else {
+        const p = nflYds.find((x) => x.market === ENTRY_NFL_YDS[l.market] && x.game === k.game
+          && sameDay(x.commence, k.date) && nflBaseName(x.player) === nflBaseName(l.player));
+        if (!p) continue;
+        actual = p.actual;
+        // Graded with no stat line is a player who did not play: void, never a
+        // free under.
+        if (actual == null) result = 'void';
+        else if (l.line == null) continue;
+        else if (actual === l.line) result = 'push';
+        else result = ((actual < l.line) === (l.side === 'Under')) ? 'win' : 'loss';
+      }
+    }
+    stmts.push(db.prepare("UPDATE entry_legs SET result=?, actual=?, graded_by='auto' WHERE entry_id=? AND idx=?")
+      .bind(result, actual, l.entry_id, l.idx));
+  }
+  return stmts;
+}
+
 // Close any open entry whose legs are all decided. A manual payout is kept.
 async function settleEntries(env) {
   const db = env.DB;
@@ -4093,7 +4184,8 @@ function entryTypeLabel(e) {
   if (e.book === 'pp') return `PrizePicks ${e.legs_n}-pick ${e.kind === 'flex' ? 'flex' : 'power'}`;
   return e.kind === 'parlay' ? `DraftKings ${e.legs_n}-leg parlay` : 'DraftKings straight';
 }
-const ENTRY_MARKET_LABEL = { tb: 'Total bases', hrr: 'H+R+RBI', hr: 'Home runs', K: 'Strikeouts', ml: 'Moneyline' };
+const ENTRY_MARKET_LABEL = { tb: 'Total bases', hrr: 'H+R+RBI', hr: 'Home runs', K: 'Strikeouts', ml: 'Moneyline',
+  rec_yds: 'Receiving yards', rush_yds: 'Rushing yards' };
 
 function buildEntrySummary(entries, legs) {
   const settled = entries.filter((e) => e.status === 'settled');
