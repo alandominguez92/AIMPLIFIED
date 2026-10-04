@@ -2809,7 +2809,7 @@
         + `Remove ${deadLegs.length === 1 ? 'it' : 'them'} before you bet the rest.</div>`
       : '';
 
-    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter', 'PrizePicks': 'pp' };
+    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter', 'PrizePicks': 'pp', 'NFL': 'nfl', 'NFL ML': 'nfl', 'Soccer': 'soc' };
     const legHtml = legs.map((leg) => `
       <div class="slip-leg">
         <span class="slip-tag ${boardTag[leg.board] || ''}">${esc(leg.board)}</span>
@@ -2901,12 +2901,16 @@
     for (const l of legs) {
       const s = l.spec;
       if (!s || s.gamePk == null) continue;
-      if (!byGame.has(s.gamePk)) byGame.set(s.gamePk, []);
-      byGame.get(s.gamePk).push(l);
+      // Keyed by sport too: an MLB gamePk and another sport's event id share
+      // no namespace, and two legs are one game only within one sport.
+      const gk = `${s.sport || 'mlb'}|${s.gamePk}`;
+      if (!byGame.has(gk)) byGame.set(gk, []);
+      byGame.get(gk).push(l);
     }
     for (const gl of byGame.values()) {
       if (gl.length < 2) continue;
       const parts = [];
+      const sport = gl[0].spec.sport || 'mlb';
       const unders = gl.filter((l) => l.spec.market !== 'K' && l.spec.market !== 'ml' && sideOf(l) === 'Under');
       for (const k of gl.filter((l) => l.spec.market === 'K')) {
         // Only the hitters he is facing: his own lineup's at-bats have nothing
@@ -2921,8 +2925,16 @@
       // its starter's strikeout under pull against it; the other club's point
       // the same way. Both sides of one game cannot both win.
       const mls = gl.filter((l) => l.spec.market === 'ml');
-      if (new Set(mls.map((l) => l.spec.team)).size > 1) parts.push('both teams are here to win: one of those legs loses');
-      for (const m of mls) {
+      // By team, or by side where there is no team (the draw).
+      const conflict = new Set(mls.map((l) => l.spec.team || l.spec.side)).size > 1;
+      if (conflict) {
+        parts.push(sport === 'soccer' ? 'only one result happens: the other side or the draw loses'
+          : 'both teams are here to win: one of those legs loses');
+      }
+      // The direction reads are baseball's: they rest on what a starter and a
+      // lineup do to each other. A football or soccer leg beside its side's
+      // moneyline gets the same-game warning and nothing it cannot support.
+      for (const m of (sport === 'mlb' ? mls : [])) {
         const t = m.spec.team;
         const withIt = [], against = [];
         for (const l of gl) {
@@ -2934,20 +2946,30 @@
         if (withIt.length) parts.push(`${esc(t)} to win points the same way as ${withIt.join(', ')}`);
         if (against.length) parts.push(`${esc(t)} to win pulls against ${against.join(', ')}`);
       }
-      notes.push(`<b>${gl.length} legs from one game</b> (${gl.map((l) => esc(surname(l.spec.player))).join(', ')}) win or lose together.`
-        + (parts.length ? ' ' + parts.join('. ') + '.' : ''));
+      // Opposite results of one game do not win or lose together; one of them
+      // loses outright, and the note says that instead.
+      notes.push(`<b>${gl.length} legs from one game</b> (${gl.map((l) => esc(surname(l.spec.player))).join(', ')})${conflict ? '.' : ' win or lose together.'}`
+        + (parts.length ? ' ' + parts.map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join('. ') + '.' : ''));
     }
     if (state.logBook === 'pp' && legs.length >= 2) {
-      const teams = new Set(legs.map((l) => l.spec && l.spec.team).filter(Boolean));
-      if (teams.size === 1) notes.push(`<b>PrizePicks needs two teams.</b> Every leg here is ${esc([...teams][0])} — swap one for another club's player.`);
+      // Per sport: Miami's baseball club and Miami's football club are two
+      // teams, and an entry across sports already spans more than one.
+      const teams = new Set(legs.map((l) => l.spec && l.spec.team && `${l.spec.sport || 'mlb'}:${l.spec.team}`).filter(Boolean));
+      if (teams.size === 1) notes.push(`<b>PrizePicks needs two teams.</b> Every leg here is ${esc([...teams][0].replace(/^[a-z]+:/, ''))} — swap one for another club's player.`);
       const be = PP_BREAK_EVEN[legs.length];
       // A moneyline leg counts like any other here: PrizePicks offers them
       // now (the user, 2026-10-04), and its chance is the sharp fair win %.
       const probs = legs.map((l) => entryLegFrom(l, 'pp').modelProb).filter((v) => typeof v === 'number');
       if (be && probs.length === legs.length) {
         const avg = Math.round(probs.reduce((a, b) => a + b, 0) / probs.length * 10) / 10;
-        notes.push(`Model's average leg <b>${avg}%</b> · a ${be[0]} needs <b>${be[1]}%</b> a leg to break even. `
-          + 'These are the model’s chances, which have run high; Track Record shows how its legs actually landed.');
+        // A moneyline's chance is the sharp books' fair line, not the model's,
+        // and the warning about the model running high belongs to the model.
+        const anyModel = legs.some((l) => l.spec && l.spec.market !== 'ml');
+        const anyMl = legs.some((l) => l.spec && l.spec.market === 'ml');
+        notes.push(`${anyModel ? 'Model’s average leg' : 'Average fair chance per leg'} <b>${avg}%</b> · a ${be[0]} needs <b>${be[1]}%</b> a leg to break even. `
+          + (anyModel
+            ? `These are the model’s chances${anyMl ? ' (moneylines at the sharp books’ fair line)' : ''}, which have run high; Track Record shows how its legs actually landed.`
+            : 'These are the sharp books’ fair chances, the closest thing to a true price.'));
       }
     }
     return notes.length ? `<div class="slip-read">${notes.map((n) => `<div class="slip-read-n">${n}</div>`).join('')}</div>` : '';
@@ -3190,12 +3212,16 @@
     if (wide) {
       if (card.parentNode !== rail) rail.append(card);
       if (how && how.parentNode !== rail) rail.append(how);
-      if (slip.parentNode !== rail) rail.append(slip);
     } else {
       if (card.parentNode !== slate) slate.prepend(card);
       if (how && how.parentNode !== slate) card.after(how);
-      if (slip.parentNode === rail) rail.after(slip);
     }
+    // The rail is MLB furniture and hides off the MLB tab; the slip is not, so
+    // off that tab it takes its own place after the board, where it sits on a
+    // phone anyway.
+    const slipInRail = wide && state.sport === 'mlb';
+    if (slipInRail) { if (slip.parentNode !== rail) rail.append(slip); }
+    else if (slip.parentNode === rail) rail.after(slip);
     rail.hidden = !wide || state.sport !== 'mlb';
   }
   if (RAIL_MQ) {
@@ -3233,7 +3259,7 @@
   // worker (see entriesApi) and summarised by entry type, market and model
   // probability — so "which options win" is answered from real entries.
   const ENTRY_KEY_STORE = 'aimplified_entry_key';
-  const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML' };
+  const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds' };
   function entryKey() {
     try {
       let k = localStorage.getItem(ENTRY_KEY_STORE);
@@ -4073,6 +4099,58 @@
     return { id: x.legId, board: 'PrizePicks', title: `${x.player} Under ${x.point} ${x.market}`,
       sub: x.when ? String(x.when).replace(/ PT$/, '') : '', odds: null, tier: null, edge: null, spec: x.spec };
   }
+  // ---- legs from the other sports' boards (2026-10-04) ----------------------
+  // Those boards render their own rows, so a star there cannot look its row up
+  // the way the MLB board's does. Each leg is built when its row is drawn and
+  // held here under its id; a tap on the star looks it up. A leg already in the
+  // slip is found in the slip even after its row has gone.
+  const LEG_OFFERS = new Map();
+  function offerLeg(leg) { LEG_OFFERS.set(leg.id, leg); return leg.id; }
+  function offerStar(leg, label) {
+    const on = !!state.slip[offerLeg(leg)];
+    return `<span class="leading${on ? ' tracked' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" role="button" tabindex="0" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(label || leg.title)} ${on ? 'from' : 'to'} your slip" title="${on ? 'In your slip' : 'Add to slip'}">${on ? '★' : '☆'}</span>`;
+  }
+  function offerButton(leg, label) {
+    const on = !!state.slip[offerLeg(leg)];
+    return `<button type="button" class="k-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}">${on ? '★' : '☆'} ${esc(label)}</button>`;
+  }
+  const impliedPct = (p) => (typeof p !== 'number' ? null : (p < 0 ? -p / (-p + 100) : 100 / (p + 100)) * 100);
+  const r1 = (v) => (typeof v === 'number' ? Math.round(v * 10) / 10 : null);
+  // An NFL game is keyed by its matchup and day: the moneyline row and the
+  // yardage rows carry no shared event id, but both write "PIT @ CLE".
+  const nflGameKey = (game, commence) => `${game}|${ptDayOf(Date.parse(commence)) || ''}`;
+  function nflMlLeg(g, team) {
+    const home = team === g.home;
+    const price = team === g.pickTeam ? g.pickPrice : (home ? g.home_price : g.away_price);
+    const fair = team === g.pickTeam ? g.pickFair : (home ? g.home_fair : g.away_fair);
+    const imp = impliedPct(price);
+    return { id: `nfl:ml:${g.id}:${team}`, board: 'NFL ML', title: `${team} ML`, sub: `${g.away} @ ${g.home}`,
+      odds: typeof price === 'number' ? price : null, tier: null,
+      edge: fair != null && imp != null ? r1(fair - imp) : null,
+      spec: { sport: 'nfl', date: ptDayOf(Date.parse(g.commence)), gamePk: nflGameKey(`${g.away} @ ${g.home}`, g.commence),
+        player: team, team, market: 'ml', side: home ? 'home' : 'away',
+        book: { line: null, price: typeof price === 'number' ? price : null, win: fair != null ? r1(fair) : null }, pp: null } };
+  }
+  // The under, at the captured line: the side this board's projections are
+  // built to read. The log form still flips it to the over.
+  function nflYardsLeg(r, market) {
+    const mk = market === 'receiving' ? 'rec_yds' : 'rush_yds';
+    return { id: `nfl:${mk}:${r.game}:${r.player}`, board: 'NFL', title: `${r.player} U ${r.line} ${market === 'receiving' ? 'Rec' : 'Rush'} Yds`,
+      sub: r.game, odds: typeof r.underPrice === 'number' ? r.underPrice : null, tier: null, edge: null,
+      spec: { sport: 'nfl', date: ptDayOf(Date.parse(r.commence)), gamePk: nflGameKey(r.game, r.commence),
+        player: r.player, team: r.team || null, market: mk, side: 'Under',
+        book: { line: r.line, price: typeof r.underPrice === 'number' ? r.underPrice : null, under: null }, pp: null } };
+  }
+  function soccerMlLeg(g, p) {
+    const side = p.selection === 'Draw' ? 'draw' : (p.selection === g.home ? 'home' : 'away');
+    return { id: `soc:${g.id}:${side}`, board: 'Soccer',
+      title: side === 'draw' ? 'Draw' : `${p.selection} ML`, sub: `${g.away} @ ${g.home}`,
+      odds: typeof p.price === 'number' ? p.price : null, tier: null, edge: typeof p.value === 'number' ? p.value : null,
+      spec: { sport: 'soccer', date: ptDayOf(Date.parse(g.commence)), gamePk: g.id,
+        player: side === 'draw' ? 'Draw' : p.selection, team: side === 'draw' ? null : p.selection, market: 'ml', side,
+        book: { line: null, price: typeof p.price === 'number' ? p.price : null, win: p.fair != null ? p.fair : null }, pp: null } };
+  }
+
   function toggleLeg(leg) {
     const next = { ...state.slip };
     const adding = !next[leg.id];
@@ -4080,6 +4158,9 @@
     state.slip = next;
     persistSlip();
     renderControls(); renderBoard(); renderSlip(); renderTodayCard();
+    // The other sports' boards draw their own stars.
+    if (state.sport === 'nfl') renderNfl();
+    if (state.sport === 'soccer') renderSoccer();
     const n = Object.keys(state.slip).length;
     toast(adding ? `★ Added ${leg.title} · ${n} leg${n === 1 ? '' : 's'}` : `Removed ${leg.title}`);
   }
@@ -4288,6 +4369,12 @@
         else if (state.slip[target.dataset.leg]) removeLeg(target.dataset.leg);
         break;
       }
+      case 'leg-add': {
+        if (e) { e.stopPropagation(); e.preventDefault(); }
+        const leg = LEG_OFFERS.get(target.dataset.leg) || state.slip[target.dataset.leg];
+        if (leg) toggleLeg(leg);
+        break;
+      }
       case 'k-add': {
         if (e) e.stopPropagation();
         const g = (Array.isArray(state.liveBoard) ? state.liveBoard : []).find((r) => String(r.id) === target.dataset.id)
@@ -4487,7 +4574,9 @@
   // missing and stayed on screen under the NFL and soccer boards, reading as
   // those sports' content purely because of where it sat. (The leaderboards
   // section that had the same problem was removed on 2026-09-27.)
-  const MLB_ONLY = ['.hero', '#liveNow', '#slate', '#slipSection', '#record',
+  // The slip is not on it: since 2026-10-04 every sport's board can add to it,
+  // and a PrizePicks entry or a DraftKings parlay can mix sports.
+  const MLB_ONLY = ['.hero', '#liveNow', '#slate', '#record',
     '#yesterdayCard', '#rail'];
 
   function setSport(s) {
@@ -4760,11 +4849,15 @@
       ? '<span class="ctx-chip nfl-mktchip">MKT</span>'
       : `<span class="ctx-chip">sharp ${g.sharpN}</span>`;
 
+    // The star takes the side the row leads with; the breakdown offers both.
+    // Not once the game has kicked off — the row's price is gone by then.
+    const upcoming = g.commence && Date.parse(g.commence) > Date.now();
+    const star = upcoming && g.pickTeam && typeof g.pickPrice === 'number' ? offerStar(nflMlLeg(g, g.pickTeam)) : '';
     const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="nfl-toggle" data-id="${g.id}"
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${g.away} at ${g.home} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head">${nflBadge(g.away)}<span class="at-sep">@</span>${nflBadge(g.home)}${
+          <span class="mc-head">${star}${nflBadge(g.away)}<span class="at-sep">@</span>${nflBadge(g.home)}${
             // The sub-line below carries kickoff, the spread and the total, and
             // the phone collapse hides all three. Kickoff rides the head line so
             // it survives, the same rule the MLB rows follow.
@@ -4793,9 +4886,16 @@
         + (g.pickValue > 0
           ? `That is <b>${g.pickValue} points of value</b>.`
           : `That is ${Math.abs(g.pickValue)} points the wrong way — no value at this price.`);
+    const upcoming = g.commence && Date.parse(g.commence) > Date.now();
+    const adds = upcoming
+      ? [g.away, g.home].filter((t) => typeof (t === g.home ? g.home_price : g.away_price) === 'number'
+          || (t === g.pickTeam && typeof g.pickPrice === 'number'))
+        .map((t) => { const leg = nflMlLeg(g, t); return offerButton(leg, `${t} ML ${AM(leg.odds)}`); }).join('')
+      : '';
     return `<div class="expanded-detail nfl-detail">
       <div class="nfd-k">Price read</div>
       <div class="nfd-read">${read}</div>
+      ${adds ? `<div class="leg-adds">${adds}</div>` : ''}
       <div class="nfd-grid">
         ${cell('Spread', g.away + ' ' + signed(g.away_spread))}
         ${cell('Total', num(g.total))}
@@ -4804,7 +4904,7 @@
         ${cell('Books', g.books)}
         ${cell('Roof', g.roof || '—')}
       </div>
-      <div class="nfd-foot">Context only — the run line and moneyline are not graded and not posted.</div>
+      <div class="nfd-foot">Not posted. The moneyline is logged and graded on the site's own record; add either side to your slip above.</div>
     </div>`;
   }
 
@@ -4960,11 +5060,15 @@
     // for its Pass tier: what the model has least faith in gives way, everything
     // it stands behind stays on screen. Marked here, hidden by CSS only.
     const tail = r.conf === 3 ? ' np-low' : '';
+    // A star only where a book's line has been captured: with no line there is
+    // nothing to take, only a projection.
+    const star = r.line != null && r.commence && Date.parse(r.commence) > Date.now()
+      ? offerStar(nflYardsLeg(r, market)) : '';
     const row = `<div class="board-row${open ? ' expanded' : ''}${tail}" data-action="nfl-toggle" data-id="${esc(id)}"
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${esc(r.player)} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head"><b>${esc(r.player)}</b> ${nflBadge(r.team)}${
+          <span class="mc-head">${star}<b>${esc(r.player)}</b> ${nflBadge(r.team)}${
             r.commence ? `<span class="row-when">${esc(kickoff(r.commence))}</span>` : ''}</span>
           <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}${r.commence ? ' · ' + esc(kickoff(r.commence)) : ''}</span>
           ${nflPropBar(r, market)}
@@ -5430,11 +5534,14 @@
     const odds = (!isMkt && lead && lead.price != null)
       ? `<span class="odds-cell mono">${AM(lead.price)}<i class="bk-tag">${bkLabel(lead.book)}</i></span>`
       : '<span class="odds-blank">no price</span>';
+    // The star takes the row's lead side; the breakdown offers all three.
+    const upcoming = g.commence && Date.parse(g.commence) > Date.now();
+    const star = upcoming && lead && typeof lead.price === 'number' ? offerStar(soccerMlLeg(g, lead)) : '';
     const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="soccer-toggle" data-id="${esc(g.id)}"
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${esc(g.away || '')} at ${esc(g.home || '')} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head"><b>${esc(g.away || '')}</b><span class="at-sep">@</span><b>${esc(g.home || '')}</b>${
+          <span class="mc-head">${star}<b>${esc(g.away || '')}</b><span class="at-sep">@</span><b>${esc(g.home || '')}</b>${
             g.commence ? `<span class="row-when">${esc(soccerKick(g.commence))}</span>` : ''}</span>
           <span class="matchup-sub">${esc(sub)}</span>
           ${ml}
@@ -5470,11 +5577,17 @@
         ? `Fair from <b>Pinnacle alone</b> — the other sharp books have not posted this fixture — de-vigged across all three outcomes. `
           + `Value is that fair number minus what the best DraftKings or FanDuel price implies.`
         : `Fewer than two sharp books quoted this fixture, so there is no fair line to price against. The prices shown are the market's, not a value read.`;
+    const upcoming = g.commence && Date.parse(g.commence) > Date.now();
+    const adds = upcoming
+      ? (g.oneXtwo || []).filter((p) => typeof p.price === 'number')
+        .map((p) => offerButton(soccerMlLeg(g, p), `${p.selection === 'Draw' ? 'Draw' : shortClub(p.selection)} ${AM(p.price)}`)).join('')
+      : '';
     return `<div class="expanded-detail nfl-detail">
       <div class="nfd-k">Price read</div>
       <div class="nfd-read">${read}</div>
+      ${adds ? `<div class="leg-adds">${adds}</div>` : ''}
       <div class="nfd-grid">${outcomes}${totals}</div>
-      <div class="nfd-foot">Context only — soccer is not modelled, not posted and not graded. The draw is a real outcome here, so a "value side" is one of three, not one of two.</div>
+      <div class="nfd-foot">Not modelled and not posted; the board's picks are logged and graded on the site's own record. The draw is a real outcome here, so a "value side" is one of three, not one of two.</div>
     </div>`;
   }
 

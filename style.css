@@ -2764,3 +2764,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    the phone rule for .row-when is one -- goes to the light theme. */
 [data-theme="light"] :is(.fc-odds, .ab-rest, .vt-tag, .pick-strip .pick-odds, .ml-band-n, .model-health > summary span) { font-weight:500; }
 [data-theme="light"] .board-row .row-when { font-weight:500; }
+
+/* Legs from the NFL and soccer boards (2026-10-04): the breakdown's add
+   buttons, and the slip's tags for each sport. */
+.leg-adds { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 4px; }
+.slip-tag.nfl { background:var(--positive); }
+.slip-tag.soc { background:var(--clv); }

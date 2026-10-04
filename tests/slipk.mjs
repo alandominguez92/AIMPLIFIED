@@ -36,9 +36,9 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const names = ['ptDayOf', 'pkOf', 'pct1', 'kLeadOf', 'kSpec', 'buildKPropLeg', 'kLegIdFor', 'buildKPitcherLeg',
-  'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml'];
+  'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nflMlLeg', 'nflYardsLeg', 'soccerMlLeg'];
 const body = names.map(lift).join('\n');
-const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml };`);
+const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, nflYardsLeg, soccerMlLeg };`);
 const state = { logSides: {}, logPrices: {}, logLines: {}, logBook: 'pp', slip: {} };
 const esc = (s) => String(s == null ? '' : s);
 const F = make(state, esc);
@@ -91,7 +91,7 @@ ok(!/point the same way|points against/.test(ownTeam), 'his own lineup’s at-ba
 
 const two = F.slipReadHtml([kanes, batter(502, 'Jose Ramirez', 'CLE', 58)]);
 ok(/PrizePicks needs two teams/.test(two), 'two legs from one club trip PrizePicks’ two-team rule');
-ok(/a 2-pick power needs <b>57.7%<\/b>/.test(two) && /Model's average leg <b>60%<\/b>/.test(two),
+ok(/a 2-pick power needs <b>57.7%<\/b>/.test(two) && /Model.s average leg <b>60%<\/b>/.test(two),
   'and the read gives the model’s average leg against what a 2-pick power needs');
 state.logBook = 'dk';
 ok(!/PrizePicks needs two teams/.test(F.slipReadHtml([kanes, batter(502, 'Jose Ramirez', 'CLE', 58)])),
@@ -109,12 +109,45 @@ ok(/CLE to win pulls against Kwan/.test(readMl), 'a team to win pulls against it
 ok(/CLE to win points the same way as [^.]*Benintendi/.test(readMl) && /CLE to win points the same way as [^.]*Messick/.test(readMl),
   'and points the same way as the other club’s hitters under and its own starter over');
 ok(/CLE to win pulls against [^.]*Smith/.test(readMl), 'while the other starter’s strikeout over pulls against it');
-ok(/both teams are here to win/.test(F.slipReadHtml([ml('CLE'), ml('CWS')])), 'both sides of one game are called out: one of them loses');
+ok(/both teams are here to win/i.test(F.slipReadHtml([ml('CLE'), ml('CWS')])), 'both sides of one game are called out: one of them loses');
 // PrizePicks offers moneylines now (the user, 2026-10-04), so a moneyline leg
 // counts toward the entry's break-even read at its sharp fair win %.
 state.logBook = 'pp';
-ok(/Model's average leg <b>59%<\/b> · a 2-pick power/.test(F.slipReadHtml([ml('CLE'), batter(504, 'Some Bat', 'NYY', 60)])),
+ok(/Model.s average leg <b>59%<\/b> · a 2-pick power/.test(F.slipReadHtml([ml('CLE'), batter(504, 'Some Bat', 'NYY', 60)])),
   'a moneyline leg on PrizePicks counts toward the break-even read at its fair win %');
+
+console.log('\n-- legs from the NFL and soccer boards (2026-10-04) --');
+state.logBook = 'dk'; state.logSides = {};
+const nflGame = { id: 'ev1', away: 'DET', home: 'CAR', commence: '2026-10-05T00:20:00Z', pickTeam: 'DET', pickPrice: -180,
+  pickFair: 63.9, away_price: -180, home_price: 168, away_fair: 63.9, home_fair: 36.1 };
+const detMl = F.nflMlLeg(nflGame, 'DET'), carMl = F.nflMlLeg(nflGame, 'CAR');
+ok(detMl.spec.sport === 'nfl' && detMl.spec.market === 'ml' && detMl.spec.side === 'away' && detMl.odds === -180 && detMl.spec.book.win === 63.9,
+  `an NFL moneyline leg carries its side, price and the sharp fair (${detMl.title} ${detMl.odds}, ${detMl.spec.book.win}%)`);
+ok(carMl.odds === 168 && carMl.spec.book.win === 36.1 && carMl.edge === r(36.1 - 100 / 268 * 100),
+  `the other side at its own price and fair, with its own value (${carMl.odds}, edge ${carMl.edge})`);
+function r(v) { return Math.round(v * 10) / 10; }
+const gibbs = F.nflYardsLeg({ player: 'Jahmyr Gibbs', team: 'DET', game: 'DET @ CAR', commence: nflGame.commence, line: 88.5, underPrice: -112 }, 'rushing');
+ok(gibbs.spec.market === 'rush_yds' && gibbs.spec.side === 'Under' && gibbs.spec.book.line === 88.5 && gibbs.odds === -112,
+  `a yardage leg is the under at the captured line and its price (${gibbs.title} ${gibbs.odds})`);
+ok(gibbs.spec.gamePk === detMl.spec.gamePk, `and shares a game key with that game's moneyline (${gibbs.spec.gamePk})`);
+const nflRead = F.slipReadHtml([detMl, gibbs]);
+ok(/2 legs from one game/.test(nflRead) && !/points the same way|pulls against/.test(nflRead),
+  'an NFL side beside its own player gets the same-game warning, and no baseball direction read');
+ok(/both teams are here to win/i.test(F.slipReadHtml([detMl, carMl])), 'both NFL sides of one game are called out');
+const fx = { id: 'sx1', away: 'England', home: 'Croatia', commence: '2026-10-03T18:45:00Z' };
+const eng = F.soccerMlLeg(fx, { selection: 'England', price: -120, fair: 55, value: -0.5 });
+const drw = F.soccerMlLeg(fx, { selection: 'Draw', price: 280, fair: 24.4, value: -1.9 });
+ok(eng.spec.side === 'away' && drw.spec.side === 'draw' && drw.spec.team === null && drw.title.startsWith('Draw'),
+  `soccer sides are home, away or the draw (${eng.title}; ${drw.title})`);
+ok(/only one result happens/i.test(F.slipReadHtml([eng, drw])), 'a side and the draw of one fixture are called out: only one result happens');
+ok(!/win or lose together/.test(F.slipReadHtml([eng, drw])), 'and are not said to win or lose together, which opposite results cannot');
+state.logBook = 'pp';
+const mlbMia = batter(601, 'Kyle Stowers', 'MIA', 55);
+const nflMia = { ...gibbs, id: 'nfl:x', spec: { ...gibbs.spec, team: 'MIA', player: 'De\'Von Achane', gamePk: 'MIA @ BUF|2026-10-04' } };
+ok(!/PrizePicks needs two teams/.test(F.slipReadHtml([mlbMia, nflMia])),
+  'Miami’s baseball and football clubs are two teams, not one');
+ok(!/legs from one game/.test(F.slipReadHtml([{ ...detMl, spec: { ...detMl.spec, gamePk: 849829 } }, kanes])),
+  'and an NFL leg never shares a game with an MLB leg, whatever its id');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
