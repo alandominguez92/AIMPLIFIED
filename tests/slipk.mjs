@@ -36,9 +36,9 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const names = ['ptDayOf', 'pkOf', 'pct1', 'kLeadOf', 'kSpec', 'buildKPropLeg', 'kLegIdFor', 'buildKPitcherLeg',
-  'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nflMlLeg', 'nflYardsLeg', 'soccerMlLeg'];
+  'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nflMlLeg', 'nflYardsLeg', 'soccerMlLeg', 'gameStarted'];
 const body = names.map(lift).join('\n');
-const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, nflYardsLeg, soccerMlLeg };`);
+const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, nflYardsLeg, soccerMlLeg, gameStarted };`);
 const state = { logSides: {}, logPrices: {}, logLines: {}, logBook: 'pp', slip: {} };
 const esc = (s) => String(s == null ? '' : s);
 const F = make(state, esc);
@@ -148,6 +148,17 @@ ok(!/PrizePicks needs two teams/.test(F.slipReadHtml([mlbMia, nflMia])),
   'Miami’s baseball and football clubs are two teams, not one');
 ok(!/legs from one game/.test(F.slipReadHtml([{ ...detMl, spec: { ...detMl.spec, gamePk: 849829 } }, kanes])),
   'and an NFL leg never shares a game with an MLB leg, whatever its id');
+
+console.log('\n-- warmup is not a start --');
+// 2026-10-05, 1:44 PM: Cleveland was in Warmup for a 2:00 first pitch, which
+// StatsAPI reports as abstract "Live", and the moneyline star refused it as
+// started. Started is a final, or a live game past its scheduled first pitch.
+const pitch = Date.now() + 16 * 60e3;
+ok(!F.gameStarted({ status: 'Live', time: pitch }), 'a Live (warmup) game before its scheduled first pitch has not started');
+ok(F.gameStarted({ status: 'Live', time: Date.now() - 60e3 }), 'a Live game past its first pitch has');
+ok(F.gameStarted({ status: 'Final', time: pitch }) && !F.gameStarted({ status: 'Preview', time: Date.now() - 60e3 }),
+  'a final always has; a preview never has, even running late');
+ok(F.gameStarted({ status: 'Live', timeMs: Date.now() - 60e3 }), 'and the batter rows’ timeMs is read as well as the board rows’ time');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

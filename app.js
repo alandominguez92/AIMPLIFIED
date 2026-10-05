@@ -201,6 +201,19 @@
   const isBatter = () => state.boardView === 'batter';
   const isRL = () => state.boardView === 'runline';
   const isK = () => state.boardView === 'kprops';
+  // Has this game actually begun? StatsAPI flags a game Live from WARMUP, 20 to
+  // 30 minutes before first pitch, and the books keep taking it until the
+  // pitch itself. Reading Live as "started" refused Cleveland's moneyline at
+  // 1:44 for a 2:00 first pitch (2026-10-05) and dropped the game's legs from
+  // Today's card just as its lineups had posted. Started is a final, or a live
+  // game whose scheduled first pitch has passed.
+  function gameStarted(g) {
+    if (!g) return false;
+    if (g.status === 'Final') return true;
+    if (g.status !== 'Live') return false;
+    const t = g.timeMs || g.time;
+    return !t || Date.now() >= t;
+  }
   const battersLive = () => !!(state.liveBatters && state.liveBatters.length);
   // Whether the active view's feed hasn't returned yet (vs. returned empty).
   const isFeedLoading = () => (isBatter() ? state.liveBatters : state.liveBoard) === null;
@@ -1632,7 +1645,7 @@
     // OVER, and reading the (now empty) rows would conclude it had not begun.
     if (isBatter() && state.batterSlate) return !!state.batterSlate.started;
     const rows = slateGames();
-    return rows.length > 0 && rows.every((g) => g.status === 'Live' || g.status === 'Final');
+    return rows.length > 0 && rows.every((g) => gameStarted(g));
   }
 
   function emptyBoardMessage() {
@@ -2272,7 +2285,7 @@
         // there is no header, and on Moneyline there never was one, so the board
         // said "sorted by first pitch" while showing no time at all. Each row now
         // carries its own: first pitch before the game, Live / Final after.
-        const when = g.status === 'Live' ? 'Live' : g.status === 'Final' ? 'Final' : (g.timeLabel || '');
+        const when = !gameStarted(g) ? (g.timeLabel || '') : g.status === 'Final' ? 'Final' : 'Live';
         const sub = [MARKET_NAME[g.metric] || MARKET_NAME[g.wasMetric] || g.marketLabel || '', (isBatter() || isML()) ? when : '']
           .filter(Boolean).join(' · ');
         // Moneyline leads with the two clubs, badged, the way the NFL board
@@ -3085,9 +3098,9 @@
   const PP_MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR' };
   function todayLegs() {
     const legs = [];
-    const upcoming = (s) => s !== 'Live' && s !== 'Final';
+    const upcoming = (g) => !gameStarted(g);
     for (const g of state.liveBatters || []) {
-      if (!g || g.pulled || !upcoming(g.status)) continue;
+      if (!g || g.pulled || !upcoming(g)) continue;
       for (const m of g.batterMarkets || []) {
         if (!m || m.none || !m.pp || m.pp.modelUnder == null || m.pp.point == null) continue;
         legs.push({ id: g.id, view: 'batter', player: g.matchup, team: g.team,
@@ -3106,7 +3119,7 @@
       }
     }
     for (const g of Array.isArray(state.liveBoard) ? state.liveBoard : []) {
-      if (!g || !upcoming(g.status)) continue;
+      if (!g || !upcoming(g)) continue;
       for (const p of g.projRows || []) {
         if (!p || !p.pp || p.pp.modelUnder == null || p.pp.point == null) continue;
         const mk = p.market || {};
@@ -4219,7 +4232,7 @@
       toast('Line closed — no longer bettable'); return;
     }
     // A moneyline on a game already under way is not the price on the row.
-    if (adding && isML() && (g.status === 'Live' || g.status === 'Final')) {
+    if (adding && isML() && gameStarted(g)) {
       toast('Game already started — that moneyline is gone'); return;
     }
     const next = { ...state.slip };

@@ -2734,7 +2734,11 @@ async function batters(env, ctx, opts) {
   // being news the moment the game is over.
   const slate = {
     rows: rows.length,
-    started: rows.length > 0 && rows.every((r) => r.status === 'Live' || r.status === 'Final'),
+    // Live from WARMUP, 20-30 minutes early in StatsAPI's terms; the slate has
+    // only started once every game's scheduled first pitch has also passed --
+    // the same rule as the client's gameStarted.
+    started: rows.length > 0 && rows.every((r) => r.status === 'Final'
+      || (r.status === 'Live' && (!r.timeMs || Date.now() >= r.timeMs))),
     allFinal: rows.length > 0 && rows.every((r) => r.status === 'Final'),
   };
   const openRows = rows.filter((r) => r.status !== 'Final');
