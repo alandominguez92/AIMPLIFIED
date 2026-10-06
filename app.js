@@ -3272,7 +3272,8 @@
   // worker (see entriesApi) and summarised by entry type, market and model
   // probability — so "which options win" is answered from real entries.
   const ENTRY_KEY_STORE = 'aimplified_entry_key';
-  const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds' };
+  const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds',
+    threes: '3PM', ast: 'Ast', reb: 'Reb' };
   function entryKey() {
     try {
       let k = localStorage.getItem(ENTRY_KEY_STORE);
@@ -5421,13 +5422,60 @@
   // board says how old they are rather than implying they are live.
   async function refreshNba() {
     if (!LIVE_MODE) return;
-    try {
-      const d = await fetchJson('/api/nba-board');
-      state.nba = (d && Array.isArray(d.games)) ? d : { games: [], empty: true };
-    } catch (e) {
-      state.nba = { games: [], empty: true, error: 'unreachable' };
-    }
+    const [d, pp] = await Promise.all([
+      fetchJson('/api/nba-board').catch(() => null),
+      fetchJson('/api/nba-pp').catch(() => null),
+    ]);
+    state.nba = d && Array.isArray(d.games) ? d : { games: [], empty: true, error: d ? undefined : 'unreachable' };
+    state.nbaPp = pp && Array.isArray(pp.legs) ? pp : { legs: [] };
     renderNba();
+  }
+
+  // ---- Tonight's PrizePicks unders (2026-10-06) ------------------------------
+  // The NBA Today's card: the logged legs, best under first, rotation players
+  // only. The highest chances belong to the bench (an 0.5 line on a player who
+  // barely plays), and those are the players who sit out entirely.
+  const NBA_ROTATION_MIN = 20;
+  const NBA_MK = { threes: 'threes', ast: 'assists', reb: 'rebounds' };
+  function nbaPpLeg(x) {
+    return { id: `nbapp:${x.game_id}:${x.player}:${x.market}`, board: 'PrizePicks',
+      title: `${x.player} Under ${x.point} ${MARKET_SHORT[x.market] || x.market}`, sub: x.game, odds: null, tier: null, edge: null,
+      // gamePk is the odds feed's event id, the same one the NBA moneyline leg
+      // carries, so the slip reads a prop and a moneyline of one game as one game.
+      spec: { sport: 'nba', date: ptDayOf(Date.parse(x.commence)), gamePk: x.game_id, playerId: null,
+        player: x.player, team: x.team || null, market: x.market, side: 'Under',
+        book: { line: x.book_line != null ? x.book_line : null, price: typeof x.book_under === 'number' ? x.book_under : null, under: null },
+        pp: { line: x.point, under: x.model_under } } };
+  }
+  function nbaPpCardHtml() {
+    const d = state.nbaPp;
+    if (!d) return '';
+    const now = Date.now();
+    const all = (d.legs || []).filter((x) => Date.parse(x.commence) > now);
+    const rot = all.filter((x) => x.min_proj != null && x.min_proj >= NBA_ROTATION_MIN);
+    const top = rot.slice(0, 5);
+    const perGame = {};
+    for (const x of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
+    const rec = d.record && d.record.top3 && d.record.top3.n
+      ? `<span class="tc-rec">Top 3 a day: <b>${d.record.top3.hit} of ${d.record.top3.n}</b></span>` : '';
+    const head = `<div class="tc-head"><span class="tc-title">Tonight's PrizePicks unders</span>${rec}</div>`
+      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds; rotation players only. Logged, not posted.</div>`;
+    if (!top.length) {
+      return `<div class="nba-pp">${head}<div class="tc-wait-note">${all.length
+        ? 'No rotation players among tonight’s logged lines yet.'
+        : 'PrizePicks lines are read about four hours before each tip; none are logged for tonight yet.'}</div></div>`;
+    }
+    return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map((x) => {
+      const leg = nbaPpLeg(x);
+      const on = !!state.slip[offerLeg(leg)];
+      const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.player)} under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
+      const same = perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
+      return `<li>${star}<div class="tc-leg">`
+        + `<span class="tc-l1"><b>${esc(x.player)}</b>${x.team ? ` <span class="ctx-chip">${esc(x.team)}</span>` : ''}<span class="tc-p">${Math.round(x.model_under)}%</span></span>`
+        + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}</span>`
+        + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
+        + `</div></li>`;
+    }).join('')}</ol></div>`;
   }
   function renderNba() {
     const grid = document.getElementById('nbaGrid');
@@ -5446,12 +5494,12 @@
         + (pre ? ' · preseason: starters sit, and Pinnacle is the only sharp book' : '');
     }
     if (!games.length) {
-      grid.innerHTML = `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+      grid.innerHTML = nbaPpCardHtml() + `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
     }
     const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    grid.innerHTML = `<div class="board view-moneyline"><div class="board-inner">`
+    grid.innerHTML = nbaPpCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map(nbaRow).join('')}</div>`
       + `</div></div>`;

@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/entries',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/nba-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/nba-board', '/api/nba-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
 export default {
@@ -242,6 +242,10 @@ export default {
     ctx.waitUntil(nflMaybeIngest(env, ctx).catch(() => null));
     // And the NBA moneyline, recorded only -- see nbaMaybeIngest.
     ctx.waitUntil(nbaMaybeIngest(env).catch(() => null));
+    // NBA PrizePicks unders: the night's box scores in, each game's PrizePicks
+    // lines captured once inside four hours of tip, the log graded.
+    ctx.waitUntil(nbaBoxIngest(env).catch(() => null));
+    ctx.waitUntil(nbaPpMaybeCapture(env).catch(() => null));
     // Grading is free (ESPN only) and idempotent, so it can ride the cron rather
     // than waiting for someone to open the track record.
     ctx.waitUntil(gradeGamePicks(env).catch(() => null));
@@ -478,6 +482,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/sports-list') return sportsList(env, url);
   if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
+  if (p === '/api/nba-pp') return cors(json(await nbaPpBoard(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-compare') return nflCompare(env, url);
@@ -4086,6 +4091,7 @@ async function gradeEntryLegs(env) {
 // no second set of matching rules to drift from the ones the records use. A
 // leg whose game those rows do not cover stays open for its one-tap result.
 const ENTRY_NFL_YDS = { rec_yds: 'receiving', rush_yds: 'rushing' };
+const ENTRY_NBA_PROPS = new Set(['threes', 'ast', 'reb']);
 // An NFL leg's game is keyed "AWAY @ HOME|YYYY-MM-DD" (Pacific day): the
 // moneyline and yardage rows share no event id, but both write the matchup.
 function entryNflKey(gameId) {
@@ -4097,12 +4103,13 @@ function entryNflKey(gameId) {
 async function gradeEntryLegsOther(db) {
   const open = ((await db.prepare(
     "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer','nba') AND game_id IS NOT NULL"
-  ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market]));
+  ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market])
+    || (l.sport === 'nba' && ENTRY_NBA_PROPS.has(l.market)));
   if (!open.length) return [];
   const winnerOf = (hs, as) => (hs > as ? 'home' : as > hs ? 'away' : 'draw');
   // Soccer and the NBA keep the odds feed's event id on both sides: the log's
   // game_id and the leg's.
-  const byIdLegs = open.filter((l) => l.sport === 'soccer' || l.sport === 'nba');
+  const byIdLegs = open.filter((l) => (l.sport === 'soccer' || l.sport === 'nba') && l.market === 'ml');
   const socIds = [...new Set(byIdLegs.map((l) => String(l.game_id).replace(/^g/, '')))];
   let soc = [];
   if (socIds.length) {
@@ -4132,10 +4139,36 @@ async function gradeEntryLegsOther(db) {
     }
   }
   const sameDay = (iso, day) => ptDateOf(Date.parse(iso)) === day;
+  // NBA props grade from the box scores the NBA log reads (nba_box), by the
+  // player's name on the leg's day. A day whose games are all read settles a
+  // player missing from it as did-not-play.
+  const nbaDays = new Map();
+  for (const day of [...new Set(open.filter((l) => l.sport === 'nba' && l.market !== 'ml').map((l) => l.date))]) {
+    try {
+      const rows = ((await db.prepare('SELECT * FROM nba_box WHERE date = ?').bind(day).all()).results || []);
+      const pend = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 0').bind(day).first();
+      const read = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 1').bind(day).first();
+      nbaDays.set(day, { byName: new Map(rows.map((b) => [nbaName(b.player), b])),
+        settled: Number(read && read.n) > 0 && Number(pend && pend.n) === 0 });
+    } catch (e) { /* no NBA box table yet */ }
+  }
   const stmts = [];
   for (const l of open) {
     let result = null, actual = null;
-    if (l.sport === 'soccer' || l.sport === 'nba') {
+    if (l.sport === 'nba' && l.market !== 'ml') {
+      const d = nbaDays.get(l.date);
+      if (!d) continue;
+      const b = d.byName.get(nbaName(l.player));
+      if (b) {
+        if (b.dnp || b[l.market] == null) result = 'void';
+        else if (l.line == null) continue;
+        else {
+          actual = b[l.market];
+          result = actual === l.line ? 'push' : ((actual < l.line) === (l.side === 'Under') ? 'win' : 'loss');
+        }
+      } else if (d.settled) result = 'void';
+      else continue;
+    } else if (l.sport === 'soccer' || l.sport === 'nba') {
       const g = soc.find((x) => x.sport === l.sport && x.game_id === String(l.game_id).replace(/^g/, ''));
       if (!g) continue;
       // A fixture the log voided (listed, then moved) voids the leg with it.
@@ -4198,7 +4231,7 @@ function entryTypeLabel(e) {
   return e.kind === 'parlay' ? `DraftKings ${e.legs_n}-leg parlay` : 'DraftKings straight';
 }
 const ENTRY_MARKET_LABEL = { tb: 'Total bases', hrr: 'H+R+RBI', hr: 'Home runs', K: 'Strikeouts', ml: 'Moneyline',
-  rec_yds: 'Receiving yards', rush_yds: 'Rushing yards' };
+  rec_yds: 'Receiving yards', rush_yds: 'Rushing yards', threes: 'Threes', ast: 'Assists', reb: 'Rebounds' };
 
 function buildEntrySummary(entries, legs) {
   const settled = entries.filter((e) => e.status === 'settled');
@@ -8404,6 +8437,336 @@ async function nbaMaybeIngest(env) {
     } catch (e) { /* next tick */ }
   }
   return out.length ? out : null;
+}
+
+// ---------------------------------------------------------------------------
+// NBA — PrizePicks unders, logged (2026-10-06).
+//
+// The MLB Today's card never needed a sharp book: it ranks the under by the
+// model's own chance at PrizePicks' line, and PrizePicks pays by entry type, not
+// by price. The NBA version is the same claim. Threes, assists and rebounds,
+// because those are where the under beat a player's recent average across two
+// seasons of box scores (55.5%, 53.4% and 53.3%); points did not (51.6%).
+//
+// Projection: the player's last ten regular-season games blended with last
+// season's per-game average (nba-priors.json), the prior counting as
+// NBA_PRIOR_K games -- the whole projection on opening night, a third of it by
+// a player's tenth game. The chance of the under is a negative binomial at
+// that mean; the dispersions are starting values to be refit from the log.
+// Recent games come from ESPN's box scores, read nightly into nba_box (free).
+//
+// Nothing here is posted. It is logged and graded, so the card has a record
+// before anyone trusts it.
+const NBA_PP_MARKETS = { player_threes: 'threes', player_assists: 'ast', player_rebounds: 'reb' };
+const NBA_PP_BOOKS = ['prizepicks', 'draftkings', 'fanduel'];
+const NBA_PRIOR_K = 5;
+const NBA_DISP = { threes: 1.15, ast: 1.25, reb: 1.2 };
+const NBA_PP_VER = 'nbapp-v1';
+const NBA_PP_WINDOW_MS = 4 * 3600 * 1000;   // capture a game once, inside 4h of tip
+const NBA_PP_PER_TICK = 5;                   // per-event calls a tick may make
+const NBA_BOX_PER_TICK = 4;                  // box scores a tick may read
+const NBA_SEASON_FROM = '2026-10-01';        // recent games: this season only
+const ESPN_CDN_NBA = 'https://cdn.espn.com/core/nba';
+
+async function ensureNbaSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nba_box (
+    game_id TEXT NOT NULL, date TEXT NOT NULL, season_type INTEGER,
+    player_id TEXT NOT NULL, player TEXT, team TEXT,
+    min REAL, threes INTEGER, ast INTEGER, reb INTEGER, starter INTEGER, dnp INTEGER,
+    PRIMARY KEY (game_id, player_id)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nba_box_date ON nba_box (date)').run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nba_box_games (
+    game_id TEXT PRIMARY KEY, date TEXT, season_type INTEGER, done INTEGER DEFAULT 0
+  )`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nbapp (
+    date TEXT NOT NULL, game_id TEXT NOT NULL, player TEXT NOT NULL, market TEXT NOT NULL,
+    league TEXT, commence TEXT, home TEXT, away TEXT, team TEXT, player_id TEXT,
+    point REAL, proj REAL, model_under REAL, n_recent INTEGER, prior_gp INTEGER, min_proj REAL,
+    book_line REAL, book_under INTEGER, actual REAL, result TEXT, model_ver TEXT, captured_at TEXT,
+    PRIMARY KEY (date, game_id, player, market)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nbapp_ungraded ON nbapp (date) WHERE result IS NULL').run();
+}
+
+// Accents are stripped as well as case and suffixes: "Nikola Jokić" in one feed
+// is "Nikola Jokic" in the other.
+const nbaName = (s) => nflBaseName(String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+
+let NBA_PRIORS = null;
+async function nbaPriors(env) {
+  if (NBA_PRIORS) return NBA_PRIORS;
+  try {
+    const r = await env.ASSETS.fetch(new Request('https://x/nba-priors.json'));
+    if (r.ok) {
+      const d = await r.json();
+      const byName = new Map();
+      for (const [id, pl] of Object.entries(d.players || {})) {
+        const k = nbaName(pl.n);
+        // Two players with one name are both dropped: a leg handed to the wrong
+        // one is worse than a leg with no projection.
+        byName.set(k, byName.has(k) ? null : { id, ...pl });
+      }
+      NBA_PRIORS = { ...d, byName };
+    }
+  } catch (e) { /* asset missing -> nothing is projected rather than something wrong */ }
+  return NBA_PRIORS;
+}
+
+// One player's per-game rows, newest first, from this season's regular season
+// and playoffs. Preseason minutes are not a player's real role.
+async function nbaRecentMap(db) {
+  const rows = ((await db.prepare(
+    'SELECT player_id, date, min, threes, ast, reb FROM nba_box WHERE season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date DESC'
+  ).bind(NBA_SEASON_FROM).all()).results || []);
+  const m = new Map();
+  for (const r of rows) {
+    if (!m.has(r.player_id)) m.set(r.player_id, []);
+    const a = m.get(r.player_id);
+    if (a.length < 10) a.push(r);
+  }
+  return m;
+}
+
+// Pure: one event's odds in, log rows out.
+function nbaPpLegs(ev, pri, recent) {
+  const out = [];
+  if (!ev || !pri) return out;
+  const pp = (ev.bookmakers || []).find((b) => b.key === 'prizepicks');
+  if (!pp) return out;
+  const bookLine = (mk, name) => {
+    for (const bk of ['draftkings', 'fanduel']) {
+      const b = (ev.bookmakers || []).find((x) => x.key === bk);
+      const m = b && (b.markets || []).find((x) => x.key === mk);
+      const u = m && (m.outcomes || []).find((o) => o.name === 'Under' && nbaName(o.description) === name);
+      if (u && u.point != null) return { line: u.point, price: typeof u.price === 'number' ? u.price : null };
+    }
+    return { line: null, price: null };
+  };
+  for (const m of (pp.markets || [])) {
+    const market = NBA_PP_MARKETS[m.key];
+    if (!market) continue;
+    const seen = new Set();
+    for (const o of (m.outcomes || [])) {
+      const name = nbaName(o.description);
+      if (!name || seen.has(name) || o.point == null) continue;
+      seen.add(name);
+      const pl = pri.byName.get(name);
+      if (!pl) continue;
+      const rec = (recent.get(pl.id) || []).map((r) => r[market]).filter((v) => v != null);
+      const priorAvg = pl.gp >= 5 && typeof pl[market] === 'number' ? pl[market] : null;
+      let proj;
+      if (priorAvg != null) proj = (rec.reduce((a, b) => a + b, 0) + NBA_PRIOR_K * priorAvg) / (rec.length + NBA_PRIOR_K);
+      else if (rec.length >= 3) proj = rec.reduce((a, b) => a + b, 0) / rec.length;
+      else continue;   // a rookie or a returner with no games yet: nothing to stand on
+      const under = negBinomCdf(Math.ceil(o.point) - 1, proj, NBA_DISP[market]);
+      // Minutes, blended the same way. The highest under-chances belong to the
+      // bench -- an 0.5 line on a player who barely plays -- and those are the
+      // players who sit out entirely; the card shows rotation players only.
+      const recMin = (recent.get(pl.id) || []).map((r) => r.min).filter((v) => v != null);
+      const priorMin = pl.gp >= 5 && typeof pl.min === 'number' ? pl.min : null;
+      const minProj = priorMin != null
+        ? (recMin.reduce((a, b) => a + b, 0) + NBA_PRIOR_K * priorMin) / (recMin.length + NBA_PRIOR_K)
+        : (recMin.length ? recMin.reduce((a, b) => a + b, 0) / recMin.length : null);
+      const bl = bookLine(m.key, name);
+      out.push({
+        game_id: ev.id, commence: ev.commence_time, home: ev.home_team, away: ev.away_team,
+        player: o.description, player_id: pl.id, team: pl.tm || null, market, point: o.point,
+        proj: round1(proj), model_under: round1(under * 100), n_recent: rec.length, prior_gp: pl.gp || 0,
+        min_proj: minProj != null ? round1(minProj) : null, book_line: bl.line, book_under: bl.price,
+      });
+    }
+  }
+  return out;
+}
+
+async function logNbaPp(db, lg, legs) {
+  if (!legs.length) return 0;
+  const stamp = new Date().toISOString();
+  const stmts = legs.map((l) => db.prepare(
+    `INSERT OR IGNORE INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, prior_gp, min_proj, book_line, book_under, model_ver, captured_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market, lg, l.commence, l.home, l.away, l.team, l.player_id,
+    l.point, l.proj, l.model_under, l.n_recent, l.prior_gp, l.min_proj, l.book_line, l.book_under, NBA_PP_VER, stamp));
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return stmts.length;
+}
+
+// Cron: each game once, inside four hours of its tip, taken from the board's
+// snapshot so finding the games costs nothing. A few events a tick, so a
+// fifteen-game night spreads over several ticks instead of one.
+async function nbaPpMaybeCapture(env) {
+  if (!env || !env.DB || !env.ODDS_API_KEY) return null;
+  const now = Date.now();
+  const doneKey = `nba_pp_done:${slateDate()}`;
+  const doneHit = await loadFeedCache(env.DB, doneKey);
+  const done = new Set(((doneHit.present && doneHit.data) || {}).ids || []);
+  const due = [];
+  for (const lg of Object.keys(NBA_LEAGUES)) {
+    const snap = await loadFeedCache(env.DB, `nba_board:${lg}`);
+    for (const g of ((snap.present && snap.data && snap.data.games) || [])) {
+      const t = Date.parse(g.commence);
+      if (isFinite(t) && t > now && t - now <= NBA_PP_WINDOW_MS && !done.has(g.id)) due.push({ lg, g });
+    }
+  }
+  if (!due.length) return null;
+  await ensureNbaSchema(env.DB);
+  const pri = await nbaPriors(env);
+  const recent = await nbaRecentMap(env.DB);
+  let logged = 0;
+  for (const { lg, g } of due.slice(0, NBA_PP_PER_TICK)) {
+    try {
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${NBA_LEAGUES[lg]}/events/${g.id}/odds?apiKey=${env.ODDS_API_KEY}`
+        + `&markets=${Object.keys(NBA_PP_MARKETS).join(',')}&oddsFormat=american&dateFormat=iso&bookmakers=${NBA_PP_BOOKS.join(',')}`,
+      { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, `nba:${lg}:pp`);
+      if (!r.ok) continue;
+      logged += await logNbaPp(env.DB, lg, nbaPpLegs(await r.json(), pri, recent));
+      done.add(g.id);
+    } catch (e) { /* this game waits for the next tick */ }
+  }
+  await saveFeedCache(env.DB, doneKey, { ids: [...done] });
+  return { logged, captured: Math.min(due.length, NBA_PP_PER_TICK), due: due.length };
+}
+
+// Pure: one ESPN box score in, one row per player out.
+function nbaBoxRows(sum, gameId, date, seasonType) {
+  const box = (sum && sum.gamepackageJSON && sum.gamepackageJSON.boxscore) || (sum && sum.boxscore) || {};
+  const out = [];
+  for (const team of (box.players || [])) {
+    const st = (team.statistics || [])[0];
+    if (!st) continue;
+    const L = (st.labels || st.names || []).map((x) => String(x).toUpperCase());
+    const at = (k) => L.indexOf(k);
+    const iMin = at('MIN'), i3 = at('3PT'), iReb = at('REB'), iAst = at('AST');
+    for (const a of (st.athletes || [])) {
+      const ath = a.athlete || {};
+      if (!ath.id) continue;
+      const v = a.stats || [];
+      const num = (i) => { const n = Number(String(v[i] == null ? '' : v[i]).split('-')[0]); return Number.isFinite(n) ? n : null; };
+      const dnp = !!a.didNotPlay || !v.length;
+      out.push({
+        game_id: String(gameId), date, season_type: seasonType, player_id: String(ath.id), player: ath.displayName || '',
+        team: (team.team && team.team.abbreviation) || null,
+        min: dnp ? null : num(iMin), threes: dnp ? null : num(i3), ast: dnp ? null : num(iAst), reb: dnp ? null : num(iReb),
+        starter: a.starter ? 1 : 0, dnp: dnp ? 1 : 0,
+      });
+    }
+  }
+  return out;
+}
+
+// Cron: an hourly scan of yesterday and today for finished games, then a few
+// box scores a tick. Free -- ESPN's cdn host, the one a Worker can reach.
+async function nbaBoxIngest(env) {
+  if (!env || !env.DB) return null;
+  await ensureNbaSchema(env.DB);
+  const scan = await loadFeedCache(env.DB, 'nba_box_scan');
+  const st = (scan.present && scan.data) || {};
+  if (!st.checked || Date.now() - st.checked >= 3600e3) {
+    for (const day of [slateDateOffset(-1), slateDate()]) {
+      let evs = [];
+      // ?date= (singular): ?dates= is ignored and answers with tonight's games.
+      try { evs = await espnScoreboard(`nba/scoreboard?xhr=1&date=${day.replace(/-/g, '')}`); } catch (e) { continue; }
+      const stmts = [];
+      for (const ev of evs) {
+        const name = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
+        if (!/FINAL/.test(name) || !ev.id) continue;
+        stmts.push(env.DB.prepare('INSERT OR IGNORE INTO nba_box_games (game_id, date, season_type, done) VALUES (?,?,?,0)')
+          .bind(String(ev.id), day, (ev.season && ev.season.type) || null));
+      }
+      if (stmts.length) await env.DB.batch(stmts);
+    }
+    await saveFeedCache(env.DB, 'nba_box_scan', { checked: Date.now() });
+  }
+  const todo = ((await env.DB.prepare('SELECT game_id, date, season_type FROM nba_box_games WHERE done = 0 LIMIT ?')
+    .bind(NBA_BOX_PER_TICK).all()).results || []);
+  let read = 0;
+  for (const g of todo) {
+    try {
+      const r = await fetch(`${ESPN_CDN_NBA}/boxscore?xhr=1&gameId=${g.game_id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+      if (!r.ok) continue;
+      const rows = nbaBoxRows(await r.json(), g.game_id, g.date, g.season_type);
+      if (!rows.length) continue;
+      const stmts = rows.map((x) => env.DB.prepare(
+        `INSERT OR REPLACE INTO nba_box (game_id, date, season_type, player_id, player, team, min, threes, ast, reb, starter, dnp)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(x.game_id, x.date, x.season_type, x.player_id, x.player, x.team, x.min, x.threes, x.ast, x.reb, x.starter, x.dnp));
+      stmts.push(env.DB.prepare('UPDATE nba_box_games SET done = 1 WHERE game_id = ?').bind(g.game_id));
+      for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+      read++;
+    } catch (e) { /* next tick */ }
+  }
+  const graded = await gradeNbaPp(env.DB);
+  return { read, graded };
+}
+
+// Grade logged legs from the box scores. A player with a line and no minutes,
+// or missing from a day whose games are all read, did not play: void, never a
+// free under.
+async function gradeNbaPp(db) {
+  const open = ((await db.prepare('SELECT * FROM nbapp WHERE result IS NULL AND date < ?').bind(slateDate()).all()).results || []);
+  if (!open.length) return 0;
+  const stmts = [];
+  for (const day of [...new Set(open.map((r) => r.date))]) {
+    const box = ((await db.prepare('SELECT * FROM nba_box WHERE date = ?').bind(day).all()).results || []);
+    const pend = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 0').bind(day).first();
+    const read = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 1').bind(day).first();
+    const settled = Number(read && read.n) > 0 && Number(pend && pend.n) === 0;
+    const byId = new Map(box.map((b) => [b.player_id, b]));
+    const byName = new Map(box.map((b) => [nbaName(b.player), b]));
+    for (const r of open.filter((x) => x.date === day)) {
+      const b = (r.player_id && byId.get(r.player_id)) || byName.get(nbaName(r.player));
+      let result = null, actual = null;
+      if (b) {
+        if (b.dnp || b[r.market] == null) result = 'void';
+        else { actual = b[r.market]; result = actual < r.point ? 'under' : actual > r.point ? 'over' : 'push'; }
+      } else if (settled) result = 'void';
+      if (!result) continue;
+      stmts.push(db.prepare('UPDATE nbapp SET result=?, actual=? WHERE date=? AND game_id=? AND player=? AND market=?')
+        .bind(result, actual, r.date, r.game_id, r.player, r.market));
+    }
+  }
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return stmts.length;
+}
+
+// GET /api/nba-pp: tonight's logged legs, best under first, and the record.
+async function nbaPpBoard(env) {
+  const out = {
+    note: 'LOGGED, not posted. The model\u2019s chance the under lands at PrizePicks\u2019 line: a player\u2019s last ten games blended with last season. Threes, assists, rebounds.',
+    legs: [], record: null,
+  };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
+  try {
+    await ensureNbaSchema(env.DB);
+    const rows = ((await env.DB.prepare('SELECT * FROM nbapp WHERE date >= ? ORDER BY model_under DESC').bind(slateDateOffset(-1)).all()).results || []);
+    const now = Date.now();
+    out.legs = rows.filter((r) => Date.parse(r.commence) > now).map((r) => ({
+      player: r.player, team: r.team, market: r.market, point: r.point, model_under: r.model_under, proj: r.proj,
+      n_recent: r.n_recent, min_proj: r.min_proj, game: `${r.away} @ ${r.home}`, game_id: r.game_id, commence: r.commence, league: r.league,
+      book_line: r.book_line, book_under: r.book_under, player_id: r.player_id,
+    }));
+    const graded = ((await env.DB.prepare("SELECT date, market, model_under, result FROM nbapp WHERE result IN ('under','over')").all()).results || []);
+    const by = {};
+    for (const g of graded) {
+      by[g.market] = by[g.market] || { n: 0, under: 0 };
+      by[g.market].n++; if (g.result === 'under') by[g.market].under++;
+    }
+    const days = new Map();
+    for (const g of graded) { if (!days.has(g.date)) days.set(g.date, []); days.get(g.date).push(g); }
+    let t3n = 0, t3h = 0;
+    for (const list of days.values()) {
+      const top = list.sort((a, b) => b.model_under - a.model_under).slice(0, 3);
+      t3n += top.length; t3h += top.filter((x) => x.result === 'under').length;
+    }
+    out.record = {
+      graded: graded.length,
+      byMarket: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, { n: v.n, hitRate: v.n ? round1(v.under / v.n * 100) : null }])),
+      top3: { n: t3n, hit: t3h, hitRate: t3n ? round1(t3h / t3n * 100) : null },
+    };
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return out;
 }
 
 // Three-way de-vig. Shin is a two-way construction and 1X2 has a draw, so the
