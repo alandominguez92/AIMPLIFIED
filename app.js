@@ -4147,13 +4147,18 @@
   }
   // The under, at the captured line: the side this board's projections are
   // built to read. The log form still flips it to the over.
+  // PrizePicks' number rides along as the leg's pp line (2026-10-06), so an
+  // entry logged on PrizePicks is logged, and graded, at PrizePicks' number.
   function nflYardsLeg(r, market) {
     const mk = market === 'receiving' ? 'rec_yds' : 'rush_yds';
-    return { id: `nfl:${mk}:${r.game}:${r.player}`, board: 'NFL', title: `${r.player} U ${r.line} ${market === 'receiving' ? 'Rec' : 'Rush'} Yds`,
+    const line = r.line != null ? r.line : r.ppLine;
+    const ppNote = r.ppLine != null && r.line != null && r.ppLine !== r.line ? ` (PP ${r.ppLine})` : '';
+    return { id: `nfl:${mk}:${r.game}:${r.player}`, board: 'NFL', title: `${r.player} U ${line} ${market === 'receiving' ? 'Rec' : 'Rush'} Yds${ppNote}`,
       sub: r.game, odds: typeof r.underPrice === 'number' ? r.underPrice : null, tier: null, edge: null,
       spec: { sport: 'nfl', date: ptDayOf(Date.parse(r.commence)), gamePk: nflGameKey(r.game, r.commence),
         player: r.player, team: r.team || null, market: mk, side: 'Under',
-        book: { line: r.line, price: typeof r.underPrice === 'number' ? r.underPrice : null, under: null }, pp: null } };
+        book: { line: r.line != null ? r.line : null, price: typeof r.underPrice === 'number' ? r.underPrice : null, under: null },
+        pp: r.ppLine != null ? { line: r.ppLine, under: null } : null } };
   }
   // NBA names are city plus nickname, and every nickname is unique; the
   // nickname is what fits a phone row (the "Trail Blazers" are "Blazers").
@@ -4989,13 +4994,15 @@
       const lineKey = (r) => `${r.player}|${r.market}|${r.game}`;
       const lines = new Map();
       for (const r of ((cmp && cmp.rows) || [])) {
-        if (r && r.line != null) lines.set(lineKey(r), r);
+        // PrizePicks' number counts too: it lists players no book does.
+        if (r && (r.line != null || r.ppLine != null)) lines.set(lineKey(r), r);
       }
       const rows = (d && Array.isArray(d.rows)) ? d.rows : [];
       for (const r of rows) {
         const m = lines.get(lineKey(r));
         if (!m) continue;
         r.line = m.line;
+        r.ppLine = m.ppLine == null ? null : m.ppLine;
         r.sharpN = m.sharpN;
         r.underPrice = m.underPrice;
         r.underBook = m.underBook;
@@ -5102,7 +5109,7 @@
     const tail = r.conf === 3 ? ' np-low' : '';
     // A star only where a book's line has been captured: with no line there is
     // nothing to take, only a projection.
-    const star = r.line != null && r.commence && Date.parse(r.commence) > Date.now()
+    const star = (r.line != null || r.ppLine != null) && r.commence && Date.parse(r.commence) > Date.now()
       ? offerStar(nflYardsLeg(r, market)) : '';
     const row = `<div class="board-row${open ? ' expanded' : ''}${tail}" data-action="nfl-toggle" data-id="${esc(id)}"
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
@@ -5111,7 +5118,7 @@
           <span class="mc-head">${star}<b>${esc(r.player)}</b> ${nflBadge(r.team)}${
             r.commence ? `<span class="row-when">${esc(kickoff(r.commence))}</span>` : ''}</span>
           <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}${r.commence ? ' · ' + esc(kickoff(r.commence)) : ''}</span>
-          ${nflPropBar(r, market)}
+          ${nflPropBar(r, market)}${r.ppLine != null ? ppTag({ point: r.ppLine }, r.line) : ''}
         </div>
         <span class="np-proj">${r.proj}<i>yds</i></span>
         <span class="np-range">${r.p25} – ${r.p75}</span>

@@ -4838,6 +4838,15 @@ const NFL_PASS_TD_BASE = 55.4;   // realised under-1.5 rate, 2024-25 regular sea
 // named list of <=10 bills 3; and it did NOT include novig or prophetx, which
 // are the exchanges the props pool depends on -- they only appear when asked for
 // by key. Keep this at 10 or fewer or the request bills as a second region.
+// The player-prop capture swaps BetRivers for PrizePicks (2026-10-06): the
+// user plays PrizePicks first, and its yardage number is often not the books'
+// -- a probe of two Week 5 games found it on 18 receivers and 9 rushers, more
+// than DraftKings. Still ten books, so still one region's credits. The game-line
+// ingest keeps BetRivers, which is often the best moneyline price.
+const NFL_PROP_BOOKS = [
+  'pinnacle', 'lowvig', 'betonlineag', 'novig', 'prophetx',
+  'draftkings', 'fanduel', 'williamhill_us', 'betmgm', 'prizepicks',
+];
 const NFL_BOOKS = [
   'pinnacle', 'lowvig', 'betonlineag', 'novig', 'prophetx',   // fair candidates
   'draftkings', 'fanduel', 'williamhill_us', 'betmgm', 'betrivers', // execution
@@ -4934,7 +4943,7 @@ async function ingestNflProps(env, opts, reqUrl) {
     try {
       const r = await fetch(
         `https://api.the-odds-api.com/v4/sports/${sp.key}/events/${ev.id}/odds`
-        + `?apiKey=${key}&bookmakers=${NFL_BOOKS.join(',')}&markets=${NFL_PROP_MARKETS}`
+        + `?apiKey=${key}&bookmakers=${NFL_PROP_BOOKS.join(',')}&markets=${NFL_PROP_MARKETS}`
         + '&oddsFormat=american&dateFormat=iso',
         { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, 'nfl:props');
@@ -10155,7 +10164,13 @@ async function nflCompare(env, url) {
 
     for (const p of projs) {
       const oddsMkt = NFL_PROJ_TO_ODDS[p.market];
-      const quotes = oddsMkt ? (byPlayer.get(`${p.event_id}|${oddsMkt}|${normName(p.player)}`) || []) : [];
+      const allQuotes = oddsMkt ? (byPlayer.get(`${p.event_id}|${oddsMkt}|${normName(p.player)}`) || []) : [];
+      // PrizePicks hangs its own number and pays by entry type, not by price, so
+      // it is carried beside the line and never counted in it: one vote for its
+      // number in the "most books agree" line would let it move the line it is
+      // being compared against.
+      const ppQuotes = allQuotes.filter((q) => q.book === 'prizepicks');
+      const quotes = allQuotes.filter((q) => q.book !== 'prizepicks');
       // How far ahead of kickoff this projection was locked. The freeze is
       // INSERT OR IGNORE on (season, event_id, player, market), so the FIRST
       // capture to see a game owns its projection for the rest of the season --
@@ -10171,10 +10186,20 @@ async function nflCompare(env, url) {
         market: p.market, proj: p.proj, p25: p.p25, p50: p.p50, p75: p.p75, conf: p.conf,
         actual: p.actual, frozenAt: p.captured_at || null, frozenLeadHours: leadH,
       };
+      // PrizePicks' current number: its latest capture, and of that capture the
+      // point nearest the books' line when it hangs more than one.
+      const ppLineNear = (ref) => {
+        if (!ppQuotes.length) return null;
+        const last = ppQuotes.reduce((m, q) => (String(q.captured_at) > m ? String(q.captured_at) : m), '');
+        const cur = ppQuotes.filter((q) => String(q.captured_at) === last).map((q) => Number(q.point)).filter(Number.isFinite);
+        if (!cur.length) return null;
+        return ref == null ? cur.sort((a, b) => a - b)[0] : cur.sort((a, b) => Math.abs(a - ref) - Math.abs(b - ref) || a - b)[0];
+      };
       if (!quotes.length) {
         // Named explicitly rather than left null: "no book quoted him" and "the
         // capture missed him" are different problems and only one is ours.
         row.line = null; row.lineStatus = 'no captured quote for this player/market';
+        row.ppLine = ppLineNear(null);
         out.rows.push(row); continue;
       }
       // The main line is the point the most books agree on. Taking the first
@@ -10198,6 +10223,7 @@ async function nflCompare(env, url) {
       const sharp = [...new Set(atLine.filter((q) => NFL_PROPS_SHARP.includes(q.book)
         && typeof q.over === 'number' && typeof q.under === 'number').map((q) => q.book))];
       row.line = line;
+      row.ppLine = ppLineNear(line);
       row.gap = round1(p.proj - line);
       row.overPrice = o.price; row.overBook = o.book;
       row.underPrice = u.price; row.underBook = u.book;
@@ -10266,7 +10292,7 @@ async function nflCompare(env, url) {
       out.biggestGaps = out.rows.filter((r) => r.line != null && r.gap != null)
         .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap)).slice(0, NFL_GAPS_TOP)
         .map((r) => ({ player: r.player, team: r.team, game: r.game, market: r.market,
-          proj: r.proj, line: r.line, gap: r.gap, conf: r.conf }));
+          proj: r.proj, line: r.line, ppLine: r.ppLine == null ? null : r.ppLine, gap: r.gap, conf: r.conf }));
     }
     delete out.rows;
   }

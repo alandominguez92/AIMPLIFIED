@@ -205,6 +205,12 @@ const logged = [...gm.values()];
 console.log('  logged: ' + logged.map((r) => `${r.pick} fair ${r.win_prob}% @ ${r.entry_price} (${r.book}) edge ${r.edge}`).join(' | ') + '\n');
 
 ok(logged.length === 3, `one row per quarterback quoted by two or more sharp books (${logged.length})`);
+// The props capture asks for PrizePicks in BetRivers' place (2026-10-06), and
+// stays at ten books -- eleven would bill as a second region.
+const propCall = oddsCalls.find((u) => /\/events\/e1\/odds/.test(u));
+const propBooks = propCall ? new URL(propCall).searchParams.get('bookmakers').split(',') : [];
+ok(propBooks.includes('prizepicks') && !propBooks.includes('betrivers') && propBooks.length === 10,
+  `the per-event props call asks for PrizePicks, still ten books (${propBooks.length}: ${propBooks.join(',')})`);
 // One capture, one week, three slates. Dating every row from the first entry
 // filed Sunday's quarterbacks under Thursday, which makes the per-day ranking
 // in /api/top-legs read a whole week as a single day.

@@ -38,7 +38,7 @@ function lift(name) {
 const names = ['ptDayOf', 'pkOf', 'pct1', 'kLeadOf', 'kSpec', 'buildKPropLeg', 'kLegIdFor', 'buildKPitcherLeg',
   'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nflMlLeg', 'nflYardsLeg', 'soccerMlLeg', 'gameStarted'];
 const body = names.map(lift).join('\n');
-const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, nflYardsLeg, soccerMlLeg, gameStarted };`);
+const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, nflYardsLeg, soccerMlLeg, gameStarted, entryLegFrom };`);
 const state = { logSides: {}, logPrices: {}, logLines: {}, logBook: 'pp', slip: {} };
 const esc = (s) => String(s == null ? '' : s);
 const F = make(state, esc);
@@ -130,6 +130,14 @@ const gibbs = F.nflYardsLeg({ player: 'Jahmyr Gibbs', team: 'DET', game: 'DET @ 
 ok(gibbs.spec.market === 'rush_yds' && gibbs.spec.side === 'Under' && gibbs.spec.book.line === 88.5 && gibbs.odds === -112,
   `a yardage leg is the under at the captured line and its price (${gibbs.title} ${gibbs.odds})`);
 ok(gibbs.spec.gamePk === detMl.spec.gamePk, `and shares a game key with that game's moneyline (${gibbs.spec.gamePk})`);
+// PrizePicks' number (2026-10-06): an entry logged on PrizePicks takes it, one
+// logged on DraftKings takes the book's.
+const lamb = F.nflYardsLeg({ player: 'CeeDee Lamb', team: 'DAL', game: 'TB @ DAL', commence: nflGame.commence, line: 79.5, ppLine: 74.5, underPrice: -110 }, 'receiving');
+ok(/\(PP 74\.5\)/.test(lamb.title) && F.entryLegFrom(lamb, 'pp').line === 74.5 && F.entryLegFrom(lamb, 'dk').line === 79.5,
+  `a leg with both numbers logs at PrizePicks' on PrizePicks and the book's on DraftKings (${lamb.title})`);
+const irving = F.nflYardsLeg({ player: 'Bucky Irving', team: 'TB', game: 'TB @ DAL', commence: nflGame.commence, line: null, ppLine: 61.5, underPrice: null }, 'rushing');
+ok(/U 61\.5/.test(irving.title) && irving.spec.book.line === null && F.entryLegFrom(irving, 'pp').line === 61.5,
+  `a player only PrizePicks lists is a leg at its number (${irving.title})`);
 const nflRead = F.slipReadHtml([detMl, gibbs]);
 ok(/2 legs from one game/.test(nflRead) && !/points the same way|pulls against/.test(nflRead),
   'an NFL side beside its own player gets the same-game warning, and no baseball direction read');
