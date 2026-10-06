@@ -8760,6 +8760,10 @@ async function nbaPpBoard(env) {
       const top = list.sort((a, b) => b.model_under - a.model_under).slice(0, 3);
       t3n += top.length; t3h += top.filter((x) => x.result === 'under').length;
     }
+    // Whether the box scores are coming in at all -- without them nothing is
+    // projected past last season and nothing grades.
+    const ig = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM nba_box_games').first();
+    out.ingest = { games: Number((ig && ig.n) || 0), read: Number((ig && ig.d) || 0), lastDay: (ig && ig.last) || null };
     out.record = {
       graded: graded.length,
       byMarket: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, { n: v.n, hitRate: v.n ? round1(v.under / v.n * 100) : null }])),
