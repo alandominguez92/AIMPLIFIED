@@ -6999,6 +6999,40 @@ function topLegWon(sport, r) {
   return r.result === 'win' ? 1 : (r.result === 'loss' ? 0 : null);
 }
 
+// Posted batting orders for a day, by game: { g<pk>: { <abbr>: Set(ids) } }, a
+// club present only once its card is up. One StatsAPI read, no odds credit.
+// null when the read fails, so a caller can say it could not check.
+async function postedLineups(ymd) {
+  try {
+    const r = await fetch(`${STATS}/schedule?sportId=1&date=${ymd}&hydrate=team,lineups`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return null;
+    const out = {};
+    for (const g of ((((await r.json()).dates || [])[0] || {}).games || [])) {
+      const lp = g.lineups || {}, sides = {};
+      for (const [k, side] of [['awayPlayers', 'away'], ['homePlayers', 'home']]) {
+        const arr = lp[k] || [];
+        if (arr.length) sides[teamAbbr(g.teams[side].team)] = new Set(arr.map((p) => p && p.id));
+      }
+      out['g' + g.gamePk] = sides;
+    }
+    return out;
+  } catch (e) { return null; }
+}
+// 'in', 'out' (his club's card is up and he is not on it), or null (no card yet,
+// or a pitcher's leg, which a batting order says nothing about).
+function lineupStatus(cards, r) {
+  if (!cards || r.market === 'K') return null;
+  const sides = cards[r.game_id];
+  if (!sides) return null;
+  const mine = sides[r.team];
+  if (mine) return mine.has(r.player_id) ? 'in' : 'out';
+  // His club's abbreviation did not match either card. With both cards up he
+  // is still placeable: on neither means he is not starting.
+  const all = Object.values(sides);
+  if (all.some((s) => s.has(r.player_id))) return 'in';
+  return all.length === 2 ? 'out' : null;
+}
+
 async function topLegs(env, url) {
   const out = {
     note: 'LOGGED ONLY, nothing posted and nothing shown on the site. Ranks every leg already logged '
@@ -7090,8 +7124,24 @@ async function topLegs(env, url) {
     // What it would take today, ungraded — so the idea can be watched forward
     // rather than only backwards.
     const todayYmd = slateDate();
-    const todayList = scored.filter((x) => x.r.date === todayYmd && x.w == null)
-      .sort((a, b) => b.s - a.s).slice(0, 8);
+    let todayAll = scored.filter((x) => x.r.date === todayYmd && x.w == null)
+      .sort((a, b) => b.s - a.s);
+    // A leg is logged while its player is listed, often before the card posts,
+    // and stays here after he is benched: the books pull his props, he drops off
+    // the batter board, and the board's scratch flag never sees him. Pham,
+    // 2026-10-07, sat at 80% atop this list a few minutes before first pitch,
+    // benched, and was voided. The posted cards are checked here instead, and a
+    // benched leg leaves the list so the next one moves up.
+    let cards = null;
+    if (sport === 'mlb' && todayAll.length) {
+      cards = await postedLineups(todayYmd);
+      out.lineupCheck = cards ? 'checked against posted lineups' : 'lineups unavailable, not checked';
+      for (const x of todayAll) x.lineup = lineupStatus(cards, x.r);
+      const benched = todayAll.filter((x) => x.lineup === 'out');
+      if (benched.length) out.todayBenched = benched.map((x) => ({ leg: label(x.r), score: x.s, team: x.r.team || null }));
+      todayAll = todayAll.filter((x) => x.lineup !== 'out');
+    }
+    const todayList = todayAll.slice(0, 8);
     // Legs from one game tend to land or miss together, which a PrizePicks entry
     // pays for all at once. sameGame counts the legs in THIS list that share the
     // leg's game, so a check can warn without knowing anything about the slate.
@@ -7104,6 +7154,7 @@ async function topLegs(env, url) {
       leg: label(x.r), score: x.s,
       team: x.r.team || null, game: gameOf(x.r),
       sameGame: gameOf(x.r) ? perGame[gameOf(x.r)] : 1,
+      ...(sport === 'mlb' ? { lineup: x.lineup || (x.r.market === 'K' ? 'pitcher' : (cards ? 'not posted' : 'unchecked')) } : {}),
     }));
     if (!out.today.length) out.todayNote = `nothing ungraded logged for ${todayYmd} yet`;
   } catch (e) { out.error = String((e && e.message) || e); }

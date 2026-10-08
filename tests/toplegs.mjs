@@ -19,6 +19,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 const BOARD = path.join(import.meta.dirname, '..');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+// The lineup check reads StatsAPI's schedule. Until a test hands it a payload
+// the read fails, which is also what an outage looks like.
+let schedule = null;
+globalThis.fetch = async (u) => (schedule && /\/schedule\?/.test(String(u))
+  ? new Response(JSON.stringify(schedule), { status: 200 })
+  : new Response('{}', { status: 404 }));
 
 // Two days. Day one: the three best legs all land, the rest miss. Day two the
 // same. Ranked per day the top 3 is 6/6; taking everything is 6/14. If the
@@ -131,6 +137,51 @@ ok(byLeg.P501 && byLeg.P501.team === 'SEA' && byLeg.P501.game === 'g500', 'each 
 ok(byLeg.P501 && byLeg.P502 && byLeg.P501.sameGame === 2 && byLeg.P502.sameGame === 2,
   'the two legs from one game are marked as sharing it');
 ok(byLeg.P503 && byLeg.P503.sameGame === 1, 'and the leg on its own is not');
+ok(/unavailable/.test(m.lineupCheck || '') && (m.today || []).every((t) => t.lineup === 'unchecked'),
+  `with the lineup read failing nothing is dropped, and each leg says it went unchecked (${m.lineupCheck})`);
+
+// 2026-10-07, Guardians @ White Sox, 1:00 PM PT. Pham's total-bases under sat
+// at 80% atop this list at 12:52 with both cards up and him on neither: benched,
+// voided. Doyle too. The books had pulled Pham's props, so he was no row on the
+// batter board and its scratch flag never saw him. The payload is StatsAPI's
+// own schedule for that day, recorded.
+schedule = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'fixtures', 'statsapi-schedule-lineups-20261007.json'), 'utf8'));
+const real = (id, player, team, market, prob) => ({ ...mk(todayYmd, id, prob, null, market), game_id: 'g849833', player, team, actual: null });
+pp.push(
+  real(502054, 'Tommy Pham', 'CWS', 'tb', 80),
+  real(686668, 'Brenton Doyle', 'CWS', 'tb', 61.7),
+  real(545341, 'Randal Grichuk', 'CWS', 'hrr', 68),
+  real(680757, 'Steven Kwan', 'CLE', 'hrr', 62.9),
+  // A pitcher is on no batting order; his leg must not read as benched.
+  real(999001, 'Some Starter', 'CLE', 'K', 75),
+  // Club spelled differently from StatsAPI's: with both cards up he is still
+  // placeable -- on neither is benched, on one is playing.
+  real(999002, 'Not Carded', 'CHW', 'tb', 90),
+  real(672275, 'Patrick Bailey', 'XXX', 'tb', 58.9),
+);
+// Low legs that only make the top eight if the benched ones give up their slots.
+for (const [i, prob] of [45, 44, 43, 42].entries()) pp.push({ ...mk(todayYmd, 601 + i, prob, null, 'tb'), game_id: 'g600', team: 'HOU', actual: null });
+
+const l = await hit('/api/top-legs?sport=mlb');
+const has = (list, who) => (list || []).find((t) => String(t.leg).startsWith(who + ' '));
+console.log('\n  checked: ' + l.lineupCheck);
+console.log('  today:   ' + (l.today || []).map((t) => `${t.leg} [${t.lineup}]`).join(' | '));
+console.log('  benched: ' + (l.todayBenched || []).map((t) => t.leg).join(' | '));
+ok(!has(l.today, 'Tommy Pham') && has(l.todayBenched, 'Tommy Pham'),
+  'Pham, on neither card with both up, leaves the list and is named as benched');
+ok(!has(l.today, 'Brenton Doyle') && has(l.todayBenched, 'Brenton Doyle'), 'and so does Doyle');
+ok(has(l.today, 'Randal Grichuk') && has(l.today, 'Randal Grichuk').lineup === 'in'
+  && has(l.today, 'Steven Kwan') && has(l.today, 'Steven Kwan').lineup === 'in',
+  'a carded hitter on either club stays, marked in');
+ok(has(l.today, 'Some Starter') && has(l.today, 'Some Starter').lineup === 'pitcher',
+  'a strikeout leg stays: a batting order says nothing about the starter');
+ok(has(l.todayBenched, 'Not Carded') && has(l.today, 'Patrick Bailey') && has(l.today, 'Patrick Bailey').lineup === 'in',
+  "a club spelled unlike StatsAPI's is still placed by both cards");
+ok(has(l.today, 'P501') && has(l.today, 'P501').lineup === 'not posted', 'a game with no card up keeps its legs, marked not posted');
+ok((l.today || []).length === 8 && has(l.today, 'P601'),
+  'the benched give up their slots: the eighth leg is one that only fits once they are gone');
+ok(has(l.today, 'Randal Grichuk').sameGame === 4,
+  `and the same-game count is over the legs left (${has(l.today, 'Randal Grichuk').sameGame})`);
 
 // Passing TDs key on "event|player", so the two quarterbacks of one game carry
 // different game_ids. They are still one game.
