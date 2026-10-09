@@ -8512,7 +8512,11 @@ async function nbaMaybeIngest(env) {
 // season's per-game average (nba-priors.json), the prior counting as
 // NBA_PRIOR_K games -- the whole projection on opening night, a third of it by
 // a player's tenth game. The chance of the under is a negative binomial at
-// that mean; the dispersions are starting values to be refit from the log.
+// that mean. The dispersions were checked on 2025-26 (16,109 rotation games,
+// 2024-25 as the prior, 2026-10-09): within 1-2 points of the realised under
+// rate at every band from 50% to 90%, and a refit moved no leg by more than 1.2
+// points, so they stand. That tests the model against any line, not against
+// PrizePicks' -- which is what the record's bands are for.
 // Recent games come from ESPN's box scores, read nightly into nba_box (free).
 //
 // Nothing here is posted. It is logged and graded, so the card has a record
@@ -8527,6 +8531,36 @@ const NBA_PP_PER_TICK = 5;                   // per-event calls a tick may make
 const NBA_BOX_PER_TICK = 4;                  // box scores a tick may read
 const NBA_SEASON_FROM = '2026-10-01';        // recent games: this season only
 const ESPN_CDN_NBA = 'https://cdn.espn.com/core/nba';
+const NBA_ROTATION_MIN = 20;                 // projected minutes; the card shows only these
+
+// How a PrizePicks under has done, split two ways. `items`: { p (the model's
+// chance, %), won (1, 0, or null for a push), gap (PrizePicks' number minus the
+// books' line, or null with no book) }.
+//   byBand: in MLB the model's number carried nothing below 65% at PrizePicks'
+//     lines (about 50% wherever it pointed) and held up only above it, so the
+//     record has to show the bands rather than one average.
+//   byLineGap: PrizePicks follows the books but moves slower. Where its number
+//     sits ABOVE the books' line its under is easier than the market's, which
+//     is an edge that needs no model at all -- if it holds.
+const PP_BANDS = [['<55', 0, 55], ['55-60', 55, 60], ['60-65', 60, 65], ['65-70', 65, 70], ['70+', 70, 101]];
+function ppSplitRecord(items) {
+  const cell = (l) => {
+    const g = l.filter((x) => x.won != null);
+    const hit = g.filter((x) => x.won === 1).length;
+    return { n: g.length, hit, hitRate: g.length ? round1(hit / g.length * 100) : null };
+  };
+  const out = { ...cell(items) };
+  if (items.some((x) => x.p != null)) {
+    out.byBand = Object.fromEntries(PP_BANDS.map(([k, lo, hi]) => [k, cell(items.filter((x) => x.p != null && x.p >= lo && x.p < hi))]));
+  }
+  out.byLineGap = {
+    ppHigher: cell(items.filter((x) => x.gap != null && x.gap > 0)),
+    same: cell(items.filter((x) => x.gap === 0)),
+    ppLower: cell(items.filter((x) => x.gap != null && x.gap < 0)),
+    noBook: cell(items.filter((x) => x.gap == null)),
+  };
+  return out;
+}
 
 async function ensureNbaSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS nba_box (
@@ -8806,15 +8840,25 @@ async function nbaPpBoard(env) {
       player: r.player, team: r.team, market: r.market, point: r.point, model_under: r.model_under, proj: r.proj,
       n_recent: r.n_recent, min_proj: r.min_proj, game: `${r.away} @ ${r.home}`, game_id: r.game_id, commence: r.commence, league: r.league,
       book_line: r.book_line, book_under: r.book_under, player_id: r.player_id,
+      // PrizePicks' number minus the books': above 0, its under is easier.
+      vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
     }));
-    const graded = ((await env.DB.prepare("SELECT date, market, model_under, result FROM nbapp WHERE result IN ('under','over')").all()).results || []);
+    // The record is kept over the players the card shows. A bench player's 0.5
+    // line tops any ranking by the model's chance, and he is the one who sits.
+    const graded = ((await env.DB.prepare("SELECT date, market, model_under, point, book_line, min_proj, result FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
+      .filter((g) => g.min_proj != null && g.min_proj >= NBA_ROTATION_MIN);
+    const split = ppSplitRecord(graded.map((g) => ({
+      p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null),
+      gap: g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null,
+    })));
+    const decided = graded.filter((g) => g.result !== 'push');
     const by = {};
-    for (const g of graded) {
+    for (const g of decided) {
       by[g.market] = by[g.market] || { n: 0, under: 0 };
       by[g.market].n++; if (g.result === 'under') by[g.market].under++;
     }
     const days = new Map();
-    for (const g of graded) { if (!days.has(g.date)) days.set(g.date, []); days.get(g.date).push(g); }
+    for (const g of decided) { if (!days.has(g.date)) days.set(g.date, []); days.get(g.date).push(g); }
     let t3n = 0, t3h = 0;
     for (const list of days.values()) {
       const top = list.sort((a, b) => b.model_under - a.model_under).slice(0, 3);
@@ -8825,9 +8869,12 @@ async function nbaPpBoard(env) {
     const ig = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM nba_box_games').first();
     out.ingest = { games: Number((ig && ig.n) || 0), read: Number((ig && ig.d) || 0), lastDay: (ig && ig.last) || null };
     out.record = {
-      graded: graded.length,
+      scope: `rotation players (${NBA_ROTATION_MIN}+ projected minutes), as on the card`,
+      graded: decided.length,
       byMarket: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, { n: v.n, hitRate: v.n ? round1(v.under / v.n * 100) : null }])),
       top3: { n: t3n, hit: t3h, hitRate: t3n ? round1(t3h / t3n * 100) : null },
+      byBand: split.byBand,
+      byLineGap: split.byLineGap,
     };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
@@ -10326,6 +10373,20 @@ async function nflCompare(env, url) {
       out.graded.verdict = out.graded.modelMae < out.graded.lineMae
         ? 'model predicts actuals better than the line — gap may be real'
         : 'the LINE predicts actuals better than the model — the gap is model error, do not price it';
+    }
+    // PrizePicks' number, graded (captured since 2026-10-06). Its under wins
+    // below ITS number, and the split asks whether it wins more often where
+    // that number sits above the books' line. No model involved: the verdict
+    // above says the model loses to the line, so this is the other angle.
+    const ppG = out.rows.filter((r) => typeof r.actual === 'number' && r.ppLine != null);
+    if (ppG.length) {
+      out.ppGraded = {
+        ...ppSplitRecord(ppG.map((r) => ({
+          p: null, won: r.actual < r.ppLine ? 1 : (r.actual > r.ppLine ? 0 : null),
+          gap: r.line != null ? round1(r.ppLine - r.line) : null,
+        }))),
+        read: "hit = PrizePicks unders that landed below PrizePicks' number. byLineGap.ppHigher = its number sat above the books' line, so its under was easier than the market's.",
+      };
     }
   } catch (e) { out.error = String((e && e.message) || e); }
   // ?summary=1 keeps the counts, the summary and the `graded` verdict and drops

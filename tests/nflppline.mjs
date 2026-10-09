@@ -64,5 +64,18 @@ const sum = await get('/api/nfl-compare?summary=1');
 ok((sum.biggestGaps || []).some((g) => g.player === 'CeeDee Lamb' && g.ppLine === 80.5),
   'and the compact summary the scheduled checks read carries it too');
 
+// Graded at PrizePicks' number. The model loses to the books' line, so the angle
+// left is PrizePicks' own number: does its under land more often where that
+// number sits above the books'? Lamb's 80.5 is a point above the books' 79.5 and
+// he finishes on 70; Irving, PrizePicks-only, beats 61.5 with 65.
+proj[0].actual = 70; proj[1].actual = 65;
+const g = await get('/api/nfl-compare?all=1&summary=1');
+console.log('  ppGraded: ' + JSON.stringify(g.ppGraded && { n: g.ppGraded.n, hit: g.ppGraded.hit, byLineGap: g.ppGraded.byLineGap }));
+ok(g.ppGraded && g.ppGraded.n === 2 && g.ppGraded.hit === 1,
+  "PrizePicks unders graded at PrizePicks' number, in the summary the scheduled check reads (1 of 2)");
+ok(g.ppGraded && g.ppGraded.byLineGap.ppHigher.n === 1 && g.ppGraded.byLineGap.ppHigher.hit === 1
+  && g.ppGraded.byLineGap.noBook.n === 1 && g.ppGraded.byLineGap.noBook.hit === 0,
+  "split by where PrizePicks' number sat: above the books' (Lamb, under) and with no book at all (Irving, over)");
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

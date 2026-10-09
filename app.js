@@ -5465,8 +5465,20 @@
     for (const x of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
     const rec = d.record && d.record.top3 && d.record.top3.n
       ? `<span class="tc-rec">Top 3 a day: <b>${d.record.top3.hit} of ${d.record.top3.n}</b></span>` : '';
+    // The two numbers that say whether to trust the card: the model's high
+    // bands at PrizePicks' own lines (in MLB only 65%+ held up), and legs where
+    // PrizePicks' number sat above the books' line.
+    const r = d.record || {};
+    const hiBand = ['65-70', '70+'].map((k) => (r.byBand && r.byBand[k]) || { n: 0, hit: 0 })
+      .reduce((a, c) => ({ n: a.n + c.n, hit: a.hit + c.hit }), { n: 0, hit: 0 });
+    const ppHi = (r.byLineGap && r.byLineGap.ppHigher) || { n: 0, hit: 0 };
+    const recLine = [
+      hiBand.n ? `65%+ legs <b>${hiBand.hit} of ${hiBand.n}</b>` : null,
+      ppHi.n ? `PP line above book <b>${ppHi.hit} of ${ppHi.n}</b>` : null,
+    ].filter(Boolean).join(' · ');
     const head = `<div class="tc-head"><span class="tc-title">Tonight's PrizePicks unders</span>${rec}</div>`
-      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds; rotation players only. Logged, not posted.</div>`;
+      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds; rotation players only. Logged, not posted.</div>`
+      + (recLine ? `<div class="tc-sub tc-rec-line">${recLine}</div>` : '');
     if (!top.length) {
       return `<div class="nba-pp">${head}<div class="tc-wait-note">${all.length
         ? 'No rotation players among tonight’s logged lines yet.'
@@ -5477,9 +5489,13 @@
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.player)} under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
       const same = perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
+      // PrizePicks' number against the book's: above it, the under is easier
+      // than the market's; below it, harder.
+      const gap = typeof x.vsBook === 'number' && x.vsBook !== 0
+        ? ` <span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}" title="PrizePicks' line ${x.vsBook > 0 ? 'above' : 'below'} the book's: the under is ${x.vsBook > 0 ? 'easier' : 'harder'} here">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>` : '';
       return `<li>${star}<div class="tc-leg">`
         + `<span class="tc-l1"><b>${esc(x.player)}</b>${x.team ? ` <span class="ctx-chip">${esc(x.team)}</span>` : ''}<span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}</span>`
+        + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}</span>`
         + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
         + `</div></li>`;
     }).join('')}</ol></div>`;

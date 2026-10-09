@@ -261,8 +261,12 @@ const nflDb = {
 // tab can be driven end to end: log from the slip, see it listed, tap a result.
 // Everything else that writes to D1 writes there too, which is harmless in memory.
 const ENTRIESDB = process.env.ENTRIESDB === '1';
+// NBADEMO=1 seeds tonight's PrizePicks NBA legs and a graded history into the
+// same in-memory SQLite, so the NBA card -- its PrizePicks-vs-book tags and its
+// record line -- can be seen before PrizePicks has posted a single NBA line.
+const NBADEMO = process.env.NBADEMO === '1';
 let sqliteDb = null;
-if (ENTRIESDB) {
+if (ENTRIESDB || NBADEMO) {
   const { DatabaseSync } = await import('node:sqlite');
   const sq = new DatabaseSync(':memory:');
   const norm = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v);
@@ -282,7 +286,7 @@ if (ENTRIESDB) {
 
 const env = {
   ODDS_API_KEY: 'test-key',
-  DB: ENTRIESDB ? sqliteDb : ((NFLDEMO || SOCCERDEMO) ? nflDb : null),
+  DB: (ENTRIESDB || NBADEMO) ? sqliteDb : ((NFLDEMO || SOCCERDEMO) ? nflDb : null),
   // The priors and schedule the NFL projections read, served off disk.
   ASSETS: { fetch: async (r) => {
     const name = new URL(r.url).pathname;
@@ -291,6 +295,29 @@ const env = {
     return new Response(fs.readFileSync(file, 'utf8'), { status: 200, headers: { 'content-type': 'application/json' } });
   } },
 };
+
+if (NBADEMO) {
+  await mod.default.fetch(new Request('https://x/api/nba-pp'), env, { waitUntil: () => {} });   // creates the tables
+  const tip = new Date(Date.now() + 3 * 3600e3).toISOString();
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+  const leg = (date, commence, player, team, market, point, model_under, proj, book_line, min_proj, result) => sqliteDb
+    .prepare(`INSERT INTO nbapp (date, game_id, player, market, league, commence, home, away, team, point, proj, model_under, n_recent, min_proj, book_line, book_under, result)
+      VALUES (?, ?, ?, ?, 'reg', ?, 'Philadelphia 76ers', 'New York Knicks', ?, ?, ?, ?, 3, ?, ?, -125, ?)`)
+    .bind(date, result ? 'evOLD' : 'evNYK', player, market, commence, team, point, proj, model_under, min_proj, book_line, result).run();
+  // Tonight: one leg PrizePicks hangs above the book, two level, one below, one with no book.
+  await leg(today, tip, 'Jalen Brunson', 'NY', 'ast', 7.5, 71.2, 5.9, 6.5, 35, null);
+  await leg(today, tip, 'Josh Hart', 'NY', 'reb', 8.5, 66.4, 7.1, 8.5, 33, null);
+  await leg(today, tip, 'OG Anunoby', 'NY', 'threes', 2.5, 64.1, 1.9, 2.5, 34, null);
+  await leg(today, tip, 'Tyrese Maxey', 'PHI', 'ast', 6.5, 62.0, 5.6, 7.5, 37, null);
+  await leg(today, tip, 'Joel Embiid', 'PHI', 'reb', 10.5, 60.3, 9.4, null, 31, null);
+  // Last night, graded.
+  const past = new Date(Date.now() - 30 * 3600e3);
+  const pastDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(past);
+  for (const [p, mu, pt, bk, res] of [['A One', 72, 9.5, 8.5, 'under'], ['A Two', 74, 3.5, 2.5, 'under'], ['A Three', 67, 5.5, 5.5, 'over'],
+    ['A Four', 68, 6.5, 6.5, 'under'], ['A Five', 58, 4.5, 5.5, 'over'], ['A Six', 61, 2.5, 2.5, 'under']]) {
+    await leg(pastDay, past.toISOString(), p, 'NY', 'reb', pt, mu, pt - 1, bk, 30, res);
+  }
+}
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
 const cache = new Map();

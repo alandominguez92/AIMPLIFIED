@@ -127,7 +127,9 @@ ppPayload = { id: 'evNYK', commence_time: TIP, home_team: 'Philadelphia 76ers', 
     { key: 'player_assists', outcomes: ou('Jalen Brunson', 6.5) },
     { key: 'player_rebounds', outcomes: ou('Josh Hart', 7.5) },
   ] },
-  { key: 'draftkings', markets: [{ key: 'player_threes', outcomes: ou('OG Anunoby', 2.5, 105, -135) }] },
+  { key: 'draftkings', markets: [{ key: 'player_threes', outcomes: ou('OG Anunoby', 2.5, 105, -135) },
+    // PrizePicks hangs Hart a point above DraftKings: its under is the easier one.
+    { key: 'player_rebounds', outcomes: ou('Josh Hart', 6.5, -115, -105) }] },
 ] };
 await tick();
 const legs = sq.prepare('SELECT * FROM nbapp ORDER BY model_under DESC').all();
@@ -157,6 +159,9 @@ ok(ppCalls === 1, 'the next tick does not buy the same game again');
 const board = await hit('/api/nba-pp');
 ok(board.legs.length === legs.length && board.legs[0].model_under >= board.legs[board.legs.length - 1].model_under,
   `the endpoint lists tonight's legs, best under first (${board.legs.length})`);
+const bl = (p) => board.legs.find((x) => x.player === p) || {};
+ok(bl('Josh Hart').vsBook === 1 && bl('OG Anunoby').vsBook === 0 && bl('Jalen Brunson').vsBook === null,
+  `each leg says how PrizePicks' number sits against the book's: Hart +1, Anunoby level, Brunson no book (${bl('Josh Hart').vsBook}, ${bl('OG Anunoby').vsBook}, ${bl('Jalen Brunson').vsBook})`);
 
 // ---- grading -----------------------------------------------------------------------------
 console.log('\n-- graded from the box scores --');
@@ -172,6 +177,27 @@ ok(res('Josh Hart').result === 'void', `Hart is in no box score of a fully-read 
 const rec = (await hit('/api/nba-pp')).record;
 ok(rec && rec.graded === 2 && rec.byMarket.threes.n === 1 && rec.byMarket.ast.hitRate === 100,
   `and the record counts what graded, by market (${JSON.stringify(rec && rec.byMarket)})`);
+
+// The record by the model's band and by PrizePicks' number against the book's.
+// In MLB the model's chance said nothing below 65% at PrizePicks' lines, so one
+// average would hide the only part that held up. Graded rows from an earlier
+// night, written the way the grader leaves them:
+const past = (player, model_under, point, book_line, min_proj, result) => sq.prepare(
+  `INSERT INTO nbapp (date, game_id, player, market, point, model_under, book_line, min_proj, result, actual)
+   VALUES ('2026-10-21', 'evOLD', ?, 'reb', ?, ?, ?, ?, ?, 0)`).run(player, point, model_under, book_line, min_proj, result);
+past('Band Seventy', 72, 9.5, 8.5, 31, 'under');     // 70+, PrizePicks a point above the book: hit
+past('Band SixtySix', 66, 5.5, 6.5, 28, 'over');     // 65-70, PrizePicks a point below: miss
+past('Pushed Leg', 61, 7, 7, 30, 'push');            // neither a hit nor a miss
+past('Bench Guy', 91, 0.5, null, 12, 'under');       // tops any ranking, and is not on the card
+const r2 = (await hit('/api/nba-pp')).record;
+console.log('  byBand ' + JSON.stringify(r2.byBand) + '\n  byLineGap ' + JSON.stringify(r2.byLineGap));
+ok(r2.graded === 4 && /rotation/.test(r2.scope || ''),
+  `the record is over rotation players, as the card is: the bench leg and the push are out (${r2.graded} graded)`);
+ok(r2.byBand['70+'].n === 1 && r2.byBand['70+'].hit === 1 && r2.byBand['65-70'].n === 1 && r2.byBand['65-70'].hit === 0,
+  'by band: the 72% leg hit, the 66% leg missed');
+ok(r2.byLineGap.ppHigher.n === 1 && r2.byLineGap.ppHigher.hit === 1 && r2.byLineGap.ppLower.n === 1 && r2.byLineGap.ppLower.hit === 0
+  && r2.byLineGap.same.n === 1 && r2.byLineGap.noBook.n === 1 && r2.byLineGap.noBook.hit === 1,
+  "by PrizePicks' number against the book's: above (hit), below (miss), level (Anunoby's over), no book (Brunson's under)");
 
 // ---- your entries ------------------------------------------------------------------------
 // A PrizePicks entry built from the card grades from the same box scores.
