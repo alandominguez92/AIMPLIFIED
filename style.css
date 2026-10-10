@@ -2744,8 +2744,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* Soccer player props: a match per block, a line stepper on every row. */
 .sp-match { margin-top:12px; }
-.sp-mh { font-size:13.5px; color:var(--text); margin:0 0 6px; }
+.sp-mh { display:block; width:100%; text-align:left; background:none; border:none; border-top:1px solid var(--border);
+  font:inherit; font-size:13.5px; color:var(--text); padding:10px 0 8px; cursor:pointer; }
 .sp-mh b { font-weight:700; }
+.sp-mc { display:block; margin-top:2px; font-family:var(--mono); font-size:11px; color:var(--textFaint); }
 .sp-line { display:flex; align-items:center; gap:6px; margin-top:8px; }
 .sp-step { width:32px; height:30px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text);
   font-size:16px; line-height:1; cursor:pointer; flex:none; }

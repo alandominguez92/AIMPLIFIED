@@ -124,16 +124,18 @@ if (HEALTHY) await buildOddsFixture();
 // is the recorded Fulham-Tottenham one (tests/fixtures/espn-soc-740870.json),
 // both lineups in -- the card is otherwise empty until an hour before kickoff.
 const SOCPROPSDEMO = process.env.SOCPROPSDEMO === '1';
-let socDemoId = null;
+// Two fixtures, so the card shows matches collapsed as a Saturday would.
+let socDemoIds = null;
 globalThis.fetch = async (u, o) => {
   const url = String(u);
   if (SOCPROPSDEMO && url.includes('/soccer/eng.1/scoreboard?dates=')) {
     const j = await (await realFetch(url)).json();
-    const ev = (j.events || []).find((e) => e.status && e.status.type && e.status.type.state === 'pre');
-    if (ev && (!socDemoId || socDemoId === ev.id)) { socDemoId = ev.id; ev.date = new Date(Date.now() + 45 * 60e3).toISOString(); }
+    const pre = (j.events || []).filter((e) => e.status && e.status.type && e.status.type.state === 'pre').slice(0, 2);
+    if (pre.length && !socDemoIds) socDemoIds = pre.map((e) => e.id);
+    pre.forEach((ev, i) => { if (socDemoIds.includes(ev.id)) ev.date = new Date(Date.now() + (45 + 5 * i) * 60e3).toISOString(); });
     return new Response(JSON.stringify(j), { status: 200 });
   }
-  if (SOCPROPSDEMO && socDemoId && url.includes(`/soccer/eng.1/summary?event=${socDemoId}`)) {
+  if (SOCPROPSDEMO && socDemoIds && socDemoIds.some((id) => url.includes(`/soccer/eng.1/summary?event=${id}`))) {
     const rec = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-soc-740870.json'), 'utf8'));
     return new Response(JSON.stringify(Object.entries(rec).find(([k]) => k.includes('/summary'))[1]), { status: 200 });
   }

@@ -4352,6 +4352,12 @@
         renderSoccer();
         break;
       }
+      case 'socp-match': {
+        const id = target.dataset.id;
+        state.socMatchOpen = { ...(state.socMatchOpen || {}), [id]: !(state.socMatchOpen && state.socMatchOpen[id]) };
+        renderSoccer();
+        break;
+      }
       case 'socp-player': {
         const k = target.dataset.key;
         state.socOpen = { ...(state.socOpen || {}), [k]: !(state.socOpen && state.socOpen[k]) };
@@ -5842,6 +5848,13 @@
         .sort((a, b) => teams.indexOf(a.team) - teams.indexOf(b.team) || socPosRank(a.pos) - socPosRank(b.pos));
       if (!players.length) return '';
       found += players.length;
+      // A Saturday posts fifteen lineups at once: each match is one line until
+      // it is opened, unless it is the only one, or a search reaches into it.
+      const mOpen = !!q || posted.length === 1 || !!(state.socMatchOpen && state.socMatchOpen[m.id]);
+      const mHead = `<button type="button" class="sp-mh" data-action="socp-match" data-id="${esc(m.id)}" aria-expanded="${mOpen}">`
+        + `<b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span>`
+        + `<span class="sp-mc">${players.length} starter${players.length === 1 ? '' : 's'} ${mOpen ? '▾' : '▸'}</span></button>`;
+      if (!mOpen) return `<div class="sp-match">${mHead}</div>`;
       const items = players.map((p) => {
         const pk = `${m.id}:${p.id}`;
         const open = !!q || !!(state.socOpen && state.socOpen[pk]);
@@ -5856,8 +5869,7 @@
           + (open ? `<ol class="tc-legs sp-stats">${p.rows.map((r) => socPropRow(m, r)).join('')}</ol>` : '')
           + `</li>`;
       }).join('');
-      return `<div class="sp-match"><div class="sp-mh"><b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span></div>`
-        + `<ul class="sp-players">${items}</ul></div>`;
+      return `<div class="sp-match">${mHead}<ul class="sp-players">${items}</ul></div>`;
     }).join('');
     const nothing = q && posted.length && !found ? `<div class="tc-wait-note">No starter matches “${esc(state.socQuery)}”.</div>` : '';
     const wait = waiting.length
