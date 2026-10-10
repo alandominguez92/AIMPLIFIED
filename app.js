@@ -187,6 +187,9 @@
     manualLegs: 1,         // rows in the "add by hand" form
     soccer: null,          // /api/soccer-board payload, loaded on first visit
     soccerLeague: 'all',   // 'all' | 'epl' | 'laliga' | 'ucl'
+    socProps: null,        // /api/soccer-props
+    socLines: {},          // soccer prop line set by the user, per match:player:stat
+    socOpen: {},           // soccer prop matches showing every row
     soccerOpen: null,      // expanded fixture id
     slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
     stake: 1,   // units per bet
@@ -3277,7 +3280,8 @@
   // probability — so "which options win" is answered from real entries.
   const ENTRY_KEY_STORE = 'aimplified_entry_key';
   const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds',
-    threes: '3PM', ast: 'Ast', reb: 'Reb' };
+    threes: '3PM', ast: 'Ast', reb: 'Reb',
+    shots: 'Shots', sot: 'SOT', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' };
   function entryKey() {
     try {
       let k = localStorage.getItem(ENTRY_KEY_STORE);
@@ -4338,6 +4342,22 @@
       case 'set-view': setView(target.dataset.view); break;
       case 'set-sport': setSport(target.dataset.sport); break;
       case 'soccer-league': setSoccerLeague(target.dataset.league); break;
+      // A soccer prop's line, stepped to PrizePicks' number; whole numbers are
+      // lines too (a 3-save line can push).
+      case 'socp-line': {
+        const k = target.dataset.key;
+        const inp = el.soccerGrid && el.soccerGrid.querySelector(`input[data-socp="${CSS.escape(k)}"]`);
+        const cur = inp && isFinite(Number(inp.value)) ? Number(inp.value) : 0;
+        state.socLines = { ...(state.socLines || {}), [k]: Math.max(0, Math.round((cur + Number(target.dataset.d)) * 2) / 2) };
+        renderSoccer();
+        break;
+      }
+      case 'socp-player': {
+        const k = target.dataset.key;
+        state.socOpen = { ...(state.socOpen || {}), [k]: !(state.socOpen && state.socOpen[k]) };
+        renderSoccer();
+        break;
+      }
       // Its own toggle, not the NFL one: sharing 'nfl-toggle' re-rendered the NFL
       // grid, so a soccer row opened its panel into a board nobody was looking at.
       case 'nba-toggle': {
@@ -4526,12 +4546,29 @@
     if (t.dataset.action === 'log-stake') state.logStake = t.value;
     if (t.dataset.action === 'log-price') { state.logPrices = { ...state.logPrices, [t.dataset.leg]: t.value }; }
     if (t.dataset.action === 'log-line') { state.logLines = { ...state.logLines, [t.dataset.leg]: t.value.trim() }; renderSlip(); }
+    // A soccer prop's line typed to PrizePicks' number (48.5 passes is a lot of taps).
+    if (t.dataset.socp) {
+      const v = Number(t.value);
+      if (isFinite(v) && v >= 0) { state.socLines = { ...(state.socLines || {}), [t.dataset.socp]: Math.round(v * 2) / 2 }; renderSoccer(); }
+    }
     if (t.dataset.action === 'entry-payout') {
       const v = t.value.trim();
       entriesFetch('POST', { action: 'payout', id: t.dataset.id, payout: v === '' ? null : Number(v) })
         .then(() => { toast(v === '' ? 'Back to the standard payout' : 'Payout saved'); refreshEntries(); })
         .catch((err) => toast(err.message));
     }
+  });
+
+  // The soccer props search redraws the card as it is typed in; the redraw
+  // replaces the input, so focus and the caret are put back.
+  document.body.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.socq) return;
+    state.socQuery = t.value;
+    const at = t.selectionStart;
+    renderSoccer();
+    const n = el.soccerGrid && el.soccerGrid.querySelector('input[data-socq]');
+    if (n) { n.focus(); try { n.setSelectionRange(at, at); } catch (err) { /* type=search may refuse */ } }
   });
 
   el.searchInput.addEventListener('input', (e) => {
@@ -5701,13 +5738,132 @@
   // -------------------------------------------------------------------------
   async function refreshSoccer() {
     if (!LIVE_MODE) return;
-    try {
-      const d = await fetchJson('/api/soccer-board');
-      state.soccer = (d && Array.isArray(d.games)) ? d : { games: [], empty: true };
-    } catch (e) {
-      state.soccer = { games: [], empty: true, error: 'unreachable' };
-    }
+    const [d, pp] = await Promise.all([
+      fetchJson('/api/soccer-board').catch(() => 'unreachable'),
+      fetchJson('/api/soccer-props').catch(() => null),
+    ]);
+    state.soccer = d === 'unreachable' ? { games: [], empty: true, error: 'unreachable' }
+      : ((d && Array.isArray(d.games)) ? d : { games: [], empty: true });
+    state.socProps = pp && Array.isArray(pp.matches) ? pp : null;
     renderSoccer();
+  }
+
+  // ---- Soccer player props (2026-10-10) --------------------------------------
+  // PrizePicks' soccer board, which no feed carries: each starter's projection,
+  // and the chance at a line the user sets to the app's. The server sends the
+  // projection and the dispersion, so the chance follows any line typed here.
+  const SOC_STAT = { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Goalie saves' };
+  // Negative binomial P(X <= k) at a mean and variance-to-mean ratio, the
+  // worker's negBinomCdf.
+  function nbCdf(k, mean, phi) {
+    if (!(mean > 0)) return 1;
+    if (k < 0) return 0;
+    if (!(phi > 1)) { let t = Math.exp(-mean), s = t; for (let i = 1; i <= k; i++) { t *= mean / i; s += t; } return Math.min(1, s); }
+    const r = mean / (phi - 1), q = mean / (r + mean);
+    let t = Math.pow(r / (r + mean), r), s = t;
+    for (let i = 1; i <= k; i++) { t *= (r + i - 1) / i * q; s += t; }
+    return Math.min(1, s);
+  }
+  const socChanceAt = (line, mean, phi) => ({ under: nbCdf(Math.ceil(line) - 1, mean, phi) * 100, over: (1 - nbCdf(Math.floor(line), mean, phi)) * 100 });
+  const socKey = (m, r) => `${m.id}:${r.id}:${r.stat}`;
+  // The line a row shows: one the user set, else the one its starred leg was
+  // taken at (so a reload does not show a starred leg at another number), else
+  // the half point above the projection.
+  const socLineOf = (m, r) => {
+    const v = state.socLines && state.socLines[socKey(m, r)];
+    if (typeof v === 'number' && isFinite(v)) return v;
+    const leg = state.slip && state.slip[`socp:${socKey(m, r)}`];
+    const sl = leg && leg.spec && leg.spec.pp && leg.spec.pp.line;
+    return typeof sl === 'number' && isFinite(sl) ? sl : r.line;
+  };
+  function socpLeg(m, r, line, side, under) {
+    return { id: `socp:${socKey(m, r)}`, board: 'PrizePicks',
+      title: `${r.player} ${side === 'Under' ? 'U' : 'O'} ${line} ${SOC_STAT[r.stat] || r.stat}`, sub: `${m.away} @ ${m.home}`,
+      odds: null, tier: null, edge: null,
+      // gamePk and playerId are ESPN's: the box scores the leg grades from use them.
+      spec: { sport: 'soccer', date: ptDayOf(Date.parse(m.commence)), gamePk: m.id, playerId: Number(r.id), player: r.player, team: r.team || null,
+        market: r.stat, side, book: { line: null, price: null, under: null }, pp: { line, under: pct1(under) } } };
+  }
+  // One stat of one player: the line set to PrizePicks' number, the chance
+  // either way there, and the star that takes the side the chance favours.
+  function socPropRow(m, r) {
+    const line = socLineOf(m, r);
+    const ch = socChanceAt(line, r.proj, r.phi);
+    const side = ch.under >= ch.over ? 'Under' : 'Over';
+    const p = side === 'Under' ? ch.under : ch.over;
+    const leg = socpLeg(m, r, line, side, ch.under);
+    const on = !!state.slip[offerLeg(leg)];
+    const key = socKey(m, r);
+    const tags = [];
+    if (r.ctx != null && r.ctx < 0.9) tags.push(`<span class="tc-gap" title="This opponent allows ${Math.round((1 - r.ctx) * 100)}% less of it than the league">tight opp</span>`);
+    if (r.ctx != null && r.ctx > 1.1) tags.push(`<span class="tc-wait" title="This opponent allows ${Math.round((r.ctx - 1) * 100)}% more of it than the league">open opp</span>`);
+    const step = r.stat === 'passes' ? 1 : 0.5;
+    return `<li>`
+      + `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`
+      + `<div class="tc-leg">`
+      + `<span class="tc-l1"><b>${esc(SOC_STAT[r.stat] || r.stat)}</b><span class="tc-p${p < 55 ? ' sp-flat' : ''}">${side === 'Under' ? 'U' : 'O'} ${pct0(p)}</span></span>`
+      // Both sides beside the projection (a whole-number line also pushes), so
+      // the stepper row holds only the controls and fits beside the star.
+      + `<span class="tc-l2"><span>proj ${esc(String(r.proj))} · <span class="sp-both">U ${pct0(ch.under)} · O ${pct0(ch.over)}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span></span>`
+      + `<span class="sp-line"><button type="button" class="sp-step" data-action="socp-line" data-key="${esc(key)}" data-d="${-step}" aria-label="Lower the line">−</button>`
+      + `<input class="sp-in" type="number" inputmode="decimal" step="0.5" min="0" value="${esc(String(line))}" data-socp="${esc(key)}" aria-label="PrizePicks line for ${esc(r.player)} ${esc(SOC_STAT[r.stat] || r.stat)}">`
+      + `<button type="button" class="sp-step" data-action="socp-line" data-key="${esc(key)}" data-d="${step}" aria-label="Raise the line">+</button>`
+      + `<span class="sp-lbl">PP line</span></span>`
+      + `</div></li>`;
+  }
+  // Lineup order: goalkeeper, defenders, midfielders, forwards.
+  const socPosRank = (pos) => { const p = String(pos || ''); if (p === 'G') return 0; if (/^(CD|CB|LB|RB|LWB|RWB|D|SW)/.test(p)) return 1; if (/M/.test(p)) return 2; return 3; };
+  const SOC_SHORT = { shots: 'Shots', sot: 'SOT', passes: 'Pass', tackles: 'Tkl', clear: 'Clr', fouls: 'Fouls', saves: 'Saves' };
+  // The card can not know PrizePicks' number, so it does not rank by a lean it
+  // would have to invent: it lists each match's starters, with a search, and
+  // a tapped player opens his stats. A line set there is the line played.
+  function socPropsCardHtml() {
+    const d = state.socProps;
+    if (!d) return '';
+    const now = Date.now();
+    const lg = state.soccerLeague;
+    const q = String(state.socQuery || '').trim().toLowerCase();
+    const ms = (d.matches || []).filter((m) => Date.parse(m.commence) > now && (lg === 'all' || !lg || m.league === lg));
+    const rec = d.record && d.record.graded
+      ? `<span class="tc-rec">Leaning side: <b>${d.record.hit} of ${d.record.graded}</b></span>` : '';
+    const posted = ms.filter((m) => m.lineup === 'posted' && (m.rows || []).length);
+    const waiting = ms.filter((m) => m.lineup !== 'posted');
+    const head = `<div class="tc-head"><span class="tc-title">PrizePicks player props</span>${rec}</div>`
+      + `<div class="tc-sub">Find the player PrizePicks shows you, set the line to the app's number, and the chance follows. Starters only, once lineups post (about an hour before kickoff).`
+      + `${posted.some((m) => m.rows.some((r) => r.nRecent < 3)) ? ' Early season: most projections are still last season’s numbers.' : ''}</div>`
+      + (posted.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">` : '');
+    let found = 0;
+    const body = posted.map((m) => {
+      const byP = new Map();
+      for (const r of m.rows) { if (!byP.has(r.id)) byP.set(r.id, { id: r.id, player: r.player, team: r.team, pos: r.pos, early: r.early, nRecent: r.nRecent, rows: [] }); byP.get(r.id).rows.push(r); }
+      const teams = [...new Set(m.rows.map((r) => r.team))];
+      const players = [...byP.values()]
+        .filter((p) => !q || String(p.player).toLowerCase().includes(q))
+        .sort((a, b) => teams.indexOf(a.team) - teams.indexOf(b.team) || socPosRank(a.pos) - socPosRank(b.pos));
+      if (!players.length) return '';
+      found += players.length;
+      const items = players.map((p) => {
+        const pk = `${m.id}:${p.id}`;
+        const open = !!q || !!(state.socOpen && state.socOpen[pk]);
+        const starred = p.rows.filter((r) => state.slip[`socp:${socKey(m, r)}`]).length;
+        const summary = p.rows.map((r) => `${SOC_SHORT[r.stat] || r.stat} ${r.stat === 'passes' ? Math.round(r.proj) : (Math.round(r.proj * 10) / 10)}`).join(' · ');
+        const tags = [];
+        if (p.early != null && p.early >= 25) tags.push(`<span class="tc-wait" title="Off before 70' in ${p.early}% of his starts">off early ${p.early}%</span>`);
+        return `<li class="sp-player${open ? ' open' : ''}">`
+          + `<button type="button" class="sp-ph" data-action="socp-player" data-key="${esc(pk)}" aria-expanded="${open}">`
+          + `<span class="sp-pn"><b>${esc(p.player)}</b> <span class="pk-sport">${esc(p.team || '')}${p.pos ? ' · ' + esc(p.pos) : ''}</span>${starred ? ` <span class="sp-star">★${starred > 1 ? starred : ''}</span>` : ''}</span>`
+          + `<span class="sp-ps">${esc(summary)}${tags.length ? ' ' + tags.join(' ') : ''}</span></button>`
+          + (open ? `<ol class="tc-legs sp-stats">${p.rows.map((r) => socPropRow(m, r)).join('')}</ol>` : '')
+          + `</li>`;
+      }).join('');
+      return `<div class="sp-match"><div class="sp-mh"><b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span></div>`
+        + `<ul class="sp-players">${items}</ul></div>`;
+    }).join('');
+    const nothing = q && posted.length && !found ? `<div class="tc-wait-note">No starter matches “${esc(state.socQuery)}”.</div>` : '';
+    const wait = waiting.length
+      ? `<div class="tc-wait-note">Lineups not posted yet: ${waiting.slice(0, 6).map((m) => `${esc(m.away)} @ ${esc(m.home)} ${esc(soccerKick(m.commence))}`).join(' · ')}${waiting.length > 6 ? ` · and ${waiting.length - 6} more` : ''}.</div>` : '';
+    const none = !posted.length && !waiting.length ? '<div class="tc-wait-note">No fixtures in the five leagues in the next fourteen hours.</div>' : '';
+    return `<div class="nba-pp pk-card sp-card">${head}${body}${nothing}${wait}${none}</div>`;
   }
 
   function setSoccerLeague(lg) {
@@ -5740,7 +5896,10 @@
     renderSoccerLeagues();
     const d = state.soccer;
     if (!d) { el.soccerGrid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
-    if (d.error) { el.soccerGrid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
+    // The player-props card leads the tab in every state: it has its own feed,
+    // and a day with no priced fixture can still have lineups posted.
+    const props = socPropsCardHtml();
+    if (d.error) { el.soccerGrid.innerHTML = props + `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
     const games = (d.games || []).filter((g) => state.soccerLeague === 'all' || g.league === state.soccerLeague);
     if (el.soccerCount) {
       el.soccerCount.textContent = games.length
@@ -5757,11 +5916,11 @@
         const t = Date.parse(ymd + 'T12:00:00Z');
         return isFinite(t) ? new Date(t).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }) : ymd;
       };
-      el.soccerGrid.innerHTML = (d.nextDay && state.soccerLeague === 'all')
+      el.soccerGrid.innerHTML = props + ((d.nextDay && state.soccerLeague === 'all')
         ? `<div class="nfl-empty">No fixtures in the next day and a half. Next matchday is <b>${esc(dayLabel(d.nextDay))}</b>${
             d.gamesAllUpcoming ? ` — ${d.gamesAllUpcoming} fixtures are already priced` : ''}.</div>`
         : `<div class="nfl-empty">No fixtures on the next matchday for this league${
-            d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+            d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`);
       return;
     }
     // view-moneyline carries --bcols, and the soccer row has the same seven
@@ -5772,7 +5931,7 @@
     // carries the note; soccer was written without one.
     const head = ['Fixture', '1X2 lead', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    el.soccerGrid.innerHTML = soccerFavCard(games)
+    el.soccerGrid.innerHTML = props + soccerFavCard(games)
       + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map(soccerRow).join('')}</div>`

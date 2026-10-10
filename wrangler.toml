@@ -14,8 +14,12 @@ binding = "ASSETS"
 # so each pick's closing line is frozen for CLV. The paid Odds refresh only fires
 # in that pre-pitch window, so a normal slate costs a handful of extra calls.
 # Requires the D1 binding below to be active (otherwise it's a no-op).
+#
+# The second trigger is the soccer box-score ingest (worker.js SOC_BOX_CRON).
+# Its own invocation, because one match is ~30 ESPN requests and an
+# invocation's request budget is shared by everything it runs.
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["*/5 * * * *", "2-59/5 * * * *"]
 
 # Track record storage (Cloudflare D1). With this binding active, env.DB is
 # defined, so the Worker logs each night's priced picks, grades them from the

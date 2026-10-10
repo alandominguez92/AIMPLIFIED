@@ -119,8 +119,24 @@ async function buildOddsFixture() {
 }
 if (HEALTHY) await buildOddsFixture();
 
+// SOCPROPSDEMO=1: the soccer props card with a lineup posted. The first real
+// Premier League fixture of the day is moved to 45 minutes out, and its summary
+// is the recorded Fulham-Tottenham one (tests/fixtures/espn-soc-740870.json),
+// both lineups in -- the card is otherwise empty until an hour before kickoff.
+const SOCPROPSDEMO = process.env.SOCPROPSDEMO === '1';
+let socDemoId = null;
 globalThis.fetch = async (u, o) => {
   const url = String(u);
+  if (SOCPROPSDEMO && url.includes('/soccer/eng.1/scoreboard?dates=')) {
+    const j = await (await realFetch(url)).json();
+    const ev = (j.events || []).find((e) => e.status && e.status.type && e.status.type.state === 'pre');
+    if (ev && (!socDemoId || socDemoId === ev.id)) { socDemoId = ev.id; ev.date = new Date(Date.now() + 45 * 60e3).toISOString(); }
+    return new Response(JSON.stringify(j), { status: 200 });
+  }
+  if (SOCPROPSDEMO && socDemoId && url.includes(`/soccer/eng.1/summary?event=${socDemoId}`)) {
+    const rec = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-soc-740870.json'), 'utf8'));
+    return new Response(JSON.stringify(Object.entries(rec).find(([k]) => k.includes('/summary'))[1]), { status: 200 });
+  }
   if (url.includes('api.the-odds-api.com')) {
     if (HEALTHY) {
       const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json' } });

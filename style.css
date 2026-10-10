@@ -2741,6 +2741,32 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-rec.thin { color:var(--textFaint); }
 .pk-new { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--caution); }
 .pk-intro { margin-top:0; }
+
+/* Soccer player props: a match per block, a line stepper on every row. */
+.sp-match { margin-top:12px; }
+.sp-mh { font-size:13.5px; color:var(--text); margin:0 0 6px; }
+.sp-mh b { font-weight:700; }
+.sp-line { display:flex; align-items:center; gap:6px; margin-top:8px; }
+.sp-step { width:32px; height:30px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text);
+  font-size:16px; line-height:1; cursor:pointer; flex:none; }
+.sp-step:active { border-color:var(--accent); }
+.sp-in { width:64px; height:30px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text);
+  font-family:var(--mono); font-size:14px; text-align:center; padding:0 4px; -moz-appearance:textfield; }
+.sp-in::-webkit-outer-spin-button, .sp-in::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.sp-both { font-family:var(--mono); font-size:11.5px; color:var(--textFaint); white-space:nowrap; }
+.sp-lbl { font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--textFaint); }
+.sp-card .tc-p.sp-flat { color:var(--textDim); }
+.sp-search { width:100%; margin-top:10px; height:38px; border:1px solid var(--border); border-radius:10px; background:transparent;
+  color:var(--text); font-size:15px; padding:0 12px; }
+.sp-players { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.sp-player { border:1px solid var(--border); border-radius:10px; }
+.sp-player.open { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.sp-ph { display:block; width:100%; text-align:left; background:none; border:none; color:inherit; font:inherit; padding:10px 12px; cursor:pointer; }
+.sp-pn { display:block; font-size:14.5px; }
+.sp-pn b { font-weight:700; color:var(--text); }
+.sp-ps { display:block; margin-top:3px; font-family:var(--mono); font-size:11.5px; color:var(--textDim); line-height:1.5; }
+.sp-star { color:var(--accent); font-size:12px; }
+.sp-stats { padding:0 10px 10px; }
 .pk-sport { font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--textFaint); }
 .pk-when { white-space:nowrap; }
 .pk-entries { list-style:none; margin:12px 0 0; padding:10px 12px; display:grid; gap:5px;
