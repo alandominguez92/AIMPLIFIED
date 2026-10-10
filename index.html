@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=439c51ee75">
+<link rel="stylesheet" href="style.css?v=c7c2d831e8">
 </head>
 <body>
 
@@ -51,6 +51,7 @@
 
 <div class="sports">
   <div class="wrap sports-inner">
+    <a class="stab" href="#" data-action="set-sport" data-sport="picks"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg><span>Picks</span><span class="mini">Most Likely</span></a>
     <a class="stab active" href="#" data-action="set-sport" data-sport="mlb"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6c2.2 1.9 3.4 4 3.4 6.4s-1.2 4.5-3.4 6.4"/><path d="M18.4 5.6c-2.2 1.9-3.4 4-3.4 6.4s1.2 4.5 3.4 6.4"/></svg><span>MLB</span><span class="mini">Model + Picks</span></a>
     <a class="stab" href="#" data-action="set-sport" data-sport="nfl"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4.5 19.5c-1.5-5.5 1-11 5.5-13.5 3-1.6 6.5-2 9.5-1.5.5 3 .1 6.5-1.5 9.5-2.5 4.5-8 7-13.5 5.5z"/><path d="M9 15l6-6"/><path d="M9.2 13.2l1.6 1.6M11.2 11.2l1.6 1.6M13.2 9.2l1.6 1.6"/></svg><span>NFL</span><span class="mini">Game Context</span></a>
     <a class="stab" href="#" data-action="set-sport" data-sport="nba"><svg class="sport-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3v18"/><path d="M5.6 5.6c2.4 2.4 2.4 10.4 0 12.8"/><path d="M18.4 5.6c-2.4 2.4-2.4 10.4 0 12.8"/></svg><span>NBA</span><span class="mini">Game Lines</span></a>
@@ -119,6 +120,17 @@
   <!-- NBA moneylines (2026-10-04). Game lines only: no book quoted a player
        prop for a preseason game, and sharp books had not posted regular-season
        props on Oct 1. Filled by renderNba(). -->
+  <!-- Picks of the day (2026-10-09): the legs most likely to land, across
+       sports, one per game, for PrizePicks. Filled by renderPicks(). -->
+  <section id="picksBoard" hidden>
+    <div class="sec-head">
+      <h2>Picks of the day</h2>
+      <span class="count" id="picksCount"></span>
+    </div>
+    <p class="soc-note">For PrizePicks, which pays the same on every leg · logged as shown</p>
+    <div id="picksGrid"></div>
+  </section>
+
   <section id="nbaBoard" hidden>
     <div class="sec-head">
       <h2>NBA Board</h2>
@@ -417,6 +429,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=439c51ee75"></script>
+<script src="app.js?v=c7c2d831e8"></script>
 </body>
 </html>

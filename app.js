@@ -4197,6 +4197,7 @@
     if (state.sport === 'nfl') renderNfl();
     if (state.sport === 'soccer') renderSoccer();
     if (state.sport === 'nba') renderNba();
+    if (state.sport === 'picks') renderPicks();
     const n = Object.keys(state.slip).length;
     toast(adding ? `★ Added ${leg.title} · ${n} leg${n === 1 ? '' : 's'}` : `Removed ${leg.title}`);
   }
@@ -4640,6 +4641,10 @@
     const nbaBoard = document.getElementById('nbaBoard');
     if (nbaBoard) nbaBoard.hidden = s !== 'nba';
     if (s === 'nba' && !state.nba) refreshNba();             // lazy first load
+    const pb = document.getElementById('picksBoard');
+    if (pb) pb.hidden = s !== 'picks';
+    // Read on every visit after two minutes: lineups post and legs move.
+    if (s === 'picks') { if (!state.picks || Date.now() - (state.picksAt || 0) > 120e3) refreshPicks(); else renderPicks(); }
     const eb = document.getElementById('entriesBoard');
     if (eb) eb.hidden = s !== 'entries';
     placeRail();
@@ -5401,7 +5406,98 @@
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
   // sport switch and never changed back.
-  const DOC_TITLE = { mlb: document.title, nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
+  const DOC_TITLE = { mlb: document.title, picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
+
+  // -------------------------------------------------------------------------
+  // Picks of the day (2026-10-09)
+  // -------------------------------------------------------------------------
+  // The legs most likely to land, across sports, one per game -- for
+  // PrizePicks, which pays the same on every leg, so the chance is the whole
+  // question. /api/picks builds the list from the logs, admits only kinds of leg
+  // whose stated chance has held up, and logs what it shows so the list earns a
+  // record of its own. Each star takes the leg under the id its own board uses.
+  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
+  const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nfl: 'NFL', soccer: 'Soccer' };
+  async function refreshPicks() {
+    if (!LIVE_MODE) return;
+    try {
+      const d = await fetchJson('/api/picks');
+      state.picks = d && Array.isArray(d.legs) ? d : { legs: [], error: 'unreadable' };
+    } catch (e) {
+      state.picks = { legs: [], error: 'unreachable' };
+    }
+    state.picksAt = Date.now();
+    renderPicks();
+  }
+  function pickLeg(x) {
+    return { id: x.legId, board: PICK_BOARD[x.kind] || 'Pick', title: x.title, sub: x.sub,
+      odds: typeof x.odds === 'number' ? x.odds : null, tier: null, edge: null, spec: x.spec };
+  }
+  const pct0 = (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—');
+  function renderPicks() {
+    const grid = document.getElementById('picksGrid');
+    if (!grid) return;
+    const d = state.picks;
+    const count = document.getElementById('picksCount');
+    if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
+    if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>`; return; }
+    const legs = (d.legs || []).filter((x) => Date.parse(x.commence) > Date.now());
+    if (count) count.textContent = legs.length ? `${legs.length} leg${legs.length === 1 ? '' : 's'}` : '';
+    const kinds = d.kinds || {};
+    const rules = `<details class="pk-rules"><summary>What gets on the list</summary><ul>${Object.values(kinds).map((k) => {
+      const r = k.record || {};
+      return `<li><b>${esc(k.label)}</b> at ${k.min}%+ · ${r.n ? `${r.hit} of ${r.n} landed (${pct0(r.hitRate)})` : 'no graded legs yet'}${r.n && !r.proven ? ' · <span class="pk-new">new</span>' : ''}</li>`;
+    }).join('')}</ul><p>Only the best leg of each game, because legs from one game tend to land or miss together. Strikeout unders, NFL yardage, passing-TD unders and MLB unders under 70% are left off: their numbers have not held up.</p></details>`;
+    const rec = d.record || {};
+    const recLine = rec.legs && rec.legs.n
+      ? `This list: <b>${rec.legs.hit} of ${rec.legs.n}</b> landed since ${esc(rec.since || '')}`
+        + (rec.top2 && rec.top2.days ? ` · top two both landed <b>${rec.top2.bothHit} of ${rec.top2.days}</b> days` : '')
+        + (rec.voided ? ` · ${rec.voided} void` : '')
+      : 'This list keeps its own record from today: each leg on it when its game starts is graded.';
+    if (!legs.length) {
+      grid.innerHTML = `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines about four hours before tip.</div>`
+        + `<div class="tc-sub">${recLine}</div>${rules}</div>`;
+      return;
+    }
+    const items = legs.map((x) => {
+      const lg = pickLeg(x);
+      const on = !!state.slip[offerLeg(lg)];
+      const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
+      const tags = [];
+      if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
+      if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
+      if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
+      const r = x.record || {};
+      const recTxt = r.n ? `Legs like this: ${r.hit} of ${r.n} (${pct0(r.hitRate)})${r.proven ? '' : ' · new'}` : 'Legs like this: none graded yet';
+      return `<li>${star}<div class="tc-leg">`
+        + `<span class="tc-l1"><b>${esc(x.title)}</b> <span class="ctx-chip">${esc(PICK_SPORT[x.sport] || x.sport)}</span><span class="tc-p">${pct0(x.p)}</span></span>`
+        + `<span class="tc-l2"><span>${esc(x.sub)}${x.league ? ' · ' + esc(x.league) : ''} · ${esc(soccerKick(x.commence))}${tags.length ? ' ' + tags.join(' ') : ''}</span>`
+        + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}</span>` : ''}</span>`
+        + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
+        + `</div></li>`;
+    }).join('');
+    // Entry math over the legs still to come: the top two as a 2-pick power,
+    // and the average leg of three to six against the flex break-even.
+    const ent = [];
+    for (let n = 2; n <= legs.length; n++) {
+      const top = legs.slice(0, n);
+      const be = PP_BREAK_EVEN[n];
+      if (!be) continue;
+      if (n === 2) {
+        const all = top.reduce((a, x) => a * x.p / 100, 1) * 100;
+        ent.push(`<li>Top 2 · ${esc(be[0])}: both land <b>${pct0(all)}</b> <span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span></li>`);
+      } else {
+        const avg = top.reduce((a, x) => a + x.p, 0) / n;
+        ent.push(`<li>Top ${n} · ${esc(be[0])}: average leg <b>${pct0(avg)}</b> <span class="pk-be">needs ${be[1]}%</span></li>`);
+      }
+    }
+    grid.innerHTML = `<div class="nba-pp pk-card">`
+      + `<div class="tc-head"><span class="tc-title">Most likely to land</span></div>`
+      + `<div class="tc-sub">One leg a game, best first. The chance is the site's number for each leg; the line under it says how legs like it have actually done.</div>`
+      + `<ol class="tc-legs">${items}</ol>`
+      + (ent.length ? `<ul class="pk-entries">${ent.join('')}</ul>` : '')
+      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
+  }
 
   function applySportChrome(sport) {
     // Anything that is not the MLB board hides the MLB-only chrome. Written as

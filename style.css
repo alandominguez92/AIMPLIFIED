@@ -1475,8 +1475,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      with its top edge hidden. */
   :root { --sportsH:44px; }
   .stab .mini { display:none; }
-  .stab { padding:11px 12px 10px; gap:6px; font-size:13px; }
+  /* Six tabs since Picks (2026-10-09): 8px a side keeps all six on a 375 screen. */
+  .stab { padding:11px 8px 10px; gap:6px; font-size:13px; }
   .sports-inner { width:auto; justify-content:space-between; gap:0; }
+}
+@media (max-width:380px) {
+  .stab { padding:11px 6px 10px; font-size:12.5px; }
 }
 
 @media (max-width:900px) {
@@ -2725,6 +2729,27 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   color:var(--positive); border:1px solid color-mix(in srgb, var(--positive) 45%, var(--border)); border-radius:4px; padding:1px 5px; white-space:nowrap; }
 .tc-gap.lower { color:var(--caution); border-color:color-mix(in srgb, var(--caution) 45%, var(--border)); }
 .tc-rec-line b { color:var(--text); font-weight:600; }
+
+/* Picks of the day: the today-card layout, plus a record line under each leg.
+   Its titles carry the line ("Jalen Brunson Under 7.5 AST"), so they wrap
+   rather than ellipsize -- a cut-off title hides the number being played -- and
+   the column is pinned to the card so one long title cannot widen the page. */
+.pk-card .tc-legs { grid-template-columns:minmax(0, 1fr); }
+.pk-card .tc-l1 { align-items:flex-start; }
+.pk-card .tc-l1 b { white-space:normal; overflow:visible; text-overflow:clip; }
+.pk-rec { display:block; margin-top:4px; font-size:11.5px; color:var(--textDim); }
+.pk-rec.thin { color:var(--textFaint); }
+.pk-new { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--caution); }
+.pk-entries { list-style:none; margin:12px 0 0; padding:10px 12px; display:grid; gap:4px;
+  border:1px solid var(--border); border-radius:10px; font-size:13px; color:var(--textDim); }
+.pk-entries b { color:var(--positive); font-weight:600; font-family:var(--mono); }
+.pk-be { font-family:var(--mono); font-size:11.5px; color:var(--textFaint); margin-left:4px; }
+.pk-record { margin-top:10px; }
+.pk-record b { color:var(--text); font-weight:600; }
+.pk-rules { margin-top:10px; font-size:12.5px; color:var(--textDim); }
+.pk-rules summary { cursor:pointer; color:var(--model, var(--accent)); padding:4px 0; }
+.pk-rules ul { margin:6px 0 0; padding-left:18px; display:grid; gap:3px; }
+.pk-rules p { margin:6px 0 0; line-height:1.45; }
 
 /* Moneyline by price: the pick count rides under the range, quietly. */
 .ml-band-n { display:block; font-style:normal; font-family:var(--mono); font-size:10px; font-weight:400; color:var(--textFaint); letter-spacing:0; text-transform:none; }

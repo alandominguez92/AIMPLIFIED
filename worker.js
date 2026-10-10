@@ -147,7 +147,7 @@ const RL_MODEL_VER = 'rl-shin';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/entries',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/nba-board', '/api/nba-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
@@ -252,6 +252,10 @@ export default {
     ctx.waitUntil(gradePassTds(env).catch(() => null));
     ctx.waitUntil(nflGradeCron(env).catch(() => null));
     ctx.waitUntil(gradeEntryLegs(env).catch(() => null));
+    // Picks of the day: every fifteen minutes, so the log knows which legs were
+    // on the list when each game started even with nobody on the site.
+    const min = new Date((event && event.scheduledTime) || Date.now()).getUTCMinutes();
+    if (min % 15 < 5) ctx.waitUntil(dayPicksTick(env).catch(() => null));
   },
 };
 
@@ -477,6 +481,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/pppicks-export') return ppExport(env, url);
   if (p === '/api/gmpicks-export') return gmExport(env, url);
   if (p === '/api/top-legs') return topLegs(env, url);
+  if (p === '/api/picks') return cors(json(await picksBoard(env), 120));
   if (p === '/api/mlpicks-export') return mlpicksExport(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
@@ -7003,19 +7008,29 @@ function topLegWon(sport, r) {
 // club present only once its card is up. One StatsAPI read, no odds credit.
 // null when the read fails, so a caller can say it could not check.
 async function postedLineups(ymd) {
+  const s = await mlbDaySlate(ymd);
+  return s ? s.cards : null;
+}
+// One StatsAPI read for a day: each game's first pitch, state and clubs, and
+// the posted cards in postedLineups' shape. null when the read fails.
+async function mlbDaySlate(ymd) {
   try {
     const r = await fetch(`${STATS}/schedule?sportId=1&date=${ymd}&hydrate=team,lineups`, { headers: { accept: 'application/json' } });
     if (!r.ok) return null;
-    const out = {};
+    const games = {}, cards = {};
     for (const g of ((((await r.json()).dates || [])[0] || {}).games || [])) {
       const lp = g.lineups || {}, sides = {};
       for (const [k, side] of [['awayPlayers', 'away'], ['homePlayers', 'home']]) {
         const arr = lp[k] || [];
         if (arr.length) sides[teamAbbr(g.teams[side].team)] = new Set(arr.map((p) => p && p.id));
       }
-      out['g' + g.gamePk] = sides;
+      cards['g' + g.gamePk] = sides;
+      games['g' + g.gamePk] = {
+        commence: g.gameDate || null, status: (g.status && g.status.abstractGameState) || 'Preview',
+        away: teamAbbr(g.teams.away.team), home: teamAbbr(g.teams.home.team),
+      };
     }
-    return out;
+    return { games, cards };
   } catch (e) { return null; }
 }
 // 'in', 'out' (his club's card is up and he is not on it), or null (no card yet,
@@ -7159,6 +7174,340 @@ async function topLegs(env, url) {
     if (!out.today.length) out.todayNote = `nothing ungraded logged for ${todayYmd} yet`;
   } catch (e) { out.error = String((e && e.message) || e); }
   return cors(json(out, 300));
+}
+
+// ---------------------------------------------------------------------------
+// /api/picks — Picks of the day (2026-10-09)
+// ---------------------------------------------------------------------------
+// The legs most likely to land, across sports, one per game. PrizePicks pays
+// the same multiplier on every leg of an entry, moneylines included (the user,
+// 2026-10-09), so for a PrizePicks entry the chance a leg lands is the whole
+// question. At DraftKings it is not -- a -400 favourite lands 80% of the time
+// and still loses money -- which is why this is a PrizePicks list.
+//
+// Only kinds of leg whose stated chance held up in the logs get in, at the bar
+// where it held up (claimed vs realised, through 2026-10-08):
+//   MLB moneyline favourites at 65%+: 52 of 76 (68%) against 69% claimed. Over
+//     all 878 games the site's win chance was 57.2% realised vs 57.0% claimed.
+//   MLB PrizePicks unders at 70%+: 19 of 25 (76%). Below 70 the model ran 5-10
+//     points hot (60-65%: 55 of 109), and strikeout unders hit 49%: both out.
+//   NBA, NFL and soccer favourites at 65%+ and NBA PrizePicks unders at 70%+:
+//     in, each with its own record beside it. The sharp line is the best
+//     number there is and the NBA model held up on last season's games, but
+//     none has PICKS_PROVEN_N graded legs at its bar yet. NBA preseason is out:
+//     its favourites sat their starters (11 of 23 against 63% claimed).
+// Every leg comes from a log the site already keeps and grades, so the list
+// reads no odds and spends no credit. It keeps a record of its own: a leg on
+// the list when its game starts is logged in daypicks and graded from the log
+// it came from.
+const PICKS_N = 6;                       // the largest PrizePicks entry
+const PICKS_WINDOW_MS = 24 * 3600e3;     // games starting in the next day
+const PICKS_PROVEN_N = 30;
+const PICK_KINDS = {
+  mlb_ml: { sport: 'mlb', label: 'MLB moneyline favourite', min: 65 },
+  mlb_pp: { sport: 'mlb', label: 'MLB PrizePicks under (TB, H+R+RBI)', min: 70 },
+  nba_ml: { sport: 'nba', label: 'NBA moneyline favourite', min: 65 },
+  nba_pp: { sport: 'nba', label: 'NBA PrizePicks under', min: 70 },
+  nfl_ml: { sport: 'nfl', label: 'NFL moneyline favourite', min: 65 },
+  soccer_fav: { sport: 'soccer', label: 'Soccer favourite to win', min: 65 },
+};
+// Per leg, the PrizePicks break-even for an entry of that many legs (2-pick
+// power; 3 to 6, flex). The same table the slip's parlay read uses.
+const PICKS_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 4: ['4-pick flex', 56.9], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
+const PICKS_MLB_MK = { tb: 'TB', hrr: 'H+R+RBI' };
+const PICKS_NBA_MK = { threes: '3PM', ast: 'AST', reb: 'REB' };
+const lastWord = (s) => String(s || '').trim().split(/\s+/).pop();
+const gamePkNum = (id) => { const m = /(\d{5,})/.exec(String(id || '')); return m ? Number(m[1]) : null; };
+
+async function ensureDayPickSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS daypicks (
+    date TEXT NOT NULL, leg_id TEXT NOT NULL, kind TEXT NOT NULL,
+    src_date TEXT, game_id TEXT, player_key TEXT, market TEXT, team TEXT,
+    label TEXT, p REAL, commence TEXT, rank INTEGER, on_list INTEGER,
+    seen_at TEXT, result TEXT,
+    PRIMARY KEY (date, leg_id)
+  )`).run();
+}
+
+// Every leg that clears its kind's bar, for games starting in the next day.
+// Each carries what the slip needs to take it under the id its own board uses,
+// so a star here and a star there are one leg. `unavailable` names the kinds
+// whose source could not be read, so the log does not mistake an outage for a
+// leg falling off the list.
+async function picksCandidates(env, now) {
+  const db = env.DB;
+  const days = [ptDateOf(now), ptDateOf(now + 86400e3)];
+  const until = now + PICKS_WINDOW_MS;
+  const soon = (iso) => { const t = Date.parse(iso || ''); return isFinite(t) && t > now && t <= until; };
+  const legs = [], unavailable = new Set();
+
+  // MLB: the moneyline log and the PrizePicks log, timed and lineup-checked
+  // from one StatsAPI read per day.
+  await ensureMlPickSchema(db); await ensurePpSchema(db);
+  const ml = (await db.prepare('SELECT * FROM mlpicks WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
+  const pp = (await db.prepare("SELECT * FROM pppicks WHERE date IN (?, ?) AND result IS NULL AND market IN ('tb','hrr')").bind(...days).all()).results || [];
+  const slates = {};
+  for (const d of new Set([...ml, ...pp].map((r) => r.date))) {
+    slates[d] = await mlbDaySlate(d);
+    if (!slates[d]) { unavailable.add('mlb_ml'); unavailable.add('mlb_pp'); }
+  }
+  const mlbGame = (r) => { const s = slates[r.date]; const g = s && s.games[r.game_id]; return g && g.status !== 'Final' && soon(g.commence) ? g : null; };
+  for (const r of ml) {
+    const g = mlbGame(r);
+    if (!g || r.win_prob == null) continue;
+    // One row per game, for the side the board leads with -- often the dog.
+    // The favourite is whichever side the win chance points to.
+    const pickFav = r.win_prob >= 50;
+    const p = pickFav ? r.win_prob : 100 - r.win_prob;
+    if (p < PICK_KINDS.mlb_ml.min) continue;
+    const team = pickFav ? r.team : r.opp;
+    const isHome = pickFav ? !!r.is_home : !r.is_home;
+    const price = pickFav ? (r.close_price != null ? r.close_price : r.entry_price) : null;
+    legs.push({ kind: 'mlb_ml', gameKey: 'mlb:' + r.game_id, p, commence: g.commence,
+      // The board's star takes the side it leads with as `ml:<game>`.
+      legId: pickFav ? `ml:${r.game_id}` : `ml:${r.game_id}:${team}`,
+      title: `${team} ML`, sub: r.is_home ? `${r.opp} @ ${r.team}` : `${r.team} @ ${r.opp}`, odds: price,
+      src: { date: r.date, game_id: r.game_id, team, market: 'ml' },
+      spec: { sport: 'mlb', date: r.date, gamePk: gamePkNum(r.game_id), player: team, team, market: 'ml',
+        side: isHome ? 'home' : 'away', book: { line: null, price, win: round1(p) }, pp: null } });
+  }
+  for (const r of pp) {
+    const g = mlbGame(r);
+    if (!g) continue;
+    const p = r.close_model_under != null ? r.close_model_under : r.model_under;
+    if (p == null || p < PICK_KINDS.mlb_pp.min) continue;
+    const s = slates[r.date];
+    const lineup = lineupStatus(s && s.cards, r);
+    if (lineup === 'out') continue;          // benched: the leg would void
+    const point = r.close_point != null ? r.close_point : r.point;
+    legs.push({ kind: 'mlb_pp', gameKey: 'mlb:' + r.game_id, p, commence: g.commence, lineup: lineup || 'not posted',
+      legId: `pp:b${r.player_id}:${r.market}`,   // the batter row is 'b' + player id
+      title: `${r.player} Under ${point} ${PICKS_MLB_MK[r.market] || r.market}`, sub: `${g.away} @ ${g.home}`, odds: null,
+      src: { date: r.date, game_id: r.game_id, player_key: String(r.player_id), market: r.market, team: r.team },
+      spec: { sport: 'mlb', date: r.date, gamePk: gamePkNum(r.game_id), playerId: r.player_id, player: r.player, team: r.team || null,
+        market: r.market, side: 'Under', book: { line: null, price: null, under: null }, pp: { line: point, under: round1(p) } } });
+  }
+
+  // NBA, NFL and soccer game lines: the side the sharp books favour, from the
+  // game-line log (each board refreshes its row's win chance and price).
+  await ensureGamePickSchema(db);
+  const gm = (await db.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nfl','soccer') AND date IN (?, ?) AND result IS NULL").bind(...days).all()).results || [];
+  for (const r of gm) {
+    if (!soon(r.commence) || r.win_prob == null) continue;
+    const kind = r.sport === 'nba' && r.market === 'h2h' && r.league === 'reg' ? 'nba_ml'
+      : r.sport === 'nfl' && r.market === 'h2h' ? 'nfl_ml'
+        : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null;
+    if (!kind || r.win_prob < PICK_KINDS[kind].min) continue;
+    const day = ptDateOf(Date.parse(r.commence));
+    const price = r.close_price != null ? r.close_price : r.entry_price;
+    const base = { kind, p: r.win_prob, commence: r.commence, odds: price,
+      src: { date: r.date, game_id: r.game_id, team: r.pick, market: r.market } };
+    const book = { line: null, price, win: round1(r.win_prob) };
+    if (kind === 'nba_ml') {
+      legs.push({ ...base, gameKey: 'nba:' + r.game_id, legId: `nba:ml:${r.game_id}:${r.side}`,
+        title: `${lastWord(r.pick)} ML`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
+        spec: { sport: 'nba', date: day, gamePk: r.game_id, player: r.pick, team: lastWord(r.pick), market: 'ml', side: r.side, book, pp: null } });
+    } else if (kind === 'nfl_ml') {
+      legs.push({ ...base, gameKey: 'nfl:' + r.game_id, legId: `nfl:ml:${r.game_id}:${r.pick}`,
+        title: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`,
+        // The NFL slip keys a game by matchup and day, as its board does.
+        spec: { sport: 'nfl', date: day, gamePk: `${r.away} @ ${r.home}|${day}`, player: r.pick, team: r.pick, market: 'ml', side: r.side, book, pp: null } });
+    } else {
+      legs.push({ ...base, gameKey: 'soc:' + r.game_id, legId: `soc:${r.game_id}:${r.side}`,
+        title: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`,
+        league: (SOCCER_LEAGUES[r.league] && SOCCER_LEAGUES[r.league].label) || r.league || null,
+        spec: { sport: 'soccer', date: day, gamePk: r.game_id, player: r.pick, team: r.pick, market: 'ml', side: r.side, book, pp: null } });
+    }
+  }
+
+  // NBA PrizePicks unders: rotation players, as on the NBA card.
+  await ensureNbaSchema(db);
+  const np = (await db.prepare('SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
+  for (const r of np) {
+    if (!soon(r.commence) || r.model_under == null || r.model_under < PICK_KINDS.nba_pp.min) continue;
+    if (!(r.min_proj >= NBA_ROTATION_MIN)) continue;
+    legs.push({ kind: 'nba_pp', gameKey: 'nba:' + r.game_id, p: r.model_under, commence: r.commence, odds: null,
+      vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
+      legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
+      title: `${r.player} Under ${r.point} ${PICKS_NBA_MK[r.market] || r.market}`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
+      src: { date: r.date, game_id: r.game_id, player_key: r.player, market: r.market, team: r.team },
+      spec: { sport: 'nba', date: ptDateOf(Date.parse(r.commence)), gamePk: r.game_id, playerId: null, player: r.player, team: r.team || null,
+        market: r.market, side: 'Under', book: { line: r.book_line != null ? r.book_line : null, price: typeof r.book_under === 'number' ? r.book_under : null, under: null },
+        pp: { line: r.point, under: r.model_under } } });
+  }
+  return { legs, unavailable };
+}
+
+// The best leg of each game, best first, at most PICKS_N. Legs of one game tend
+// to land or miss together, and a PrizePicks entry needs two teams anyway.
+function pickList(legs) {
+  const best = new Map();
+  for (const l of [...legs].sort((a, b) => b.p - a.p || Date.parse(a.commence) - Date.parse(b.commence))) {
+    if (!best.has(l.gameKey)) best.set(l.gameKey, l);
+  }
+  return [...best.values()].slice(0, PICKS_N);
+}
+
+// What the list showed is what it is judged on. Each leg on it is written with
+// its rank; a leg that drops off before its game starts is marked off; once a
+// game starts its rows are left alone, so the row says whether that leg was on
+// the list at first pitch or tip.
+async function logDayPicks(db, list, unavailable, now) {
+  await ensureDayPickSchema(db);
+  const nowIso = new Date(now).toISOString();
+  const stmts = list.map((l, i) => db.prepare(
+    `INSERT INTO daypicks (date, leg_id, kind, src_date, game_id, player_key, market, team, label, p, commence, rank, on_list, seen_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+     ON CONFLICT(date, leg_id) DO UPDATE SET p = excluded.p, rank = excluded.rank, on_list = 1,
+       seen_at = excluded.seen_at, label = excluded.label
+     WHERE daypicks.commence > ?`
+  ).bind(ptDateOf(Date.parse(l.commence)), l.legId, l.kind, l.src.date, String(l.src.game_id), l.src.player_key || null,
+    l.src.market || null, l.src.team || null, l.title, l.p, l.commence, i + 1, nowIso, nowIso));
+  const ids = list.map((l) => l.legId);
+  const keep = [...unavailable];
+  stmts.push(db.prepare(
+    `UPDATE daypicks SET on_list = 0, rank = NULL WHERE date IN (?, ?) AND commence > ?`
+      + (ids.length ? ` AND leg_id NOT IN (${ids.map(() => '?').join(',')})` : '')
+      + (keep.length ? ` AND kind NOT IN (${keep.map(() => '?').join(',')})` : '')
+  ).bind(ptDateOf(now), ptDateOf(now + 86400e3), nowIso, ...ids, ...keep));
+  await db.batch(stmts);
+}
+
+// A listed leg's result, read from the log it came from. hit / miss / push /
+// void, or null while that log has not graded it.
+async function dayPickResult(db, r) {
+  const one = (sql, ...a) => db.prepare(sql).bind(...a).first();
+  if (r.kind === 'mlb_ml') {
+    const m = await one('SELECT team, result FROM mlpicks WHERE date = ? AND game_id = ?', r.src_date, r.game_id);
+    if (!m || (m.result !== 'win' && m.result !== 'loss')) return m && m.result === 'void' ? 'void' : null;
+    return (m.team === r.team) === (m.result === 'win') ? 'hit' : 'miss';
+  }
+  if (r.kind === 'mlb_pp' || r.kind === 'nba_pp') {
+    const m = r.kind === 'mlb_pp'
+      ? await one('SELECT result FROM pppicks WHERE date = ? AND game_id = ? AND player_id = ? AND market = ?', r.src_date, r.game_id, Number(r.player_key), r.market)
+      : await one('SELECT result FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', r.src_date, r.game_id, r.player_key, r.market);
+    const res = m && m.result;
+    return res === 'under' ? 'hit' : res === 'over' ? 'miss' : res === 'push' ? 'push' : res === 'void' ? 'void' : null;
+  }
+  const sport = { nba_ml: 'nba', nfl_ml: 'nfl', soccer_fav: 'soccer' }[r.kind];
+  if (!sport) return null;
+  const m = await one('SELECT result FROM gmpicks WHERE sport = ? AND date = ? AND game_id = ? AND market = ?', sport, r.src_date, r.game_id, r.market);
+  const res = m && m.result;
+  return res === 'win' ? 'hit' : res === 'loss' ? 'miss' : res === 'push' ? 'push' : res === 'void' ? 'void' : null;
+}
+async function gradeDayPicks(db, now) {
+  await ensureDayPickSchema(db);
+  const open = (await db.prepare('SELECT * FROM daypicks WHERE on_list = 1 AND result IS NULL AND commence < ?')
+    .bind(new Date(now - 3 * 3600e3).toISOString()).all()).results || [];
+  const ups = [];
+  for (const r of open.slice(0, 40)) {
+    const res = await dayPickResult(db, r);
+    if (res) ups.push(db.prepare('UPDATE daypicks SET result = ? WHERE date = ? AND leg_id = ?').bind(res, r.date, r.leg_id));
+  }
+  if (ups.length) await db.batch(ups);
+}
+
+// How each kind has done at its bar, from its own log -- the number printed
+// beside each leg, so a 72% leg says whether 72% legs have been landing.
+async function pickKindRecords(db) {
+  const rec = Object.fromEntries(Object.keys(PICK_KINDS).map((k) => [k, { n: 0, hit: 0 }]));
+  const add = (k, won) => { rec[k].n++; if (won) rec[k].hit++; };
+  await ensureMlPickSchema(db); await ensurePpSchema(db); await ensureGamePickSchema(db); await ensureNbaSchema(db);
+  for (const r of ((await db.prepare("SELECT win_prob, result FROM mlpicks WHERE result IN ('win','loss')").all()).results || [])) {
+    if (r.win_prob == null) continue;
+    const fav = r.win_prob >= 50;
+    if ((fav ? r.win_prob : 100 - r.win_prob) >= PICK_KINDS.mlb_ml.min) add('mlb_ml', fav === (r.result === 'win'));
+  }
+  for (const r of ((await db.prepare("SELECT model_under, close_model_under, result FROM pppicks WHERE result IN ('under','over') AND market IN ('tb','hrr')").all()).results || [])) {
+    const p = r.close_model_under != null ? r.close_model_under : r.model_under;
+    if (p != null && p >= PICK_KINDS.mlb_pp.min) add('mlb_pp', r.result === 'under');
+  }
+  for (const r of ((await db.prepare("SELECT sport, market, league, win_prob, result FROM gmpicks WHERE sport IN ('nba','nfl','soccer') AND result IN ('win','loss')").all()).results || [])) {
+    const kind = r.sport === 'nba' && r.market === 'h2h' && r.league === 'reg' ? 'nba_ml'
+      : r.sport === 'nfl' && r.market === 'h2h' ? 'nfl_ml'
+        : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null;
+    if (kind && r.win_prob != null && r.win_prob >= PICK_KINDS[kind].min) add(kind, r.result === 'win');
+  }
+  for (const r of ((await db.prepare("SELECT model_under, min_proj, result FROM nbapp WHERE result IN ('under','over')").all()).results || [])) {
+    if (r.min_proj >= NBA_ROTATION_MIN && r.model_under >= PICK_KINDS.nba_pp.min) add('nba_pp', r.result === 'under');
+  }
+  for (const v of Object.values(rec)) {
+    v.hitRate = v.n ? round1(v.hit / v.n * 100) : null;
+    v.proven = v.n >= PICKS_PROVEN_N;
+  }
+  return rec;
+}
+
+// The list's own record: legs it showed at first pitch or tip, graded.
+async function dayPickRecord(db) {
+  await ensureDayPickSchema(db);
+  const rows = (await db.prepare('SELECT date, kind, p, result FROM daypicks WHERE on_list = 1 AND result IS NOT NULL').all()).results || [];
+  const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
+  const hit = dec.filter((r) => r.result === 'hit').length;
+  const byDay = new Map();
+  for (const r of dec) { if (!byDay.has(r.date)) byDay.set(r.date, []); byDay.get(r.date).push(r); }
+  let days2 = 0, both = 0;
+  for (const l of byDay.values()) {
+    if (l.length < 2) continue;
+    l.sort((a, b) => b.p - a.p);
+    days2++; if (l[0].result === 'hit' && l[1].result === 'hit') both++;
+  }
+  return {
+    since: rows.length ? rows.map((r) => r.date).sort()[0] : null,
+    legs: { n: dec.length, hit, hitRate: dec.length ? round1(hit / dec.length * 100) : null },
+    voided: rows.filter((r) => r.result === 'void').length,
+    top2: { days: days2, bothHit: both },
+  };
+}
+
+// The cron's share: keep the log current so a leg's state at its game's start
+// is recorded even when nobody has the page open. No records read here.
+async function dayPicksTick(env) {
+  if (!env || !env.DB) return null;
+  const now = Date.now();
+  const { legs, unavailable } = await picksCandidates(env, now);
+  await logDayPicks(env.DB, pickList(legs), unavailable, now);
+  await gradeDayPicks(env.DB, now);
+  return null;
+}
+
+async function picksBoard(env) {
+  const out = {
+    note: 'LOGGED as shown. The legs most likely to land, across sports, one per game: for PrizePicks, which pays the same on every leg. '
+      + 'Only kinds of leg whose stated chance has held up in the logs, at the bar where it held up.',
+    asOf: new Date().toISOString(),
+    rules: Object.fromEntries(Object.entries(PICK_KINDS).map(([k, v]) => [k, `${v.label}, ${v.min}%+`])),
+    legs: [], qualifyingGames: 0, entries: [], kinds: {}, record: null,
+  };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
+  try {
+    const now = Date.now();
+    const { legs, unavailable } = await picksCandidates(env, now);
+    const list = pickList(legs);
+    try { await logDayPicks(env.DB, list, unavailable, now); } catch (e) { out.logError = String((e && e.message) || e); }
+    try { await gradeDayPicks(env.DB, now); } catch (e) { /* next read */ }
+    const kinds = await pickKindRecords(env.DB);
+    out.kinds = Object.fromEntries(Object.entries(PICK_KINDS).map(([k, v]) => [k, { ...v, record: kinds[k] }]));
+    out.qualifyingGames = new Set(legs.map((l) => l.gameKey)).size;
+    if (unavailable.size) out.unavailable = [...unavailable];
+    out.legs = list.map((l, i) => ({
+      rank: i + 1, kind: l.kind, sport: PICK_KINDS[l.kind].sport, kindLabel: PICK_KINDS[l.kind].label,
+      p: round1(l.p), title: l.title, sub: l.sub, commence: l.commence, odds: l.odds == null ? null : l.odds,
+      lineup: l.lineup || null, vsBook: l.vsBook == null ? null : l.vsBook, league: l.league || null,
+      record: kinds[l.kind], legId: l.legId, spec: l.spec,
+    }));
+    // The entry read: the top two as a 2-pick power (both have to land), and
+    // the average leg of the top three to six against the flex break-even.
+    for (let n = 2; n <= out.legs.length; n++) {
+      const top = out.legs.slice(0, n);
+      const [name, be] = PICKS_BREAK_EVEN[n];
+      out.entries.push({ legs: n, entry: name, perLegBreakEven: be,
+        avgLeg: round1(top.reduce((a, x) => a + x.p, 0) / n),
+        allLand: round1(top.reduce((a, x) => a * x.p / 100, 1) * 100) });
+    }
+    out.record = await dayPickRecord(env.DB);
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return out;
 }
 
 async function bpicksExport(env, url) {
@@ -8274,6 +8623,11 @@ async function nflMaybeIngest(env, ctx) {
     let props = null;
     try { props = await ingestNflProps(env, { sport: 'nfl' }, new URL('https://x/api/nfl-capture')); }
     catch (e) { /* the game lines are already in; props retry next tick */ }
+    // The board is what logs each game's favoured side (gmpicks), and until now
+    // it ran only when someone opened it: a Sunday nobody looked at before
+    // kickoff left no moneyline record, and Picks of the day nothing to list.
+    // Reading it here costs D1 reads only.
+    try { await nflBoardData(env, null); } catch (e) { /* logged next capture */ }
     await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
     return { ran: true, n: state.n + 1, res: res && res.status, props: props && props.wrote };
   } catch (e) { return null; }   // next tick

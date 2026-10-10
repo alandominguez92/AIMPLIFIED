@@ -297,7 +297,7 @@ const env = {
 };
 
 if (NBADEMO) {
-  await mod.default.fetch(new Request('https://x/api/nba-pp'), env, { waitUntil: () => {} });   // creates the tables
+  await mod.default.fetch(new Request('https://x/api/picks'), env, { waitUntil: () => {} });    // creates the tables
   const tip = new Date(Date.now() + 3 * 3600e3).toISOString();
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
   const leg = (date, commence, player, team, market, point, model_under, proj, book_line, min_proj, result) => sqliteDb
@@ -310,6 +310,17 @@ if (NBADEMO) {
   await leg(today, tip, 'OG Anunoby', 'NY', 'threes', 2.5, 64.1, 1.9, 2.5, 34, null);
   await leg(today, tip, 'Tyrese Maxey', 'PHI', 'ast', 6.5, 62.0, 5.6, 7.5, 37, null);
   await leg(today, tip, 'Joel Embiid', 'PHI', 'reb', 10.5, 60.3, 9.4, null, 31, null);
+  // Game-line favourites for Picks of the day: an NBA regular-season game, an
+  // NFL game tomorrow, a Premier League match, and one under the bar.
+  const gm = (sport, gid, market, league, hrs, side, pick, home, away, wp, price) => sqliteDb
+    .prepare(`INSERT INTO gmpicks (sport, date, game_id, market, league, commence, side, pick, home, away, win_prob, entry_price, close_price)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .bind(sport, new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date(Date.now() + hrs * 3600e3)),
+      gid, market, league, new Date(Date.now() + hrs * 3600e3).toISOString(), side, pick, home, away, wp, price, price).run();
+  await gm('nba', 'evBOS', 'h2h', 'reg', 5, 'home', 'Boston Celtics', 'Boston Celtics', 'Detroit Pistons', 77.4, -330);
+  await gm('nfl', 'evDAL', 'h2h', 'REG', 20, 'home', 'DAL', 'DAL', 'TB', 69.1, -240);
+  await gm('soccer', 'evARS', 'fav', 'epl', 6, 'home', 'Arsenal', 'Arsenal', 'Leeds United', 71.0, -250);
+  await gm('nba', 'evLOW', 'h2h', 'reg', 7, 'away', 'Denver Nuggets', 'Utah Jazz', 'Denver Nuggets', 61.0, -160);
   // Last night, graded.
   const past = new Date(Date.now() - 30 * 3600e3);
   const pastDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(past);
