@@ -132,6 +132,15 @@ const logged = sq.prepare('SELECT COUNT(*) AS n FROM socprops').get().n;
 ok(logged === rows.length, `every row is logged once its lineup is seen (${logged})`);
 await hit('/api/soccer-props');
 ok(sq.prepare('SELECT COUNT(*) AS n FROM socprops').get().n === logged, 'and a second read does not log it again');
+// The compact form a scheduled check reads: no rows, the named effects only.
+const sm = await hit('/api/soccer-props?summary=1');
+const s1 = (sm.matches || []).find((m) => m.id === 'NEXT1') || {};
+console.log('  summary: ' + JSON.stringify({ rows: s1.rows, keepers: s1.keepers, tight: (s1.passesTight || []).length, open: (s1.passesOpen || []).length, early: (s1.earlyOff || []).map((e) => e.player + ' ' + e.early + '%') }));
+ok(s1.rows === rows.length && Array.isArray(s1.keepers) && s1.keepers.length === 2 && s1.keepers.every((k) => k.proj > 0)
+  && Array.isArray(s1.passesTight) && Array.isArray(s1.passesOpen) && Array.isArray(s1.earlyOff),
+  `?summary=1 keeps the count and the named lists, not the rows (${s1.rows} rows, keepers ${(s1.keepers || []).map((k) => k.player).join(', ')})`);
+ok(JSON.stringify(sm).length < JSON.stringify(card).length / 3 && sm.ingest && sm.ingest.lastLook,
+  `a fraction of the full body (${JSON.stringify(sm).length} vs ${JSON.stringify(card).length} bytes), and the ingest says when it last looked`);
 
 // This season's starts move the projection: three for Leno at 6 saves each.
 for (const [i, sv] of [6, 6, 6].entries()) {

@@ -216,7 +216,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -492,7 +492,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
   if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
-  if (p === '/api/soccer-props') return cors(json(await socPropsBoard(env), 120));
+  if (p === '/api/soccer-props') return cors(json(await socPropsBoard(env, url), 120));
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
   if (p === '/api/nba-pp') return cors(json(await nbaPpBoard(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
@@ -9579,7 +9579,8 @@ async function socLineup(env, f) {
 // stat, the line at the half point above it and the chance either way there.
 // The card lets the user move the line to PrizePicks' number; the phi rides
 // along so the chance can be recomputed in the browser.
-async function socPropsBoard(env) {
+async function socPropsBoard(env, url) {
+  const summary = !!(url && url.searchParams && url.searchParams.get('summary') === '1');
   const out = {
     note: 'LOGGED, not posted. Each starter\'s projection: last season per start blended with this season, moved half the way by what the opponent allows. '
       + 'No feed carries PrizePicks\' soccer lines: set the line to the app\'s and the chance follows.',
@@ -9634,7 +9635,33 @@ async function socPropsBoard(env) {
     out.record = { scope: 'the side each row leans at the line it showed, before kickoff', graded: split.n, hit: split.hit, hitRate: split.hitRate,
       byBand: split.byBand, byMarket: Object.fromEntries(SOC_PROP_STATS.map((s) => { const c = ppSplitRecord(items.filter((x) => x.market === s)); return [s, { n: c.n, hit: c.hit, hitRate: c.hitRate }]; })) };
     const ing = await db.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM soc_box_games').first();
-    out.ingest = { games: Number((ing && ing.n) || 0), read: Number((ing && ing.d) || 0), lastDay: (ing && ing.last) || null, priors: !!pri };
+    const look = await loadFeedCache(db, 'soc_box_disc');
+    out.ingest = { games: Number((ing && ing.n) || 0), read: Number((ing && ing.d) || 0), lastDay: (ing && ing.last) || null, priors: !!pri,
+      lastLook: look.present && look.data && look.data.at ? new Date(look.data.at).toISOString() : null };
+    // ?summary=1: what a scheduled check reads, without every row (a posted
+    // Saturday runs past 100KB). The two effects the season of box scores
+    // showed a check can name without knowing PrizePicks' number -- passes
+    // against a side that keeps or gives away the ball, and starters who come
+    // off early -- plus each keeper's saves.
+    if (summary) {
+      out.matches = out.matches.map((m) => {
+        const r = m.rows || [];
+        const pick = (l, n) => l.slice(0, n).map((x) => ({ player: x.player, team: x.team, proj: x.proj, ctx: x.ctx }));
+        const passes = r.filter((x) => x.stat === 'passes' && x.proj >= 25 && x.ctx != null);
+        const early = new Map();
+        for (const x of r) {
+          if (x.early == null || x.early < 30 || !['shots', 'sot', 'tackles'].includes(x.stat)) continue;
+          const e = early.get(x.id) || { player: x.player, team: x.team, early: x.early, proj: {} };
+          e.proj[x.stat] = x.proj; early.set(x.id, e);
+        }
+        return { id: m.id, league: m.league, label: m.label, commence: m.commence, home: m.home, away: m.away,
+          homeName: m.homeName, awayName: m.awayName, lineup: m.lineup, rows: r.length,
+          passesTight: pick(passes.filter((x) => x.ctx < 0.9).sort((a, b) => a.ctx - b.ctx), 4),
+          passesOpen: pick(passes.filter((x) => x.ctx > 1.1).sort((a, b) => b.ctx - a.ctx), 3),
+          earlyOff: [...early.values()].sort((a, b) => b.early - a.early).slice(0, 4),
+          keepers: r.filter((x) => x.stat === 'saves').map((x) => ({ player: x.player, team: x.team, proj: x.proj, ctx: x.ctx })) };
+      });
+    }
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }
