@@ -1724,6 +1724,10 @@
 
   function renderSlateSummary() {
     if (!el.slateSummary) return;
+    // The strip is the MLB board's. setSport hid it on the way out, but any
+    // later redraw -- a batter poll, the theme toggle -- brought it back over
+    // whichever board was open.
+    if (state.sport !== 'mlb') { el.slateSummary.hidden = true; return; }
     // On the Under Plays board the plays come from the batter feed; the K/ML/RL
     // views keep the game-board basis.
     if (isBatter()) return renderBatterSlateSummary();
@@ -5469,9 +5473,12 @@
       if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
       const r = x.record || {};
       const recTxt = r.n ? `Legs like this: ${r.hit} of ${r.n} (${pct0(r.hitRate)})${r.proven ? '' : ' · new'}` : 'Legs like this: none graded yet';
+      // The sport rides on the game line, not beside the title: on a phone the
+      // chip pushed "Inter Miami CF ML" onto two lines.
       return `<li>${star}<div class="tc-leg">`
-        + `<span class="tc-l1"><b>${esc(x.title)}</b> <span class="ctx-chip">${esc(PICK_SPORT[x.sport] || x.sport)}</span><span class="tc-p">${pct0(x.p)}</span></span>`
-        + `<span class="tc-l2"><span>${esc(x.sub)}${x.league ? ' · ' + esc(x.league) : ''} · ${esc(soccerKick(x.commence))}${tags.length ? ' ' + tags.join(' ') : ''}</span>`
+        + `<span class="tc-l1"><b>${esc(x.title)}</b><span class="tc-p">${pct0(x.p)}</span></span>`
+        // A soccer leg's league says the sport; the others name it.
+        + `<span class="tc-l2"><span><span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
         + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}</span>` : ''}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
@@ -5483,19 +5490,22 @@
       const top = legs.slice(0, n);
       const be = PP_BREAK_EVEN[n];
       if (!be) continue;
+      // Three columns that never break mid-phrase: the entry, the chance, the
+      // bar. A 2-pick power pays only if both land, so its chance is both
+      // landing; a flex is read by its average leg.
+      const kind = be[0].replace(/^\d-pick /, '');
       if (n === 2) {
         const all = top.reduce((a, x) => a * x.p / 100, 1) * 100;
-        ent.push(`<li>Top 2 · ${esc(be[0])}: both land <b>${pct0(all)}</b> <span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span></li>`);
+        ent.push(`<li><span>Top 2 ${esc(kind)}</span><span class="pk-v"><b>${pct0(all)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span></li>`);
       } else {
         const avg = top.reduce((a, x) => a + x.p, 0) / n;
-        ent.push(`<li>Top ${n} · ${esc(be[0])}: average leg <b>${pct0(avg)}</b> <span class="pk-be">needs ${be[1]}%</span></li>`);
+        ent.push(`<li><span>Top ${n} ${esc(kind)}</span><span class="pk-v"><b>${pct0(avg)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span></li>`);
       }
     }
     grid.innerHTML = `<div class="nba-pp pk-card">`
-      + `<div class="tc-head"><span class="tc-title">Most likely to land</span></div>`
-      + `<div class="tc-sub">One leg a game, best first. The chance is the site's number for each leg; the line under it says how legs like it have actually done.</div>`
+      + `<div class="tc-sub pk-intro">One leg a game, best first. Under each: how legs like it have actually done.</div>`
       + `<ol class="tc-legs">${items}</ol>`
-      + (ent.length ? `<ul class="pk-entries">${ent.join('')}</ul>` : '')
+      + (ent.length ? `<ul class="pk-entries"><li class="pk-eh"><span>As an entry</span><span>chance</span><span>to pay</span></li>${ent.join('')}</ul>` : '')
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
   }
 

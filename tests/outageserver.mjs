@@ -344,6 +344,13 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
     return res.end(body);
   }
+  // LIVEPICKS=1 shows the real Picks of the day: read-only from production, like
+  // the record above. /api/picks reads the logs and one StatsAPI call -- no odds.
+  if (process.env.LIVEPICKS === '1' && url.pathname === '/api/picks') {
+    const r = await realFetch('https://aimplified.delexe.workers.dev/api/picks?cb=' + Math.random());
+    res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+    return res.end(await r.text());
+  }
   // /api/entries is private and written to: pass the method, the key header and
   // the body straight through, and never cache it. The generic path below builds
   // a bare GET and caches by URL, which is right for the boards and wrong here —
