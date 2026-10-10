@@ -237,7 +237,7 @@ export default {
     // The soccer box-score cron has its own trigger: a match is ~30 requests,
     // and an invocation's request budget is shared by everything it runs.
     if (event && event.cron === SOC_BOX_CRON) {
-      ctx.waitUntil(socBoxTick(env).catch(() => null));
+      ctx.waitUntil(socBoxTick(env, { perTick: 30, via: 'soccer-trigger' }).catch(() => null));
       return;
     }
     ctx.waitUntil(captureCloses(env, ctx));
@@ -262,6 +262,8 @@ export default {
     // on the list when each game started even with nobody on the site.
     const min = new Date((event && event.scheduledTime) || Date.now()).getUTCMinutes();
     if (min % 15 < 5) ctx.waitUntil(dayPicksTick(env).catch(() => null));
+    // Soccer box scores, a dozen players a tick (see socBoxTick).
+    ctx.waitUntil(socBoxTick(env, { perTick: 12, via: 'main' }).catch(() => null));
   },
 };
 
@@ -9349,46 +9351,72 @@ const socNum = (cats, cat, name) => {
   return s ? Number(s.value) || 0 : 0;
 };
 
-// One finished match's box score: names and positions from the summary, then
-// each club's roster and every player who appeared, his statistics. Returns
-// { rows, failed } -- a failed player read leaves the match to be retried.
-async function socReadMatch(g) {
+// A finished match's appearance list, read once and kept: names and
+// positions from the summary, each club's roster from the core API, and each
+// player who appeared, with his statistics link. Three requests; null while
+// any of them fails, so the next tick tries again.
+async function socMatchMeta(db, g) {
+  const key = `soc_box_meta:${g.game_id}`;
+  const hit = await loadFeedCache(db, key);
+  if (hit.present && hit.data && hit.data.apps) return hit.data;
   const slug = SOC_PROP_LEAGUES[g.league];
   const sum = await socJson(`${ESPN_SOC_SITE}/${slug}/summary?event=${g.game_id}`);
+  if (!sum) return null;
   const names = {}, gkIds = new Set();
-  for (const t of ((sum && sum.rosters) || [])) for (const p of (t.roster || [])) {
+  for (const t of (sum.rosters || [])) for (const p of (t.roster || [])) {
     if (!p.athlete) continue;
     names[p.athlete.id] = p.athlete.displayName;
     if (p.position && p.position.abbreviation === 'G') gkIds.add(String(p.athlete.id));
   }
-  const rows = []; let failed = 0;
+  const apps = [];
   for (const [cid, team, opp] of [[g.home_cid, g.home, g.away], [g.away_cid, g.away, g.home]]) {
     const ro = await socJson(`${ESPN_SOC_CORE}/${slug}/events/${g.game_id}/competitions/${g.game_id}/competitors/${cid}/roster`);
-    if (!ro) { failed++; continue; }
-    const apps = (ro.entries || []).filter((p) => p.starter || (p.subbedIn && p.subbedIn.didSub));
-    const stats = await Promise.all(apps.map((p) => (p.statistics && p.statistics.$ref
-      ? socJson(p.statistics.$ref.replace('http://', 'https://')) : null)));
-    apps.forEach((p, i) => {
-      const cats = stats[i] && stats[i].splits && stats[i].splits.categories;
-      if (!cats) { failed++; return; }
+    if (!ro) return null;
+    for (const p of (ro.entries || [])) {
+      if (!p.starter && !(p.subbedIn && p.subbedIn.didSub)) continue;
       const id = String(p.playerId);
-      rows.push({ game_id: g.game_id, league: g.league, date: g.date, player_id: id, player: names[id] || null, team, opp,
-        starter: p.starter ? 1 : 0, min: socNum(cats, 'general', 'minutes'), sub_off: p.subbedOut && p.subbedOut.didSub ? 1 : 0,
-        gk: gkIds.has(id) || socNum(cats, 'goalKeeping', 'saves') > 0 ? 1 : 0,
-        shots: socNum(cats, 'offensive', 'totalShots'), sot: socNum(cats, 'offensive', 'shotsOnTarget'),
-        passes: socNum(cats, 'offensive', 'totalPasses'), tackles: socNum(cats, 'defensive', 'totalTackles'),
-        clear: socNum(cats, 'defensive', 'totalClearance'), fouls: socNum(cats, 'general', 'foulsCommitted'),
-        saves: socNum(cats, 'goalKeeping', 'saves') });
-    });
+      apps.push({ id, name: names[id] || null, team, opp, starter: p.starter ? 1 : 0,
+        subOff: p.subbedOut && p.subbedOut.didSub ? 1 : 0, gk: gkIds.has(id) ? 1 : 0,
+        ref: p.statistics && p.statistics.$ref ? p.statistics.$ref.replace('http://', 'https://') : null });
+    }
   }
-  return { rows, failed };
+  const meta = { apps };
+  await saveFeedCache(db, key, meta);
+  return meta;
 }
 
-// The soccer cron, on its own trigger so its ~30 requests never share a
-// budget with the five-minute jobs. A tick either looks for newly finished
-// matches (every 30 minutes) or reads one match's box score, then grades.
-async function socBoxTick(env) {
+// Up to `n` of a match's players not yet read, their statistics fetched.
+async function socReadSome(g, meta, have, n) {
+  const todo = meta.apps.filter((a) => a.ref && !have.has(a.id)).slice(0, n);
+  const stats = await Promise.all(todo.map((a) => socJson(a.ref)));
+  const rows = [];
+  todo.forEach((a, i) => {
+    const cats = stats[i] && stats[i].splits && stats[i].splits.categories;
+    if (!cats) return;
+    rows.push({ game_id: g.game_id, league: g.league, date: g.date, player_id: a.id, player: a.name, team: a.team, opp: a.opp,
+      starter: a.starter, min: socNum(cats, 'general', 'minutes'), sub_off: a.subOff,
+      gk: a.gk || socNum(cats, 'goalKeeping', 'saves') > 0 ? 1 : 0,
+      shots: socNum(cats, 'offensive', 'totalShots'), sot: socNum(cats, 'offensive', 'shotsOnTarget'),
+      passes: socNum(cats, 'offensive', 'totalPasses'), tackles: socNum(cats, 'defensive', 'totalTackles'),
+      clear: socNum(cats, 'defensive', 'totalClearance'), fouls: socNum(cats, 'general', 'foulsCommitted'),
+      saves: socNum(cats, 'goalKeeping', 'saves') });
+  });
+  return { rows, tried: todo.length };
+}
+
+// The soccer box-score ingest. A tick either looks for newly finished
+// matches (every 30 minutes) or reads part of one match -- `perTick` players'
+// statistics, the progress kept in soc_box -- then grades.
+//
+// It was written for a trigger of its own (SOC_BOX_CRON) and a whole match a
+// tick, ~30 requests. That trigger never fired after the deploy of 2026-10-09
+// (the free plan's cron limit, or the Git deploy not registering a second
+// one), so the five-minute cron carries it too, a dozen players a tick, which
+// leaves the rest of that invocation's request budget alone. Should the second
+// trigger ever fire, it simply goes faster.
+async function socBoxTick(env, opts = {}) {
   if (!env || !env.DB) return null;
+  const perTick = opts.perTick || 12;
   const db = env.DB;
   await ensureSocPropSchema(db);
   const now = Date.now();
@@ -9410,21 +9438,31 @@ async function socBoxTick(env) {
       }
     }
     if (stmts.length) await db.batch(stmts);
-    await saveFeedCache(db, 'soc_box_disc', { at: now, found: stmts.length });
+    await saveFeedCache(db, 'soc_box_disc', { at: now, found: stmts.length, via: opts.via || null });
     // Grading reads only D1, so it runs on a looking tick too.
     await gradeSocProps(db);
     return { discovered: stmts.length };
   }
   const g = await db.prepare('SELECT * FROM soc_box_games WHERE done = 0 ORDER BY date LIMIT 1').first();
   if (g) {
-    const { rows, failed } = await socReadMatch(g);
-    const cols = ['game_id', 'league', 'date', 'player_id', 'player', 'team', 'opp', 'starter', 'min', 'sub_off', 'gk', ...SOC_PROP_STATS];
-    const stmts = rows.map((r) => db.prepare(`INSERT OR REPLACE INTO soc_box (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`)
-      .bind(...cols.map((c) => r[c] == null ? null : r[c])));
-    // A partial read is retried; three tries and what was read stands.
-    const done = (failed === 0 && rows.length > 0) || (g.tries || 0) >= 2 ? 1 : 0;
-    stmts.push(db.prepare('UPDATE soc_box_games SET done = ?, tries = tries + 1 WHERE game_id = ?').bind(done, g.game_id));
-    await db.batch(stmts);
+    const meta = await socMatchMeta(db, g);
+    if (!meta) {
+      await db.prepare('UPDATE soc_box_games SET tries = tries + 1, done = CASE WHEN tries >= 2 THEN 1 ELSE 0 END WHERE game_id = ?').bind(g.game_id).run();
+    } else {
+      const have = new Set(((await db.prepare('SELECT player_id FROM soc_box WHERE game_id = ?').bind(g.game_id).all()).results || []).map((r) => r.player_id));
+      const { rows, tried } = await socReadSome(g, meta, have, perTick);
+      const cols = ['game_id', 'league', 'date', 'player_id', 'player', 'team', 'opp', 'starter', 'min', 'sub_off', 'gk', ...SOC_PROP_STATS];
+      const stmts = rows.map((r) => db.prepare(`INSERT OR REPLACE INTO soc_box (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`)
+        .bind(...cols.map((c) => r[c] == null ? null : r[c])));
+      const left = meta.apps.filter((a) => a.ref && !have.has(a.id)).length - rows.length;
+      // Done when every player who appeared is read. A tick that reads none of
+      // the ones it tried counts as a failure; three and what was read stands.
+      if (left <= 0) stmts.push(db.prepare('UPDATE soc_box_games SET done = 1 WHERE game_id = ?').bind(g.game_id));
+      else if (tried > 0 && rows.length === 0) {
+        stmts.push(db.prepare('UPDATE soc_box_games SET tries = tries + 1, done = CASE WHEN tries >= 2 THEN 1 ELSE 0 END WHERE game_id = ?').bind(g.game_id));
+      }
+      if (stmts.length) await db.batch(stmts);
+    }
   }
   await gradeSocProps(db);
   return null;

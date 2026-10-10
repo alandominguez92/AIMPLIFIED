@@ -56,10 +56,11 @@ const env = { DB, ASSETS: { fetch: async (r) => (new URL(r.url).pathname === '/s
 const REC = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-soc-740870.json'), 'utf8'));
 const SUMMARY = Object.entries(REC).find(([u]) => u.includes('/summary'))[1];
 const extra = {};   // responses a step adds: an upcoming fixture and its lineup
-let calls = 0;
+let calls = 0, socCalls = 0;
 globalThis.fetch = async (u) => {
   const url = String(u);
   calls++;
+  if (url.includes('espn.com') && url.includes('/soccer/')) socCalls++;
   const body = extra[url] || REC[url];
   if (body) return new Response(JSON.stringify(body), { status: 200 });
   if (url.includes('/scoreboard?dates=')) return new Response(JSON.stringify({ events: [] }), { status: 200 });
@@ -76,18 +77,22 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
 
 // ---- box scores ----------------------------------------------------------------------
 console.log('-- box scores in --');
-await socTick();
+// The five-minute cron carries the ingest (the soccer trigger of its own never
+// fired after deploy), so a tick reads a dozen players and keeps its place.
+await mainTick();
 const g0 = sq.prepare('SELECT * FROM soc_box_games').all();
 ok(g0.length === 1 && g0[0].game_id === '740870' && g0[0].home === 'FUL' && g0[0].done === 0,
   `the first tick finds the finished match and queues it (${g0.map((g) => g.game_id + ' ' + g.away + '@' + g.home).join(', ')})`);
 ok(sq.prepare('SELECT COUNT(*) AS n FROM soc_box').get().n === 0, 'and reads no box score on the same tick');
-calls = 0;
-await socTick();
+const perTick = [];
+for (let i = 0; i < 6 && !sq.prepare('SELECT done FROM soc_box_games').get().done; i++) {
+  socCalls = 0; await mainTick(); perTick.push(socCalls);
+}
 const box = sq.prepare('SELECT * FROM soc_box').all();
 const b = (name) => box.find((r) => r.player === name) || {};
-console.log(`  read ${box.length} players with ${calls} requests`);
-ok(sq.prepare('SELECT done FROM soc_box_games').get().done === 1 && box.length >= 22, `the next tick reads every player who appeared (${box.length})`);
-ok(calls <= 40, `inside one invocation's request budget (${calls} requests)`);
+console.log(`  read ${box.length} players over ${perTick.length} ticks, ESPN soccer requests per tick: ${perTick.join(', ')}`);
+ok(sq.prepare('SELECT done FROM soc_box_games').get().done === 1 && box.length >= 22, `every player who appeared is read, a few ticks at a time (${box.length})`);
+ok(perTick.every((n) => n <= 15) && perTick.length <= 4, `no tick spends more than 15 of the shared request budget (${perTick.join(', ')})`);
 const leno = b('Bernd Leno');
 ok(leno.gk === 1 && leno.starter === 1 && leno.min === 90, 'a goalkeeper is marked, with his minutes');
 const pass = box.filter((r) => r.passes > 0).length, tack = box.filter((r) => r.tackles > 0).length;
