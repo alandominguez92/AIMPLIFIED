@@ -3228,7 +3228,8 @@
         // actually landed at PrizePicks' numbers. Below 65% that has been about
         // a coin flip for batter legs, so the leg's own number is not the read.
         const lb = todayLegBand(x);
-        const bandLine = lb && lb.n >= 10
+        // From five legs: the count shows how thin a level is ("7 of 8").
+        const bandLine = lb && lb.n >= 5
           ? `<span class="pk-rec${lb.hitRate >= 57.7 ? ' tc-band-good' : lb.hitRate < 54 ? ' tc-band-weak' : ''}">Legs at ${lb.lo}${lb.hi ? '–' + lb.hi : '+'}% have landed ${lb.hit} of ${lb.n} (${Math.round(lb.hitRate)}%)</span>` : '';
         return `<li>${star}<button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
           + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p">${Math.round(x.prob)}%</span></span>`

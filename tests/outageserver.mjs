@@ -362,10 +362,11 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
     return res.end(body);
   }
-  // LIVEPICKS=1 shows the real Picks of the day: read-only from production, like
-  // the record above. /api/picks reads the logs and one StatsAPI call -- no odds.
-  if (process.env.LIVEPICKS === '1' && url.pathname === '/api/picks') {
-    const r = await realFetch('https://aimplified.delexe.workers.dev/api/picks?cb=' + Math.random());
+  // LIVEPICKS=1 shows the real Picks of the day and the real top-legs record
+  // (the Today's card's levels): read-only from production, like the record
+  // above. Both read the logs and at most one StatsAPI call -- no odds.
+  if (process.env.LIVEPICKS === '1' && (url.pathname === '/api/picks' || url.pathname === '/api/top-legs')) {
+    const r = await realFetch(`https://aimplified.delexe.workers.dev${url.pathname}${url.search || '?'}${url.search ? '&' : ''}cb=${Math.random()}`);
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
     return res.end(await r.text());
   }
