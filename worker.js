@@ -1717,6 +1717,9 @@ const BATTER_MARKETS = [
 // markets x region-equivalents per event, so this length is a direct multiplier
 // on the biggest line item in the account.
 const FETCHED_BATTER_MARKETS = BATTER_MARKETS.filter((m) => m.fetch !== false);
+// The batter markets that can be posted as plays; the rest price and log only.
+// Total bases left 2026-10-11 (see where tiers are set in batters()).
+const BATTER_POSTED_METRICS = new Set(['hrr', 'hr']);
 
 // ---- Opponent-context tunables for the batter projection ----
 // Everything here defaults to NEUTRAL (×1.0) when data is missing, so a failed
@@ -2537,6 +2540,14 @@ async function batters(env, ctx, opts) {
     for (const spec of BATTER_MARKETS) {
       markets[spec.metric] = priceBatterProp(rec.props[spec.metric], lambda[spec.metric], spec.metric);
     }
+    // Total bases is priced and logged but not posted (2026-10-11, the owner's
+    // call): 685 posted unders went 330-355, -80.8u (-11.8%), while H+R+RBI
+    // held near 54% over 3,300. The tier it would have had rides along as
+    // tierWas, so the logged-only record can still be read by it.
+    for (const metric of Object.keys(markets)) {
+      const m = markets[metric];
+      if (m && !BATTER_POSTED_METRICS.has(metric) && m.tier && m.tier !== 'pass') { m.tierWas = m.tier; m.tier = 'pass'; }
+    }
     // oppPFac = the pitcher-only multiplier per metric, kept separate from the
     // combined `adj` so a projection can be traced back to which factor moved it.
     const oppPFac = oppP ? { hr: round2(pitcherMult('hr')), tb: round2(pitcherMult('tb')), hrr: round2(pitcherMult('hrr')) } : null;
@@ -2556,7 +2567,10 @@ async function batters(env, ctx, opts) {
     // UNDER; a batter with no under lean is analysis, not a play, and doesn't
     // make the board. All priced markets (both sides) still log for research.
     const unders = priced.filter((x) => x.m.side === 'Under');
-    const lead = unders.reduce((best, x) => (!best || x.m.edge > best.m.edge ? x : best), null);
+    // A posted market leads the row over one that is logged only, whatever
+    // its edge: a total-bases under no longer heads a row an H+R+RBI play could.
+    const postedUnders = unders.filter((x) => x.m.tier !== 'pass');
+    const lead = (postedUnders.length ? postedUnders : unders).reduce((best, x) => (!best || x.m.edge > best.m.edge ? x : best), null);
     const expFor = (metric) => round2(b.lambda[metric]);
     // With no price there is no line to take a side against, so there is no
     // pick and no edge -- but the projection itself stands on its own, the way
@@ -2657,7 +2671,7 @@ async function batters(env, ctx, opts) {
         const pp = ppQuote((b.rec.props || {})[spec.metric],
           (L) => negBinomCdf(Math.floor(L), b.lambda[spec.metric], BATTER_DISPERSION[spec.metric]));
         return m
-          ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, fairSrc: m.fairSrc, fairBooks: m.fairBooks, tier: m.tier, proj: expFor(spec.metric), books: m.books, pp }
+          ? { label: spec.label, metric: spec.metric, line: m.line, side: m.side, price: m.price, edge: m.edge, modelOver: m.modelOver, fairOver: m.fairOver, fairSrc: m.fairSrc, fairBooks: m.fairBooks, tier: m.tier, ...(m.tierWas ? { tierWas: m.tierWas } : {}), proj: expFor(spec.metric), books: m.books, pp }
           : { label: spec.label, metric: spec.metric, none: true, proj: expFor(spec.metric), pp };
       }),
       // Real percentile bars from the priced pool. These describe the player's
