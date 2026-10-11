@@ -78,8 +78,8 @@ ok(model.fairSource === 'dkfd' && model.edgeKind === 'model', `with no Pinnacle 
 ok(model.edgeCheck === false, 'and the Pinnacle-gap flag never applies to a model edge');
 
 // The record keeps flagged rows out of its headline, like pass.
-const recSrc = src.slice(src.indexOf('function buildMlRecord'), src.indexOf('function buildMlRecord') + 600);
-ok(/r\.tier !== 'check'/.test(recSrc), 'flagged rows are graded but kept out of the moneyline headline record');
+const recSrc = src.slice(src.indexOf('function buildMlRecord'), src.indexOf('function buildMlRecord') + 1200);
+ok(/includePass \|\| ranked\(r\.tier\)/.test(recSrc), 'flagged rows are graded but kept out of the moneyline headline record (only ranked tiers count)');
 
 // ?summary=1: one line per game for the scheduled checks, read off the same
 // board. The cache stub always misses, so this is a second full board() run.

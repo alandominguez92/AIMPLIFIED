@@ -2788,6 +2788,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* Moneyline by price: the pick count rides under the range, quietly. */
 .ml-band-n { display:block; font-style:normal; font-family:var(--mono); font-size:10px; font-weight:400; color:var(--textFaint); letter-spacing:0; text-transform:none; }
+/* The one-line reading under the gap table: why nothing on the ML board posts. */
+.ml-band-note { padding:8px 0 2px; font-size:12px; line-height:1.45; color:var(--textDim); }
 
 /* Cleanup (2026-09-27): the header's record chip is gone, and it was what
    pushed the theme toggle to the right edge. */

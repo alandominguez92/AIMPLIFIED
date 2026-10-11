@@ -138,7 +138,11 @@ const K_MODEL_VER = 'k-sharp-shin-cal93';
 // a Pinnacle-priced pick is distinguishable from a soft-book fallback.
 // 'ml-shin-check25' (2026-09-17): Pinnacle edges of ML_EDGE_CHECK+ are flagged
 // 'check' instead of ranked, so rows either side of it are different regimes.
-const ML_MODEL_VER = 'ml-shin-check25';
+// 'ml-shin-nopost' (2026-10-11): posting closed (ML_POST_BAND null) — every
+// sharp-priced row is pass or check, every model-fair row is lean. Rows from
+// here on are context that happens to be graded, and must not be read against
+// the eras that were posted.
+const ML_MODEL_VER = 'ml-shin-nopost';
 // Stamped on every run-line row so eras stay separable, exactly as the other
 // tables do. 'rl-shin' is the regime this starts in: cover% from the model,
 // fair from Pinnacle's de-vigged spread, edge measured against it.
@@ -1470,6 +1474,29 @@ async function board(env, ctx, opts) {
 // and not a filter: the row still shows, with its number, labelled.
 const ML_EDGE_CHECK = 2.5;
 
+// Moneyline posting gate (2026-10-11). The check flag above was the first cut;
+// the full export (879 graded rows, /api/mlpicks-export) says the problem is not
+// the 2.5+ gaps, it is the gap itself. CLV against our own captured close, by
+// the size of the DK/FD-vs-Pinnacle gap at entry:
+//   gap  <0     352 rows   beat close 55%   avg +0.21 pts   (the pass rows)
+//   gap  0-1     45 rows   beat close 47%   avg +1.04 pts
+//   gap  1-2.5   30 rows   beat close 18%   avg -2.44 pts   (was Tier 3, +14% ROI)
+//   gap  2.5-4   18 rows   beat close 28%   avg -1.94 pts   (was Tier 2)
+//   gap  4+      49 rows   beat close 28%   avg -3.52 pts   (was Tier 1)
+// The bigger the "edge", the more surely our side lengthens before first pitch.
+// A price DK/FD hold better than Pinnacle is a line that has not moved yet, and
+// the ROI in the 1-2.5 band is 30 bets of variance sitting on top of that. The
+// model-fair rows (no Pinnacle; log5 vs the soft de-vig) are the same story:
+// Tier 1 beat the close 43% at -0.92 pts.
+//
+// So nothing posts. A sharp-priced gap is 'check' at ML_EDGE_CHECK+ and 'pass'
+// below it; a row with no Pinnacle line is 'lean' — shown, never ranked, never
+// in the headline record. ML_POST_BAND is the one knob: set it to [lo, hi) to
+// re-open a band as Tier 3 once the record earns it (positive median CLV over
+// 300 rows, read from ml.byGapBand on /api/track-record). Rows already logged
+// keep the tier they were stamped with; the record is never relabelled.
+const ML_POST_BAND = null;
+
 // Game totals — LOGGED ONLY, never shown or posted (2026-09-17).
 //
 // The same read as the moneyline: the best DK/FD over/under price against
@@ -1595,9 +1622,13 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair, bookPairs) 
   const edgeKind = fairSource === 'pinnacle' ? 'sharp' : fairSource === 'dkfd' ? 'model' : null;
   // A big gap to Pinnacle is a warning, not a stronger play. See ML_EDGE_CHECK.
   const edgeCheck = fairSource === 'pinnacle' && e != null && e >= ML_EDGE_CHECK;
+  // See ML_POST_BAND. Only a sharp-priced gap inside the posting band ranks,
+  // and with the band closed that is nothing: the moneyline is context.
+  const inBand = ML_POST_BAND && e != null && e >= ML_POST_BAND[0] && e < ML_POST_BAND[1];
   const tier = e == null ? 'model'
+    : fairSource !== 'pinnacle' ? 'lean'
     : edgeCheck ? 'check'
-    : e >= 4 ? 1 : e >= 2.5 ? 2 : e >= 1 ? 3 : 'pass';
+    : inBand ? 3 : 'pass';
   return {
     pick: `${chosen.teamAbbr} ML`,
     teamAbbr: chosen.teamAbbr,
@@ -3006,7 +3037,7 @@ async function trackRecordSummary(res) {
     summary: true, cachedAgeSec: d.cachedAgeSec ?? null,
     recent: d.recent ? { date: d.recent.date, record: d.recent.record, units: d.recent.units, total: d.recent.total } : null,
     batterUnders: pick(d.batterUnders, ['n', 'record', 'winRate', 'breakEven', 'units', 'roi']),
-    ml: pick(d.ml, ['tracked', 'record', 'winRate', 'units', 'roi', 'pending', 'byPriceBand']),
+    ml: pick(d.ml, ['tracked', 'record', 'winRate', 'units', 'roi', 'pending', 'byPriceBand', 'byGapBand', 'posting']),
     prizepicks: pick(d.prizepicks, ['graded', 'underRate', 'byMarket']),
     soccerFav: pick(d.soccerFav, [...gm, 'byBand']),
     soccerMl: pick(d.soccerMl, gm),
@@ -3066,6 +3097,12 @@ async function trackRecord(env) {
       mlRows = mlres.results || [];
       out.ml = buildMlRecord(mlRows);
       out.ml.byPriceBand = buildMlPriceBands(mlRows);
+      // byPriceBand, byFairSource and byGapBand all count EVERY graded row,
+      // pass and check included; the headline above them counts posted rows
+      // only. Said here because the page shows them side by side.
+      out.ml.cutsNote = 'byPriceBand, byFairSource and byGapBand count every graded row (pass and check included); the headline counts posted tiers only.';
+      out.ml.posting = ML_POST_BAND ? { band: ML_POST_BAND } : { band: null, note: 'closed since 2026-10-11 — see ML_POST_BAND; the gap to Pinnacle predicts the line moving against the pick, not value' };
+      Object.assign(out.ml, buildMlCuts(mlRows));
     } catch (e) { /* ML record is additive — never break the props track record */ }
     try {
       // Reuses buildMlRecord: an rlpicks row is shaped the same as an mlpicks
@@ -5848,11 +5885,52 @@ function buildMlPriceBands(rows) {
   return out;
 }
 
+// The moneyline log cut two ways that decide whether anything should post:
+// by where the fair number came from, and by the size of the gap to it at
+// entry. Every graded row, pass and check included — the question is whether
+// the gap predicts the close, and the pass rows are the control group. CLV
+// here is the move from entry to our captured close in probability points,
+// median as well as mean, because a handful of big movers carries the mean.
+const ML_GAP_BANDS = [['below 0', -Infinity, 0], ['0 to 1', 0, 1], ['1 to 2.5', 1, 2.5], ['2.5 to 4', 2.5, 4], ['4 and up', 4, Infinity]];
+function mlSlice(arr) {
+  let w = 0, u = 0, beat = 0;
+  const clv = [];
+  for (const r of arr) {
+    if (r.result === 'win') w++;
+    u += profitUnits(r.result, mlGradePrice(r));
+    const ie = amProb(r.entry_price), ic = amProb(r.close_price);
+    if (ie != null && ic != null && r.entry_price !== r.close_price) { const d = (ic - ie) * 100; clv.push(d); if (d > 0) beat++; }
+  }
+  const n = arr.length;
+  return {
+    n, record: `${w}–${n - w}`, winRate: n ? round1(w / n * 100) : null,
+    units: Math.round(u * 10) / 10, roi: n ? round1(u / n * 100) : null,
+    clvN: clv.length, clvBeatRate: clv.length ? round1(beat / clv.length * 100) : null,
+    avgCLVpts: clv.length ? round1(mlMean(clv)) : null, medianCLVpts: clv.length ? round1(median(clv)) : null,
+  };
+}
+function buildMlCuts(rows) {
+  const graded = rows.filter((r) => r.result === 'win' || r.result === 'loss');
+  const bySrc = {};
+  for (const r of graded) { const k = r.fair_source || '(untagged)'; (bySrc[k] = bySrc[k] || []).push(r); }
+  const byFairSource = Object.keys(bySrc).map((k) => ({ fairSource: k, ...mlSlice(bySrc[k]) })).sort((a, b) => b.n - a.n);
+  // Gap bands on the sharp-priced rows only — a model-fair edge is a different
+  // number and would blur the one question this answers.
+  const sharp = graded.filter((r) => r.fair_source === 'pinnacle' && r.edge != null && isFinite(r.edge));
+  const byGapBand = ML_GAP_BANDS.map(([label, lo, hi]) => ({ band: label, ...mlSlice(sharp.filter((r) => r.edge >= lo && r.edge < hi)) }));
+  return { byFairSource, byGapBand };
+}
+
 function buildMlRecord(rows, includePass) {
   // 'check' rows are graded but kept out of the headline alongside pass: the
-  // board told nobody to bet them, it told them to check the news first.
+  // board told nobody to bet them, it told them to check the news first. Same
+  // for 'lean' (a model-fair row since the posting gate closed) and anything
+  // else that is not a ranked tier: the headline is the record of posted bets,
+  // so only rows stamped 1/2/3 count. Spelled as an allow-list so a new
+  // non-posted label can never leak into it by not being named here.
+  const ranked = (t) => t === '1' || t === '2' || t === '3' || t === 1 || t === 2 || t === 3;
   const played = rows.filter((r) => (r.result === 'win' || r.result === 'loss')
-    && (includePass || (r.tier !== 'pass' && r.tier !== 'check')));
+    && (includePass || ranked(r.tier)));
   const byTier = { '1': { w: 0, l: 0, units: 0 }, '2': { w: 0, l: 0, units: 0 }, '3': { w: 0, l: 0, units: 0 } };
   let w = 0, l = 0, units = 0, t1w = 0, t1l = 0, clvBeat = 0, clvN = 0;
   const profits = [], clvPts = [];

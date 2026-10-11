@@ -1821,7 +1821,7 @@
     if (ml.edgeCheck) {
       return `<i class="ml-edge-tag check" title="A gap this large to Pinnacle has usually meant a stale line or news the price hasn't caught up with (scratched starter, bullpen game, lineup). In our graded record these went 22-38; underdogs 8-26. Check before betting.">check news</i>`;
     }
-    if (ml.edgeKind === 'sharp') return `<i class="ml-edge-tag" title="DK/FD price vs Pinnacle's fair line">vs Pinnacle</i>`;
+    if (ml.edgeKind === 'sharp') return `<i class="ml-edge-tag" title="DK/FD price vs Pinnacle's fair line. Context, not a play: over 879 graded rows a bigger gap meant the line was about to move against the pick, not value.">vs Pinnacle</i>`;
     if (ml.edgeKind === 'model') return `<i class="ml-edge-tag model" title="No Pinnacle line: this is our win model vs the DK/FD market, which has not beaten the market in backtesting">model</i>`;
     return '';
   }
@@ -2436,7 +2436,7 @@
 
           const fairNote = g.ml.fairSource === 'pinnacle'
             ? `Win% is Pinnacle's sharp de-vigged line (the fair number). Edge = how much the DK/FD price you'd bet beats that fair line.`
-              + (g.ml.edgeCheck ? ` <b>Check the news:</b> a gap of 2.5+ points to Pinnacle has usually meant a stale line or late news rather than value — 22-38 in our graded record, underdogs 8-26.` : ` Small gaps (under 2.5) have been the reliable range.`)
+              + (g.ml.edgeCheck ? ` <b>Check the news:</b> a gap of 2.5+ points to Pinnacle has usually meant a stale line or late news rather than value — 22-38 in our graded record, underdogs 8-26.` : ` Nothing here is posted: across 879 graded rows, the bigger the gap at entry the more often our side lengthened by first pitch (1–2.5 pt gaps beat the close 18% of the time). A DK/FD price better than Pinnacle's is usually a line that has not moved yet.`)
             : g.ml.fairSource === 'dkfd'
               ? `No Pinnacle line yet — win% is the DK/FD vig-free line and edge is our model vs. that. Treat it as a model read, not a price edge: the model has not beaten the market in backtesting.`
               : `No market line yet — win% is our log5 model (team rating + home field + starter ERA).`;
@@ -2740,7 +2740,7 @@
     const tr = state.trackRecord;
     if (!tr) return;
     const bands = document.getElementById('mlPriceBands');
-    if (bands) bands.innerHTML = mlPriceTable(tr.ml && tr.ml.byPriceBand);
+    if (bands) bands.innerHTML = mlPriceTable(tr.ml && tr.ml.byPriceBand) + mlGapTable(tr.ml && tr.ml.byGapBand, tr.ml && tr.ml.posting);
     const bu = tr.batterUnders;
     // Headline the tiles on batter unders — the posted product — whenever we have
     // a graded under sample. The full aggregate drops to a labeled note below.
@@ -3065,6 +3065,26 @@
           <span>${b.implied}%</span>
           <span class="${b.units >= 0 ? 'g' : 'r'}">${(b.units > 0 ? '+' : '') + b.units}u</span>
         </div>`).join('')}
+      </div>`;
+  }
+
+  // The cut that closed moneyline posting: the gap between the DK/FD price and
+  // Pinnacle's fair at entry, against how often that pick then beat its own
+  // close. Beat-close is the column that matters; Won is there because it is
+  // the one people look at first, and the two disagree in the 1-2.5 band.
+  function mlGapTable(bands, posting) {
+    const rows = (bands || []).filter((b) => b && b.n);
+    if (!rows.length) return '';
+    const closed = posting && posting.band === null;
+    return `<div class="roi-table">
+        <div class="roi-table-head"><span>ML by gap to Pinnacle</span><span>Won</span><span>Beat close</span><span>Units</span></div>
+        ${rows.map((b) => `<div class="roi-table-row">
+          <span>${esc(b.band)} pts<i class="ml-band-n">${b.n}</i></span>
+          <span>${b.winRate != null ? b.winRate + '%' : '—'}</span>
+          <span class="${b.clvBeatRate == null ? '' : b.clvBeatRate >= 50 ? 'g' : 'r'}">${b.clvBeatRate != null ? b.clvBeatRate + '%' : '—'}</span>
+          <span class="${b.units >= 0 ? 'g' : 'r'}">${(b.units > 0 ? '+' : '') + b.units}u</span>
+        </div>`).join('')}
+        ${closed ? `<div class="ml-band-note">Every graded row, pass and check included. The bigger the gap at entry, the less often the pick beat its own close — so nothing on the ML board is posted; the edge column is context.</div>` : ''}
       </div>`;
   }
 
