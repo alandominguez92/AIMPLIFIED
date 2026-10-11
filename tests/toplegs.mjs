@@ -114,6 +114,21 @@ ok(Array.isArray(m.bands['top 3'].clears) && m.bands['top 3'].clears.includes('2
 ok(m.byDay.length === 2 && m.byDay.every((d) => d.top.length && d.top[0].score >= d.top[d.top.length - 1].score),
   'and each day lists its best legs, best first, to be read rather than trusted');
 
+// The calibration the Today's card prints: how legs at each level of the
+// model's chance have landed, batter legs and strikeouts apart. Two days of the
+// fixture: the 78% total-bases and 71% H+R+RBI legs hit, the 66% strikeout leg
+// hit, and the 55-58% batter legs both missed each day.
+const lb = m.legBands || {};
+const lev = (g, lo) => ((lb[g] || []).find((b) => b.lo === lo) || {});
+console.log('  legBands batter: ' + (lb.batter || []).filter((b) => b.n).map((b) => `${b.lo}+ ${b.hit}/${b.n}`).join(' | ')
+  + '   K: ' + (lb.K || []).filter((b) => b.n).map((b) => `${b.lo}+ ${b.hit}/${b.n}`).join(' | '));
+ok(lev('batter', 75).n === 2 && lev('batter', 75).hit === 2 && lev('batter', 70).n === 2 && lev('batter', 70).hit === 2,
+  'the levels count the batter legs that landed at the top');
+ok(lev('batter', 55).n === 4 && lev('batter', 55).hit === 0, 'and the ones that missed in the middle');
+ok(lev('K', 65).n === 2 && lev('K', 65).hit === 2 && lev('batter', 65).n === 0, 'strikeout legs keep a record of their own');
+ok((lb.batter || []).reduce((s, b) => s + b.n, 0) + (lb.K || []).reduce((s, b) => s + b.n, 0) === m.graded,
+  'every graded leg falls in exactly one level');
+
 // The sports are not the same experiment and the payload has to say so.
 const sc = await hit('/api/top-legs?sport=soccer');
 const nf = await hit('/api/top-legs?sport=nfl');

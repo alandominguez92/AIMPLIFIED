@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=de2aa3f456">
+<link rel="stylesheet" href="style.css?v=47317cc492">
 </head>
 <body>
 
@@ -388,8 +388,8 @@
     </div>
 
     <div class="card">
-      <h3>Model Calibration — Predicted vs. Actual</h3>
-      <p class="calibration-sub">Each point is a bucket of past picks grouped by predicted probability. On the diagonal = well-calibrated.</p>
+      <h3>Strikeout Model Calibration — Predicted vs. Actual</h3>
+      <p class="calibration-sub">The strikeout model only: logged, never posted. Each point is a bucket of past picks grouped by predicted probability. On the diagonal = well-calibrated. The batter model's own calibration is below the chart.</p>
       <div class="calibration">
         <div class="calibration-axes"></div>
         <div class="calibration-diagonal"></div>
@@ -404,6 +404,7 @@
       </div>
       <p class="calibration-verdict" id="calibrationVerdict" hidden></p>
       <div class="calibration-tiers" id="calibrationTiers"></div>
+      <div class="calibration-batter" id="calibrationBatter"></div>
     </div>
     </details>
   </section>
@@ -429,6 +430,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=de2aa3f456"></script>
+<script src="app.js?v=47317cc492"></script>
 </body>
 </html>

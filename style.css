@@ -2739,6 +2739,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-card .tc-l1 b { white-space:normal; overflow:visible; text-overflow:clip; }
 .pk-rec { display:block; margin-top:4px; font-size:11.5px; color:var(--textDim); }
 .pk-rec.thin { color:var(--textFaint); }
+/* Today's card: a leg's level, by how legs there have landed at PrizePicks. */
+.pk-rec.tc-band-good { color:var(--positive); }
+.pk-rec.tc-band-weak { color:var(--caution); }
 .pk-new { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--caution); }
 .pk-intro { margin-top:0; }
 

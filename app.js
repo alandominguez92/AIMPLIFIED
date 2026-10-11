@@ -2695,6 +2695,21 @@
       }).join('');
     }
 
+    // The batter model's own calibration this pricing era: the market that is
+    // posted. Said vs landed per band of the model's chance of the under.
+    const cb = document.getElementById('calibrationBatter');
+    if (cb) {
+      const c = tr && tr.calibrationBatter;
+      cb.innerHTML = c && c.n
+        ? `<p class="calibration-verdict">Batter unders, this pricing era: across <b>${c.n}</b> graded lines the model put the under at <b>${c.predicted}%</b> on average and it landed <b>${c.actual}%</b>.</p>`
+          + `<div class="calibration-tiers">${(c.bins || []).map((b) => {
+            const d = Math.round((b.actual - b.predicted) * 10) / 10;
+            const tone = Math.abs(d) <= 4 ? 'ok' : (d < 0 ? 'over' : 'under');
+            return `<div class="cal-tier"><span class="cal-tier-nums">said <b>${b.predicted}%</b> → landed <b class="${tone}">${b.actual}%</b></span><span class="cal-tier-n">n=${b.n}</span></div>`;
+          }).join('')}</div>`
+        : '';
+    }
+
     if (!buckets.length) {
       el.calibrationPoints.innerHTML = LIVE_MODE ? '<div class="calibration-empty">Calibration plots here as tonight’s picks grade.</div>' : '';
       return;
@@ -3160,6 +3175,14 @@
     return (w + l) ? { w, l, u: Math.round(u * 10) / 10, days: dates.length } : null;
   }
 
+  // The level a Today's-card leg falls in, from /api/top-legs: strikeout legs
+  // and batter legs keep separate records.
+  function todayLegBand(x) {
+    const lb = state.topLegs && state.topLegs.legBands;
+    const list = lb && lb[x.view === 'kprops' ? 'K' : 'batter'];
+    if (!Array.isArray(list)) return null;
+    return list.find((b) => x.prob >= b.lo && (b.hi == null || x.prob < b.hi)) || null;
+  }
   function renderTodayCard() {
     const box = document.getElementById('todayCard');
     if (!box) return;
@@ -3201,10 +3224,17 @@
         // that jumps to the board, and a button cannot hold another.
         const on = !!state.slip[x.legId];
         const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="today-add" data-leg="${esc(x.legId)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.player || '')} under ${esc(String(x.point))} ${esc(x.market)} ${on ? 'from' : 'to'} your slip" title="${on ? 'In your slip' : 'Add to slip'}">${on ? '★' : '☆'}</button>`;
+        // The calibration, live: how legs the model put at this level have
+        // actually landed at PrizePicks' numbers. Below 65% that has been about
+        // a coin flip for batter legs, so the leg's own number is not the read.
+        const lb = todayLegBand(x);
+        const bandLine = lb && lb.n >= 10
+          ? `<span class="pk-rec${lb.hitRate >= 57.7 ? ' tc-band-good' : lb.hitRate < 54 ? ' tc-band-weak' : ''}">Legs at ${lb.lo}${lb.hi ? '–' + lb.hi : '+'}% have landed ${lb.hit} of ${lb.n} (${Math.round(lb.hitRate)}%)</span>` : '';
         return `<li>${star}<button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
           + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p">${Math.round(x.prob)}%</span></span>`
           + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(x.market)} · PrizePicks${x.when ? ' · ' + esc(String(x.when).replace(/ PT$/, '')) : ''}`
           + `${x.confirmed ? '' : ' <span class="tc-wait">lineup not out</span>'}</span>${book}</span>`
+          + bandLine
           + `</button></li>`;
       }).join('')}</ol>`;
   }

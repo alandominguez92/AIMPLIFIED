@@ -6357,6 +6357,28 @@ function buildTrackRecord(rows) {
       : null)
     .filter(Boolean);
 
+  // The batter model's own calibration, this pricing era (2026-10-11). The
+  // curve above is the strikeout model's, and its heading did not say so: the
+  // improvement analysis read "says 64%, lands 48.7%" as the batter unders.
+  // Every graded batter row this era, both sides, by the model's chance that
+  // the under lands at the book's line.
+  const batCal = {};
+  let batN = 0, batSaid = 0, batUnder = 0;
+  for (const r of graded) {
+    if ((r.market || 'K') === 'K' || r.model_over == null || (r.model_ver || null) !== BATTER_MODEL_VER) continue;
+    const pu = 100 - r.model_over;
+    const landedUnder = (r.side === 'Under') === (r.result === 'win') ? 1 : 0;
+    const lo = Math.max(35, Math.min(75, Math.floor(pu / 5) * 5));
+    const c = batCal[lo] = batCal[lo] || { said: 0, under: 0, n: 0 };
+    c.said += pu; c.under += landedUnder; c.n++;
+    batN++; batSaid += pu; batUnder += landedUnder;
+  }
+  const calibrationBatter = batN ? {
+    era: BATTER_MODEL_VER, n: batN, predicted: round1(batSaid / batN), actual: round1(batUnder / batN * 100),
+    bins: Object.entries(batCal).filter(([, c]) => c.n >= 20).sort((a, b) => a[0] - b[0])
+      .map(([lo, c]) => ({ band: `${lo}-${Number(lo) + 5}`, predicted: round1(c.said / c.n), actual: round1(c.under / c.n * 100), n: c.n })),
+  } : null;
+
   return {
     empty: plays === 0,
     logged: rows.length,
@@ -6378,6 +6400,7 @@ function buildTrackRecord(rows) {
     calibration,
     calibrationSummary,
     calibrationByTier,
+    calibrationBatter,
     batterUnders,
     buTierBreakdown,
     eraBreakdown,
@@ -7071,6 +7094,8 @@ async function gmExport(env, url) {
 //           sharp number predicts anything — a different question with a
 //           different failure mode.
 //   nflptd  ranks by the gap to the realised 55.4% under rate.
+// The model-chance levels the Today's card reports a record for.
+const TOP_LEG_LEVELS = [[0, 50], [50, 55], [55, 60], [60, 65], [65, 70], [70, 75], [75, 101]];
 const TOP_LEG_BANDS = [3, 5, 8, 12];
 
 function topLegScore(sport, r) {
@@ -7166,6 +7191,23 @@ async function topLegs(env, url) {
       .filter((x) => x.s != null);
     const graded = scored.filter((x) => x.w != null);
     out.graded = graded.length;
+    // How legs at each level of the model's chance have actually landed at
+    // PrizePicks' numbers -- the card prints the one each leg falls in
+    // (2026-10-11). This is the calibration, kept live rather than fitted:
+    // batter legs the model put anywhere under 65% landed about 50%, so a
+    // fitted map would mostly invent precision the top buckets do not have.
+    // Batter legs (TB, H+R+RBI) and strikeouts are kept apart; they did not
+    // behave alike.
+    if (sport === 'mlb') {
+      out.legBands = {};
+      for (const [g, f] of [['batter', (x) => x.r.market !== 'K'], ['K', (x) => x.r.market === 'K']]) {
+        out.legBands[g] = TOP_LEG_LEVELS.map(([lo, hi]) => {
+          const b = graded.filter((x) => f(x) && x.s >= lo && x.s < hi);
+          const hit = b.filter((x) => x.w === 1).length;
+          return { lo, hi: hi > 100 ? null : hi, n: b.length, hit, hitRate: b.length ? round1(hit / b.length * 100) : null };
+        });
+      }
+    }
 
     // Per day, best first.
     const days = new Map();
