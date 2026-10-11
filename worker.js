@@ -3241,6 +3241,16 @@ async function ensureMlPickSchema(db) {
   // to have been priced any particular way, and guessing would be worse than the
   // NULL that honestly says "before attribution existed".
   await addColumns(db, 'mlpicks', [['model_ver', 'TEXT'], ['fair_source', 'TEXT']]);
+  // The pick as it stood, not only as it ended (2026-10-11). Every read
+  // overwrites win_prob, edge and tier with the latest, while entry_price stays
+  // the first -- so the log compared close-time chances with morning prices,
+  // and neither "the edge when it was posted" nor its closing-line value could
+  // be read back. entry_* is the first read; posted_* is the first read at a
+  // posted tier (1-3), which is what a play actually looked like when it was
+  // shown; close_at stamps the latest read. Forward-only, like model_ver.
+  await addColumns(db, 'mlpicks', [['entry_win_prob', 'INTEGER'], ['entry_edge', 'REAL'], ['entry_tier', 'TEXT'],
+    ['entry_fair_source', 'TEXT'], ['entry_at', 'TEXT'], ['posted_at', 'TEXT'], ['posted_price', 'INTEGER'],
+    ['posted_win_prob', 'INTEGER'], ['posted_edge', 'REAL'], ['posted_tier', 'TEXT'], ['close_at', 'TEXT']]);
   // Partial index over ungraded rows — see picks_ungraded in ensureSchema.
   await db.prepare('CREATE INDEX IF NOT EXISTS mlpicks_ungraded ON mlpicks (date, game_id) WHERE result IS NULL').run();
 }
@@ -3473,6 +3483,9 @@ async function ensureGamePickSchema(db) {
   // The grader reads only ungraded rows from days already played; a partial
   // index keeps that read off the rest of the table.
   await db.prepare('CREATE INDEX IF NOT EXISTS gmpicks_ungraded ON gmpicks (sport, date) WHERE result IS NULL').run();
+  // The first read kept beside the latest (2026-10-11), as mlpicks now does:
+  // win_prob and edge are overwritten by every read, entry_price is not.
+  await addColumns(db, 'gmpicks', [['entry_win_prob', 'REAL'], ['entry_edge', 'REAL'], ['entry_at', 'TEXT'], ['close_at', 'TEXT']]);
 }
 
 // entries: { game_id, league, commence, side, pick, home, away, win_prob,
@@ -3487,19 +3500,22 @@ async function logGamePicks(db, sport, date, entries) {
     // number by more than ML_PRICE_GAP is a bad read off the feed, not an edge.
     if (!mlPriceSane(e.price, e.win_prob)) continue;
     const market = e.market || 'h2h';
+    const at = new Date().toISOString();
     stmts.push(db.prepare(
-      `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,market,league,week,commence,side,point,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,market,league,week,commence,side,point,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver,
+         entry_win_prob,entry_edge,entry_at,close_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(sport, date, String(e.game_id), market, e.league || null, e.week == null ? null : e.week,
       e.commence || null, e.side || null,
       e.point == null ? null : e.point, e.pick || null,
       e.home || null, e.away || null, e.win_prob, e.implied == null ? null : e.implied, e.edge == null ? null : e.edge,
-      e.price, e.price, e.book || null, e.fair_src || null, e.sharp_n == null ? null : e.sharp_n, GM_MODEL_VER));
+      e.price, e.price, e.book || null, e.fair_src || null, e.sharp_n == null ? null : e.sharp_n, GM_MODEL_VER,
+      e.win_prob, e.edge == null ? null : e.edge, at, at));
     // Close refreshes only while the same side is still the board's lead, so a
     // flip later in the week cannot overwrite the entry side's closing number.
     stmts.push(db.prepare(
-      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
-    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied,
+      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=?, close_at=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
+    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied, at,
       sport, date, String(e.game_id), market, e.side || null));
   }
   if (!stmts.length) return 0;
@@ -4726,10 +4742,16 @@ async function saveRlLines(db, date, pairs) {
 const CLV_COLUMNS = [
   ['entry_over', 'REAL'], ['close_line', 'REAL'], ['close_price', 'INTEGER'], ['close_over', 'REAL'],
 ];
+// A column is confirmed once per isolate -- added, or reported as already
+// there -- and not asked about again: the schema checks run on every board
+// read, and each ALTER is a query. Any other failure is retried next time.
+const COLUMNS_CONFIRMED = new Set();
 async function addColumns(db, table, cols) {
   for (const [name, type] of cols) {
-    try { await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run(); }
-    catch (e) { /* column already exists */ }
+    const key = `${table}.${name}`;
+    if (COLUMNS_CONFIRMED.has(key)) continue;
+    try { await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run(); COLUMNS_CONFIRMED.add(key); }
+    catch (e) { if (/duplicate column/i.test(String((e && e.message) || e))) COLUMNS_CONFIRMED.add(key); }
   }
 }
 
@@ -5634,6 +5656,8 @@ async function gradeUngraded(env) {
 // Log tonight's moneyline picks (one row per game) the same way logPicks does
 // for strikeouts: only genuine pre-game picks, entry price frozen, close price
 // captured continuously. The graded side is whatever the model backed at entry.
+// The moneyline tiers that post a play (pass and check do not).
+const ML_POSTED_TIERS = new Set(['1', '2', '3']);
 async function logMlPicks(db, rows, date) {
   await ensureMlPickSchema(db);
   const stmts = [];
@@ -5647,15 +5671,25 @@ async function logMlPicks(db, rows, date) {
     if (!mlPriceSane(ml.price, ml.winProb)) continue;
     const isHome = ml.teamAbbr === ml.homeAbbr ? 1 : 0;
     const opp = isHome ? ml.awayAbbr : ml.homeAbbr;
+    const at = new Date().toISOString();
+    const tier = String(ml.tier);
     stmts.push(db.prepare(
-      `INSERT OR IGNORE INTO mlpicks (date,game_id,team,opp,is_home,tier,win_prob,edge,entry_price,close_price,model_ver,fair_source)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(date, r.id, ml.teamAbbr, opp || '', isHome, String(ml.tier), ml.winProb ?? null, ml.edge ?? null, ml.price, ml.price, ML_MODEL_VER, ml.fairSource ?? null));
+      `INSERT OR IGNORE INTO mlpicks (date,game_id,team,opp,is_home,tier,win_prob,edge,entry_price,close_price,model_ver,fair_source,
+         entry_win_prob,entry_edge,entry_tier,entry_fair_source,entry_at,close_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(date, r.id, ml.teamAbbr, opp || '', isHome, tier, ml.winProb ?? null, ml.edge ?? null, ml.price, ml.price, ML_MODEL_VER, ml.fairSource ?? null,
+      ml.winProb ?? null, ml.edge ?? null, tier, ml.fairSource ?? null, at, at));
     // Refresh close only while the logged side is still the model's pick, so a
     // mid-day side flip can't overwrite our entry side's closing price.
     stmts.push(db.prepare(
-      'UPDATE mlpicks SET close_price=?, edge=?, tier=?, win_prob=? WHERE date=? AND game_id=? AND team=?'
-    ).bind(ml.price, ml.edge ?? null, String(ml.tier), ml.winProb ?? null, date, r.id, ml.teamAbbr));
+      'UPDATE mlpicks SET close_price=?, edge=?, tier=?, win_prob=?, close_at=? WHERE date=? AND game_id=? AND team=?'
+    ).bind(ml.price, ml.edge ?? null, tier, ml.winProb ?? null, at, date, r.id, ml.teamAbbr));
+    // The first read at a posted tier is the play as it was shown; written once.
+    if (ML_POSTED_TIERS.has(tier)) {
+      stmts.push(db.prepare(
+        'UPDATE mlpicks SET posted_at=?, posted_price=?, posted_win_prob=?, posted_edge=?, posted_tier=? WHERE date=? AND game_id=? AND team=? AND posted_at IS NULL'
+      ).bind(at, ml.price, ml.winProb ?? null, ml.edge ?? null, tier, date, r.id, ml.teamAbbr));
+    }
   }
   if (stmts.length) await db.batch(stmts);
 }
@@ -7004,7 +7038,8 @@ async function gmExport(env, url) {
     if (league) { where.push('league = ? COLLATE NOCASE'); args.push(league); }
     if (market) { where.push('market = ? COLLATE NOCASE'); args.push(market); }
     const cols = ['sport', 'date', 'market', 'league', 'week', 'commence', 'away', 'home', 'side', 'point', 'pick', 'win_prob', 'implied', 'edge',
-      'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'result', 'away_score', 'home_score', 'game_id', 'model_ver'];
+      'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'result', 'away_score', 'home_score', 'game_id', 'model_ver',
+      'entry_win_prob', 'entry_edge', 'entry_at', 'close_at'];
     const rows = (await env.DB.prepare(
       `SELECT ${cols.join(', ')} FROM gmpicks${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY date, commence`
     ).bind(...args).all()).results || [];
@@ -7615,7 +7650,8 @@ async function mlpicksExport(env, url) {
   if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
   try {
     await ensureMlPickSchema(env.DB);
-    const cols = ['date', 'game_id', 'team', 'opp', 'is_home', 'tier', 'win_prob', 'edge', 'entry_price', 'close_price', 'result', 'team_score', 'opp_score', 'model_ver', 'fair_source'];
+    const cols = ['date', 'game_id', 'team', 'opp', 'is_home', 'tier', 'win_prob', 'edge', 'entry_price', 'close_price', 'result', 'team_score', 'opp_score', 'model_ver', 'fair_source',
+      'entry_win_prob', 'entry_edge', 'entry_tier', 'entry_fair_source', 'entry_at', 'posted_at', 'posted_price', 'posted_win_prob', 'posted_edge', 'posted_tier', 'close_at'];
     // ?date=YYYY-MM-DD: one day's graded picks. The whole log is ~100KB, more
     // than a scheduled check can read in one go.
     const date = url && url.searchParams ? String(url.searchParams.get('date') || '').trim() : '';

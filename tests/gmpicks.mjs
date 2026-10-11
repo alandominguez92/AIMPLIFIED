@@ -168,7 +168,8 @@ const run = (sql, a) => {
     const k = gmKey([row.sport, row.date, row.game_id, row.market]);
     if (!gm.has(k)) gm.set(k, { ...row, result: null, home_score: null, away_score: null });
   } else if (/^\s*UPDATE gmpicks SET close_price/i.test(sql)) {
-    const [cp, edge, wp, imp, sport, date, gid, mkt] = a;
+    // close_at (2026-10-11) rides between the latest read and the key.
+    const [cp, edge, wp, imp, sport, date, gid, mkt] = /close_at/.test(sql) ? [...a.slice(0, 4), ...a.slice(5)] : a;
     const r = gm.get(gmKey([sport, date, gid, mkt])); if (r) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; }
   } else if (/^\s*UPDATE gmpicks SET result/i.test(sql)) {
     const [res, hs, as, sport, date, gid, mkt] = a;
