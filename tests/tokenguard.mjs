@@ -25,8 +25,9 @@ const grab = (s) => {
 };
 const D = grab(dark), L = grab(light);
 
-// Typography is intentionally declared once and inherited by both themes.
-const THEME_INDEPENDENT = new Set(['--display', '--sans', '--mono']);
+// Typography is intentionally declared once and inherited by both themes: the
+// three faces and, since 2026-10-12, the type sizes (--fsXs is the 11px floor).
+const THEME_INDEPENDENT = new Set(['--display', '--sans', '--mono', '--fsXs', '--fsSm']);
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
