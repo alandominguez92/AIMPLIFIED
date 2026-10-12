@@ -448,7 +448,7 @@ section { padding:44px 0; }
 .sec-head-sub { margin-bottom:16px; }
 .sec-head h2 { font-family:var(--sans); font-weight:800; font-size:26px; text-transform:uppercase; letter-spacing:-.025em; }
 .sec-head h3 { font-family:var(--sans); font-weight:700; font-size:18px; text-transform:uppercase; letter-spacing:-.015em; }
-.sec-head .count { font-family:var(--mono); font-size:13px; color:var(--textDim); }
+.sec-head .count { font-family:var(--sans); font-size:13px; color:var(--textDim); }
 .sec-head .all { margin-left:auto; font-size:13.5px; color:var(--accent); font-weight:500; }
 .tracked-pill { font-family:var(--mono); font-size:12.5px; color:var(--accent); border:1px solid var(--border); border-radius:3px; padding:3px 8px; }
 
@@ -2371,9 +2371,15 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    desktop is unchanged until it gets its own pass. */
 .today-card, .how-priced { display:none; }
 /* The card's own styles, shared by the phone layout and the wide-screen rail. */
-.tc-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
-.tc-title { font-family:var(--display, var(--sans)); font-weight:700; font-size:18px; letter-spacing:.01em; color:var(--text); }
-.tc-rec { font-family:var(--mono); font-size:12px; color:var(--textDim); white-space:nowrap; }
+/* A card's title is a section title (2026-10-12): the same Archivo 800
+   uppercase as .sec-head h2, where it was Barlow Condensed in mixed case --
+   a third heading style beside that and the mono subtitles. The record beside
+   it was nowrap, so at 375px and in the 1100px rail it squeezed "Today's card"
+   onto two lines; it now wraps under the title instead. */
+.tc-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:2px 12px; }
+.tc-title { font-family:var(--sans); font-weight:800; font-size:21px; line-height:28px; text-transform:uppercase; letter-spacing:-.025em; color:var(--text); }
+.rail .tc-title { font-size:18px; line-height:24px; }
+.tc-rec { font-family:var(--sans); font-size:13px; color:var(--textDim); }
 .tc-rec b { color:var(--positive); font-weight:600; }
 .tc-sub { margin-top:4px; font-size:12px; line-height:1.45; color:var(--textDim); }
 .tc-legs { list-style:none; margin:10px 0 0; padding:0; display:grid; gap:8px; }
