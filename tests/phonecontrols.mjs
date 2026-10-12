@@ -88,8 +88,15 @@ ok(/id="ctlSheetBtn" data-action="open-ctl-sheet"/.test(html) && /<span class="c
 ok(/id="ctlSheet" hidden/.test(html) && /role="dialog" aria-modal="true"/.test(html) && /class="ctl-sheet-done" data-action="close-ctl-sheet"/.test(html),
   'a sheet, hidden until opened, with a Done button');
 ok(/case 'open-ctl-sheet'/.test(src) && /case 'close-ctl-sheet'/.test(src) && /e\.key === 'Escape'\) closeCtlSheet\(\)/.test(src), 'opened and closed by action, and Escape closes it');
-ok(/\.ctl-sheet-btn\s*\{\s*display:none;/.test(css) && /@media \(max-width:640px\)\s*\{\s*\.tabrow\s*\{\s*display:none;/.test(css),
+ok(/\.ctl-sheet-btn\s*\{\s*display:none;/.test(css) && /@media \(max-width:640px\)\s*\{\s*#slate \.tabrow\s*\{\s*display:none;/.test(css),
   'the button shows on a phone only, and the emptied tab row goes');
+// The toolbar rules are the MLB board's. Unscoped, ".board-toolbar >
+// .board-controls { flex:none }" also caught the NFL toolbar, whose filter and
+// sort chips then could not wrap: 240px of sideways scroll on the NFL board.
+const phoneBlock = (css.match(/\.ctl-sheet\[hidden\][\s\S]*?@media \(max-width:640px\)\s*\{([\s\S]*?)\n\}/) || [])[1] || '';
+const toolbarSels = [...phoneBlock.matchAll(/^\s*([^{}\n]*(?:board-search|board-controls|tabrow)[^{}\n]*)\{/gm)].map((m) => m[1].trim());
+ok(toolbarSels.length >= 3 && toolbarSels.every((s) => s.startsWith('#slate ')),
+  `every phone toolbar rule is scoped to the MLB board (${toolbarSels.join(' | ')})`);
 ok(/function placePhoneControlsSafe\(\)\s*\{\s*try \{ placePhoneControls\(\); \} catch/.test(src) && !/^\s*placePhoneControls\(\);/m.test(src),
   'and every call goes through a guard, so a layout move can never halt the page');
 
