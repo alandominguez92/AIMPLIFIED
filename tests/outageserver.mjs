@@ -74,7 +74,22 @@ async function buildOddsFixture() {
         // disagreeing with the one the books priced.
         { name: 'Over', description: n, point: key === 'prizepicks' ? 2.5 : 1.5, price: key === 'draftkings' ? -115 : -108 },
         { name: 'Under', description: n, point: key === 'prizepicks' ? 2.5 : 1.5, price: key === 'draftkings' ? -105 : -112 },
-      ])) }] });
+      ])) },
+      // H+R+RBI, the one posted batter market since 2026-10-11. Without it a
+      // HEALTHY board had no play at all ("Under plays 0") and never showed
+      // the longer "Under 1.5 H+R+RBI" label that real rows lead with. Every
+      // third hitter gets a soft-book under well above the sharp number.
+      { key: 'batter_hits_runs_rbis',
+        outcomes: names.flatMap((n, j) => {
+          const sharp = key === 'pinnacle' || key === 'novig';
+          const lean = j % 3 === 0;
+          const over = sharp ? (lean ? -105 : -125) : (lean ? -140 : -115);
+          const under = sharp ? (lean ? -115 : +105) : (lean ? +115 : -105);
+          return [
+            { name: 'Over', description: n, point: 1.5, price: over },
+            { name: 'Under', description: n, point: 1.5, price: under },
+          ];
+        }) }] });
     // PrizePicks rides along, deliberately on a DIFFERENT number than DK/FD so the
     // "PP hangs another line" case is visible in the preview.
     oddsFixture.props[id] = { bookmakers: ['draftkings', 'fanduel', 'pinnacle', 'novig', 'prizepicks'].map(bk) };
