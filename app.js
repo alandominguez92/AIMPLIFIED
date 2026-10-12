@@ -2755,7 +2755,7 @@
     const tr = state.trackRecord;
     if (!tr) return;
     const bands = document.getElementById('mlPriceBands');
-    if (bands) bands.innerHTML = mlPriceTable(tr.ml && tr.ml.byPriceBand);
+    if (bands) bands.innerHTML = mlPriceTable(tr.ml && tr.ml.byPriceBand, tr.ml);
     const bu = tr.batterUnders;
     // Headline the tiles on batter unders — the posted product — whenever we have
     // a graded under sample. The full aggregate drops to a labeled note below.
@@ -3069,9 +3069,13 @@
     'fav -200 and shorter': '−200 or less', 'fav -140 to -199': '−140 to −199', 'fav -100 to -139': '−100 to −139',
     'dog +100 to +139': '+100 to +139', 'dog +140 to +199': '+140 to +199', 'dog +200 and longer': '+200 or more',
   };
-  function mlPriceTable(bands) {
+  // The table counts every graded moneyline, pass included -- it sums to 880
+  // where the posted record says 219 -- so it says so under itself, beside how
+  // those prices did against Pinnacle's closing line (2026-10-12).
+  function mlPriceTable(bands, ml) {
     const rows = Object.entries(bands || {}).filter(([, b]) => b && b.n);
     if (!rows.length) return '';
+    const total = rows.reduce((s, [, b]) => s + b.n, 0);
     return `<div class="roi-table">
         <div class="roi-table-head"><span>ML by price</span><span>Won</span><span>Needed</span><span>Units</span></div>
         ${rows.map(([k, b]) => `<div class="roi-table-row">
@@ -3080,7 +3084,22 @@
           <span>${b.implied}%</span>
           <span class="${b.units >= 0 ? 'g' : 'r'}">${(b.units > 0 ? '+' : '') + b.units}u</span>
         </div>`).join('')}
-      </div>`;
+      </div>
+      <p class="ml-close">Every graded moneyline, pass included (${total}).</p>${mlCloseLine(ml)}`;
+  }
+  // EV against Pinnacle's close: every graded row, then the posted plays. The
+  // posted plays since entry_at existed are the headline; older posted rows
+  // were counted by their close-time tier, so they stay a separate clause.
+  function mlCloseLine(ml) {
+    const v = ml && ml.vsSharpClose;
+    if (!v || !v.all || !v.all.n) return '';
+    const sgn = (x) => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1) + '%';
+    const read = (g) => `median ${sgn(g.median)} · beat it on ${Math.round(g.above)}% of ${g.n}`;
+    const since = ml.forwardSince ? new Date(ml.forwardSince + 'T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+    const posted = v.posted && v.posted.n ? read(v.posted) : 'none graded yet';
+    const before = v.legacyPosted && v.legacyPosted.n ? ` · before, by close-time tier: ${read(v.legacyPosted)}` : '';
+    return `<p class="ml-close"><b>vs Pinnacle's closing line:</b> ${read(v.all)}</p>`
+      + `<p class="ml-close">Posted plays${since ? ' since ' + esc(since) : ''}: ${posted}${before}</p>`;
   }
 
   function renderRoiChart(series) {

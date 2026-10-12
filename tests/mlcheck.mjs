@@ -77,9 +77,12 @@ ok(ordinary.edgeCheck === false && ordinary.tier !== 'check', `and is not flagge
 ok(model.fairSource === 'dkfd' && model.edgeKind === 'model', `with no Pinnacle line the edge is labelled "model" (${model.edgeKind})`);
 ok(model.edgeCheck === false, 'and the Pinnacle-gap flag never applies to a model edge');
 
-// The record keeps flagged rows out of its headline, like pass.
-const recSrc = src.slice(src.indexOf('function buildMlRecord'), src.indexOf('function buildMlRecord') + 600);
-ok(/r\.tier !== 'check'/.test(recSrc), 'flagged rows are graded but kept out of the moneyline headline record');
+// The record keeps flagged rows out of its headline, like pass. Since
+// 2026-10-12 a row counts as posted by mlPostedAs: older rows by their tier,
+// newer ones by posted_at, which is only ever written at tiers 1-3.
+const recSrc = src.slice(src.indexOf('function mlPostedAs'), src.indexOf('function mlPostedAs') + 600);
+ok(/r\.tier === 'check'\) return null/.test(recSrc), 'flagged rows are graded but kept out of the moneyline headline record');
+ok(/const ML_POSTED_TIERS = new Set\(\['1', '2', '3'\]\)/.test(src), 'and a flagged read is never snapshotted as posted');
 
 // ?summary=1: one line per game for the scheduled checks, read off the same
 // board. The cache stub always misses, so this is a second full board() run.

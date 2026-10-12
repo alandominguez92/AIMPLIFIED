@@ -2798,6 +2798,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* Track record: moneyline by price sits with the record; model health folds. */
 .ml-bands { max-width:560px; margin:0 0 18px; }
+/* What the table counts, and its prices against Pinnacle's close (2026-10-12). */
+.ml-close { margin:8px 0 0; font-family:var(--sans); font-size:12px; line-height:1.5; color:var(--textDim); text-wrap:pretty; }
+.ml-close b { color:var(--text); font-weight:600; }
+.ml-close + .ml-close { margin-top:3px; }
 .model-health { margin-top:6px; }
 .model-health > summary { cursor:pointer; list-style:none; display:flex; align-items:baseline; gap:10px;
   font-family:var(--sans); font-weight:700; font-size:15px; letter-spacing:-.01em; text-transform:uppercase; color:var(--text);

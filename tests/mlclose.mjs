@@ -101,5 +101,37 @@ const S = await get('/api/track-record?summary=1');
 ok(S.ml && S.ml.vsSharpClose && S.ml.vsSharpClose.posted && S.ml.legacy && S.ml.forwardSince,
   'scheduled checks get the close measure, the legacy line and the start date');
 
+// ---- on the page --------------------------------------------------------------------
+// "ML by price" counts every graded row, pass included (it sums to 880 where
+// the posted record says 219), and says so; under it, one read against the
+// close. Lifted out of app.js, so this runs what ships.
+console.log('\n-- on the page --');
+const app = fs.readFileSync(BOARD + '/app.js', 'utf8');
+function lift(name) {
+  let at = app.indexOf(`function ${name}(`);
+  const isConst = at < 0;
+  if (isConst) at = app.indexOf(`const ${name} =`);
+  if (at < 0) throw new Error(`app.js has no ${name}`);
+  let depth = 0, seen = false;
+  for (let i = at; i < app.length; i++) {
+    const c = app[i];
+    if (c === '{' || c === '(' || c === '[') { depth++; seen = true; }
+    else if (c === '}' || c === ')' || c === ']') depth--;
+    if (seen && depth === 0) {
+      if (!isConst && c === '}') return app.slice(at, i + 1);
+      if (isConst && app[i + 1] === ';') return app.slice(at, i + 2);
+    }
+  }
+  throw new Error(`could not close ${name}`);
+}
+const P = new Function('esc', ['ML_BAND_SHORT', 'mlPriceTable', 'mlCloseLine'].map(lift).join('\n') + '\nreturn { mlPriceTable };')((s) => String(s));
+const html = P.mlPriceTable(tr.ml.byPriceBand, tr.ml).replace(/\s+/g, ' ');
+const nBands = Object.values(tr.ml.byPriceBand).reduce((s, b) => s + b.n, 0);
+console.log('  ' + (html.match(/<p class="ml-close">.*$/) || [''])[0].replace(/<[^>]+>/g, ' | ').replace(/( \| )+/g, ' | '));
+ok(html.includes(`Every graded moneyline, pass included (${nBands})`), `the table says it counts every graded row (${nBands})`);
+ok(html.includes(`vs Pinnacle's closing line:</b> median +0.4% · beat it on 50% of 4`), 'one line of every row against the close');
+ok(html.includes('Posted plays since Oct 11: median +0.8% · beat it on 100% of 1'), 'then the posted plays, from when they were logged as shown');
+ok(html.includes('before, by close-time tier: median +8.8% · beat it on 100% of 1'), 'with the older posted rows as their own clause');
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
