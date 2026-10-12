@@ -2388,17 +2388,21 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .today-card:not([hidden]) { display:block; margin:14px 0 10px; }
   .how-priced { display:block; margin:0 0 14px; }
 
-  /* Compact rows on the play board: two lines, three when PrizePicks hangs a
-     different number. Name and time, then the pick, its price, the model's
-     probability and the edge. The bar and cushion are a picture of the
-     probability printed beside them, so they wait for the expanded row, which
-     keeps the full layout. The whole row is the tap target, so the chevron goes
-     too. */
+  /* Compact rows on the play board: three lines, four when PrizePicks hangs a
+     different number. Name and time; the pick; then its price, the model's
+     probability and the edge. The pick has its own line (2026-10-12): beside
+     the price it got the ~97px left at 375px, and "Under 1.5 H+R+RBI" -- the
+     lead on most rows since H+R+RBI became the posted market -- is 112px, so it
+     painted over the price and "+115" read "115". The bar and cushion are a
+     picture of the probability printed beside them, so they wait for the
+     expanded row, which keeps the full layout. The whole row is the tap
+     target, so the chevron goes too. */
   .board.view-batter .board-row:not(.expanded) {
     grid-template-columns:minmax(0,1fr) auto auto auto;
     grid-template-areas:
       "matchup matchup matchup tier"
-      "pick    odds    interval edge";
+      "pick    pick    pick    pick"
+      "odds    odds    interval edge";
     row-gap:5px; column-gap:12px; padding:11px 14px 12px;
   }
   .board.view-batter .board-row:not(.expanded) > .interval-cell {
@@ -2413,7 +2417,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board.view-batter .board-row:not(.expanded) > .chevron { display:none; }
   .board.view-batter .board-row:not(.expanded) > .edge-cell { align-self:center; font-size:13px; }
   .board.view-batter .board-row:not(.expanded) > .matchup-cell { gap:0; }
-  .board.view-batter .board-row:not(.expanded) .fade-pick { font-size:13.5px; white-space:nowrap; }
+  /* Alone on its line, so it may wrap rather than run past the row's edge. */
+  .board.view-batter .board-row:not(.expanded) .fade-pick { font-size:13.5px; white-space:normal; overflow-wrap:anywhere; }
   /* The +1 book counter made the price cell 93px wide and squeezed the pick to
      58px, so "Under 1.5 TB" wrapped. Every book is listed in the expanded row. */
   .board.view-batter .board-row:not(.expanded) .bk-more { display:none; }
