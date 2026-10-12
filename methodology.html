@@ -50,7 +50,7 @@
 
     <h2>The thesis</h2>
     <p>Casual money loves the <b>over</b>. People bet the hitters they've heard of to do something — get a hit, drive in a run, go deep — so sportsbooks and pick'em apps shade those lines <i>up</i> to match the demand. That makes the <span class="g">under</span> the side with value on batter counting-stat props.</p>
-    <p>Aimplified is built around that one edge: <b>fade the public over on batter props.</b> Everything on the board is priced against a real market line, and the plays we post are the unders where our projection sits far enough below the line to matter.</p>
+    <p>Aimplified is built around that one idea: <b>fade the public over on batter props.</b> Everything on the board is priced against a real market line, and the plays we post are the unders where our projection sits far enough below the line to matter.</p>
     <p><b>What is posted.</b> Since October 11, 2026 the posted plays are <b>H+R+RBI</b> unders only. Total bases is still priced, shown and logged, but no longer posted: its 685 posted unders went 330–355 (−80.8 units, −11.8%), while H+R+RBI held near 54% over more than 3,300. Its past plays stay in the record as they were.</p>
 
     <h2>Building a projection</h2>
@@ -65,11 +65,11 @@
     <h2>Edge and tiers</h2>
     <p>The <b>fair line</b> is the vig-free probability taken from the <span class="c">sharp books</span> — Pinnacle, novig and ProphetX — stripped of margin using the <b>Shin</b> method and pooled by median. It is deliberately never taken from the book we bet at: pricing a DraftKings bet against a DraftKings-derived fair measures our disagreement with DraftKings, not value, and an edge built that way can't predict where the line is going to move. The prices you see are still DK/FD, because those are the accounts you can actually use. Where no sharp book quotes our exact number, the row is marked <b>mkt</b> instead of <b>sharp</b> so you can see which pricing produced it.</p>
     <p>“Edge” is the gap between our fair probability and the market's vig-free probability at the same line, in percentage points. Positive means value on the board. A pick is tiered <b>T1 / T2 / T3</b> by how large that edge is; anything below the bar is a <b>Pass</b> — the model found nothing, so it isn't a play and never counts toward the record.</p>
-    <div class="formula">edge = | our P(under) − market's fair P(under) |  ×  100</div>
+    <div class="formula">edge = ( our P(under) − market's fair P(under) )  ×  100</div>
 
     <h2>How we grade — in public</h2>
     <p>Every priced pick is logged before first pitch and graded the next morning straight from the official MLB box score. <b>Wins and losses both stay up.</b> There is no hiding a cold week, no quietly deleting a bad night. The public record is the product — a picks site you can't audit is just a guy with opinions.</p>
-    <p class="muted">The headline record you see is <b>batter unders only</b> — the one market our graded results show a real edge. Strikeout, moneyline, and run-line projections stay on the site as context, but we don't post them as plays, and the full model log (including those) is shown underneath the headline so nothing reads as cherry-picked.</p>
+    <p class="muted">The headline record you see is the <b>posted batter unders</b>, and they have not shown an edge yet. As of October 12, 2026: 2,776 graded, 54.8% landed against the 55.4% their prices needed, −1.3% ROI — well inside what chance alone produces (p ≈ 0.47). The current pricing era is +1.4% on 191, too few to say anything either way. The <b>moneyline board</b> posts plays too: it tiers its picks T1–T3, and those are graded in a moneyline record of their own, at the price each play was posted at, with every moneyline price also measured against Pinnacle's closing line. Strikeout and run-line projections are context, not plays. The full model log, every market included, sits under the headline so nothing reads as cherry-picked.</p>
 
     <h2>CLV — the number that actually matters</h2>
     <p>Closing-line value measures how far the sharp market moved <i>toward</i> our pick between when we posted it and when the game started. It's the truest test of a good bet: if the market keeps moving your way, you were early on real value — regardless of whether that night won or lost. We track it honestly, and we won't claim an edge is proven until CLV backs it up over a real sample.</p>
@@ -78,7 +78,7 @@
     <ul>
       <li><b>Small samples lie.</b> A few weeks of results — or a single hot tier — isn't proof. We say so, and we don't scale on a hunch.</li>
       <li><b>Past results don't predict the future.</b> A model that worked is not a promise it keeps working.</li>
-      <li><b>Availability varies.</b> Lines and which sides are offered differ by book. Our graded edge sits on the <b>1.5</b> line specifically, and some platforms restrict unders there — always confirm the under is actually offered before you place it.</li>
+      <li><b>Availability varies.</b> Lines and which sides are offered differ by book. Most graded unders sit on the <b>1.5</b> line, and some platforms restrict unders there — always confirm the under is actually offered before you place it.</li>
       <li><b>ROI is a flat-stake, sportsbook basis.</b> Hit rate is the number that carries across platforms; unit returns assume 1u-flat sportsbook pricing.</li>
     </ul>
 
