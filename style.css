@@ -52,10 +52,13 @@
      once here and inherited by [data-theme="light"], which never redefines it. */
   --display:'Barlow Condensed','Archivo','Arial Narrow',sans-serif;
   /* The other two faces, same rule: declared once, never redefined per theme.
-     Archivo carries every sentence; Plex Mono carries every number, label and
-     piece of chrome. That split is what makes the columns scannable, so a number
-     set in Archivo or a sentence set in mono is a bug, not a style choice.
-     These were 166 inline copies of the same two stacks before they were named. */
+     Plex Mono carries numbers only -- odds, percentages, units, records, times
+     -- which is what makes the columns scannable. Archivo carries every
+     sentence and, since 2026-10-12, every label and piece of chrome, in
+     sentence case: 79% of the page's text was mono, most of it uppercase
+     letter-spaced labels at 9-10.5px, and the numbers no longer stood out. A
+     number set in Archivo, or an uppercase mono label, is a bug. These were
+     166 inline copies of the same two stacks before they were named. */
   --sans:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
   /* Type sizes, also theme-independent (2026-10-12). --fsXs is the floor: no
@@ -273,7 +276,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .nav-links a:hover { color:var(--text); }
 .nav-links a[href="#slate"] { color:var(--text); border-bottom:1px solid var(--accent); padding-bottom:2px; }
 /* "Soon" roadmap tag — signals an intentional placeholder, not a broken link */
-.soon { font-family:var(--mono); font-size:var(--fsXs); font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:var(--textDim); border:1px solid var(--borderFaint); border-radius:4px; padding:3px 5px; margin-left:7px; vertical-align:middle; line-height:1; white-space:nowrap; }
+.soon { font-family:var(--sans); font-size:var(--fsSm); font-weight:500; letter-spacing:0; text-transform:none; color:var(--textDim); border:1px solid var(--borderFaint); border-radius:4px; padding:3px 5px; margin-left:7px; vertical-align:middle; line-height:1; white-space:nowrap; }
 .soon-link { opacity:.72; cursor:default; }
 .soon-tab { opacity:.72; cursor:default; }
 .stab .soon { margin-left:0; }
@@ -307,7 +310,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 /* ---------- ticker ---------- */
 /* ---------- hero: Tonight's Ace Duel ---------- */
 .hero { padding:56px 0 40px; }
-.eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.18em; color:var(--accent); text-transform:uppercase; }
+.eyebrow { font-family:var(--sans); font-size:12px; letter-spacing:0; color:var(--accent); text-transform:none; }
 .hero h1 { font-family:var(--display); font-weight:700; font-size:clamp(42px,6vw,72px); line-height:.98; letter-spacing:.005em; margin:16px 0 10px; text-transform:uppercase; text-wrap:balance; }
 .hero h1 .vs { color:var(--textDim); font-size:.55em; vertical-align:middle; margin:0 .2em; }
 /* Explicit line-height: body sets none, so this inherited the browser default
@@ -319,7 +322,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 /* Credibility receipt near the hero — violet rail rhymes with the Track Record.
    Quiet, one line, real numbers; links down to the full proof. */
 .proof-strip { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:22px; background:var(--board); border:1px solid var(--border); border-left:3px solid var(--clv); border-radius:10px; padding:12px 18px; }
-.proof-strip .ps-chk { display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--positive); }
+.proof-strip .ps-chk { display:inline-flex; align-items:center; gap:7px; font-family:var(--sans); font-size:12px; font-weight:700; letter-spacing:0; text-transform:none; color:var(--positive); }
 .proof-strip .ps-dot { width:8px; height:8px; border-radius:50%; background:var(--positive); }
 .proof-strip .ps-it { font-family:var(--mono); font-size:13px; color:var(--textDim); }
 .proof-strip .ps-it b { color:var(--text); font-weight:600; }
@@ -336,7 +339,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .fc-odds { color:var(--textDim); font-weight:400; font-size:16px; font-family:var(--mono); text-transform:none; }
 .fc-meta { color:var(--textDim); font-size:12.5px; margin-top:6px; font-family:var(--mono); }
 .fc-scale-wrap { padding:16px 26px 10px; }
-.fc-scale-label { display:flex; justify-content:space-between; gap:4px 14px; flex-wrap:wrap; font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); margin-bottom:4px; }
+.fc-scale-label { display:flex; justify-content:space-between; gap:4px 14px; flex-wrap:wrap; font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); margin-bottom:4px; }
 /* The descriptor is for a first-time reader and needs the room; on a phone the
    metric name drops to its own line rather than being squeezed beside it. */
 @media (max-width:720px) { .fc-scale-label > span:last-child { flex-basis:100%; text-align:right; } }
@@ -385,7 +388,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 /* Plain-language legend under the hero — teaches Edge/Tier/CLV in one glance */
 .hero-legend { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:26px; }
 .hl-card { border:1px solid var(--border); border-radius:10px; background:var(--board); padding:13px 15px; }
-.hl-k { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.11em; text-transform:uppercase; font-weight:600; margin-bottom:5px; }
+.hl-k { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; font-weight:600; margin-bottom:5px; }
 .hl-k.hl-edge { color:var(--positive); }
 .hl-k.hl-tier { color:var(--accent); }
 .hl-k.hl-clv  { color:var(--clv); }
@@ -397,7 +400,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
   .hero-legend { display:block; grid-template-columns:none; gap:0; margin-top:16px; border:1px solid var(--border); border-radius:10px; background:var(--board); overflow:hidden; }
   .hl-card { border:none; border-radius:0; background:none; padding:8px 13px; display:flex; gap:10px; border-top:1px solid var(--border); }
   .hl-card:first-child { border-top:none; }
-  .hl-k { margin-bottom:0; flex:none; width:36px; padding-top:1px; font-size:var(--fsXs); letter-spacing:.06em; }
+  .hl-k { margin-bottom:0; flex:none; width:36px; padding-top:1px; font-size:var(--fsSm); letter-spacing:0; }
   .hl-d { font-size:11.5px; line-height:1.4; }
 }
 
@@ -434,7 +437,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .winprob { grid-column:1 / -1; background:var(--board); padding:18px 28px 22px; border-top:1px solid var(--border); }
 .winprob-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
 .live-dot { width:7px; height:7px; border-radius:50%; background:var(--danger); display:inline-block; animation:aiPulse 1.6s ease-in-out infinite; }
-.winprob-label { font-family:var(--mono); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--textDim); }
+.winprob-label { font-family:var(--sans); font-size:11.5px; letter-spacing:0; text-transform:none; color:var(--textDim); }
 .winprob-row { display:flex; align-items:center; gap:14px; }
 .winprob-team { font-family:var(--sans); font-weight:700; font-size:13.5px; width:110px; }
 .winprob-pct { font-family:var(--mono); font-weight:600; font-size:16px; width:52px; text-align:right; color:var(--accent); }
@@ -482,7 +485,7 @@ section { padding:44px 0; }
 .alertbar[data-filter="all"] .ib-filter button[data-mode="all"] { background:var(--board); color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.25); }
 .alertbar[data-filter="rel"] .ib-filter button[data-mode="rel"] .cnt { color:var(--danger); }
 .alertbar[data-filter="rel"] .ib-rest-group, .alertbar[data-filter="rel"] .ib-rest-rows { display:none; }
-.ib-group { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.1em; text-transform:uppercase; color:var(--textDim); margin:12px 2px 7px; }
+.ib-group { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); margin:12px 2px 7px; }
 .ib-group:first-child { margin-top:2px; }
 .ialert { display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:7px; background:var(--board); border:1px solid var(--border); margin-bottom:7px; }
 .ialert.rel { border-color:var(--alertBorder); background:var(--alertBg); }
@@ -528,7 +531,7 @@ section { padding:44px 0; }
 .livecard.cooling { border-color:rgba(226,88,75,.35); }
 .livecard-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
 .livecard-name { font-family:var(--sans); font-weight:700; font-size:16px; letter-spacing:-.01em; text-transform:uppercase; line-height:1.05; }
-.livecard-meta { font-family:var(--mono); font-size:11.5px; color:var(--textDim); letter-spacing:.06em; margin-top:3px; text-transform:uppercase; }
+.livecard-meta { font-family:var(--sans); font-size:11.5px; color:var(--textDim); letter-spacing:0; margin-top:3px; text-transform:none; }
 .livecard-pill { font-family:var(--mono); font-size:var(--fsXs); font-weight:600; letter-spacing:.1em; padding:3px 8px; border-radius:4px; border:1px solid var(--border); color:var(--textDim); flex:none; }
 .livecard-pill.cashing { color:var(--positive); border-color:rgba(63,182,163,.5); }
 .livecard-pill.live { color:var(--accent); border-color:rgba(232,184,75,.5); }
@@ -563,7 +566,7 @@ section { padding:44px 0; }
 
 /* ---------- batter-props expanded detail ---------- */
 .bm-row { display:grid; grid-template-columns:104px 1.6fr 1.1fr 1.4fr; gap:12px; align-items:baseline; margin-top:9px; font-family:var(--mono); font-size:12.5px; }
-.bm-label { font-family:var(--mono); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--text); }
+.bm-label { font-family:var(--sans); font-weight:600; font-size:12px; text-transform:none; letter-spacing:0; color:var(--text); }
 .bm-proj { color:var(--textDim); }
 .bm-books { color:var(--textDim); }
 .bm-none { color:var(--muted); grid-column:2 / -1; }
@@ -577,7 +580,7 @@ section { padding:44px 0; }
 .slip-legs { border-bottom:1px solid var(--border); }
 .slip-leg { display:flex; align-items:center; gap:14px; padding:13px 18px; border-bottom:1px solid var(--border); }
 .slip-leg:last-child { border-bottom:none; }
-.slip-tag { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--onAccent); background:var(--accentFill); border-radius:4px; padding:3px 7px; flex:none; min-width:56px; text-align:center; }
+.slip-tag { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--onAccent); background:var(--accentFill); border-radius:4px; padding:3px 7px; flex:none; min-width:56px; text-align:center; }
 .slip-tag.ml { background:var(--positive); }
 .slip-tag.batter { background:var(--warm); }
 .slip-leg-main { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
@@ -587,14 +590,14 @@ section { padding:44px 0; }
 .slip-remove { flex:none; font-family:var(--mono); font-size:13px; color:var(--textDim); background:none; border:1px solid var(--border); border-radius:5px; width:26px; height:26px; cursor:pointer; }
 .slip-remove:hover { color:var(--danger); border-color:var(--danger); }
 .slip-stake { display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid var(--border); }
-.slip-stake label { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.08em; text-transform:uppercase; color:var(--textDim); }
+.slip-stake label { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); }
 .slip-stake input { width:76px; font-family:var(--mono); font-size:15px; font-weight:600; color:var(--text); background:var(--board3); border:1px solid var(--border); border-radius:5px; padding:6px 10px; outline:none; }
 .slip-stake input:focus { border-color:var(--accent); }
 .slip-stake-note { font-family:var(--mono); font-size:11.5px; color:var(--textDim); }
 .slip-summary { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); }
 @media (max-width:640px){ .slip-summary { grid-template-columns:1fr; } }
 .slip-metric { background:var(--board); padding:16px 18px; }
-.slip-metric-k { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); }
+.slip-metric-k { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); }
 .slip-metric-v { font-family:var(--mono); font-weight:600; font-size:22px; margin-top:5px; color:var(--text); }
 .slip-metric-v.accent { color:var(--accent); }
 .slip-metric-v.g { color:var(--positive); }
@@ -604,7 +607,7 @@ section { padding:44px 0; }
 .viewtab:hover { border-color:var(--textDim); color:var(--text); }
 .viewtab.active { border-color:var(--accentGrad); background:linear-gradient(180deg, var(--accentFill), var(--accentGrad)); color:var(--onAccent); }
 /* Sub-label under each tab: the play tab is marked, the rest read as analysis. */
-.vt-tag { font-family:var(--mono); font-size:var(--fsXs); font-weight:400; letter-spacing:.14em; color:var(--textDim); text-transform:uppercase; }
+.vt-tag { font-family:var(--sans); font-size:var(--fsSm); font-weight:400; letter-spacing:0; color:var(--textDim); text-transform:none; }
 .vt-tag.is-play { color:var(--positive); }
 .viewtab.active .vt-tag { color:color-mix(in srgb, var(--ink) 78%, transparent); }
 .tabnote { font-family:var(--sans); font-size:13px; line-height:1.65; color:var(--textDim); margin:0; flex:1 1 420px; max-width:640px; text-wrap:pretty; }
@@ -612,18 +615,18 @@ section { padding:44px 0; }
 .tabrow { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; margin-bottom:22px; }
 /* Current-era sample + significance. Deliberately quiet: it reads as a caveat on
    the record, not as a badge. .is-sig only appears once a test actually clears. */
-.era-note { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em;
-  text-transform:uppercase; color:var(--textFaint); margin:0; flex:none; align-self:flex-start;
+.era-note { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0;
+  text-transform:none; color:var(--textFaint); margin:0; flex:none; align-self:flex-start;
   border:1px solid var(--border); border-radius:8px; padding:8px 11px; white-space:nowrap; }
 .era-note b { color:var(--textDim); font-weight:600; }
 .era-note.is-sig { color:var(--positive); border-color:color-mix(in srgb, var(--positive) 40%, var(--border)); }
 .era-note.is-sig b { color:var(--positive); }
-@media (max-width:640px){ .era-note { white-space:normal; font-size:var(--fsXs); padding:7px 10px; } }
+@media (max-width:640px){ .era-note { white-space:normal; font-size:var(--fsSm); padding:7px 10px; } }
 /* K-tab honesty banner — compact; only rendered on the K Props view */
 .ctx-banner { display:flex; gap:16px; align-items:flex-start; border:1px solid var(--border); border-left:3px solid var(--model); border-radius:12px; padding:16px 20px; margin-bottom:22px; font-size:13px; line-height:1.65; color:var(--textDim); text-wrap:pretty;
   background:linear-gradient(90deg, color-mix(in srgb, var(--model) 7%, transparent), transparent); }
 .ctx-banner b { color:var(--text); font-weight:600; }
-.ctx-banner-tag { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.12em; text-transform:uppercase; color:var(--model); background:var(--tintModel); border-radius:5px; padding:5px 9px; flex:none; align-self:flex-start; white-space:nowrap; }
+.ctx-banner-tag { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--model); background:var(--tintModel); border-radius:5px; padding:5px 9px; flex:none; align-self:flex-start; white-space:nowrap; }
 /* Outage variant: a stacked block rather than the tag + prose row, because it
    carries a heading, a body and an action. Red left edge, not blue — this is a
    failure on our side, and the model-blue used by the context banners would file
@@ -633,13 +636,13 @@ section { padding:44px 0; }
 .ctx-banner-outage .cb-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
 .ctx-banner-outage .cb-head b { font-size:14px; }
 .ctx-banner-outage .cb-dot { width:7px; height:7px; border-radius:50%; background:var(--danger); flex:none; }
-.ctx-banner-outage .cb-age { font-family:var(--mono);
-  font-size:var(--fsXs); letter-spacing:.1em; text-transform:uppercase; color:var(--danger);
+.ctx-banner-outage .cb-age { font-family:var(--sans);
+  font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--danger);
   background:color-mix(in srgb, var(--danger) 12%, transparent); border-radius:5px; padding:4px 8px; white-space:nowrap; }
 .ctx-banner-outage .cb-body { margin:0; }
 .ctx-banner-outage .cb-act { display:flex; align-items:center; gap:14px; margin-top:13px; flex-wrap:wrap; }
-.ctx-banner-outage .cb-retry { font-family:var(--mono);
-  font-size:var(--fsXs); letter-spacing:.1em; text-transform:uppercase; color:var(--accent);
+.ctx-banner-outage .cb-retry { font-family:var(--sans);
+  font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--accent);
   background:transparent; border:1px solid var(--accent); border-radius:8px;
   padding:9px 15px; cursor:pointer; min-height:38px; }
 .ctx-banner-outage .cb-retry:hover:not(:disabled) { background:color-mix(in srgb, var(--accent) 12%, transparent); }
@@ -710,7 +713,7 @@ section { padding:44px 0; }
 .filter-group { display:inline-flex; align-items:center; gap:8px; }
 .filter-chips { display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .sort-group { display:inline-flex; align-items:center; gap:8px; }
-.sort-lead { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.13em; text-transform:uppercase; color:var(--textFaint); }
+.sort-lead { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); }
 /* Sort is a segmented control, not loose chips — one enclosed box with the
    active segment filled. This is what tells it apart from the tier filters:
    the filters were reading as the same thing because an active filter and an
@@ -744,7 +747,7 @@ section { padding:44px 0; }
 .board-inner { min-width:0; }
 .board-cols { display:grid; grid-template-columns:var(--bcols); }
 .board-head-row { display:grid; grid-template-columns:var(--bcols); gap:13px; padding:12px 20px; background:var(--headTint); border-bottom:1px solid var(--border); }
-.col-label { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.13em; text-transform:uppercase; color:var(--textDim); font-weight:500; }
+.col-label { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); font-weight:500; }
 .col-label.center { text-align:center; }
 
 /* Game group header. Sits on the sunken surface so it reads as a divider rather
@@ -800,12 +803,12 @@ section { padding:44px 0; }
 .board-row .matchup-cell > b { font-size:16px; font-weight:700; letter-spacing:-.01em; }
 .view-kprops .board-row .matchup-cell > b, .view-moneyline .board-row .matchup-cell > b { font-size:15px; }
 /* Which club the player is on — a badge so you don't have to know the player. */
-.team-badge { display:inline-block; font-family:var(--mono); font-size:var(--fsXs); font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--model); background:var(--tintModel); border:none; border-radius:4px; padding:3px 6px; vertical-align:middle; position:relative; top:-1px; }
+.team-badge { display:inline-block; font-family:var(--sans); font-size:var(--fsSm); font-weight:600; letter-spacing:0; text-transform:none; color:var(--model); background:var(--tintModel); border:none; border-radius:4px; padding:3px 6px; vertical-align:middle; position:relative; top:-1px; }
 /* Team-colored variant: inline style sets the club's fill + readable text; the
    border is neutralized to a hairline so every club reads as a clean pill. */
 .team-badge.tc { font-weight:800; border-color:rgba(255,255,255,.14); }
 /* Same-game correlation: a heads-up tag + faint row tint grouping the cluster. */
-.corr-tag { align-self:flex-start; display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--accentDim); background:color-mix(in srgb, var(--accent) 10%, transparent); border-radius:5px; padding:4px 8px; white-space:nowrap; }
+.corr-tag { align-self:flex-start; display:inline-flex; align-items:center; gap:6px; font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--accentDim); background:color-mix(in srgb, var(--accent) 10%, transparent); border-radius:5px; padding:4px 8px; white-space:nowrap; }
 .corr-tag::before { content:''; width:5px; height:5px; background:var(--accentDim); border-radius:1px; flex:none; }
 .board-row.corr { background:linear-gradient(90deg, color-mix(in srgb, var(--warm) 4%, transparent), transparent 60%); }
 /* K-props pitcher-led matchup headline */
@@ -819,8 +822,8 @@ section { padding:44px 0; }
    resolved person. It says only that the league has not confirmed him yet, which
    is a fact about the schedule, not about the number. Giving it --danger or
    --warm would read as "something is wrong with this pick" and it is not. */
-.board-row .mp-src, .mp-src { font-family:var(--mono); font-weight:500; font-size:var(--fsXs);
-  letter-spacing:.08em; text-transform:uppercase; color:var(--textFaint);
+.board-row .mp-src, .mp-src { font-family:var(--sans); font-weight:500; font-size:var(--fsSm);
+  letter-spacing:0; text-transform:none; color:var(--textFaint);
   border:1px solid var(--borderFaint); border-radius:3px; padding:0 3px;
   margin-left:4px; vertical-align:1.5px; white-space:nowrap; }
 
@@ -850,7 +853,7 @@ section { padding:44px 0; }
    it qualifies the number above it rather than competing with it. "sharp" reads
    as a credential; "mkt" stays neutral-dim so the weaker case is legible without
    being alarming. */
-.fsrc { display:block; margin-top:5px; font-size:var(--fsXs); letter-spacing:.14em; text-transform:uppercase; color:var(--textFaint); font-weight:500; }
+.fsrc { font-family:var(--sans); display:block; margin-top:5px; font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); font-weight:500; }
 .fsrc.sharp { color:var(--positiveDim); }
 .board-row .interval-cell { color:var(--model); font-size:16px; font-family:var(--mono); font-variant-numeric:tabular-nums; }
 .view-kprops .board-row .interval-cell { color:var(--text); font-size:12px; }
@@ -860,7 +863,7 @@ section { padding:44px 0; }
 /* Under the board: what's showing vs. what exists, and the refresh cadence.
    Mirrors the header strip so the panel reads as bounded top and bottom. */
 .board-foot { display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:20px; font-family:var(--mono); font-size:var(--fsXs); color:var(--textFaint); }
-.pin-k { letter-spacing:.1em; text-transform:uppercase; }
+.pin-k { font-family:var(--sans); letter-spacing:0; text-transform:none; }
 .pin-sep { color:var(--borderFaint); }
 
 /* Tier heat chip — T1 brightest (strongest lean) → T3 muted → Pass outline.
@@ -878,12 +881,12 @@ section { padding:44px 0; }
 .odds-blank { font-family:var(--mono); font-size:11.5px; line-height:1.3; color:var(--textDim); font-style:italic; }
 /* Persisted closing line — shown for reference, visibly not a live/bettable price. */
 .odds-cell.closed { display:inline-flex; align-items:center; gap:7px; color:var(--textDim); }
-.closed-tag { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); border:1px solid var(--border); border-radius:4px; padding:1px 5px; }
+.closed-tag { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); border:1px solid var(--border); border-radius:4px; padding:1px 5px; }
 .pick-strip.has-play.closed { background:var(--board2); }
 .hero-closed { margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--textDim); border:1px solid var(--border); border-radius:8px; padding:8px 14px; white-space:nowrap; }
 
 .expanded-detail { padding:26px 22px 26px 44px; border-top:1px solid var(--borderSoft); border-bottom:1px solid var(--borderSoft); background:var(--board3); }
-.expanded-detail .expanded-title { font-family:var(--mono); font-size:var(--fsXs); color:var(--textDim); text-transform:uppercase; letter-spacing:.14em; margin-bottom:14px; }
+.expanded-detail .expanded-title { font-family:var(--sans); font-size:var(--fsSm); color:var(--textDim); text-transform:none; letter-spacing:0; margin-bottom:14px; }
 /* Per-market rows read as one table, not four loose lines: hairline dividers
    come from the 1px grid gap showing the container's background through. */
 .bm-table { display:grid; gap:1px; background:var(--borderSoft); border:1px solid var(--board2); border-radius:10px; overflow:hidden; }
@@ -898,8 +901,8 @@ section { padding:44px 0; }
    app.js adds `open` above 640px, keeping the desktop panel as it was. */
 .method { margin-top:20px; }
 /* Shared chip styling for both collapsible sections in the panel. */
-.method > summary, .pctl > summary { list-style:none; cursor:pointer; font-family:var(--mono);
-  font-size:var(--fsXs); letter-spacing:.14em; text-transform:uppercase; color:var(--textDim);
+.method > summary, .pctl > summary { list-style:none; cursor:pointer; font-family:var(--sans);
+  font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim);
   border:1px solid var(--border); border-radius:8px; padding:9px 12px; }
 .method > summary::-webkit-details-marker, .pctl > summary::-webkit-details-marker { display:none; }
 .method > summary::after, .pctl > summary::after { content:' \25BE'; color:var(--textFaint); }
@@ -939,7 +942,7 @@ section { padding:44px 0; }
    panel. Neutral analysis-blue rail so it never competes with the row's green
    edge; only the signed gap is coloured. */
 .price-read { display:flex; gap:12px; align-items:flex-start; margin-bottom:18px; padding:12px 15px; border:1px solid var(--border); border-left:3px solid var(--model); border-radius:9px; background:color-mix(in srgb, var(--model) 6%, transparent); font-family:var(--mono); font-size:12px; line-height:1.65; color:var(--textDim); text-wrap:pretty; }
-.price-read .pr-k { flex:none; font-size:var(--fsXs); letter-spacing:.12em; text-transform:uppercase; color:var(--model); padding-top:2px; }
+.price-read .pr-k { font-family:var(--sans); flex:none; font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--model); padding-top:2px; }
 .price-read b { color:var(--text); font-weight:600; }
 .price-read b.pr-clear.pos { color:var(--positive); }
 .price-read b.pr-clear.neg { color:var(--danger); }
@@ -1050,14 +1053,14 @@ section { padding:44px 0; }
 .roi-stat-v.r { color:var(--danger); }
 .roi-clv-note { font-family:var(--mono); font-size:12px; color:var(--textDim); margin-bottom:20px; }
 .roi-chart { margin-bottom:22px; }
-.roi-chart-title { font-family:var(--mono); font-size:var(--fsXs); color:var(--textDim); text-transform:uppercase; letter-spacing:.08em; margin-bottom:8px; }
+.roi-chart-title { font-family:var(--sans); font-size:var(--fsSm); color:var(--textDim); text-transform:none; letter-spacing:0; margin-bottom:8px; }
 .roi-chart svg { width:100%; height:96px; display:block; }
 .roi-chart-cap { font-family:var(--mono); font-size:12px; color:var(--textDim); margin-top:6px; }
 .roi-tables { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
 @media (max-width:640px){ .roi-tables { grid-template-columns:1fr; } .roi-stats { grid-template-columns:repeat(2,1fr); } }
 .roi-table { border:1px solid var(--border); border-radius:8px; overflow:hidden; }
 .roi-table-head, .roi-table-row { display:grid; grid-template-columns:1.3fr 1fr 1fr 1fr; gap:8px; padding:9px 14px; align-items:center; }
-.roi-table-head { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.08em; text-transform:uppercase; color:var(--textDim); background:var(--board); border-bottom:1px solid var(--border); }
+.roi-table-head { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); background:var(--board); border-bottom:1px solid var(--border); }
 .roi-table-row { font-family:var(--mono); font-size:13px; color:var(--text); }
 .roi-table-row:nth-child(even) { background:var(--board); }
 .roi-table-row span:first-child { font-family:var(--sans); font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0; }
@@ -1202,7 +1205,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      row leaves roughly 76px per tab once the gaps are taken out. */
   .board-view { gap:5px; }
   .viewtab { min-height:0; padding:11px 5px; font-size:var(--fsXs); gap:2px; border-radius:10px; white-space:nowrap; }
-  .vt-tag { font-size:var(--fsXs); letter-spacing:.06em; }
+  .vt-tag { font-size:var(--fsSm); letter-spacing:0; }
   .tabrow { gap:12px; margin-bottom:16px; }
   .pin-note { font-size:var(--fsXs); padding:9px 12px; gap:6px; }
   .board-toolbar { gap:8px; }
@@ -1239,7 +1242,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      Re-stating the sizing at matching specificity fixes it, and the group then
      sits alongside Compare instead of stacking. */
   .sort-group { gap:6px; }
-  .sort-lead { font-size:var(--fsXs); letter-spacing:.1em; }
+  .sort-lead { font-size:var(--fsSm); letter-spacing:0; }
   .sort-chips { padding:2px; gap:1px; border-radius:9px; }
   /* Sized for the thumb, not for density. An earlier pass squeezed these to 30px
      and 6px padding so the group could share a row with Compare — it saved ~35px
@@ -1296,7 +1299,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    on phones it scrolls away so it never eats screen height. */
 .slate-summary { position:sticky; top:calc(var(--hdrH) + var(--sportsH)); z-index:8; background:var(--headerBg); backdrop-filter:blur(8px); border-bottom:1px solid var(--border); }
 .slate-summary .ss-in { max-width:1320px; margin:0 auto; padding:9px 32px; display:flex; gap:24px; align-items:center; flex-wrap:wrap; font-family:var(--mono); font-size:12px; }
-.slate-summary .k { color:var(--textDim); font-size:var(--fsXs); letter-spacing:.09em; text-transform:uppercase; }
+.slate-summary .k { font-family:var(--sans); color:var(--textDim); font-size:var(--fsSm); letter-spacing:0; text-transform:none; }
 .slate-summary b { font-size:15px; font-weight:600; margin-left:6px; font-variant-numeric:tabular-nums; }
 .slate-summary .upd { margin-left:auto; color:var(--textDim); font-size:var(--fsXs); }
 @media (max-width:720px) {
@@ -1313,7 +1316,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pct .fill.model { background:var(--model); }  .pct .badge.model { background:var(--model); color:var(--ink); }
 
 .side { position:relative; }
-.badge-edge { position:absolute; top:16px; right:18px; font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; font-weight:700; color:var(--onAccent); background:var(--accentFill); border-radius:99px; padding:3px 9px; }
+.badge-edge { position:absolute; top:16px; right:18px; font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; font-weight:700; color:var(--onAccent); background:var(--accentFill); border-radius:99px; padding:3px 9px; }
 
 /* Full-width duel rows must stretch across both grid columns — a flex child
    otherwise collapses to its min-content (the stars) and overlaps the WHY row. */
@@ -1333,7 +1336,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pick-strip.nopl .nopl-go { margin-left:auto; font-family:var(--mono); font-size:12.5px; color:var(--accent); white-space:nowrap; }
 
 .hero-why { grid-column:1 / -1; display:flex; gap:11px; padding:14px 28px; border-top:1px solid var(--border); font-size:14px; line-height:1.55; color:var(--text); }
-.hero-why .wk { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.1em; text-transform:uppercase; color:var(--model); font-weight:700; padding-top:3px; flex:none; }
+.hero-why .wk { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--model); font-weight:700; padding-top:3px; flex:none; }
 .hero-why.pass .wk { color:var(--textDim); }
 .hero-why b { font-weight:700; }
 
@@ -1341,7 +1344,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .slip-leg-edge { font-family:var(--mono); font-size:12.5px; font-weight:700; }
 .slip-leg-edge.pos { color:var(--positive); } .slip-leg-edge.neg { color:var(--danger); }
 .slip-avg { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; padding:12px 2px 2px; }
-.slip-avg-k { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); }
+.slip-avg-k { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); }
 .slip-avg-v { font-family:var(--mono); font-size:15px; font-weight:700; }
 .slip-avg-v.pos { color:var(--positive); } .slip-avg-v.neg { color:var(--danger); }
 .slip-avg-note { flex-basis:100%; font-family:var(--mono); font-size:var(--fsXs); line-height:1.5; color:var(--textDim); }
@@ -1375,7 +1378,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .nfl-markets { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:14px 0 16px }
 .nflm { border-radius:10px; padding:11px 12px; border:1px solid var(--border); background:var(--card) }
 .nflm-k { font-size:15px; font-weight:600; color:var(--text) }
-.nflm-t { font-size:var(--fsXs); font-family:var(--mono); color:var(--textFaint); letter-spacing:.06em; text-transform:uppercase; margin-top:3px }
+.nflm-t { font-size:var(--fsSm); font-family:var(--sans); color:var(--textFaint); letter-spacing:0; text-transform:none; margin-top:3px }
 /* Not gold. Gold is the live market number, and these markets have no number --
    filling them would promise a play that does not exist. */
 .nflm.is-soon { background:var(--board3); border-style:dashed; opacity:.72 }
@@ -1396,7 +1399,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .nfs-t span { color:var(--textFaint); font-size:14px; padding:0 4px }
 .nfs-g { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-top:11px }
 .nfs-g div { display:flex; flex-direction:column; gap:3px }
-.nfs-g span { font-size:var(--fsXs); letter-spacing:.09em; text-transform:uppercase; color:var(--textFaint); font-family:var(--mono) }
+.nfs-g span { font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); font-family:var(--sans) }
 .nfs-g b { font-size:16px; font-family:var(--mono); color:var(--text); font-weight:600 }
 
 /* Empty board. A designed, reachable state -- not an accident. */
@@ -1579,16 +1582,16 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 .nfl-detail { display:flex; flex-direction:column; gap:11px }
 .nfd-k {
-  font-size:var(--fsXs); letter-spacing:.12em; text-transform:uppercase; color:var(--textFaint);
-  font-family:var(--mono);
+  font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint);
+  font-family:var(--sans);
 }
 .nfd-read { font-size:13px; line-height:1.6; color:var(--textDim) }
 .nfd-read b { color:var(--text) }
 .nfd-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px }
 .nfd-c { display:flex; flex-direction:column; gap:3px; min-width:0 }
 .nfd-c span {
-  font-size:var(--fsXs); letter-spacing:.09em; text-transform:uppercase; color:var(--textFaint);
-  font-family:var(--mono);
+  font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint);
+  font-family:var(--sans);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .nfd-c b {
@@ -1649,8 +1652,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    here would read as "our side", which is exactly what it must not mean.       */
 .conf-chip {
   display:inline-flex; align-items:center; justify-content:center;
-  font-family:var(--mono);
-  font-size:var(--fsXs); letter-spacing:.08em; text-transform:uppercase;
+  font-family:var(--sans);
+  font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   border-radius:6px; padding:4px 9px; border:1px solid var(--border);
   color:var(--textDim); background:var(--board3);
 }
@@ -1665,8 +1668,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    thing they scroll through. Desktop shows everything. */
 .np-more {
   display:none; width:100%; margin-top:10px; padding:11px 12px;
-  font-family:var(--mono);
-  font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase;
+  font-family:var(--sans);
+  font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   color:var(--textDim); background:var(--board3);
   border:1px dashed var(--borderFaint); border-radius:10px; cursor:pointer;
 }
@@ -1782,14 +1785,14 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tr-hero { padding:36px 0 24px; }
 .tr-hero h1 { font-size:46px; line-height:1; font-weight:800; letter-spacing:-.02em; text-transform:uppercase; margin:0 0 14px; }
 .tr-hero .sub { max-width:64ch; font-size:15.5px; line-height:1.6; color:var(--textDim); text-wrap:pretty; }
-.tr-hero .eyebrow { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin-bottom:14px; }
+.tr-hero .eyebrow { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--accent); margin-bottom:14px; }
 
 /* A 1px gap over a border-coloured ground draws the hairlines between cells,
    which is why the strip has no doubled borders at its corners. */
 .tr-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:1px;
   background:var(--border); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:18px; }
 .tr-cell { background:var(--board); padding:18px 20px; }
-.tr-k { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.14em; text-transform:uppercase; color:var(--textFaint); margin-bottom:9px; }
+.tr-k { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); margin-bottom:9px; }
 .tr-v { font-family:var(--mono); font-size:28px; font-weight:600; letter-spacing:-.01em; font-variant-numeric:tabular-nums; color:var(--text); }
 .tr-n { margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--textFaint); text-wrap:pretty; }
 
@@ -1799,7 +1802,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tr-card-body p { margin:0 0 12px; }
 .tr-card-body p:last-child { margin-bottom:0; }
 .tr-card-body b { color:var(--text); font-weight:600; }
-.tr-kicker { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.14em; text-transform:uppercase; color:var(--accent); }
+.tr-kicker { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--accent); }
 .tr-kicker-clv { color:var(--clv); }
 .tr-kicker-caution { color:var(--caution); }
 .tr-big { font-family:var(--mono); font-size:34px; font-weight:600; font-variant-numeric:tabular-nums; margin-bottom:10px; }
@@ -1830,7 +1833,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tr-table .tr-thead, .tr-table .tr-tr { grid-template-columns:minmax(150px,1.6fr) 88px 96px 88px 88px 68px; }
 .tr-log .tr-thead, .tr-log .tr-tr { grid-template-columns:96px minmax(160px,1.5fr) minmax(96px,1fr) 76px 66px 74px 74px; }
 .tr-thead { background:var(--headTint); border-bottom:1px solid var(--border);
-  font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.13em; text-transform:uppercase; color:var(--textDim); }
+  font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textDim); }
 .tr-tr { border-bottom:1px solid var(--borderSoft); font-size:13.5px; }
 .tr-tr:last-child { border-bottom:none; }
 /* Numbers right-align in mono with tabular figures so the columns read as
@@ -1845,13 +1848,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 .tr-era { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .tr-era-note { flex-basis:100%; font-size:11.5px; line-height:1.5; color:var(--textFaint); text-wrap:pretty; }
-.tr-tag { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.1em; text-transform:uppercase; border-radius:4px; padding:2px 6px; }
+.tr-tag { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; border-radius:4px; padding:2px 6px; }
 .tr-tag-good { color:var(--positive); background:color-mix(in srgb, var(--positive) 12%, transparent); }
 .tr-tag-bad { color:var(--danger); background:color-mix(in srgb, var(--danger) 12%, transparent); }
 .tr-tag-dim { color:var(--textFaint); background:color-mix(in srgb, var(--text) 8%, transparent); }
 
 .tr-foot { margin-top:11px; font-size:12.5px; line-height:1.65; color:var(--textFaint); text-wrap:pretty; }
-.tr-pill { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.1em; text-transform:uppercase;
+.tr-pill { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   border-radius:5px; padding:3px 7px; margin-right:8px; white-space:nowrap; }
 .tr-pill-caution { color:var(--caution); background:var(--cautionTint); }
 .tr-pill-danger { color:var(--danger); background:color-mix(in srgb, var(--danger) 12%, transparent); }
@@ -1911,7 +1914,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .np-limits > summary::-webkit-details-marker { display:none; }
 .np-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); flex:none; }
 .np-sum-title { font-size:15px; font-weight:700; letter-spacing:-.01em; color:var(--text); }
-.np-sum-tag { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.1em; text-transform:uppercase; color:var(--textFaint); }
+.np-sum-tag { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); }
 /* Locked 2x2. A 3x1 leaves a dead cell, and these four caveats are peers —
    none of them is a footnote to the others. */
 .np-limit-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--border); }
@@ -1930,7 +1933,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .np-right { margin-left:auto; }
 .np-chips { display:inline-flex; align-items:center; gap:4px; flex-wrap:wrap; }
 .np-chip { height:30px; padding:0 11px; border:1px solid var(--border); border-radius:8px; background:var(--board);
-  color:var(--textDim); font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; cursor:pointer; }
+  color:var(--textDim); font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; cursor:pointer; }
 .np-chip:hover { border-color:var(--textFaint); }
 .np-chip.active { border-color:var(--accent); background:var(--tintAccent); color:var(--accent); }
 .np-chip .chip-count { margin-left:6px; color:var(--textFaint); font-variant-numeric:tabular-nums; }
@@ -1957,7 +1960,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .np-team-out { color:var(--danger); }
 .np-p-sub { margin-top:5px; display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;
   font-size:11.5px; color:var(--textFaint); text-wrap:pretty; }
-.np-flag { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.08em; text-transform:uppercase;
+.np-flag { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   border-radius:4px; padding:2px 6px; flex:none; }
 .np-flag-moved { color:var(--caution); background:var(--cautionTint); }
 /* The one place this page uses --danger: not a strength reading, a data state. */
@@ -2058,7 +2061,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .cmp-name i { display:block; margin-top:3px; font-family:var(--mono); font-size:var(--fsXs); font-style:normal; color:var(--textFaint); }
 .cmp-row { border-bottom:1px solid var(--borderSoft); }
 .cmp-row:last-of-type { border-bottom:none; }
-.cmp-k { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.12em; text-transform:uppercase; color:var(--textFaint); }
+.cmp-k { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); }
 .cmp-v { font-family:var(--mono); font-size:14px; font-variant-numeric:tabular-nums; color:var(--text); min-width:0; }
 /* Tone follows the board's own convention. Only the batter board posts, so only
    it gets strength colour; zero renders neutral, never red. */
@@ -2116,8 +2119,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .la-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:13px 18px;
   background:color-mix(in srgb, var(--danger) 6%, transparent); border-bottom:1px solid var(--border); }
 .la-dot { width:7px; height:7px; border-radius:50%; background:var(--danger); flex:none; }
-.la-title { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.13em; text-transform:uppercase; color:var(--danger); }
-.la-count { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.08em; text-transform:uppercase;
+.la-title { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--danger); }
+.la-count { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   color:var(--danger); background:color-mix(in srgb, var(--danger) 13%, transparent);
   border-radius:5px; padding:3px 8px; white-space:nowrap; }
 .la-note { font-size:12px; color:var(--textFaint); }
@@ -2125,7 +2128,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .la-row { cursor:pointer; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   padding:11px 18px; border-bottom:1px solid var(--borderSoft); }
 .la-row:last-child { border-bottom:none; }
-.la-tag { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.08em; text-transform:uppercase;
+.la-tag { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   color:var(--danger); border:1px solid color-mix(in srgb, var(--danger) 40%, transparent);
   border-radius:4px; padding:2px 6px; white-space:nowrap; flex:none; }
 .la-name { font-size:14px; font-weight:600; color:var(--text); }
@@ -2299,8 +2302,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pp-tag.diff { color:var(--warm); font-weight:600 }
 .ml-edge-tag { display:block; margin-top:2px; font-family:var(--mono); font-size:var(--fsXs); font-style:normal; color:var(--textFaint); letter-spacing:.02em; white-space:nowrap }
 .ml-edge-tag.check { color:var(--warm); font-weight:600 }
-.cell-src { display:block; margin-top:2px; font-family:var(--mono); font-size:var(--fsXs);
-  font-style:normal; letter-spacing:.1em; text-transform:uppercase; color:var(--textDim); }
+.cell-src { display:block; margin-top:2px; font-family:var(--sans); font-size:var(--fsSm);
+  font-style:normal; letter-spacing:0; text-transform:none; color:var(--textDim); }
 .tier-chip.noprice { color:var(--textFaint); background:color-mix(in srgb, var(--text) 7%, transparent);
   border:1px solid var(--border); }
 
@@ -2324,8 +2327,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* The adjustments, now in the panel rather than the row. Labelled, because out
    of the row's context "vs RHP Kent" needs to say what it is doing there. */
 .bwhy-panel { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
-.bwhy-k { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.12em;
-  text-transform:uppercase; color:var(--textFaint); }
+.bwhy-k { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0;
+  text-transform:none; color:var(--textFaint); }
 
 /* Same-game correlation, inline. It keeps the accent so it still reads as a
    flag, but shares the subline rather than claiming a row of its own — it fires
@@ -2627,7 +2630,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   background:transparent; font-size:12.5px; letter-spacing:.05em; white-space:nowrap; line-height:36px; }
 .board-view .viewtab:hover { border:0; background:color-mix(in srgb, var(--text) 6%, transparent); color:var(--text); }
 .board-view .viewtab.active { border:0; background:var(--accentFill); color:var(--onAccent); }
-.board-view .vt-tag { font-size:var(--fsXs); letter-spacing:.12em; }
+.board-view .vt-tag { font-size:var(--fsSm); letter-spacing:0; }
 
 /* The notes under the switch lose their boxes and share one quiet line. The
    long "Plays = batter unders only" paragraph is retired: it called everything
@@ -2644,7 +2647,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .slate-summary .ss-in { display:grid; grid-template-columns:repeat(4, auto); justify-content:space-between;
     align-items:start; gap:0 12px; padding:8px 16px 9px; }
   .slate-summary .ss-in > span:not(.upd) { display:block; min-width:0; white-space:nowrap; }
-  .slate-summary .k { display:block; font-size:var(--fsXs); letter-spacing:.08em; margin-bottom:1px; }
+  .slate-summary .k { font-family:var(--sans); display:block; font-size:var(--fsSm); letter-spacing:0; margin-bottom:1px; }
   .slate-summary b { margin-left:0; font-size:16px; }
 }
 
@@ -2731,11 +2734,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .soc-fav .tc-book b { font-weight:600; }
 
 /* Today's card before lineups post: amber is the data-caveat colour, not a call. */
-.tc-wait { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.04em; text-transform:uppercase;
+.tc-wait { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   color:var(--caution); border:1px solid color-mix(in srgb, var(--caution) 45%, var(--border)); border-radius:4px; padding:1px 5px; white-space:nowrap; }
 .tc-wait-note { margin-top:6px; font-size:12px; line-height:1.45; color:var(--caution); }
 /* PrizePicks' number against the book's: green when its under is the easier one. */
-.tc-gap { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.04em; text-transform:uppercase;
+.tc-gap { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   color:var(--positive); border:1px solid color-mix(in srgb, var(--positive) 45%, var(--border)); border-radius:4px; padding:1px 5px; white-space:nowrap; }
 .tc-gap.lower { color:var(--caution); border-color:color-mix(in srgb, var(--caution) 45%, var(--border)); }
 .tc-rec-line b { color:var(--text); font-weight:600; }
@@ -2752,7 +2755,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Today's card: a leg's level, by how legs there have landed at PrizePicks. */
 .pk-rec.tc-band-good { color:var(--positive); }
 .pk-rec.tc-band-weak { color:var(--caution); }
-.pk-new { font-family:var(--mono); font-size:var(--fsXs); text-transform:uppercase; letter-spacing:.04em; color:var(--caution); }
+.pk-new { font-family:var(--sans); font-size:var(--fsSm); text-transform:none; letter-spacing:0; color:var(--caution); }
 .pk-intro { margin-top:0; }
 
 /* Soccer player props: a match per block, a line stepper on every row. */
@@ -2769,7 +2772,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   font-family:var(--mono); font-size:14px; text-align:center; padding:0 4px; -moz-appearance:textfield; }
 .sp-in::-webkit-outer-spin-button, .sp-in::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
 .sp-both { font-family:var(--mono); font-size:11.5px; color:var(--textFaint); white-space:nowrap; }
-.sp-lbl { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--textFaint); }
+.sp-lbl { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); }
 .sp-card .tc-p.sp-flat { color:var(--textDim); }
 .sp-search { width:100%; margin-top:10px; height:38px; border:1px solid var(--border); border-radius:10px; background:transparent;
   color:var(--text); font-size:15px; padding:0 12px; }
@@ -2782,13 +2785,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .sp-ps { display:block; margin-top:3px; font-family:var(--mono); font-size:11.5px; color:var(--textDim); line-height:1.5; }
 .sp-star { color:var(--accent); font-size:12px; }
 .sp-stats { padding:0 10px 10px; }
-.pk-sport { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--textFaint); }
+.pk-sport { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); }
 .pk-when { white-space:nowrap; }
 .pk-entries { list-style:none; margin:12px 0 0; padding:10px 12px; display:grid; gap:5px;
   border:1px solid var(--border); border-radius:10px; font-size:13px; color:var(--textDim); }
 .pk-entries li { display:grid; grid-template-columns:minmax(0, 1fr) auto auto; gap:12px; align-items:baseline; }
 .pk-entries li > span:not(:first-child) { white-space:nowrap; text-align:right; }
-.pk-entries .pk-eh { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.06em; text-transform:uppercase; color:var(--textFaint); }
+.pk-entries .pk-eh { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); }
 .pk-entries b { color:var(--positive); font-weight:600; font-family:var(--mono); }
 .pk-v { font-size:12px; }
 .pk-be { font-family:var(--mono); font-size:11.5px; color:var(--textFaint); }

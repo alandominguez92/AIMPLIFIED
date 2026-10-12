@@ -31,6 +31,23 @@ for (const f of files) {
   ok(!all.length, all.length ? `${f}: ${all.length} below 11px (first: ${all[0][0]})` : `${f}: none`);
 }
 
+// Labels are sentence-case Archivo; mono is for numbers. 79% of the page's
+// text was mono, most of it uppercase letter-spaced labels. A rule that sets
+// mono and uppercases its text is one of those labels coming back.
+console.log('\n-- labels are Archivo, not uppercase mono --');
+const rules = (s) => [...strip(s).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim().split('\n').pop().trim(), body: m[2] }));
+for (const f of ['style.css', 'app.js']) {
+  const bad = rules(fs.readFileSync(BOARD + '/' + f, 'utf8'))
+    .filter((r) => /font-family:\s*var\(--mono\)/.test(r.body) && /text-transform:\s*uppercase/.test(r.body));
+  ok(!bad.length, bad.length ? `${f}: ${bad.length} uppercase mono rules (first: ${bad[0].sel})` : `${f}: no uppercase mono label`);
+}
+// These four set no face of their own and inherit mono from their row.
+for (const sel of ['.slate-summary .k', '.fsrc', '.pin-k', '.price-read .pr-k']) {
+  const r = rules(fs.readFileSync(BOARD + '/style.css', 'utf8')).filter((x) => x.sel === sel);
+  ok(r.length && r.every((x) => !/text-transform:\s*uppercase/.test(x.body)) && r.some((x) => /font-family:\s*var\(--sans\)/.test(x.body)),
+    `${sel} is set in Archivo, sentence case`);
+}
+
 console.log('\n-- contrast --');
 const tag = (css.match(/\.cell-src\s*\{([^}]*)\}/) || [])[1] || '';
 ok(tag && !/--textGhost/.test(tag) && /--textDim/.test(tag), 'the sharp/model tag is in --textDim, not --textGhost');

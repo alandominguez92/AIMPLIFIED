@@ -726,14 +726,14 @@
       .ab2-head{display:flex;align-items:center;gap:11px;padding:13px 16px;background:var(--board,#10202F);flex-wrap:wrap;}
       .ab2-dot{width:8px;height:8px;border-radius:99px;background:var(--danger);flex:none;}
       @keyframes ab2pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--danger) 70%,transparent);}70%{box-shadow:0 0 0 7px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
-      .ab2-kicker{font-family:var(--mono);font-size:var(--fsXs);letter-spacing:.12em;text-transform:uppercase;color:var(--danger);font-weight:700;}
-      .ab2-badge{font-family:var(--mono);font-size:var(--fsXs);letter-spacing:.04em;text-transform:uppercase;font-weight:600;color:var(--danger);background:color-mix(in srgb,var(--danger) 10%,transparent);border:1px solid color-mix(in srgb,var(--danger) 40%,var(--border));border-radius:99px;padding:2px 9px;}
+      .ab2-kicker{font-family:var(--sans);font-size:var(--fsSm);letter-spacing:0;text-transform:none;color:var(--danger);font-weight:700;}
+      .ab2-badge{font-family:var(--sans);font-size:var(--fsSm);letter-spacing:0;text-transform:none;font-weight:600;color:var(--danger);background:color-mix(in srgb,var(--danger) 10%,transparent);border:1px solid color-mix(in srgb,var(--danger) 40%,var(--border));border-radius:99px;padding:2px 9px;}
       .ab2-meta{font-family:var(--mono);font-size:11.5px;color:var(--textDim);}
       .ab2-collapse{margin-left:auto;font-family:var(--mono);font-size:var(--fsXs);color:var(--textDim);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 11px;cursor:pointer;}
       .ab2-collapse:hover{color:var(--text);border-color:var(--accent);}
       .ab2-row{display:flex;align-items:flex-start;gap:11px;padding:11px 16px;border-top:1px solid var(--border);min-width:0;}
       .ab2-row.impact{background:color-mix(in srgb,var(--danger) 5%,transparent);}
-      .ab2-tag{font-family:var(--mono);font-size:var(--fsXs);letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:3px 7px;white-space:nowrap;flex:none;margin-top:1px;}
+      .ab2-tag{font-family:var(--sans);font-size:var(--fsSm);letter-spacing:0;text-transform:none;font-weight:700;border-radius:4px;padding:3px 7px;white-space:nowrap;flex:none;margin-top:1px;}
       .ab2-tag.hit{color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 50%,var(--border));background:color-mix(in srgb,var(--danger) 10%,transparent);}
       .ab2-tag.soft{color:var(--warm);border:1px solid color-mix(in srgb,var(--warm) 50%,var(--border));background:color-mix(in srgb,var(--warm) 10%,transparent);}
       .ab2-txt{flex:1;min-width:0;font-size:12.5px;line-height:1.5;color:var(--text);overflow-wrap:anywhere;}
@@ -805,7 +805,7 @@
       #yesterdayCard:empty{display:none;}
       .yc{border:1px solid var(--border);border-radius:10px;background:var(--board3,#0C1A26);overflow:hidden;}
       .yc-ribbon{display:flex;align-items:center;gap:11px;padding:12px 16px;flex-wrap:wrap;}
-      .yc-lead{font-family:var(--mono);font-size:var(--fsXs);letter-spacing:.11em;text-transform:uppercase;color:var(--textDim);font-weight:700;}
+      .yc-lead{font-family:var(--sans);font-size:var(--fsSm);letter-spacing:0;text-transform:none;color:var(--textDim);font-weight:700;}
       .yc-rec{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--text);}
       .yc-units{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--textDim);}
       .yc-units.up{color:var(--positive);}
@@ -817,7 +817,7 @@
       .yc-season b{color:var(--text);font-weight:600;}
       .yc-view{margin-left:auto;font-family:var(--mono);font-size:var(--fsXs);color:var(--accent);background:none;border:none;cursor:pointer;padding:0;white-space:nowrap;}
       .yc-view:hover{text-decoration:underline;}
-      .yc-scope{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--border);font-family:var(--mono);font-size:var(--fsXs);letter-spacing:.03em;text-transform:uppercase;color:var(--textDim);background:color-mix(in srgb,var(--accent) 4%,transparent);}
+      .yc-scope{display:flex;align-items:center;gap:8px;padding:8px 16px;border-top:1px solid var(--border);font-family:var(--sans);font-size:var(--fsSm);letter-spacing:0;text-transform:none;color:var(--textDim);background:color-mix(in srgb,var(--accent) 4%,transparent);}
       .yc-scope b{color:var(--text);font-weight:700;}
       .yc-rows{display:grid;grid-template-columns:1fr 1fr;}
       .yc-row{display:flex;align-items:center;gap:10px;padding:10px 15px;border-top:1px solid var(--border);min-width:0;}
@@ -833,7 +833,7 @@
       .yc-actual b{font-weight:700;font-size:13px;}
       .yc-actual .aw{color:var(--positive);}
       .yc-actual .al{color:var(--danger);}
-      .yc-tier{flex:none;font-family:var(--mono);font-size:var(--fsXs);letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;color:var(--textDim);border:1px solid var(--border);}
+      .yc-tier{flex:none;font-family:var(--sans);font-size:var(--fsSm);letter-spacing:0;text-transform:none;font-weight:700;border-radius:4px;padding:2px 6px;white-space:nowrap;color:var(--textDim);border:1px solid var(--border);}
       .yc-tier.t1{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--border));background:color-mix(in srgb,var(--accent) 8%,transparent);}
       .yc-foot{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:10px 16px;border-top:1px solid var(--border);font-family:var(--mono);font-size:var(--fsXs);color:var(--textDim);flex-wrap:wrap;}
       .yc-foot b{color:var(--text);}
@@ -1832,7 +1832,7 @@
     const title = sharp
       ? 'Fair line from the sharp books (Shin de-vigged median) — independent of DK/FD'
       : 'No sharp book quoted this line; fair fell back to the book being bet';
-    return `<span class="fsrc${sharp ? ' sharp' : ''}" title="${esc(title)}">${sharp ? 'sharp' : 'mkt'}</span>`;
+    return `<span class="fsrc${sharp ? ' sharp' : ''}" title="${esc(title)}">${sharp ? 'Sharp' : 'Mkt'}</span>`;
   }
 
   // "U 1.5 TB" -> "Under 1.5 TB". The board's own shorthand is fine in a column
@@ -2189,7 +2189,7 @@
         // an edge it reads as just another quoted figure.
         detailCell = `<span class="interval-cell" style="color:var(--model)">`
           + `${pUnder != null ? pUnder + '%' : esc(g.interval)}`
-          + `${pUnder != null ? '<i class="cell-src">model</i>' : ''}</span>`;
+          + `${pUnder != null ? '<i class="cell-src">Model</i>' : ''}</span>`;
       } else {
         pickCell = esc(g.pick);
         // K props only. The run line shares this branch and has no arm to
@@ -2320,7 +2320,7 @@
             // a quote. Saying so here, once per row and in two words, is what
             // stops the dash reading as a value we failed to compute.
             !hasEdge && isBatter() && g.tier === 'model'
-              ? '<i class="cell-src">needs price</i>' : isML() ? mlEdgeTag(ml, hasEdge) : fairSrcTag(g)}</span>
+              ? '<i class="cell-src">Needs price</i>' : isML() ? mlEdgeTag(ml, hasEdge) : fairSrcTag(g)}</span>
           ${detailCell}
           <span class="tier-cell">${isPlayView ? tierChip(tierVal) : '<span class="ctx-chip">analysis</span>'}</span>
           <span class="chevron">${isExpanded ? '▲' : '▼'}</span>

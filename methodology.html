@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=d63c155462">
+<link rel="stylesheet" href="style.css?v=16e50f6e63">
 <style>
   .docwrap { max-width:1100px; margin:0 auto; padding:0 24px; }
   .docnav { display:flex; align-items:center; justify-content:space-between; padding:22px 0; border-bottom:1px solid var(--border); }
@@ -63,7 +63,7 @@
     <div class="note">The batter model is deliberately <b>regressed toward the market</b>. We keep only a fraction of the gap between our raw projection and the sharp line, because an uncalibrated model that trusts itself too much manufactures fake edges. We'd rather understate an edge than invent one.</div>
 
     <h2>Edge and tiers</h2>
-    <p>The <b>fair line</b> is the vig-free probability taken from the <span class="c">sharp books</span> — Pinnacle, novig and ProphetX — stripped of margin using the <b>Shin</b> method and pooled by median. It is deliberately never taken from the book we bet at: pricing a DraftKings bet against a DraftKings-derived fair measures our disagreement with DraftKings, not value, and an edge built that way can't predict where the line is going to move. The prices you see are still DK/FD, because those are the accounts you can actually use. Where no sharp book quotes our exact number, the row is marked <b>mkt</b> instead of <b>sharp</b> so you can see which pricing produced it.</p>
+    <p>The <b>fair line</b> is the vig-free probability taken from the <span class="c">sharp books</span> — Pinnacle, novig and ProphetX — stripped of margin using the <b>Shin</b> method and pooled by median. It is deliberately never taken from the book we bet at: pricing a DraftKings bet against a DraftKings-derived fair measures our disagreement with DraftKings, not value, and an edge built that way can't predict where the line is going to move. The prices you see are still DK/FD, because those are the accounts you can actually use. Where no sharp book quotes our exact number, the row is marked <b>Mkt</b> instead of <b>Sharp</b> so you can see which pricing produced it.</p>
     <p>“Edge” is the gap between our fair probability and the market's vig-free probability at the same line, in percentage points. Positive means value on the board. A pick is tiered <b>T1 / T2 / T3</b> by how large that edge is; anything below the bar is a <b>Pass</b> — the model found nothing, so it isn't a play and never counts toward the record.</p>
     <div class="formula">edge = ( our P(under) − market's fair P(under) )  ×  100</div>
 
