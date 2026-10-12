@@ -562,7 +562,7 @@ section { padding:44px 0; }
 .board-view { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:22px; }
 .pin-note { display:flex; align-items:center; gap:9px; flex-wrap:wrap; font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.02em; color:var(--textDim); border:1px solid var(--borderSoft); border-radius:10px; background:var(--board); padding:10px 14px; margin:0; }
 .pin-note b { color:var(--text); font-weight:600; }
-.pin-note .pin-chk { color:var(--positive); }
+.pin-note .pin-chk { color:var(--textDim); }
 
 /* ---------- batter-props expanded detail ---------- */
 .bm-row { display:grid; grid-template-columns:104px 1.6fr 1.1fr 1.4fr; gap:12px; align-items:baseline; margin-top:9px; font-family:var(--mono); font-size:12.5px; }
@@ -660,7 +660,10 @@ section { padding:44px 0; }
    headline on a tight line, the bar, and the numbers. The emphasis in this cell
    comes from the bar and the figures under it, not from the size of the words —
    a 15px headline on a 22.5px line was 8px of leading doing nothing. */
-.fade-pick { display:block; font-size:13.5px; line-height:1.12; font-weight:700; letter-spacing:-.01em; color:var(--accent); }
+.fade-pick { display:block; font-size:13.5px; line-height:1.12; font-weight:700; letter-spacing:-.01em; color:var(--text); }
+/* One meaning per colour (2026-10-12): gold is "this is a bet", so the pick is
+   gold on a play row only. It was gold on every row, pass included. */
+.board-row.is-play .fade-pick { color:var(--accent); }
 /* The context boards' headline. Same shape as .fade-pick, deliberately NOT its
    colour: accent is the play colour, and K props and the moneyline are posted
    as analysis we do not bet. Tinting them accent would say "play" on a row the
@@ -838,8 +841,10 @@ section { padding:44px 0; }
 .odds-books .bk-name { font-size:var(--fsXs); letter-spacing:.06em; color:var(--textFaint); min-width:24px; }
 .odds-books .bk-line { font-size:var(--fsXs); color:var(--warm); }
 .odds-books .bk-price { font-weight:600; }
-.odds-books .bk-chk { visibility:hidden; font-size:var(--fsXs); color:var(--positive); }
-.odds-books .bk.best .bk-price { color:var(--positive); }
+/* The best price is marked by its check, not by green (2026-10-12): green
+   means a result that clears break-even, and the better of two prices can
+   still lose money. It was green, beside green edges and green records. */
+.odds-books .bk-chk { visibility:hidden; font-size:var(--fsXs); color:var(--textDim); }
 .odds-books .bk.best .bk-chk { visibility:visible; }
 /* Line movement since posted — its own quiet caption under the two book prices. */
 .odds-books .bk-move { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.02em; margin-top:3px; }
@@ -2755,6 +2760,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Today's card: a leg's level, by how legs there have landed at PrizePicks. */
 .pk-rec.tc-band-good { color:var(--positive); }
 .pk-rec.tc-band-weak { color:var(--caution); }
+/* Today's card: the leg's own number takes its level's colour, neutral without one. */
+.tc-p.tc-band-good { color:var(--positive); }
+.tc-p.tc-band-weak { color:var(--caution); }
+.tc-p.tc-band-none { color:var(--text); }
 .pk-new { font-family:var(--sans); font-size:var(--fsSm); text-transform:none; letter-spacing:0; color:var(--caution); }
 .pk-intro { margin-top:0; }
 

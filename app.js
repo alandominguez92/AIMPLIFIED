@@ -1716,7 +1716,7 @@
     const best = plays.reduce((m, g) => (g.edge != null && g.edge > m ? g.edge : m), -Infinity);
     const bestStr = best > -Infinity ? '+' + best.toFixed(1) + '%' : '—';
     el.slateSummary.innerHTML = `<div class="ss-in">`
-      + `<span><span class="k">Under plays</span><b style="color:var(--positive)">${plays.length}</b></span>`
+      + `<span><span class="k">Under plays</span><b style="color:var(${plays.length ? '--accent' : '--text'})">${plays.length}</b></span>`
       + `<span><span class="k">Best edge</span><b style="color:${best > -Infinity ? 'var(--positive)' : 'var(--textDim)'}">${bestStr}</b></span>`
       + `<span><span class="k">Watching</span><b style="color:var(--model)">${watching.length}</b></span>`
       + `<span><span class="k">Batters</span><b>${live.length}</b>${pulledN ? `<i class="ss-pulled">${pulledN} pulled</i>` : ''}</span>`
@@ -2235,6 +2235,8 @@
       if (isSelected) rowClasses.push('selected');
       else if (isExpanded) rowClasses.push('expanded');
       if (corrN >= 2) rowClasses.push('corr');
+      // Gold says "this is a bet": a play row's pick carries it, a pass's does not.
+      if (isBatter() && !g.pulled && isPlayTier(tierVal)) rowClasses.push('is-play');
       // Passes fold on a phone. Only on the batter board, only when the reader
       // has not explicitly filtered TO passes, and never on desktop. Plays are
       // never folded — the board recommends them, so they stay on screen; these
@@ -3201,6 +3203,12 @@
     return /^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))
       ? new Date(ymd + 'T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
   }
+  // Green from PrizePicks' 2-pick break-even (57.7%), amber under 54%, from
+  // five legs at the level; otherwise no colour.
+  function todayBandClass(lb) {
+    if (!lb || !(lb.n >= 5) || typeof lb.hitRate !== 'number') return '';
+    return lb.hitRate >= 57.7 ? ' tc-band-good' : lb.hitRate < 54 ? ' tc-band-weak' : '';
+  }
   function todayLegBand(x) {
     const lb = state.topLegs && state.topLegs.legBands;
     const list = lb && lb[x.view === 'kprops' ? 'K' : 'batter'];
@@ -3253,10 +3261,13 @@
         // a coin flip for batter legs, so the leg's own number is not the read.
         const lb = todayLegBand(x);
         // From five legs: the count shows how thin a level is ("7 of 8").
+        const bandCls = todayBandClass(lb);
         const bandLine = lb && lb.n >= 5
-          ? `<span class="pk-rec${lb.hitRate >= 57.7 ? ' tc-band-good' : lb.hitRate < 54 ? ' tc-band-weak' : ''}">Legs at ${lb.lo}${lb.hi ? '–' + lb.hi : '+'}% have landed ${lb.hit} of ${lb.n} (${Math.round(lb.hitRate)}%)</span>` : '';
+          ? `<span class="pk-rec${bandCls}">Legs at ${lb.lo}${lb.hi ? '–' + lb.hi : '+'}% have landed ${lb.hit} of ${lb.n} (${Math.round(lb.hitRate)}%)</span>` : '';
+        // The leg's own number takes its level's colour: a 55% leg whose level
+        // lands 48% is not green (2026-10-12). It was green on every leg.
         return `<li>${star}<button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
-          + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p">${Math.round(x.prob)}%</span></span>`
+          + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p${bandCls || ' tc-band-none'}">${Math.round(x.prob)}%</span></span>`
           + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(x.market)} · PrizePicks${x.when ? ' · ' + esc(String(x.when).replace(/ PT$/, '')) : ''}`
           + `${x.confirmed ? '' : ' <span class="tc-wait">lineup not out</span>'}</span>${book}</span>`
           + bandLine
