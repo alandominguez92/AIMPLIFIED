@@ -32,7 +32,7 @@ const head = rule('.tc-head'), rec = rule('.tc-rec');
 ok(head['flex-wrap'] === 'wrap', 'the card head wraps');
 ok(rec['white-space'] !== 'nowrap', 'so its record goes under the title instead of squeezing it');
 
-for (const sel of ['.sec-head .count', '.tc-rec']) {
+for (const sel of ['.sec-head .count', '.tc-rec', '.soc-note']) {
   ok(rule(sel)['font-family'] === 'var(--sans)', `${sel} subtitle is Archivo, not mono`);
 }
 

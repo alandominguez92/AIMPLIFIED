@@ -2736,7 +2736,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 }
 
 /* Soccer's one-line note under the heading, replacing a 240px context box. */
-.soc-note { margin:-4px 0 0; font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.02em; color:var(--textFaint); }
+/* The note under the Picks, NBA and soccer titles is a section subtitle, set
+   like the others (2026-10-12): it was the last mono subtitle. */
+.soc-note { margin:-4px 0 0; font-family:var(--sans); font-size:13px; color:var(--textDim); }
 
 /* Soccer's "Most likely to win" card: Today's card layout, above the fixtures. */
 .soc-fav { margin:0 0 18px; max-width:640px; }
