@@ -3095,7 +3095,7 @@
     if (!v || !v.all || !v.all.n) return '';
     const sgn = (x) => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1) + '%';
     const read = (g) => `median ${sgn(g.median)} · beat it on ${Math.round(g.above)}% of ${g.n}`;
-    const since = ml.forwardSince ? new Date(ml.forwardSince + 'T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+    const since = shortDay(ml.forwardSince);
     const posted = v.posted && v.posted.n ? read(v.posted) : 'none graded yet';
     const before = v.legacyPosted && v.legacyPosted.n ? ` · before, by close-time tier: ${read(v.legacyPosted)}` : '';
     return `<p class="ml-close"><b>vs Pinnacle's closing line:</b> ${read(v.all)}</p>`
@@ -3196,6 +3196,11 @@
 
   // The level a Today's-card leg falls in, from /api/top-legs: strikeout legs
   // and batter legs keep separate records.
+  // "2026-10-10" -> "Oct 10". Noon UTC so no US time zone moves the day.
+  function shortDay(ymd) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))
+      ? new Date(ymd + 'T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+  }
   function todayLegBand(x) {
     const lb = state.topLegs && state.topLegs.legBands;
     const list = lb && lb[x.view === 'kprops' ? 'K' : 'batter'];
@@ -3219,7 +3224,7 @@
     const waitGames = new Set(waiting.map((x) => x.game).filter((x) => x != null)).size;
     const band = state.topLegs && state.topLegs.bands && state.topLegs.bands['top 3'];
     const since = state.topLegs && state.topLegs.byDay && state.topLegs.byDay[0] ? state.topLegs.byDay[0].date : null;
-    const sinceLabel = since ? new Date(since + 'T12:00:00Z').toLocaleDateString([], { month: 'short', day: 'numeric' }) : '';
+    const sinceLabel = shortDay(since);
     // The record is small and the card says so: 15 legs is a hypothesis, and a
     // number printed without its sample reads as a promise.
     const rec = band && band.n
@@ -5547,7 +5552,7 @@
     }).join('')}</ul><p>Only the best leg of each game, because legs from one game tend to land or miss together. Strikeout unders, NFL yardage, passing-TD unders and MLB unders under 70% are left off: their numbers have not held up.</p></details>`;
     const rec = d.record || {};
     const recLine = rec.legs && rec.legs.n
-      ? `This list: <b>${rec.legs.hit} of ${rec.legs.n}</b> landed since ${esc(rec.since || '')}`
+      ? `This list: <b>${rec.legs.hit} of ${rec.legs.n}</b> landed${rec.since ? ' since ' + esc(shortDay(rec.since) || rec.since) : ''}`
         + (rec.top2 && rec.top2.days ? ` · top two both landed <b>${rec.top2.bothHit} of ${rec.top2.days}</b> days` : '')
         + (rec.voided ? ` · ${rec.voided} void` : '')
       : 'This list keeps its own record from today: each leg on it when its game starts is graded.';

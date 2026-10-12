@@ -124,7 +124,7 @@ function lift(name) {
   }
   throw new Error(`could not close ${name}`);
 }
-const P = new Function('esc', ['ML_BAND_SHORT', 'mlPriceTable', 'mlCloseLine'].map(lift).join('\n') + '\nreturn { mlPriceTable };')((s) => String(s));
+const P = new Function('esc', ['ML_BAND_SHORT', 'shortDay', 'mlPriceTable', 'mlCloseLine'].map(lift).join('\n') + '\nreturn { mlPriceTable };')((s) => String(s));
 const html = P.mlPriceTable(tr.ml.byPriceBand, tr.ml).replace(/\s+/g, ' ');
 const nBands = Object.values(tr.ml.byPriceBand).reduce((s, b) => s + b.n, 0);
 console.log('  ' + (html.match(/<p class="ml-close">.*$/) || [''])[0].replace(/<[^>]+>/g, ' | ').replace(/( \| )+/g, ' | '));

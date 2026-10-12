@@ -28,5 +28,18 @@ ok(/moneyline board<\/b> posts plays/i.test(html), 'and says the moneyline board
 const formula = (html.match(/<div class="formula">([^<]*)<\/div>/) || [])[1] || '';
 ok(formula && !formula.includes('|'), `the edge formula is signed (${formula.trim()})`);
 
+// ---- dates read as dates ------------------------------------------------------------
+// Picks of the day printed its record "since 2026-10-10", the raw key. Dates on
+// the page go through shortDay: "since Oct 10".
+console.log('\n-- dates on the page --');
+const app = fs.readFileSync(BOARD + '/app.js', 'utf8');
+const at = app.indexOf('function shortDay(');
+const body = at < 0 ? '' : app.slice(at, app.indexOf('\n  }\n', at) + 4);
+const shortDay = body ? new Function(body + '\nreturn shortDay;')() : () => null;
+ok(shortDay('2026-10-10') === 'Oct 10' && shortDay('') === '' && shortDay(null) === '', `"2026-10-10" reads "${shortDay('2026-10-10')}"`);
+const recLine = (app.match(/This list: <b>[^\n]*/) || [''])[0];
+ok(/since ' \+ esc\(shortDay\(rec\.since\)/.test(recLine) && !/since \$\{esc\(rec\.since/.test(recLine),
+  'and Picks of the day prints its since date through it');
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
