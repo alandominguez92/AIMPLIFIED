@@ -31,7 +31,10 @@ const db = { prepare: () => ({ bind: () => ({ run: async () => ({ meta: { change
   run: async () => ({ meta: { changes: 1 } }), first: async () => null, all: async () => ({ results: rows }) }), batch: async () => [] };
 
 const tr = await (await mod.default.fetch(new Request('https://x/api/track-record'), { DB: db }, { waitUntil() {} })).json();
-const ml = tr.ml || {};
+// These rows predate entry_at (2026-10-11), so they are the legacy line, beside
+// the forward headline rather than in it (tests/mlclose.mjs).
+const legacyOf = (t) => (t.ml && t.ml.legacy) || null;
+const ml = legacyOf(tr) || {};
 console.log(`  record ${ml.record}  units ${ml.units}  roi ${ml.roi}%\n`);
 
 // -118 pays 0.847; +230 pays 2.30; -130 pays 0.769; the +168 loss is -1.
@@ -45,8 +48,8 @@ const db2 = { ...db, prepare: () => ({ bind: () => ({ run: async () => ({}), fir
   run: async () => ({}), first: async () => null, all: async () => ({ results: rows.slice(1) }) }) };
 const tr2 = await (await mod.default.fetch(new Request('https://x/api/track-record'), { DB: db2 }, { waitUntil() {} })).json();
 const exp2 = 2.30 + 100 / 130 - 1;
-ok(tr2.ml && Math.abs(tr2.ml.units - exp2) < 0.05,
-  `a normal price is graded at entry exactly as before (${tr2.ml && tr2.ml.units}u vs ${exp2.toFixed(2)}u)`);
+ok(legacyOf(tr2) && Math.abs(legacyOf(tr2).units - exp2) < 0.05,
+  `a normal price is graded at entry exactly as before (${legacyOf(tr2) && legacyOf(tr2).units}u vs ${exp2.toFixed(2)}u)`);
 
 // The gate itself, at the values that matter.
 const sane = [
@@ -66,7 +69,7 @@ for (const [price, wp, want, what] of sane) {
     run: async () => ({}), first: async () => null, all: async () => ({ results: got }) }), batch: async () => [] };
   const t = await (await mod.default.fetch(new Request('https://x/api/track-record'), { DB: dbx }, { waitUntil() {} })).json();
   const r1 = (x) => Math.round(x * 10) / 10;
-  const atEntry = r1(t.ml && t.ml.units) === r1(price > 0 ? price / 100 : 100 / -price);
+  const atEntry = r1(legacyOf(t) && legacyOf(t).units) === r1(price > 0 ? price / 100 : 100 / -price);
   ok(atEntry === want, `${want ? 'kept' : 'rejected'}: ${what} (${price} @ ${wp}%)`);
 }
 
@@ -85,10 +88,10 @@ const clvRows = [
 const dbc = { prepare: () => ({ bind: () => ({ run: async () => ({}), first: async () => null, all: async () => ({ results: clvRows }) }),
   run: async () => ({}), first: async () => null, all: async () => ({ results: clvRows }) }), batch: async () => [] };
 const trc = await (await mod.default.fetch(new Request('https://x/api/track-record'), { DB: dbc }, { waitUntil() {} })).json();
-ok(trc.ml && trc.ml.clvN === 2,
-  `only the lines that actually moved are counted (${trc.ml && trc.ml.clvN} of 4 rows)`);
-ok(trc.ml && trc.ml.clvBeatRate === 50,
-  `so one beat of two moves reads 50%, not 25% (${trc.ml && trc.ml.clvBeatRate}%)`);
+ok(legacyOf(trc) && legacyOf(trc).clvN === 2,
+  `only the lines that actually moved are counted (${legacyOf(trc) && legacyOf(trc).clvN} of 4 rows)`);
+ok(legacyOf(trc) && legacyOf(trc).clvBeatRate === 50,
+  `so one beat of two moves reads 50%, not 25% (${legacyOf(trc) && legacyOf(trc).clvBeatRate}%)`);
 
 // ---- by price range ------------------------------------------------------------
 // Every graded pick, pass included, at the price the headline grades it at: the

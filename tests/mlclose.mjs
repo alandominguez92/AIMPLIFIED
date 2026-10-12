@@ -1,0 +1,78 @@
+// The moneyline record counts a play as it was posted (2026-10-12).
+//
+// Posted: buildMlRecord picked posted rows by tier, which every read
+// overwrites, so it counted a play by its close-time tier. A T2 that drifted to
+// pass by first pitch was never in the record; a pass that ticked up to T3 at
+// the close was, graded at a morning price it was never posted at. Rows logged
+// since 9c7701e (entry_at set) carry the play as shown, so for them:
+//   - posted means posted_at is set, counted at posted_tier, graded at posted_price
+//   - the latest tier does not decide it either way
+// Older rows keep the old rule as their own legacy line, never mixed into the
+// headline.
+import fs from 'node:fs';
+import path from 'node:path';
+const BOARD = path.join(import.meta.dirname, '..');
+globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+globalThis.fetch = async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+
+const base = { opp: 'OPP', is_home: 0, model_ver: 'v', team_score: 1, opp_score: 0 };
+const AT = '2026-10-11T18:00:00.000Z';
+const ml = [
+  // Forward rows.
+  { ...base, date: '2026-10-11', game_id: 'f1', team: 'A', tier: 'pass', win_prob: 52, edge: 0.4, entry_price: -110, close_price: -130, result: 'win',
+    fair_source: 'pinnacle', entry_at: AT, entry_tier: 'pass', posted_at: AT, posted_tier: '2', posted_price: -120, posted_win_prob: 55, posted_edge: 2.6,
+    close_fair: 0.55, close_fair_source: 'pinnacle' },
+  { ...base, date: '2026-10-11', game_id: 'f2', team: 'B', tier: '1', win_prob: 50, edge: 4.2, entry_price: 100, close_price: 100, result: 'loss',
+    fair_source: 'pinnacle', entry_at: AT, entry_tier: 'pass', posted_at: null, posted_tier: null, posted_price: null,
+    close_fair: 0.5, close_fair_source: 'pinnacle' },
+  { ...base, date: '2026-10-12', game_id: 'f3', team: 'C', tier: 'pass', win_prob: 60, edge: 0.1, entry_price: -150, close_price: -150, result: 'win',
+    fair_source: 'pinnacle', entry_at: AT, entry_tier: 'pass', posted_at: null, close_fair: 0.6, close_fair_source: 'dkfd' },
+  // Legacy rows: no entry_at, no close_fair.
+  { ...base, date: '2026-09-20', game_id: 'l1', team: 'D', tier: '3', win_prob: 54, edge: 2.0, entry_price: 100, close_price: -110, result: 'win', fair_source: 'pinnacle' },
+  { ...base, date: '2026-09-21', game_id: 'l2', team: 'E', tier: 'pass', win_prob: 42, edge: -3.0, entry_price: 120, close_price: 120, result: 'loss', fair_source: 'pinnacle' },
+  // Entered on Pinnacle, closed on the soft-book fallback: edge 5 is model vs soft.
+  { ...base, date: '2026-09-22', game_id: 'l3', team: 'F', tier: '2', win_prob: 50, edge: 5.0, entry_price: -105, close_price: -110, result: 'loss', fair_source: 'pinnacle' },
+  { ...base, date: '2026-09-23', game_id: 'l4', team: 'G', tier: '1', win_prob: 58, edge: 4.5, entry_price: -125, close_price: -130, result: 'win', fair_source: 'dkfd' },
+];
+const rl = [
+  { ...base, date: '2026-09-20', game_id: 'r1', team: 'D', tier: 'pass', win_prob: 40, edge: 0, entry_price: 150, close_price: 150, result: 'win', fair_source: 'pinnacle' },
+  { ...base, date: '2026-09-21', game_id: 'r2', team: 'E', tier: 'pass', win_prob: 60, edge: 0, entry_price: -140, close_price: -140, result: 'loss', fair_source: 'pinnacle' },
+];
+const db = { prepare: (sql) => { const st = { sql, args: [], bind: (...a) => { st.args = a; return st; },
+  run: async () => ({ meta: { changes: 0 } }), first: async () => null,
+  all: async () => ({ results: /^SELECT \* FROM mlpicks$/i.test(sql.trim()) ? ml : /^SELECT \* FROM rlpicks$/i.test(sql.trim()) ? rl : [] }) }; return st; },
+batch: async () => [] };
+
+const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
+const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
+const get = async (u) => (await mod.default.fetch(new Request('https://x' + u), { DB: db }, { waitUntil() {} })).json();
+const tr = await get('/api/track-record');
+const m = tr.ml || {};
+console.log(`  headline ${m.record} (${m.tracked}) · legacy ${m.legacy && m.legacy.record} · since ${m.forwardSince}`);
+
+let fail = 0;
+const ok = (c, msg) => { console.log((c ? '  PASS  ' : '  FAIL  ') + msg); if (!c) fail++; };
+
+console.log('\n-- posted, as shown --');
+ok(m.tracked === 1 && m.record === '1–0', `the headline is the forward posted rows only (${m.record})`);
+const t2 = (m.tierBreakdown || []).find((t) => t.tier === '2');
+ok(t2 && t2.n === 1 && !(m.tierBreakdown || []).some((t) => t.tier === '1'),
+  'a row whose latest tier is pass but was posted at T2 counts as a T2 play');
+ok(m.units === Math.round(100 / 120 * 10) / 10, `graded at the price it posted at, -120, not its entry or close (${m.units}u)`);
+ok(!(m.tierBreakdown || []).some((t) => t.tier === '1'), 'a row at T1 now but never posted does not count');
+ok(m.forwardSince === '2026-10-11', `the headline says when it starts (${m.forwardSince})`);
+
+console.log('\n-- legacy, on the old rule, beside it --');
+ok(m.legacy && m.legacy.tracked === 3 && m.legacy.record === '2–1', `the older rows keep the latest-tier rule (${m.legacy && m.legacy.record})`);
+ok(m.legacy && m.tracked + m.legacy.tracked === 4, 'and are never added into the headline');
+
+console.log('\n-- the run line still counts every row --');
+ok(tr.rl && tr.rl.tracked === 2, `rl rows are all counted, pass included (${tr.rl && tr.rl.tracked})`);
+
+console.log('\n-- the summary --');
+const S = await get('/api/track-record?summary=1');
+ok(S.ml && S.ml.legacy && S.ml.forwardSince,
+  'scheduled checks get the legacy line and the start date');
+
+console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
+process.exit(fail ? 1 : 0);

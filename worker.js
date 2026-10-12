@@ -3024,7 +3024,8 @@ async function trackRecordSummary(res) {
     summary: true, cachedAgeSec: d.cachedAgeSec ?? null,
     recent: d.recent ? { date: d.recent.date, record: d.recent.record, units: d.recent.units, total: d.recent.total } : null,
     batterUnders: pick(d.batterUnders, ['n', 'record', 'winRate', 'breakEven', 'units', 'roi']),
-    ml: pick(d.ml, ['tracked', 'record', 'winRate', 'units', 'roi', 'pending', 'byPriceBand']),
+    ml: d.ml ? { ...pick(d.ml, ['tracked', 'record', 'winRate', 'units', 'roi', 'pending', 'forwardSince', 'byPriceBand']),
+      legacy: pick(d.ml.legacy, ['tracked', 'record', 'winRate', 'units', 'roi']) } : null,
     prizepicks: pick(d.prizepicks, ['graded', 'underRate', 'byMarket']),
     soccerFav: pick(d.soccerFav, [...gm, 'byBand']),
     soccerMl: pick(d.soccerMl, gm),
@@ -5905,35 +5906,51 @@ function buildMlPriceBands(rows) {
   return out;
 }
 
-function buildMlRecord(rows, includePass) {
-  // 'check' rows are graded but kept out of the headline alongside pass: the
-  // board told nobody to bet them, it told them to check the news first.
-  const played = rows.filter((r) => (r.result === 'win' || r.result === 'loss')
-    && (includePass || (r.tier !== 'pass' && r.tier !== 'check')));
+// Which graded moneyline rows the record counts as posted, at what tier and at
+// what price (2026-10-12). tier is the latest read's, which every refresh
+// overwrites, so counting by it scored a play by its close-time tier: a T2 that
+// drifted to pass by first pitch was never in the record, and a pass that
+// ticked up to T3 at the close was, graded at a morning price it was never
+// posted at. Rows logged since 9c7701e (entry_at set) carry the play as shown:
+// posted means posted_at is set, at posted_tier and posted_price. Older rows
+// have only the latest tier and keep the old rule, as their own legacy line --
+// never relabelled, never added into the forward headline.
+const mlIsForward = (r) => r.entry_at != null && r.entry_at !== '';
+function mlPostedAs(r) {
+  if (mlIsForward(r)) {
+    if (!r.posted_at) return null;
+    return { tier: String(r.posted_tier), price: r.posted_price != null ? r.posted_price : mlGradePrice(r), from: r.posted_price };
+  }
+  if (r.tier === 'pass' || r.tier === 'check') return null;
+  return { tier: String(r.tier), price: mlGradePrice(r), from: r.entry_price };
+}
+
+// One population of moneyline plays, each with the tier it counts at, the price
+// it grades at, and the price its closing-line value is measured from.
+function mlSummary(items) {
   const byTier = { '1': { w: 0, l: 0, units: 0 }, '2': { w: 0, l: 0, units: 0 }, '3': { w: 0, l: 0, units: 0 } };
   let w = 0, l = 0, units = 0, t1w = 0, t1l = 0, clvBeat = 0, clvN = 0;
   const profits = [], clvPts = [];
-  for (const r of played) {
+  for (const { r, tier, price, from } of items) {
     const win = r.result === 'win';
     if (win) w++; else l++;
-    // Graded at ENTRY price — the number actually available when the pick
-    // posted. Grading at close_price scores a bet nobody could have placed, and
-    // shifts ROI by exactly the line movement CLV is separately measuring.
-    const u = profitUnits(r.result, mlGradePrice(r));
+    // Graded at the price the play was available at -- never the close, which
+    // scores a bet nobody could have placed, and shifts ROI by exactly the line
+    // movement CLV is separately measuring.
+    const u = profitUnits(r.result, price);
     units += u;
     profits.push(u);
-    const bt = byTier[String(r.tier)];
+    const bt = byTier[tier];
     if (bt) { if (win) bt.w++; else bt.l++; bt.units += u; }
-    if (String(r.tier) === '1') { if (win) t1w++; else t1l++; }
-    if (r.entry_price != null && r.close_price != null) {
-      const ie = amProb(r.entry_price), ic = amProb(r.close_price);
+    if (tier === '1') { if (win) t1w++; else t1l++; }
+    if (from != null && r.close_price != null) {
+      const ie = amProb(from), ic = amProb(r.close_price);
       // A line that never moved is neither a beat nor a miss. Counting it in the
-      // denominator only — which is what this did — quietly scores every
-      // unrefreshed row as a CLV loss: 15% of posted rows, dragging the reported
-      // beat rate from 27.4% to 23.2%. buildTotRecord already skips them; these
-      // two numbers sit side by side on the same page and have to mean the same
-      // thing.
-      if (ie != null && ic != null && r.entry_price !== r.close_price) {
+      // denominator only quietly scores every unrefreshed row as a CLV loss: 15%
+      // of posted rows, dragging the reported beat rate from 27.4% to 23.2%.
+      // buildTotRecord already skips them; these two numbers sit side by side
+      // on the same page and have to mean the same thing.
+      if (ie != null && ic != null && from !== r.close_price) {
         clvN++;
         if (ic > ie) clvBeat++;   // our side shortened = market agreed
         // Magnitude, not just a beat rate: a 60% beat rate on half-point moves
@@ -5952,29 +5969,53 @@ function buildMlRecord(rows, includePass) {
     tracked: n, record: `${w}–${l}`, winRate: n ? round1(w / n * 100) : null,
     tier1: `${t1w}–${t1l}`, units: Math.round(units * 10) / 10, roi: n ? round1(units / n * 100) : null,
     tierBreakdown, clvBeatRate: clvN ? round1(clvBeat / clvN * 100) : null, clvN,
-    // Era + fair source split. Rows before attribution existed carry NULL and
-    // group as '(untagged)' rather than being folded into the current era.
+    // Era split. Rows before attribution existed carry NULL and group as
+    // '(untagged)' rather than being folded into the current era. Graded at
+    // the same price as the headline, so the eras sum to it.
     byModelVer: (() => {
       const m = {};
-      for (const r of played) { const k = r.model_ver || '(untagged)'; (m[k] = m[k] || []).push(r); }
+      for (const x of items) { const k = x.r.model_ver || '(untagged)'; (m[k] = m[k] || []).push(x); }
       return Object.keys(m).map((k) => {
         const arr = m[k];
         let w = 0, u = 0;
-        for (const r of arr) { if (r.result === 'win') w++; u += profitUnits(r.result, r.entry_price ?? r.close_price); }
+        for (const x of arr) { if (x.r.result === 'win') w++; u += profitUnits(x.r.result, x.price); }
         return { modelVer: k, n: arr.length, record: `${w}-${arr.length - w}`, roi: round1(u / arr.length * 100), units: Math.round(u * 10) / 10 };
       }).sort((a, b) => b.n - a.n);
-    })(),
-    fairSourceMix: (() => {
-      const m = {};
-      for (const r of rows) { const k = r.fair_source || '(untagged)'; m[k] = (m[k] || 0) + 1; }
-      return Object.keys(m).map((k) => ({ fairSource: k, n: m[k] })).sort((a, b) => b.n - a.n);
     })(),
     // Magnitude + error bars. On a market this efficient a beat rate near 50%
     // and avgCLV near 0 is the expected null result, and p >= 0.05 means exactly
     // that — no established effect, regardless of how the ROI reads.
     avgCLVpts: clvPts.length ? round1(mlMean(clvPts)) : null,
     sig: { roiT: mlR2(mlT(profits)), roiP: mlP(mlT(profits)), clvT: mlR2(mlT(clvPts)), clvP: mlP(mlT(clvPts)) },
-    pending: rows.filter((r) => r.result == null).length,
+  };
+}
+
+function buildMlRecord(rows, includePass) {
+  const graded = rows.filter((r) => r.result === 'win' || r.result === 'loss');
+  const fairSourceMix = (() => {
+    const m = {};
+    for (const r of rows) { const k = r.fair_source || '(untagged)'; m[k] = (m[k] || 0) + 1; }
+    return Object.keys(m).map((k) => ({ fairSource: k, n: m[k] })).sort((a, b) => b.n - a.n);
+  })();
+  const pending = rows.filter((r) => r.result == null).length;
+  // The run line counts every graded row on one rule (see the caller).
+  if (includePass) {
+    return { ...mlSummary(graded.map((r) => ({ r, tier: String(r.tier), price: mlGradePrice(r), from: r.entry_price }))), fairSourceMix, pending };
+  }
+  // 'check' rows are graded but kept out alongside pass: the board told nobody
+  // to bet them, it told them to check the news first. A forward row at check
+  // never gets posted_at, so the same holds there.
+  const forward = [], legacy = [];
+  for (const r of graded) {
+    const p = mlPostedAs(r);
+    if (p) (mlIsForward(r) ? forward : legacy).push({ r, ...p });
+  }
+  const fwdDates = rows.filter(mlIsForward).map((r) => r.date).filter(Boolean).sort();
+  return {
+    ...mlSummary(forward),
+    forwardSince: fwdDates.length ? fwdDates[0] : null,
+    legacy: mlSummary(legacy),
+    fairSourceMix, pending,
   };
 }
 
