@@ -115,8 +115,23 @@ ok(s0.close_at && s0.close_at >= r0.close_at, 'the latest read says when it was 
 ok(s1.entry_tier === 'pass' && ['1', '2', '3'].includes(s1.tier) && s1.posted_at && s1.posted_price === s1.close_price && s1.posted_tier === s1.tier,
   `a pass that becomes a play is snapshotted when it first posts, with the price it posted at (${s1.posted_tier} at ${s1.posted_price})`);
 
+// The close's fair number, unrounded (2026-10-12). win_prob is rounded to a
+// whole point, which at even money moves EV against the close by up to ~1%:
+// too coarse to read a median of -1.5%. The same read now keeps the chosen
+// side's fair to 4 dp and which book it came from.
+const g0 = (b2 || []).find((g) => g.id === 'g980001');
+const fp = g0 && g0.ml && g0.ml.fairProb;
+ok(typeof fp === 'number' && Math.round(fp * 10000) === fp * 10000 && Math.round(fp * 100) === g0.ml.winProb,
+  `the board's moneyline carries the pick's unrounded fair (${fp} beside ${g0 && g0.ml && g0.ml.winProb}%)`);
+ok(s0.close_fair === fp && s0.close_fair_source === 'pinnacle',
+  `the close read logs it with its source (${s0.close_fair} ${s0.close_fair_source})`);
+const implied = (p) => (p < 0 ? -p / (-p + 100) : 100 / (p + 100));
+ok(Math.abs(s0.close_fair * 100 - s0.win_prob) <= 0.5 && Math.abs(s0.close_fair - (s0.edge / 100 + implied(s0.close_price))) < 0.0006,
+  'and it is the number the same read took its edge and price from');
+
 const ex = await (await mod.default.fetch(new Request('https://x/api/mlpicks-export'), { DB }, { waitUntil() {} })).json();
 ok(ex && ex.cols.includes('posted_edge') && ex.cols.includes('entry_at') && ex.cols.includes('close_at'), 'the export carries the new columns');
+ok(ex && ex.cols.includes('close_fair') && ex.cols.includes('close_fair_source'), 'and the close fair');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

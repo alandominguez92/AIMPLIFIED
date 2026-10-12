@@ -1577,6 +1577,7 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair, bookPairs) 
     return {
       side, teamAbbr: teamAbbr(teamObj),
       winProb: Math.round(fair * 100), price: pr != null ? pr : null, edge,
+      fairProb: Math.round(fair * 10000) / 10000,
       modelProb: Math.round(model[side] * 100),
     };
   };
@@ -1602,6 +1603,9 @@ function moneyline(g, home, away, teamWinP, pmap, oddsPair, pinPair, bookPairs) 
     pick: `${chosen.teamAbbr} ML`,
     teamAbbr: chosen.teamAbbr,
     winProb: chosen.winProb,   // fair (sharp) win prob of the pick
+    // The same fair, unrounded. winProb is whole points, which at even money
+    // moves EV against the close by up to ~1% -- too coarse to measure with.
+    fairProb: chosen.fairProb,
     price: chosen.price,       // DK/FD price you'd bet
     edge: e,
     tier,
@@ -3251,6 +3255,11 @@ async function ensureMlPickSchema(db) {
   await addColumns(db, 'mlpicks', [['entry_win_prob', 'INTEGER'], ['entry_edge', 'REAL'], ['entry_tier', 'TEXT'],
     ['entry_fair_source', 'TEXT'], ['entry_at', 'TEXT'], ['posted_at', 'TEXT'], ['posted_price', 'INTEGER'],
     ['posted_win_prob', 'INTEGER'], ['posted_edge', 'REAL'], ['posted_tier', 'TEXT'], ['close_at', 'TEXT']]);
+  // The close's fair, unrounded, and the book it came from (2026-10-12).
+  // fair_source is written once, at entry; the close's edge can come from a
+  // different source if Pinnacle dropped out between reads, so measuring a
+  // price against Pinnacle's close needs the close's own source beside it.
+  await addColumns(db, 'mlpicks', [['close_fair', 'REAL'], ['close_fair_source', 'TEXT']]);
   // Partial index over ungraded rows — see picks_ungraded in ensureSchema.
   await db.prepare('CREATE INDEX IF NOT EXISTS mlpicks_ungraded ON mlpicks (date, game_id) WHERE result IS NULL').run();
 }
@@ -5682,8 +5691,8 @@ async function logMlPicks(db, rows, date) {
     // Refresh close only while the logged side is still the model's pick, so a
     // mid-day side flip can't overwrite our entry side's closing price.
     stmts.push(db.prepare(
-      'UPDATE mlpicks SET close_price=?, edge=?, tier=?, win_prob=?, close_at=? WHERE date=? AND game_id=? AND team=?'
-    ).bind(ml.price, ml.edge ?? null, tier, ml.winProb ?? null, at, date, r.id, ml.teamAbbr));
+      'UPDATE mlpicks SET close_price=?, edge=?, tier=?, win_prob=?, close_at=?, close_fair=?, close_fair_source=? WHERE date=? AND game_id=? AND team=?'
+    ).bind(ml.price, ml.edge ?? null, tier, ml.winProb ?? null, at, ml.fairProb ?? null, ml.fairSource ?? null, date, r.id, ml.teamAbbr));
     // The first read at a posted tier is the play as it was shown; written once.
     if (ML_POSTED_TIERS.has(tier)) {
       stmts.push(db.prepare(
@@ -7693,7 +7702,8 @@ async function mlpicksExport(env, url) {
   try {
     await ensureMlPickSchema(env.DB);
     const cols = ['date', 'game_id', 'team', 'opp', 'is_home', 'tier', 'win_prob', 'edge', 'entry_price', 'close_price', 'result', 'team_score', 'opp_score', 'model_ver', 'fair_source',
-      'entry_win_prob', 'entry_edge', 'entry_tier', 'entry_fair_source', 'entry_at', 'posted_at', 'posted_price', 'posted_win_prob', 'posted_edge', 'posted_tier', 'close_at'];
+      'entry_win_prob', 'entry_edge', 'entry_tier', 'entry_fair_source', 'entry_at', 'posted_at', 'posted_price', 'posted_win_prob', 'posted_edge', 'posted_tier', 'close_at',
+      'close_fair', 'close_fair_source'];
     // ?date=YYYY-MM-DD: one day's graded picks. The whole log is ~100KB, more
     // than a scheduled check can read in one go.
     const date = url && url.searchParams ? String(url.searchParams.get('date') || '').trim() : '';
