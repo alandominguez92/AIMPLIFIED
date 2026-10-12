@@ -2848,11 +2848,18 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .k-add { font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--accent); background:transparent;
   border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius:999px; padding:3px 10px; cursor:pointer; }
 .k-add.on { color:var(--onAccent); background:var(--accentFill); border-color:var(--accentFill); }
-.tc-legs li { display:flex; align-items:stretch; gap:8px; }
-.tc-legs li .tc-leg { flex:1; min-width:0; }
-.tc-add { flex:none; width:40px; font-size:18px; line-height:1; color:var(--textDim); cursor:pointer;
-  background:var(--board, transparent); border:1px solid var(--border); border-radius:10px; }
-.tc-add.on { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 55%, transparent); }
+/* The star sits in the leg's top-right corner (2026-10-12). It was a 40px
+   bordered box beside every leg, which took ~48px of a 375px screen and
+   wrapped the leg's lines to three. It keeps its 44px hit area -- the floor
+   set when a near-miss on a small star opened the row instead -- and the
+   first line leaves room for it, so the leg's number sits just left of it. */
+.tc-legs li { position:relative; display:block; }
+.tc-legs li .tc-leg { min-width:0; }
+.tc-add { position:absolute; top:0; right:0; z-index:1; width:44px; height:44px; display:flex; align-items:center; justify-content:center;
+  padding:0; font-size:18px; line-height:1; color:var(--textDim); cursor:pointer; background:none; border:0; border-radius:10px; }
+.tc-add.on { color:var(--accent); }
+.tc-add:focus-visible { outline:2px solid var(--accent); outline-offset:-6px; }
+.tc-legs li .tc-l1 { padding-right:34px; }
 .slip-tag.pp { background:var(--model); }
 .slip-read { margin:12px 0 0; display:grid; gap:8px; }
 .slip-read-n { border:1px solid var(--border); border-left:3px solid var(--warm); border-radius:10px;
@@ -2875,7 +2882,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Tonight's PrizePicks unders, above the NBA board (2026-10-06). Today's card's
    inner styles, in a box of its own since it shows on every width. */
 .nba-pp { margin:0 0 18px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--board, transparent); }
-.nba-pp .tc-legs li { display:flex; align-items:stretch; gap:8px; }
+.nba-pp .tc-legs li { position:relative; display:block; }
 .nba-pp .tc-leg { cursor:default; }
 
 /* Repetition and empty states (2026-10-12). */
