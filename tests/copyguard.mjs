@@ -25,6 +25,13 @@ const mlUnposted = sentences.filter((s) => /moneyline/i.test(s) && /(don't|do no
 ok(!mlUnposted.length, mlUnposted.length ? `says the moneyline is not posted: "${mlUnposted[0].slice(0, 120)}"` : 'does not call the moneyline unposted');
 ok(/moneyline board<\/b> posts plays/i.test(html), 'and says the moneyline board posts plays');
 
+// The board's own note under the market tabs said the same: "Plays = batter
+// unders only -- ... the only one we post".
+const board = fs.readFileSync(BOARD + '/index.html', 'utf8');
+const tabnote = ((board.match(/<p class="tabnote">([\s\S]*?)<\/p>/) || [])[1] || '').replace(/<[^>]+>/g, '');
+ok(tabnote && !/only one we post|unders only|reliably overpays/i.test(tabnote) && /moneyline board posts plays/i.test(tabnote),
+  `the board's tab note says the moneyline posts too (${tabnote.slice(0, 60)}…)`);
+
 const formula = (html.match(/<div class="formula">([^<]*)<\/div>/) || [])[1] || '';
 ok(formula && !formula.includes('|'), `the edge formula is signed (${formula.trim()})`);
 
