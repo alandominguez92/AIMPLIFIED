@@ -2897,3 +2897,34 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-skel-row span:last-child { width:40px; height:18px; }
 @keyframes pkSkel { from { opacity:.45; } to { opacity:1; } }
 @media (prefers-reduced-motion: reduce) { .pk-skel-row span { animation:none; } }
+
+/* Phone controls (2026-10-12): six rows of controls and notes sat above the
+   first batter. Search and Compare share one row; Show and Sort move into a
+   sheet behind one "Filter · Sort" row; the pinned-prices and era notes move
+   into "How these are priced". placePhoneControls() in app.js moves them. */
+.ctl-sheet-btn { display:none; }
+.ctl-sheet[hidden] { display:none; }
+.how-priced .pin-note, .how-priced .era-note { display:block; margin:10px 0 0; padding:0; border:0; background:none; border-radius:0;
+  white-space:normal; font-size:13px; line-height:1.55; }
+.how-priced .pin-note[hidden], .how-priced .era-note[hidden] { display:none; }
+@media (max-width:640px) {
+  .tabrow { display:none; }
+  .board-search { order:1; flex:1 1 0; min-width:0; }
+  .board-toolbar > .board-controls { order:2; flex:none; margin-left:0; }
+  .ctl-sheet-btn { order:3; flex:1 1 100%; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    min-height:44px; padding:0 14px; border:1px solid var(--border); border-radius:8px; background:var(--board);
+    color:var(--text); font-family:var(--sans); font-size:13px; font-weight:600; cursor:pointer; }
+  .ctl-sum { min-width:0; font-weight:500; color:var(--textDim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ctl-sheet { position:fixed; inset:0; z-index:80; display:flex; flex-direction:column; justify-content:flex-end; }
+  .ctl-sheet-back { position:absolute; inset:0; background:rgba(0,0,0,.55); }
+  .ctl-sheet-panel { position:relative; display:grid; gap:16px; background:var(--board); border-top:1px solid var(--border);
+    border-radius:14px 14px 0 0; padding:14px 16px calc(18px + env(safe-area-inset-bottom)); }
+  .ctl-sheet-head { display:flex; align-items:center; justify-content:space-between; font-size:15px; }
+  .ctl-sheet-done { min-height:44px; padding:0 18px; border:0; border-radius:8px; background:var(--accentFill); color:var(--onAccent);
+    font-family:var(--sans); font-size:14px; font-weight:700; cursor:pointer; }
+  .ctl-sheet-body { display:grid; gap:14px; }
+  .ctl-sheet-body .filter-group, .ctl-sheet-body .sort-group { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .ctl-sheet-body .sort-lead { flex:1 1 100%; }
+  .ctl-sheet-body .filter-chips, .ctl-sheet-body .sort-chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .ctl-sheet-body .filter-btn, .ctl-sheet-body .sort-chips .sort-btn { height:44px; padding:0 14px; }
+}

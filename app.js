@@ -1477,7 +1477,85 @@
       : `Compare mode — pick ${cmpNoun} to compare side by side (${state.compareIds.length}/2 selected)`;
 
     el.compareModeBtn.setAttribute('aria-pressed', state.compareMode);
+    // Here as well as on resize: an emulated resize fires neither the resize
+    // nor the media-query event, as placeRail found. It moves nothing that is
+    // already in place.
+    placePhoneControlsSafe();
+    updateCtlSum();
   }
+
+  // ---------------------------------------------------------------------
+  // Phone controls (2026-10-12)
+  // ---------------------------------------------------------------------
+  // Six rows of controls and notes sat above the first batter on a phone: the
+  // market switch, "Prices pinned to...", "191 graded this era...", search +
+  // Compare, Show, Sort. The market switch, search and Compare stay; Show and
+  // Sort move into a sheet behind one "Filter · Sort" button, which says what
+  // is set; the two notes move into "How these are priced". Moved, not copied,
+  // as the rail does, so each control and its handlers exist once.
+  const PHONE_MQ = window.matchMedia ? window.matchMedia('(max-width: 640px)') : null;
+  function placePhoneControls() {
+    const phone = !!(PHONE_MQ && PHONE_MQ.matches);
+    const sheet = document.getElementById('ctlSheetBody');
+    // The MLB toolbar's, found from its Compare button: the NFL board has a
+    // .board-controls of its own, earlier in the page.
+    const div = document.getElementById('toolbarDiv'), cmp = document.getElementById('compareModeBtn');
+    const controls = cmp && cmp.parentNode;
+    const fg = document.getElementById('filterGroup'), sg = document.getElementById('sortGroup');
+    const how = document.querySelector('.how-priced'), tabrow = document.querySelector('#slate .tabrow');
+    const notes = [el.pinNote, el.eraNote].filter(Boolean);
+    if (!sheet || !controls || !fg || !sg) return;
+    if (phone) {
+      if (fg.parentNode !== sheet) sheet.append(fg);
+      if (sg.parentNode !== sheet) sheet.append(sg);
+      if (how) for (const n of notes) if (n.parentNode !== how) how.append(n);
+    } else {
+      if (fg.parentNode !== controls) controls.insertBefore(fg, div && div.parentNode === controls ? div : cmp);
+      if (sg.parentNode !== controls) controls.insertBefore(sg, cmp);
+      if (tabrow) for (const n of notes) if (n.parentNode !== tabrow) tabrow.append(n);
+      closeCtlSheet();
+    }
+  }
+  // The button says what is set, so the board's state reads without opening it.
+  function updateCtlSum() {
+    const out = document.getElementById('ctlSheetSum');
+    if (!out) return;
+    const f = document.querySelector('#filterGroup .filter-btn.active:not([hidden])');
+    const s = document.querySelector('#sortGroup .sort-btn.active');
+    const fLabel = f ? ((f.querySelector('.fl-short') || f).textContent || '').replace(/\d+$/, '').trim() : '';
+    out.textContent = [fLabel, s ? s.textContent.trim() : ''].filter(Boolean).join(' · ');
+  }
+  let ctlSheetFrom = null;
+  function openCtlSheet(from) {
+    const sheet = document.getElementById('ctlSheet');
+    if (!sheet) return;
+    ctlSheetFrom = from || null;
+    sheet.hidden = false;
+    const btn = document.getElementById('ctlSheetBtn');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    const done = sheet.querySelector('.ctl-sheet-done');
+    if (done) done.focus();
+  }
+  function closeCtlSheet() {
+    const sheet = document.getElementById('ctlSheet');
+    if (!sheet || sheet.hidden) return;
+    sheet.hidden = true;
+    const btn = document.getElementById('ctlSheetBtn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (ctlSheetFrom && ctlSheetFrom.focus) ctlSheetFrom.focus();
+    ctlSheetFrom = null;
+  }
+  // Layout only: a DOM surprise here must never stop the rest of the page
+  // starting up (an uncaught throw at load halts everything after it).
+  function placePhoneControlsSafe() {
+    try { placePhoneControls(); } catch (e) { /* the controls stay where they are */ }
+  }
+  if (PHONE_MQ) {
+    if (PHONE_MQ.addEventListener) PHONE_MQ.addEventListener('change', placePhoneControlsSafe);
+    else if (PHONE_MQ.addListener) PHONE_MQ.addListener(placePhoneControlsSafe);
+  }
+  window.addEventListener('resize', placePhoneControlsSafe);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCtlSheet(); });
 
   // Park + weather chips for a pitcher's projection detail. Only shows a factor
   // when it actually moves the number (park ≠ 1.00) or a real temp is posted.
@@ -3357,6 +3435,7 @@
   // resize costs a few DOM reads.
   window.addEventListener('resize', placeRail);
   placeRail();
+  placePhoneControlsSafe();
 
   async function refreshTopLegs() {
     if (!LIVE_MODE) return;
@@ -4529,6 +4608,8 @@
         break;
       }
       case 'set-sort': setSort(target.dataset.sort); break;
+      case 'open-ctl-sheet': openCtlSheet(target); break;
+      case 'close-ctl-sheet': closeCtlSheet(); break;
       case 'toggle-compare-mode': toggleCompareMode(); break;
       case 'clear-compare': clearCompare(); break;
       case 'leading-click':

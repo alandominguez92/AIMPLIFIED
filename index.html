@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=5b58d7593a">
+<link rel="stylesheet" href="style.css?v=688e6e620d">
 </head>
 <body>
 
@@ -281,12 +281,15 @@
       <div class="board-search">
         <input type="text" id="searchInput" placeholder="Search team or pitcher…" autocomplete="off">
       </div>
+      <!-- Phone only: Show and Sort live in a sheet behind this one row, which
+           says what is set. See placePhoneControls() in app.js. -->
+      <button type="button" class="ctl-sheet-btn" id="ctlSheetBtn" data-action="open-ctl-sheet" aria-haspopup="dialog" aria-controls="ctlSheet" aria-expanded="false"><span>Filter · Sort</span><span class="ctl-sum" id="ctlSheetSum"></span></button>
 
       <div class="board-controls">
         <!-- Both groups are labelled. Bare chips left it ambiguous which row was
              filtering the board and which was ordering it, and the two do very
              different things to what you are looking at. -->
-        <span class="filter-group"><span class="sort-lead">Show</span><span class="filter-chips">
+        <span class="filter-group" id="filterGroup"><span class="sort-lead">Show</span><span class="filter-chips">
       <button class="filter-btn" data-action="set-filter" data-filter="all">All</button>
       <!-- One tab, not three. The board gates rather than ranks: over 4,832
            graded rows ROI does not rise with EV, and every candidate cutoff set
@@ -336,6 +339,16 @@
     </div>
 
     <div id="comparePanel"></div>
+
+    <!-- The phone's Filter · Sort sheet. Empty until placePhoneControls() moves
+         the Show and Sort groups in; hidden until the button opens it. -->
+    <div class="ctl-sheet" id="ctlSheet" hidden>
+      <div class="ctl-sheet-back" data-action="close-ctl-sheet"></div>
+      <div class="ctl-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="ctlSheetTitle">
+        <div class="ctl-sheet-head"><b id="ctlSheetTitle">Filter · Sort</b><button type="button" class="ctl-sheet-done" data-action="close-ctl-sheet">Done</button></div>
+        <div class="ctl-sheet-body" id="ctlSheetBody"></div>
+      </div>
+    </div>
   </section>
 
   <!-- On a wide screen, Today's card and the slip move into this rail beside the
@@ -430,6 +443,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=5b58d7593a"></script>
+<script src="app.js?v=688e6e620d"></script>
 </body>
 </html>
