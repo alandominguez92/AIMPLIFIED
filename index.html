@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=a8b922a702">
+<link rel="stylesheet" href="style.css?v=893bd45e61">
 </head>
 <body>
 
@@ -207,8 +207,9 @@
       </div>
       <div class="board-controls">
         <span id="nflFilters"></span>
-        <span class="sort-label">Sort</span>
-        <span class="sort-chips" id="nflSorts"></span>
+        <!-- One group, so the label wraps with its buttons: loose, "Sort" was
+             left at the end of the filter row when the sort buttons wrapped. -->
+        <span class="sort-group nfl-sort-group"><span class="sort-lead">Sort</span><span class="sort-chips" id="nflSorts"></span></span>
       </div>
     </div>
 
@@ -443,6 +444,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=a8b922a702"></script>
+<script src="app.js?v=893bd45e61"></script>
 </body>
 </html>

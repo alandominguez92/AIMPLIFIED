@@ -5356,9 +5356,9 @@
           <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}${r.commence ? ' · ' + esc(kickoff(r.commence)) : ''}</span>
           ${nflPropBar(r, market)}${r.ppLine != null ? ppTag({ point: r.ppLine }, r.line) : ''}
         </div>
-        <span class="np-proj">${r.proj}<i>yds</i></span>
+        <span class="np-proj"><i class="np-k">proj</i>${r.proj}<i>yds</i></span>
         <span class="np-range">${r.p25} – ${r.p75}</span>
-        <span class="interval-cell" style="color:var(--model)">${r.p50}</span>
+        <span class="interval-cell" style="color:var(--model)"><i class="np-k">median</i>${r.p50}</span>
         <span class="np-usage">${usage}</span>
         <span class="tier-cell">${confChip(r.conf)}</span>
         <span class="chevron">${open ? '▲' : '▼'}</span>

@@ -2935,3 +2935,24 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .ctl-sheet-body .filter-chips, .ctl-sheet-body .sort-chips { display:flex; flex-wrap:wrap; gap:8px; }
   .ctl-sheet-body .filter-btn, .ctl-sheet-body .sort-chips .sort-btn { height:44px; padding:0 14px; }
 }
+
+/* NFL rows on a phone (2026-10-12): the projection and the median were two
+   unlabeled numbers, "79.6 yds" and a blue "71.5". Out of their columns they
+   label themselves, on one line: "proj 79.6 yds · median 71.5". */
+.np-k { display:none; }
+@media (max-width:900px) {
+  .board.view-nflprops .board-row {
+    grid-template-columns:auto minmax(0,1fr) auto;
+    grid-template-areas:
+      "matchup matchup chev"
+      "proj    median  median"
+      "range   usage   usage";
+  }
+  .board.view-nflprops .board-row > .np-proj { grid-area:proj; align-self:baseline; }
+  .board.view-nflprops .board-row > .interval-cell { grid-area:median; align-self:baseline; font-size:15px; font-weight:600; }
+  .board.view-nflprops .board-row > .np-range { grid-area:range; }
+  .board.view-nflprops .board-row > .np-usage { grid-area:usage; justify-self:end; }
+  .board.view-nflprops .np-k { display:inline; margin:0 5px 0 0; font-style:normal; font-family:var(--sans); font-size:var(--fsSm);
+    font-weight:500; color:var(--textDim); }
+  .board.view-nflprops .interval-cell .np-k::before { content:'· '; }
+}
