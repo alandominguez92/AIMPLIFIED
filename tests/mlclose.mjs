@@ -1,4 +1,5 @@
-// The moneyline record counts a play as it was posted (2026-10-12).
+// The moneyline record counts a play as it was posted, and measures prices
+// against Pinnacle's closing line (2026-10-12).
 //
 // Posted: buildMlRecord picked posted rows by tier, which every read
 // overwrites, so it counted a play by its close-time tier. A T2 that drifted to
@@ -9,6 +10,13 @@
 //   - the latest tier does not decide it either way
 // Older rows keep the old rule as their own legacy line, never mixed into the
 // headline.
+//
+// Against the close: EV% = close fair x decimal(price) - 1, Pinnacle closes
+// only. Rows logged before close_fair existed rebuild it from the close read's
+// edge and price, which one read wrote together -- but only when the rebuilt
+// number agrees with that read's rounded win_prob. fair_source is the ENTRY
+// read's: if Pinnacle had dropped out by the close, the close's edge was the
+// log5 model against the soft books, and edge + implied is not a fair at all.
 import fs from 'node:fs';
 import path from 'node:path';
 const BOARD = path.join(import.meta.dirname, '..');
@@ -48,7 +56,9 @@ const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toStr
 const get = async (u) => (await mod.default.fetch(new Request('https://x' + u), { DB: db }, { waitUntil() {} })).json();
 const tr = await get('/api/track-record');
 const m = tr.ml || {};
+const v = m.vsSharpClose || {};
 console.log(`  headline ${m.record} (${m.tracked}) · legacy ${m.legacy && m.legacy.record} · since ${m.forwardSince}`);
+console.log(`  vs close: posted ${JSON.stringify(v.posted)}\n            legacy ${JSON.stringify(v.legacyPosted)}\n            all ${JSON.stringify(v.all)}`);
 
 let fail = 0;
 const ok = (c, msg) => { console.log((c ? '  PASS  ' : '  FAIL  ') + msg); if (!c) fail++; };
@@ -66,13 +76,30 @@ console.log('\n-- legacy, on the old rule, beside it --');
 ok(m.legacy && m.legacy.tracked === 3 && m.legacy.record === '2–1', `the older rows keep the latest-tier rule (${m.legacy && m.legacy.record})`);
 ok(m.legacy && m.tracked + m.legacy.tracked === 4, 'and are never added into the headline');
 
+console.log('\n-- against Pinnacle\'s close --');
+ok(v.posted && v.posted.n === 1 && v.posted.median === 0.83 && v.posted.mean === 0.83,
+  `close fair 0.55 at the posted -120 is +0.83% (${v.posted && v.posted.median})`);
+ok(v.posted && v.posted.above === 100, 'and it beat the close');
+ok(v.all && v.all.n === 4, `every graded row with a Pinnacle close, posted or not, and no soft-book close (${v.all && v.all.n})`);
+ok(v.all && v.all.rebuilt === 2 && v.legacyPosted && v.legacyPosted.n === 1 && v.legacyPosted.rebuilt === 1,
+  'older rows rebuild the close fair from edge + implied(close price), and say so');
+// Rebuilt fairs: edge/100 + implied(close price).
+const fairL1 = 0.02 + 110 / 210;    // 0.5438 beside win_prob 54
+const fairL2 = -0.03 + 100 / 220;   // 0.4245 beside win_prob 42
+ok(v.legacyPosted && Math.abs(v.legacyPosted.median - Math.round((fairL1 * 2 - 1) * 10000) / 100) < 0.011,
+  `a legacy T3 at +100 against its rebuilt close (${v.legacyPosted && v.legacyPosted.median}%)`);
+ok(v.rejected === 1, 'a rebuilt fair that disagrees with its own read\'s win chance (57.4 vs 50) is dropped, not guessed');
+const expected = (0.55 + 0.5 + fairL1 + fairL2) / 4 * 100;
+ok(v.all && v.all.won === 50 && Math.abs(v.all.expected - expected) < 0.1,
+  `won beside the close's own expectation (${v.all && v.all.won}% vs ${v.all && v.all.expected}%)`);
+
 console.log('\n-- the run line still counts every row --');
 ok(tr.rl && tr.rl.tracked === 2, `rl rows are all counted, pass included (${tr.rl && tr.rl.tracked})`);
 
 console.log('\n-- the summary --');
 const S = await get('/api/track-record?summary=1');
-ok(S.ml && S.ml.legacy && S.ml.forwardSince,
-  'scheduled checks get the legacy line and the start date');
+ok(S.ml && S.ml.vsSharpClose && S.ml.vsSharpClose.posted && S.ml.legacy && S.ml.forwardSince,
+  'scheduled checks get the close measure, the legacy line and the start date');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

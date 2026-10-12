@@ -3024,7 +3024,7 @@ async function trackRecordSummary(res) {
     summary: true, cachedAgeSec: d.cachedAgeSec ?? null,
     recent: d.recent ? { date: d.recent.date, record: d.recent.record, units: d.recent.units, total: d.recent.total } : null,
     batterUnders: pick(d.batterUnders, ['n', 'record', 'winRate', 'breakEven', 'units', 'roi']),
-    ml: d.ml ? { ...pick(d.ml, ['tracked', 'record', 'winRate', 'units', 'roi', 'pending', 'forwardSince', 'byPriceBand']),
+    ml: d.ml ? { ...pick(d.ml, ['tracked', 'record', 'winRate', 'units', 'roi', 'pending', 'forwardSince', 'byPriceBand', 'vsSharpClose']),
       legacy: pick(d.ml.legacy, ['tracked', 'record', 'winRate', 'units', 'roi']) } : null,
     prizepicks: pick(d.prizepicks, ['graded', 'underRate', 'byMarket']),
     soccerFav: pick(d.soccerFav, [...gm, 'byBand']),
@@ -3085,6 +3085,7 @@ async function trackRecord(env) {
       mlRows = mlres.results || [];
       out.ml = buildMlRecord(mlRows);
       out.ml.byPriceBand = buildMlPriceBands(mlRows);
+      out.ml.vsSharpClose = mlVsSharpClose(mlRows);
     } catch (e) { /* ML record is additive — never break the props track record */ }
     try {
       // Reuses buildMlRecord: an rlpicks row is shaped the same as an mlpicks
@@ -6017,6 +6018,58 @@ function buildMlRecord(rows, includePass) {
     legacy: mlSummary(legacy),
     fairSourceMix, pending,
   };
+}
+
+// Every graded moneyline price against Pinnacle's closing line (2026-10-12):
+// EV% = close fair x decimal(price) - 1, at the price the record grades the row
+// at. A play that keeps beating the sharp close has value whatever a few weeks
+// of results say; one that keeps missing it does not. Three groups: the
+// forward posted plays (the headline), the older rows posted on the old rule,
+// and every graded row. Most rows are passes, and a pass bought at a soft book
+// sits about the book's margin below fair by construction -- so the all-rows
+// number is mostly that margin, not a read on the plays.
+function mlCloseFair(r) {
+  if (r.close_fair != null) return r.close_fair_source === 'pinnacle' ? { fair: r.close_fair, rebuilt: false } : null;
+  // Logged before close_fair existed: the close read wrote edge, close_price
+  // and win_prob together, so edge/100 + implied(close_price) is that read's
+  // fair. fair_source is the ENTRY read's, though: if Pinnacle had dropped out
+  // by the close, the close's edge was the log5 model against the soft books
+  // and the sum is no fair at all. win_prob is the same read's fair, rounded,
+  // so a true rebuild lands within half a point of it (edge adds 0.05).
+  if (r.fair_source !== 'pinnacle' || r.edge == null || r.close_price == null || r.win_prob == null) return null;
+  const imp = amProb(r.close_price);
+  if (imp == null) return null;
+  const fair = r.edge / 100 + imp;
+  if (Math.abs(fair * 100 - r.win_prob) > 0.6) return { rejected: true };
+  return { fair, rebuilt: true };
+}
+const mlDecimal = (p) => (p > 0 ? 1 + p / 100 : 1 + 100 / -p);
+function mlVsSharpClose(rows) {
+  const groups = { posted: [], legacyPosted: [], all: [] };
+  let rejected = 0;
+  for (const r of rows) {
+    if (r.result !== 'win' && r.result !== 'loss') continue;
+    const cf = mlCloseFair(r);
+    if (!cf) continue;
+    if (cf.rejected) { rejected++; continue; }
+    const posted = mlPostedAs(r);
+    const price = posted ? posted.price : mlGradePrice(r);
+    if (price == null || !isFinite(price) || Math.abs(price) < 100) continue;
+    const x = { ev: (cf.fair * mlDecimal(price) - 1) * 100, won: r.result === 'win', fair: cf.fair, rebuilt: cf.rebuilt };
+    groups.all.push(x);
+    if (posted) groups[mlIsForward(r) ? 'posted' : 'legacyPosted'].push(x);
+  }
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const sum = (xs) => (xs.length ? {
+    n: xs.length,
+    median: r2(median(xs.map((x) => x.ev))),
+    mean: r2(mlMean(xs.map((x) => x.ev))),
+    above: round1(xs.filter((x) => x.ev > 0).length / xs.length * 100),
+    won: round1(xs.filter((x) => x.won).length / xs.length * 100),
+    expected: round1(mlMean(xs.map((x) => x.fair)) * 100),
+    rebuilt: xs.filter((x) => x.rebuilt).length,
+  } : { n: 0 });
+  return { posted: sum(groups.posted), legacyPosted: sum(groups.legacyPosted), all: sum(groups.all), rejected };
 }
 
 // Hits allowed, from the boxscore already fetched to grade strikeouts — so
