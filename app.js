@@ -1700,6 +1700,10 @@
   // NFL board a few minutes after switching. Nothing errored; the numbers were
   // simply about a sport the reader was no longer looking at.
   const slateSummaryVisible = () => state.sport !== 'nfl';
+  function noPlaysLine(bits) {
+    return `<div class="ss-in ss-none"><span class="ss-line">No plays yet tonight · ${bits.filter(Boolean).join(' · ')}</span>`
+      + `<span class="upd">odds refresh every 5 min</span></div>`;
+  }
   function renderBatterSlateSummary() {
     const rows = state.liveBatters;
     if (!rows || !rows.length) { el.slateSummary.hidden = true; return; }
@@ -1715,6 +1719,15 @@
     const watching = live.filter((g) => g.odds == null && (tiered(g) || g.tier === 'model'));
     const best = plays.reduce((m, g) => (g.edge != null && g.edge > m ? g.edge : m), -Infinity);
     const bestStr = best > -Infinity ? '+' + best.toFixed(1) + '%' : '—';
+    // A night with no plays says so in one line (2026-10-12), rather than
+    // four stats reading "Under plays 0 · Best edge —".
+    if (!plays.length) {
+      const priced = live.filter((g) => g.odds != null).length;
+      el.slateSummary.innerHTML = noPlaysLine([`<b>${priced}</b> batter${priced === 1 ? '' : 's'} priced`,
+        `<b>${watching.length}</b> watching`, pulledN ? `${pulledN} pulled` : '']);
+      el.slateSummary.hidden = !slateSummaryVisible();
+      return;
+    }
     el.slateSummary.innerHTML = `<div class="ss-in">`
       + `<span><span class="k">Under plays</span><b style="color:var(${plays.length ? '--accent' : '--text'})">${plays.length}</b></span>`
       + `<span><span class="k">Best edge</span><b style="color:${best > -Infinity ? 'var(--positive)' : 'var(--textDim)'}">${bestStr}</b></span>`
@@ -1743,8 +1756,14 @@
     const watching = rows.filter((g) => g.odds == null && t(g) !== 'pass');
     const best = plays.reduce((m, g) => (g.edge != null && g.edge > m ? g.edge : m), -Infinity);
     const bestStr = best > -Infinity ? '+' + best.toFixed(1) + '%' : '—';
+    if (!plays.length) {
+      el.slateSummary.innerHTML = noPlaysLine([`<b>${rows.length}</b> game${rows.length === 1 ? '' : 's'}`, `<b>${watching.length}</b> watching`]);
+      el.slateSummary.hidden = !slateSummaryVisible();
+      return;
+    }
+    // Gold like the batter board's count: a count of plays is not a result.
     el.slateSummary.innerHTML = `<div class="ss-in">`
-      + `<span><span class="k">Plays</span><b style="color:var(--positive)">${plays.length}</b></span>`
+      + `<span><span class="k">Plays</span><b style="color:var(--accent)">${plays.length}</b></span>`
       + `<span><span class="k">Best edge</span><b style="color:${best > -Infinity ? 'var(--positive)' : 'var(--textDim)'}">${bestStr}</b></span>`
       + `<span><span class="k">Watching</span><b style="color:var(--model)">${watching.length}</b></span>`
       + `<span><span class="k">Slate</span><b>${rows.length} game${rows.length === 1 ? '' : 's'}</b></span>`
@@ -2821,11 +2840,14 @@
     // below it, "Log this entry" started 879px down a 722px rail.
     const railEl = document.getElementById('rail');
     if (railEl) railEl.classList.toggle('slip-active', n > 0);
-    if (el.slipCount) el.slipCount.textContent = `${n} leg${n === 1 ? '' : 's'}`;
+    // An empty slip is one line beside its title, not a card (2026-10-12).
+    const slipSec = document.getElementById('slipSection');
+    if (slipSec) slipSec.classList.toggle('slip-is-empty', n === 0);
+    if (el.slipCount) el.slipCount.textContent = n ? `${n} leg${n === 1 ? '' : 's'}` : 'Empty · tap ☆ on any pick to add it';
     if (el.slipClearBtn) el.slipClearBtn.hidden = n === 0;
 
     if (!n) {
-      el.slip.innerHTML = `<div class="slip-empty">Tap the ★ on any pick above to build your slip. Picks persist across visits and every board.</div>`;
+      el.slip.innerHTML = '';
       return;
     }
 
@@ -3256,23 +3278,38 @@
         // that jumps to the board, and a button cannot hold another.
         const on = !!state.slip[x.legId];
         const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="today-add" data-leg="${esc(x.legId)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.player || '')} under ${esc(String(x.point))} ${esc(x.market)} ${on ? 'from' : 'to'} your slip" title="${on ? 'In your slip' : 'Add to slip'}">${on ? '★' : '☆'}</button>`;
-        // The calibration, live: how legs the model put at this level have
-        // actually landed at PrizePicks' numbers. Below 65% that has been about
-        // a coin flip for batter legs, so the leg's own number is not the read.
-        const lb = todayLegBand(x);
-        // From five legs: the count shows how thin a level is ("7 of 8").
-        const bandCls = todayBandClass(lb);
-        const bandLine = lb && lb.n >= 5
-          ? `<span class="pk-rec${bandCls}">Legs at ${lb.lo}${lb.hi ? '–' + lb.hi : '+'}% have landed ${lb.hit} of ${lb.n} (${Math.round(lb.hitRate)}%)</span>` : '';
         // The leg's own number takes its level's colour: a 55% leg whose level
         // lands 48% is not green (2026-10-12). It was green on every leg.
+        const bandCls = todayBandClass(todayLegBand(x));
         return `<li>${star}<button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
           + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p${bandCls || ' tc-band-none'}">${Math.round(x.prob)}%</span></span>`
           + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(x.market)} · PrizePicks${x.when ? ' · ' + esc(String(x.when).replace(/ PT$/, '')) : ''}`
           + `${x.confirmed ? '' : ' <span class="tc-wait">lineup not out</span>'}</span>${book}</span>`
-          + bandLine
           + `</button></li>`;
-      }).join('')}</ol>`;
+      }).join('')}</ol>`
+      + todayLevelLines(top);
+  }
+  // The calibration, live: how legs the model put at a level have actually
+  // landed at PrizePicks' numbers. Below 65% that has been about a coin flip for
+  // batter legs, so a leg's own number is not the read. From five legs: the
+  // count shows how thin a level is ("7 of 8").
+  function todayBandLine(lb, kLeg) {
+    if (!lb || !(lb.n >= 5)) return '';
+    return `<span class="pk-rec${todayBandClass(lb)}">${kLeg ? 'Strikeout legs' : 'Legs'} at ${lb.lo}${lb.hi ? '–' + lb.hi : '+'}% have landed ${lb.hit} of ${lb.n} (${Math.round(lb.hitRate)}%)</span>`;
+  }
+  // Each level once, under the list, in the order the legs reach it
+  // (2026-10-12). It printed under every leg, so three legs at one level read
+  // "Legs at 50-55% have landed 175 of 365 (48%)" three times.
+  function todayLevelLines(legs) {
+    const seen = new Set(), lines = [];
+    for (const x of legs) {
+      const lb = todayLegBand(x), kLeg = x.view === 'kprops';
+      const line = todayBandLine(lb, kLeg);
+      const key = (kLeg ? 'K' : 'B') + lb?.lo + '-' + lb?.hi;
+      if (!line || seen.has(key)) continue;
+      seen.add(key); lines.push(line);
+    }
+    return lines.length ? `<div class="tc-levels">${lines.join('')}</div>` : '';
   }
 
   // ---------------------------------------------------------------------
@@ -5531,8 +5568,13 @@
   // record of its own. Each star takes the leg under the id its own board uses.
   const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
   const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nfl: 'NFL', soccer: 'Soccer' };
+  // Placeholder legs while the list loads (2026-10-12): the section was a
+  // blank area for the seconds /api/picks takes on first open.
+  const PICKS_SKELETON = `<div class="nba-pp pk-card pk-skel" aria-busy="true" aria-label="Loading picks of the day">`
+    + '<div class="pk-skel-row"><span></span><span></span></div>'.repeat(3) + '</div>';
   async function refreshPicks() {
     if (!LIVE_MODE) return;
+    if (!state.picks) renderPicks();
     try {
       const d = await fetchJson('/api/picks');
       state.picks = d && Array.isArray(d.legs) ? d : { legs: [], error: 'unreadable' };
@@ -5552,7 +5594,7 @@
     if (!grid) return;
     const d = state.picks;
     const count = document.getElementById('picksCount');
-    if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
+    if (!d) { grid.innerHTML = PICKS_SKELETON; return; }
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>`; return; }
     const legs = (d.legs || []).filter((x) => Date.parse(x.commence) > Date.now());
     if (count) count.textContent = legs.length ? `${legs.length} leg${legs.length === 1 ? '' : 's'}` : '';

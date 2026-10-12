@@ -2877,3 +2877,23 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .nba-pp { margin:0 0 18px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--board, transparent); }
 .nba-pp .tc-legs li { display:flex; align-items:stretch; gap:8px; }
 .nba-pp .tc-leg { cursor:default; }
+
+/* Repetition and empty states (2026-10-12). */
+/* Today's card: each level's record once, under the list, not under every leg. */
+.tc-levels { margin-top:8px; display:grid; gap:2px; }
+.tc-levels .pk-rec { margin-top:0; }
+/* A night with no plays: one line in place of four stats. */
+.slate-summary .ss-line { font-family:var(--sans); font-size:13px; color:var(--textDim); }
+.slate-summary .ss-line b { font-family:var(--mono); color:var(--text); font-weight:600; }
+/* An empty slip: one line beside its title, no card. */
+.slip-is-empty .slip { display:none; }
+.slip-is-empty .sec-head { margin-bottom:0; }
+.slip-is-empty .slip-count { border:0; padding:0; font-family:var(--sans); font-size:13px; color:var(--textDim); }
+/* Picks of the day while /api/picks loads. */
+.pk-skel-row { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:16px 2px; border-bottom:1px solid var(--borderSoft); }
+.pk-skel-row:last-child { border-bottom:0; }
+.pk-skel-row span { display:block; height:12px; border-radius:6px; background:var(--board2); animation:pkSkel 1.1s ease-in-out infinite alternate; }
+.pk-skel-row span:first-child { width:60%; }
+.pk-skel-row span:last-child { width:40px; height:18px; }
+@keyframes pkSkel { from { opacity:.45; } to { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .pk-skel-row span { animation:none; } }
