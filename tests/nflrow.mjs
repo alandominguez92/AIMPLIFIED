@@ -32,6 +32,10 @@ console.log('\n-- the Sort label --');
 ok(!/<span class="sort-label">Sort<\/span>\s*<span class="sort-chips" id="nflSorts">/.test(html), 'not a loose sibling of the buttons');
 ok(/<span class="sort-group nfl-sort-group"><span class="sort-lead">Sort<\/span><span class="sort-chips" id="nflSorts"><\/span><\/span>/.test(html),
   'grouped with them, so it wraps with them');
+// The buttons wrap inside the group: unwrapped, at 320px they ran 27px off the
+// screen and the page scrolled sideways.
+ok(/\.nfl-sort-group \.sort-chips \{[^}]*flex-wrap:wrap;[^}]*min-width:0;/.test(css) && /\.nfl-sort-group \{[^}]*max-width:100%;/.test(css),
+  'and its buttons wrap inside it rather than past the screen');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

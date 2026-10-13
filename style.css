@@ -2958,3 +2958,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
     font-weight:500; color:var(--textDim); }
   .board.view-nflprops .interval-cell .np-k::before { content:'· '; }
 }
+/* The NFL sort buttons wrap inside their group rather than past the screen:
+   unwrapped, at 320px they ran 27px off it and the page scrolled sideways. */
+.nfl-sort-group { flex-wrap:nowrap; max-width:100%; min-width:0; }
+.nfl-sort-group .sort-chips { flex:0 1 auto; flex-wrap:wrap; min-width:0; }
+/* 2px less padding a side fits all four on one line at 375px; they missed by 3px. */
+@media (max-width:640px) { .nfl-sort-group .sort-chips .sort-btn { padding:0 9px; } }
