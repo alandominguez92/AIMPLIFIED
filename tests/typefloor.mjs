@@ -41,6 +41,11 @@ for (const f of ['style.css', 'app.js']) {
     .filter((r) => /font-family:\s*var\(--mono\)/.test(r.body) && /text-transform:\s*uppercase/.test(r.body));
   ok(!bad.length, bad.length ? `${f}: ${bad.length} uppercase mono rules (first: ${bad[0].sel})` : `${f}: no uppercase mono label`);
 }
+// The sport tabs' sub-labels ("Most Likely", "Model + Picks") are labels too.
+// At the 11px floor in letter-spaced mono the six tabs ran 52px past a 1280px
+// screen.
+const mini = rules(fs.readFileSync(BOARD + '/style.css', 'utf8')).filter((x) => x.sel === '.stab .mini' && /font-family/.test(x.body));
+ok(mini.length && mini.every((x) => /font-family:\s*var\(--sans\)/.test(x.body)), 'the sport tabs\' sub-labels are Archivo');
 // These four set no face of their own and inherit mono from their row.
 for (const sel of ['.slate-summary .k', '.fsrc', '.pin-k', '.price-read .pr-k']) {
   const r = rules(fs.readFileSync(BOARD + '/style.css', 'utf8')).filter((x) => x.sel === sel);

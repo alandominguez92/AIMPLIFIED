@@ -304,7 +304,9 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
    so the icon dims and brightens with its tab label in both themes instead of carrying a
    colour of its own. */
 .stab .sport-ico { width:16px; height:16px; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
-.stab .mini { font-family:var(--mono); font-size:var(--fsXs); letter-spacing:.08em; font-weight:500; border:1px solid var(--border); border-radius:3px; padding:2px 6px; color:var(--textDim); text-transform:none; }
+/* A label, so Archivo (2026-10-12): at the 11px floor in letter-spaced mono
+   the six tabs ran 52px past a 1280px screen and the row scrolled sideways. */
+.stab .mini { font-family:var(--sans); font-size:var(--fsXs); letter-spacing:0; font-weight:500; border:1px solid var(--border); border-radius:3px; padding:2px 6px; color:var(--textDim); text-transform:none; }
 .stab.active .mini { border-color:var(--accent); color:var(--accent); }
 
 /* ---------- ticker ---------- */
