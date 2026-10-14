@@ -862,6 +862,8 @@ section { padding:44px 0; }
    being alarming. */
 .fsrc { font-family:var(--sans); display:block; margin-top:5px; font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); font-weight:500; }
 .fsrc.sharp { color:var(--positiveDim); }
+/* Green only on a play (2026-10-13): on a pass the caption goes with its edge, neutral. */
+.board-row:not(.is-play) .fsrc.sharp { color:var(--textDim); }
 .board-row .interval-cell { color:var(--model); font-size:16px; font-family:var(--mono); font-variant-numeric:tabular-nums; }
 .view-kprops .board-row .interval-cell { color:var(--text); font-size:12px; }
 .board-row .tier-cell { line-height:1; }

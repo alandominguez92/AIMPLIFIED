@@ -12,8 +12,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const BOARD = path.join(import.meta.dirname, '..');
-const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-const app = fs.readFileSync(BOARD + '/app.js', 'utf8');
+const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '');
+const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
@@ -41,6 +41,16 @@ ok(fn({ n: 3, hit: 3, hitRate: 100 }) === '' && fn(null) === '', 'and under five
 ok(/<span class="tc-p\$\{bandCls \|\| ' tc-band-none'\}">/.test(app), 'the leg\'s number carries that class');
 ok(colorOf('.tc-p.tc-band-none').includes('var(--text)') && colorOf('.tc-p.tc-band-good').includes('var(--positive)'),
   'neutral without a level, green only from break-even');
+
+console.log('\n-- a pass\'s edge --');
+// 2026-10-13: a pass can sit above the sharp fair line and still not clear the
+// price; "+4.1%" in green beside "Pass" read as a play. Green on a play only;
+// a negative edge stays red. The "Sharp" caption under it follows.
+ok(/edgeVal > 0 \? \(isPlayTier\(tierVal\) \? 'var\(--positive\)' : 'var\(--textDim\)'\) : 'var\(--danger\)'/.test(app),
+  'a positive edge is green on a play, neutral on a pass, and a negative one red');
+ok(app.indexOf('const tierVal = activeTier(g);') >= 0 && app.indexOf('const tierVal = activeTier(g);') < app.indexOf("edgeVal > 0 ? (isPlayTier(tierVal)"),
+  'the row\'s tier is known before its edge is coloured');
+ok(colorOf('.board-row:not(.is-play) .fsrc.sharp').includes('var(--textDim)'), 'and the "Sharp" caption under a pass\'s edge is not green');
 
 console.log('\n-- gold is the bet --');
 ok(colorOf('.fade-pick').length && !colorOf('.fade-pick').includes('var(--accent)'), `a row's pick is not gold by default (${colorOf('.fade-pick').join(', ')})`);

@@ -2189,10 +2189,14 @@
       // Green/red edge is a PLAY signal — reserve it for the batter board. On the
       // context views (ML/K/RL) the edge is information, not a recommendation, so
       // it renders neutral: a losing moneyline can't masquerade as green "value".
-      const edgeColor = (isML() && ml.edgeCheck) ? 'var(--warm)'
-        : (!hasEdge || !isBatter()) ? 'var(--textDim)' : (edgeVal > 0 ? 'var(--positive)' : 'var(--danger)');
-      const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
       const tierVal = activeTier(g);
+      // Green only on a play (2026-10-13): a pass can sit above the sharp fair
+      // line and still not clear the price, and "+4.1%" in green beside "Pass"
+      // read as a play. A negative edge stays red: that is what it is.
+      const edgeColor = (isML() && ml.edgeCheck) ? 'var(--warm)'
+        : (!hasEdge || !isBatter()) ? 'var(--textDim)'
+        : edgeVal > 0 ? (isPlayTier(tierVal) ? 'var(--positive)' : 'var(--textDim)') : 'var(--danger)';
+      const edgeLabel = !hasEdge ? '—' : (edgeVal > 0 ? '+' : '') + edgeVal.toFixed(1) + '%';
       // How many board picks share this pick's game (batter view) — drives the
       // same-game correlation flag + a faint row tint that groups the cluster.
       const corrN = isBatter() && g.gamePk != null ? (gameCounts[g.gamePk] || 0) : 0;
