@@ -8674,6 +8674,11 @@ const PROBE_SPORTS = {
   // rotation games each); points and PRA did not (51.6%, 51.2%).
   nba: 'basketball_nba',
   nbapre: 'basketball_nba_preseason',
+  // NHL, probe-only (2026-10-14): nothing is ingested. The question before any
+  // hockey is built is whether shots on goal has a sharp fair line (two sharp
+  // books on the same number, two-sided) and whether PrizePicks and DraftKings
+  // quote the same players.
+  nhl: 'icehockey_nhl',
 };
 // ---------------------------------------------------------------------------
 // Soccer — game lines only, for three leagues, as CONTEXT.
@@ -10258,6 +10263,10 @@ async function fairProbe(env, reqUrl) {
     // { sharp:Set, exec:Set }. Costs no extra API calls — it reads the same
     // responses the loop already fetched.
     const lineAcc = {};
+    // Which players each book quotes, any side: covAcc[market][book] = Map of
+    // "event|player" -> point. Answers "do DraftKings and PrizePicks cover the
+    // same players" from the same responses, at no extra cost (2026-10-14).
+    const covAcc = {};
     for (const e of upcoming) {
       const url = `${base}/events/${e.id}/odds?apiKey=${key}&bookmakers=${allBooks.join(',')}`
         + `&markets=${markets.join(',')}&oddsFormat=american&dateFormat=iso`;
@@ -10287,6 +10296,9 @@ async function fairProbe(env, reqUrl) {
           const m = bAcc[mk.key] || (bAcc[mk.key] = { players: 0, twoSided: 0, games: 0, sums: [] });
           m.players += list.length; m.twoSided += twoSided.length; m.games += 1;
           for (const s of sums) m.sums.push(s);
+          const cov = covAcc[mk.key] || (covAcc[mk.key] = {});
+          const seen = cov[bm.key] || (cov[bm.key] = new Map());
+          for (const nm of Object.keys(players)) seen.set(`${e.id}|${nm}`, players[nm].point ?? null);
 
           // Same pass, keyed by the line. Only two-sided quotes with a point can
           // ever serve as a fair source, so one-sided and point-less rows are
@@ -10353,6 +10365,10 @@ async function fairProbe(env, reqUrl) {
           pricedUnderTwoBookRule: two,           // new rule: >=2
           wouldSkipUnderTwoBookRule: atLeast(1, b) - two,
           pctBettableWithTwoSharp: b.length ? Math.round(1000 * two / b.length) / 10 : null,
+          // Every two-sided line, bettable or not: how many carry two or more
+          // sharp books at the same number. With PrizePicks in ?books= it counts
+          // as an execution book above, so "bettable" there includes PP-only lines.
+          linesWith2PlusSharp: atLeast(2, rows),
           pctLossVsToday: atLeast(1, b)
             ? Math.round(1000 * (atLeast(1, b) - two) / atLeast(1, b)) / 10
             : null,
@@ -10370,6 +10386,29 @@ async function fairProbe(env, reqUrl) {
           + `eligible books, so it has no redundancy under this rule.`
         : 'no bettable lines in the sample.';
     } catch (err) { out.sharpOverlapError = String(err && err.message || err); }
+    // Player coverage between each pair of execution books (e.g. DraftKings and
+    // PrizePicks): who quotes whom, and on how many both hang the same number.
+    try {
+      const exec = allBooks.filter((b) => !sharpBooks.includes(b));
+      const nameOf = (k) => k.slice(k.indexOf('|') + 1);
+      out.playerCoverage = {};
+      for (const mkKey of Object.keys(covAcc)) {
+        const cov = covAcc[mkKey], pairs = {};
+        for (let i = 0; i < exec.length; i++) for (let j = i + 1; j < exec.length; j++) {
+          const a = exec[i], b = exec[j], A = cov[a] || new Map(), B = cov[b] || new Map();
+          if (!A.size && !B.size) continue;
+          const both = [...A.keys()].filter((k) => B.has(k));
+          pairs[`${a}|${b}`] = {
+            [a]: A.size, [b]: B.size, both: both.length,
+            [`${a}Only`]: A.size - both.length, [`${b}Only`]: B.size - both.length,
+            bothSameNumber: both.filter((k) => A.get(k) != null && A.get(k) === B.get(k)).length,
+            [`${a}OnlySample`]: [...A.keys()].filter((k) => !B.has(k)).slice(0, 6).map(nameOf),
+            [`${b}OnlySample`]: [...B.keys()].filter((k) => !A.has(k)).slice(0, 6).map(nameOf),
+          };
+        }
+        out.playerCoverage[mkKey] = pairs;
+      }
+    } catch (err) { out.playerCoverageError = String(err && err.message || err); }
     // A sharp book only counts if it posts a TWO-SIDED quote — a one-sided price
     // cannot be de-vigged, so it can't produce a fair line no matter who posts it.
     const deviggable = (b) => byBook[b] && Object.values(byBook[b].markets).some((m) => m.twoSided > 0);
