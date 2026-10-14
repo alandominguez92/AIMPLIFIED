@@ -3,35 +3,41 @@
 // Today's card, Picks of the day and the NBA PrizePicks card show each leg's
 // player: MLB serves headshots by MLB id (and a silhouette for an unknown id),
 // ESPN serves NBA and soccer headshots by ESPN athlete id (404 when it has
-// none). A team leg shows the club's mark (MLB, by team id). Initials in the
-// team's colours sit under every image and show only when there is no photo.
+// none). A team leg shows the club's mark: MLB's by team id, and ESPN's for
+// NBA, NFL and soccer, by the path the worker puts on the leg (spec.logo).
+// Initials in the team's colours sit under every image and show only when
+// there is no photo.
 //
 // The top card is the first leg of Picks of the day, large: on the Picks tab
 // and above Today's card on the MLB board, which the site opens on. Gold is the
 // bet (the pick, the add button); the chance is green only when legs like it
 // have cleared PrizePicks' 2-pick break-even (57.7%) over five or more.
 //
-// The functions are lifted out of app.js, so the test runs what ships.
+// The functions are lifted out of app.js, so the test runs what ships. The
+// club logos are checked against ESPN's own recorded payloads
+// (tests/fixtures/espn-team-logos.json): its NBA and NFL team lists, and two
+// soccer scoreboards from the host the worker reads.
 import fs from 'node:fs';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 const BOARD = path.join(import.meta.dirname, '..');
 const src = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '');
 const html = fs.readFileSync(BOARD + '/index.html', 'utf8').replace(/\r\n/g, '\n');
 const worker = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n');
-function lift(name) {
-  let at = src.indexOf(`function ${name}(`);
+function lift(name, from = src) {
+  let at = from.indexOf(`function ${name}(`);
   const isConst = at < 0;
-  if (isConst) at = src.indexOf(`const ${name} =`);
-  if (at < 0) throw new Error(`app.js has no ${name}`);
+  if (isConst) at = from.indexOf(`const ${name} =`);
+  if (at < 0) throw new Error(`${from === src ? 'app.js' : 'worker.js'} has no ${name}`);
   let depth = 0, seen = false;
-  for (let i = at; i < src.length; i++) {
-    const c = src[i];
+  for (let i = at; i < from.length; i++) {
+    const c = from[i];
     if (c === '{' || c === '(' || c === '[') { depth++; seen = true; }
     else if (c === '}' || c === ')' || c === ']') depth--;
     if (seen && depth === 0) {
-      if (!isConst && c === '}') return src.slice(at, i + 1);
-      if (isConst && (src[i + 1] === ';' || src[i + 1] === '\n')) return src.slice(at, i + 2);
+      if (!isConst && c === '}') return from.slice(at, i + 1);
+      if (isConst && (from[i + 1] === ';' || from[i + 1] === '\n')) return from.slice(at, i + 2);
     }
   }
   throw new Error(`could not close ${name}`);
@@ -40,7 +46,7 @@ const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'headshotUrl', 'teamMarkUrl', 'init
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickFace', 'heroLegHtml'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const state = { slip: {} };
-const F = new Function('state', 'esc', names.map(lift).join('\n')
+const F = new Function('state', 'esc', names.map((n) => lift(n)).join('\n')
   + '\nreturn { headshotUrl, teamMarkUrl, initialsOf, avatarHtml, heroLegHtml };')(state, esc);
 
 let fail = 0;
@@ -52,7 +58,12 @@ ok(/espncdn\.com\/combiner\/i\?img=\/i\/headshots\/nba\/players\/full\/3934672\.
 ok(F.headshotUrl('nfl', 1) === null && F.headshotUrl('mlb', null) === null && F.headshotUrl('nba', '') === null, 'nothing where there is no id or no source');
 ok(/\/people\/123\/headshot/.test(F.headshotUrl('mlb', '123"><script>')), 'only the id\'s digits ever reach the URL');
 ok(/team-logos\/119\.svg$/.test(F.teamMarkUrl('mlb', 'LAD')) && F.teamMarkUrl('mlb', 'XYZ') === null && F.teamMarkUrl('soccer', 'LIV') === null,
-  'a club\'s mark for MLB teams, by team id');
+  'a club\'s mark for MLB teams, by team id; none for another club the worker found no logo for');
+ok(F.teamMarkUrl('nba', 'Warriors', 'nba/500/gs.png') === 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/nba/500/gs.png&w=128&h=128'
+  && /teamlogos\/countries\/500\/ger\.png&w=128/.test(F.teamMarkUrl('soccer', 'Germany', 'countries/500/ger.png')),
+  'any other club\'s mark from ESPN, by the path the worker sends, at 128px');
+ok(['nba/500/gs.png"><script>', 'https://evil.example/x.png', '../../x.png', 'nba/500/gs.svg', 'mlb/500/lad.png']
+  .every((p) => F.teamMarkUrl('nba', 'x', p) === null), 'and nothing else of that path reaches the URL');
 
 console.log('\n-- initials, under every face --');
 const cases = [['Aaron Judge', null, 'AJ'], ['B. Williamson', null, 'BW'], ['LAD', 'LAD', 'LAD'], ['Liverpool', 'Liverpool', 'LIV'],
@@ -88,6 +99,13 @@ const thin = F.heroLegHtml({ ...pp, record: { n: 3, hit: 3, hitRate: 100 } });
 ok(/class="hl-p"><span class="hl-pct">/.test(thin) && !/data-sport="picks"/.test(thin), 'under five graded legs, no green; and no link on the Picks tab itself');
 const ml = F.heroLegHtml({ ...pp, kind: 'mlb_ml', title: 'LAD ML', odds: -150, spec: { sport: 'mlb', team: 'LAD', market: 'ml' } });
 ok(/class="hl-name">LAD</.test(ml) && /Moneyline <span class="hl-odds">-150</.test(ml) && /team-logos\/119\.svg/.test(ml), 'a moneyline: the club, its mark and price');
+const nbaMl = F.heroLegHtml({ ...pp, kind: 'nba_ml', sport: 'nba', title: 'Celtics ML', odds: -330,
+  spec: { sport: 'nba', team: 'Celtics', market: 'ml', logo: 'nba/500/bos.png' } });
+const socMl = F.heroLegHtml({ ...pp, kind: 'soccer_fav', sport: 'soccer', title: 'Arsenal ML', odds: -250,
+  spec: { sport: 'soccer', team: 'Arsenal', market: 'ml', logo: 'soccer/500/359.png' } });
+ok(/class="hs hs-team" style="--hs-size:64px"[^>]*><span class="hs-mono">CEL<\/span><img class="hs-img" src="https:\/\/a\.espncdn\.com\/combiner\/i\?img=\/i\/teamlogos\/nba\/500\/bos\.png/.test(nbaMl)
+  && /teamlogos\/soccer\/500\/359\.png/.test(socMl) && /hs-mono">ARS</.test(socMl),
+  'an NBA or soccer moneyline: the club\'s ESPN mark over its initials (they were initials alone)');
 ok(/\.hl-pick \{[^}]*color:var\(--accent\)/.test(css) && /\.hl-p\.good \.hl-pct \{ color:var\(--positive\); \}/.test(css), 'gold is the pick; green is the record clearing break-even');
 
 console.log('\n-- where it sits --');
@@ -96,6 +114,117 @@ ok(/const top = document\.getElementById\('topCard'\);\s*if \(top && slate\.firs
   'and kept above it when the rail hands Today\'s card back on a phone');
 ok(/setTimeout\(refreshPicks, 0\);/.test(src), 'loaded with the page, a tick late so the Picks renderer\'s consts exist');
 ok(/const hero = heroLegHtml\(legs\[0\], \{ size: 52 \}\);[\s\S]*?legs\.slice\(1\)\.map/.test(lift('renderPicks')), 'on the Picks tab it is the list\'s first leg, and the rest follow');
+
+// ---- the worker: which logo a moneyline leg carries (2026-10-14) ----------------------
+// ESPN's file names are its own codes. Guessed ones fail quietly: uta.png and
+// nop.png 404, sas.png is the Spurs' wordmark and la.png the Rams' alternate.
+console.log('\n-- each club\'s ESPN logo --');
+const FX = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-team-logos.json'), 'utf8'));
+const W = new Function(['NFL_ABBR', 'lastWord', 'NBA_LOGO', 'NFL_LOGO', 'moneylineLogo'].map((n) => lift(n, worker)).join('\n')
+  + '\nreturn { moneylineLogo, NFL_ABBR };')();
+const espnTeams = (lg) => FX[`https://site.api.espn.com/apis/site/v2/sports/${lg}/teams`].sports[0].leagues[0].teams.map((t) => t.team);
+const logoPath = (href) => href.replace('https://a.espncdn.com/i/teamlogos/', '');
+const nbaT = espnTeams('basketball/nba');
+const nbaBad = nbaT.filter((t) => W.moneylineLogo('nba', t.displayName) !== logoPath(t.logos[0].href));
+ok(nbaT.length === 30 && !nbaBad.length && W.moneylineLogo('nba', 'Los Angeles Clippers') === 'nba/500/lac.png',
+  `all 30 NBA clubs, by nickname, to the logo ESPN lists for each (wrong: ${nbaBad.map((t) => t.displayName).join(', ') || 'none'})`);
+const nflT = espnTeams('football/nfl');
+const nflBad = Object.entries(W.NFL_ABBR).filter(([full, code]) => {
+  const t = nflT.find((x) => x.displayName === full);
+  return !t || W.moneylineLogo('nfl', code) !== logoPath(t.logos[0].href);
+});
+ok(Object.keys(W.NFL_ABBR).length === 32 && !nflBad.length,
+  `all 32 NFL clubs, by the site's code: WAS is ESPN's wsh, LA its lar (wrong: ${nflBad.map(([f]) => f).join(', ') || 'none'})`);
+ok(W.moneylineLogo('nfl', 'Las Vegas Raiders') === null && W.moneylineLogo('nba', 'Hapoel Jerusalem') === null,
+  'a club neither table knows gets no logo, so its initials show');
+
+// /api/picks end to end: real SQLite, the real worker, and ESPN's recorded
+// scoreboards from cdn.espn.com (the host the worker reads) for soccer.
+console.log('\n-- on the Picks list --');
+globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
+const RealDate = Date;
+let NOW = RealDate.parse('2026-10-18T09:00:00Z');       // a Sunday, 2 AM Pacific
+globalThis.Date = class extends RealDate {
+  constructor(...a) { super(...(a.length ? a : [NOW])); }
+  static now() { return NOW; }
+};
+const reads = [];
+globalThis.fetch = async (u) => {
+  const url = String(u);
+  if (url.startsWith('https://cdn.espn.com/core/soccer/scoreboard')) {
+    reads.push(url);
+    if (url.includes('league=esp.1')) await new Promise((r) => setTimeout(r, 6000));     // ESPN, slow
+    return new Response(JSON.stringify(FX[url] || { content: { sbData: { events: [] } } }), { status: 200 });
+  }
+  return new Response('{}', { status: 404 });
+};
+const sq = new DatabaseSync(':memory:');
+const norm = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v);
+function exec(sql, args, mode) {
+  const st = sq.prepare(sql);
+  const a = args.map(norm);
+  if (mode === 'all') return { results: st.all(...a), meta: {} };
+  if (mode === 'first') return st.get(...a) || null;
+  return { success: true, meta: { changes: Number(st.run(...a).changes) } };
+}
+const DB = {
+  prepare: (sql) => { const s = { sql, args: [], bind: (...x) => { s.args = x; return s; },
+    all: async () => exec(s.sql, s.args, 'all'), first: async (c) => { const r = exec(s.sql, s.args, 'first'); return c && r ? r[c] : r; },
+    run: async () => exec(s.sql, s.args, 'run') }; return s; },
+  batch: async (sts) => sts.map((x) => exec(x.sql, x.args, 'run')),
+};
+const mod = await import('data:text/javascript;base64,' + Buffer.from(worker).toString('base64'));
+const picks = async () => (await mod.default.fetch(new Request('https://x/api/picks'), { DB }, { waitUntil: () => {} })).json();
+await picks();                                           // creates the tables
+const ptDay = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new RealDate(iso));
+const gm = (sport, gid, market, league, commence, side, pick, home, away, wp, price) => sq.prepare(
+  'INSERT INTO gmpicks (sport, date, game_id, market, league, commence, side, pick, home, away, win_prob, entry_price, close_price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+  .run(sport, ptDay(commence), gid, market, league, commence, side, pick, home, away, wp, price, price);
+// Kickoffs as ESPN lists them on Oct 18. The odds feed writes "Bournemouth";
+// ESPN writes "AFC Bournemouth". Chelsea is not on ESPN's Oct 18 card at all.
+gm('nba', 'evBOS', 'h2h', 'reg', '2026-10-18T23:30:00Z', 'home', 'Boston Celtics', 'Boston Celtics', 'Detroit Pistons', 78, -330);
+gm('nfl', 'evWAS', 'h2h', 'REG', '2026-10-18T17:00:00Z', 'home', 'WAS', 'WAS', 'NYG', 70, -240);
+gm('soccer', 'evNFO', 'fav', 'epl', '2026-10-18T15:30:00Z', 'away', 'Arsenal', 'Nottingham Forest', 'Arsenal', 72, -250);
+gm('soccer', 'evBOU', 'fav', 'epl', '2026-10-18T13:00:00Z', 'home', 'Bournemouth', 'Bournemouth', 'Sunderland', 68, -200);
+gm('soccer', 'evCHE', 'fav', 'epl', '2026-10-18T14:00:00Z', 'home', 'Chelsea', 'Chelsea', 'Brentford', 66, -180);
+const legOf = (d, t) => (d.legs || []).find((x) => x.title === t) || { spec: {} };
+let d1 = await picks();
+console.log('  ' + (d1.legs || []).map((x) => `${x.title} ${x.spec.logo || '-'}`).join(' | '));
+ok(legOf(d1, 'Celtics ML').spec.logo === 'nba/500/bos.png' && legOf(d1, 'WAS ML').spec.logo === 'nfl/500/wsh.png',
+  'an NBA and an NFL moneyline carry their club\'s logo path');
+ok(legOf(d1, 'Arsenal ML').spec.logo === 'soccer/500/359.png' && legOf(d1, 'Bournemouth ML').spec.logo === 'soccer/500/349.png',
+  'a soccer favourite carries the logo ESPN lists for that side of the fixture, matched as the grader matches clubs ("AFC Bournemouth")');
+ok(legOf(d1, 'Chelsea ML').title && legOf(d1, 'Chelsea ML').spec.logo == null, 'a fixture ESPN does not list that day: no logo, so initials');
+ok(reads.length === 1 && reads[0].endsWith('league=eng.1&date=20261018'), `one scoreboard read for the Premier League's day, not one per leg (${reads.length})`);
+await picks();
+ok(reads.length === 1, `and none on another page read inside ten minutes (${reads.length})`);
+
+// A late kickoff: Juárez at Cruz Azul, 03:10Z on Oct 18, is 8:10 PM Pacific on
+// the 17th, and ESPN files it under the 17th. Asked for the UTC day, it is not there.
+NOW = RealDate.parse('2026-10-17T20:00:00Z');
+gm('soccer', 'evCAZ', 'fav', 'ligamx', '2026-10-18T03:10:00Z', 'home', 'Cruz Azul', 'Cruz Azul', 'FC Juarez', 67, -190);
+const dMx = await picks();
+ok(legOf(dMx, 'Cruz Azul ML').spec.logo === 'soccer/500/218.png' && reads.at(-1).endsWith('league=mex.1&date=20261017'),
+  `a late kickoff is looked up on the leg's Pacific day, where ESPN files it (${legOf(dMx, 'Cruz Azul ML').spec.logo})`);
+
+// National teams: their marks live under countries/. The feed's "Turkey" is
+// ESPN's "Türkiye", and at a neutral ground the two can disagree which side is
+// home -- the grader flips such a fixture back, and so does this.
+NOW = RealDate.parse('2024-11-16T10:00:00Z');
+gm('soccer', 'evGER', 'fav', 'uefanl', '2024-11-16T19:45:00Z', 'home', 'Germany', 'Germany', 'Bosnia and Herzegovina', 80, -900);
+gm('soccer', 'evTUR', 'fav', 'uefanl', '2024-11-16T17:00:00Z', 'away', 'Turkey', 'Wales', 'Turkey', 66, -170);
+const d2 = await picks();
+ok(legOf(d2, 'Germany ML').spec.logo === 'countries/500/ger.png' && legOf(d2, 'Turkey ML').spec.logo === 'countries/500/tur.png',
+  `a national team carries its country's mark, home or away in either feed (${legOf(d2, 'Germany ML').spec.logo}, ${legOf(d2, 'Turkey ML').spec.logo})`);
+
+// ESPN slow to answer: the list does not wait for it.
+NOW = RealDate.parse('2026-10-18T09:00:00Z');
+gm('soccer', 'evRMA', 'fav', 'laliga', '2026-10-18T19:00:00Z', 'home', 'Real Madrid', 'Real Madrid', 'Sevilla', 75, -300);
+const t0 = performance.now();
+const d3 = await picks();
+const took = performance.now() - t0;
+ok(took < 4000 && legOf(d3, 'Real Madrid ML').title && legOf(d3, 'Real Madrid ML').spec.logo == null && legOf(d3, 'Arsenal ML').spec.logo === 'soccer/500/359.png',
+  `a slow ESPN holds the list ${(took / 1000).toFixed(1)}s at most, not the 6s it takes: that leg shows initials, the rest their marks`);
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

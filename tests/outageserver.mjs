@@ -154,6 +154,13 @@ globalThis.fetch = async (u, o) => {
     const rec = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-soc-740870.json'), 'utf8'));
     return new Response(JSON.stringify(Object.entries(rec).find(([k]) => k.includes('/summary'))[1]), { status: 200 });
   }
+  // NBADEMO's soccer favourite (Arsenal at Nottingham Forest) is on ESPN's
+  // recorded Oct 18 Premier League card, served for any day, so the Picks
+  // list's club logo resolves whatever today's real card is.
+  if (process.env.NBADEMO === '1' && url.startsWith('https://cdn.espn.com/core/soccer/scoreboard') && url.includes('league=eng.1')) {
+    const rec = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-team-logos.json'), 'utf8'));
+    return new Response(JSON.stringify(rec['https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=eng.1&date=20261018']), { status: 200 });
+  }
   if (url.includes('api.the-odds-api.com')) {
     if (HEALTHY) {
       const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -354,7 +361,8 @@ if (NBADEMO) {
       gid, market, league, new Date(Date.now() + hrs * 3600e3).toISOString(), side, pick, home, away, wp, price, price).run();
   await gm('nba', 'evBOS', 'h2h', 'reg', 5, 'home', 'Boston Celtics', 'Boston Celtics', 'Detroit Pistons', 77.4, -330);
   await gm('nfl', 'evDAL', 'h2h', 'REG', 20, 'home', 'DAL', 'DAL', 'TB', 69.1, -240);
-  await gm('soccer', 'evARS', 'fav', 'epl', 6, 'home', 'Arsenal', 'Arsenal', 'Leeds United', 71.0, -250);
+  // A fixture on ESPN's recorded Oct 18 card, served below, so its club logo resolves.
+  await gm('soccer', 'evARS', 'fav', 'epl', 6, 'away', 'Arsenal', 'Nottingham Forest', 'Arsenal', 71.0, -250);
   await gm('nba', 'evLOW', 'h2h', 'reg', 7, 'away', 'Denver Nuggets', 'Utah Jazz', 'Denver Nuggets', 61.0, -160);
   // Last night, graded.
   const past = new Date(Date.now() - 30 * 3600e3);

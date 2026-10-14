@@ -7448,6 +7448,76 @@ const PICKS_NBA_MK = { threes: '3PM', ast: 'AST', reb: 'REB' };
 const lastWord = (s) => String(s || '').trim().split(/\s+/).pop();
 const gamePkNum = (id) => { const m = /(\d{5,})/.exec(String(id || '')); return m ? Number(m[1]) : null; };
 
+// ---- Club logos on the Picks list (2026-10-14) ---------------------------------
+// A moneyline leg shows its club's mark. ESPN serves every one under
+// a.espncdn.com/i/teamlogos/; a leg carries the path below that as spec.logo,
+// and the page builds the URL. The file names are ESPN's own codes, not the
+// site's: Golden State is gs, Utah utah, both Washingtons wsh, the Rams lar.
+// Guessing costs a face either way: uta.png and nop.png 404, while sas.png and
+// la.png answer 200 with another picture (the Spurs' wordmark, the Rams'
+// alternate). tests/faces.mjs holds both tables to ESPN's recorded team lists.
+const NBA_LOGO = {      // by nickname: the leg's team, the feed's last word
+  hawks: 'atl', celtics: 'bos', nets: 'bkn', hornets: 'cha', bulls: 'chi', cavaliers: 'cle', mavericks: 'dal',
+  nuggets: 'den', pistons: 'det', warriors: 'gs', rockets: 'hou', pacers: 'ind', clippers: 'lac', lakers: 'lal',
+  grizzlies: 'mem', heat: 'mia', bucks: 'mil', timberwolves: 'min', pelicans: 'no', knicks: 'ny', thunder: 'okc',
+  magic: 'orl', '76ers': 'phi', suns: 'phx', blazers: 'por', kings: 'sac', spurs: 'sa', raptors: 'tor',
+  jazz: 'utah', wizards: 'wsh',
+};
+// By the site's code (NFL_ABBR). ESPN's is the same, lower-cased, but for two.
+const NFL_LOGO = { WAS: 'wsh', LA: 'lar' };
+function moneylineLogo(sport, team) {
+  if (sport === 'nba') {
+    const c = NBA_LOGO[lastWord(team).toLowerCase()];
+    return c ? `nba/500/${c}.png` : null;
+  }
+  if (sport === 'nfl') {
+    const t = String(team || '');
+    return Object.values(NFL_ABBR).includes(t) ? `nfl/500/${NFL_LOGO[t] || t.toLowerCase()}.png` : null;
+  }
+  return null;
+}
+// Soccer has too many clubs to list, so its marks come from the ESPN scoreboard
+// the grader reads (cdn.espn.com, free): the fixture found by both clubs,
+// matched as the grader matches them, and the picked side's logo. Clubs sit
+// under soccer/500/, national teams under countries/500/. ESPN files a match
+// under its US day -- every Liga MX kickoff at 03:00Z from Aug 1 to Oct 11,
+// 2026 sat under the day before -- so the leg's Pacific day is the one to ask
+// for. Page reads only, not the cron; one read per league and day, kept ten
+// minutes; and never more than SOC_LOGO_WAIT_MS of the list's time, because a
+// slow ESPN must not hold the Picks tab: the leg shows its initials instead.
+const SOC_LOGO_TTL_MS = 10 * 60e3;
+const SOC_LOGO_WAIT_MS = 2500;
+// The read itself is kept, not its result, so three legs on one day share one.
+const socLogoDays = new Map();     // `${slug}|${yyyymmdd}` -> { at, games: Promise }
+const SOC_LOGO_PATH = /^https:\/\/a\.espncdn\.com\/i\/teamlogos\/((?:soccer|countries)\/500\/[a-z0-9]+\.png)$/i;
+function soccerLogoDay(slug, ymd) {
+  const k = `${slug}|${ymd}`;
+  const hit = socLogoDays.get(k);
+  if (hit && Date.now() - hit.at < SOC_LOGO_TTL_MS) return hit.games;
+  const side = (c) => ({ name: (c.team && (c.team.displayName || c.team.name)) || '', logo: (c.team && c.team.logo) || '' });
+  const games = espnScoreboard(`soccer/scoreboard?xhr=1&league=${slug}&date=${ymd}`).then((evs) => evs.map((ev) => {
+    const cs = ((ev.competitions || [])[0] || {}).competitors || [];
+    const h = cs.find((c) => c.homeAway === 'home'), a = cs.find((c) => c.homeAway === 'away');
+    return h && a ? { home: side(h), away: side(a) } : null;
+  }).filter(Boolean));
+  socLogoDays.set(k, { at: Date.now(), games });
+  games.catch(() => socLogoDays.delete(k));    // a failed read is retried on the next page read
+  return games;
+}
+async function soccerPickLogos(legs) {
+  await Promise.all(legs.filter((l) => l.kind === 'soccer_fav' && l.clubs && ESPN_SOCCER_SLUG[l.clubs.league]).map(async (l) => {
+    let games = [];
+    try { games = await soccerLogoDay(ESPN_SOCCER_SLUG[l.clubs.league], String(l.spec.date).replace(/-/g, '')); } catch (e) { return; }
+    const { home, away } = l.clubs;
+    // Neutral grounds: the feeds can disagree which side is home.
+    const g = games.find((x) => (clubMatch(x.home.name, home) && clubMatch(x.away.name, away))
+      || (clubMatch(x.home.name, away) && clubMatch(x.away.name, home)));
+    const mine = g && [g.home, g.away].find((x) => clubMatch(x.name, l.spec.team));
+    const m = mine && SOC_LOGO_PATH.exec(mine.logo);
+    if (m) l.spec.logo = m[1].toLowerCase();
+  }));
+}
+
 async function ensureDayPickSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS daypicks (
     date TEXT NOT NULL, leg_id TEXT NOT NULL, kind TEXT NOT NULL,
@@ -7535,17 +7605,21 @@ async function picksCandidates(env, now) {
     if (kind === 'nba_ml') {
       legs.push({ ...base, gameKey: 'nba:' + r.game_id, legId: `nba:ml:${r.game_id}:${r.side}`,
         title: `${lastWord(r.pick)} ML`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
-        spec: { sport: 'nba', date: day, gamePk: r.game_id, player: r.pick, team: lastWord(r.pick), market: 'ml', side: r.side, book, pp: null } });
+        spec: { sport: 'nba', date: day, gamePk: r.game_id, player: r.pick, team: lastWord(r.pick), market: 'ml', side: r.side,
+          logo: moneylineLogo('nba', r.pick), book, pp: null } });
     } else if (kind === 'nfl_ml') {
       legs.push({ ...base, gameKey: 'nfl:' + r.game_id, legId: `nfl:ml:${r.game_id}:${r.pick}`,
         title: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`,
         // The NFL slip keys a game by matchup and day, as its board does.
-        spec: { sport: 'nfl', date: day, gamePk: `${r.away} @ ${r.home}|${day}`, player: r.pick, team: r.pick, market: 'ml', side: r.side, book, pp: null } });
+        spec: { sport: 'nfl', date: day, gamePk: `${r.away} @ ${r.home}|${day}`, player: r.pick, team: r.pick, market: 'ml', side: r.side,
+          logo: moneylineLogo('nfl', r.pick), book, pp: null } });
     } else {
       legs.push({ ...base, gameKey: 'soc:' + r.game_id, legId: `soc:${r.game_id}:${r.side}`,
         title: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`,
         league: (SOCCER_LEAGUES[r.league] && SOCCER_LEAGUES[r.league].label) || r.league || null,
-        spec: { sport: 'soccer', date: day, gamePk: r.game_id, player: r.pick, team: r.pick, market: 'ml', side: r.side, book, pp: null } });
+        // What the logo lookup matches on (soccerPickLogos); not sent to the page.
+        clubs: { league: r.league, home: r.home, away: r.away },
+        spec: { sport: 'soccer', date: day, gamePk: r.game_id, player: r.pick, team: r.pick, market: 'ml', side: r.side, logo: null, book, pp: null } });
     }
   }
 
@@ -7715,9 +7789,14 @@ async function picksBoard(env) {
     const now = Date.now();
     const { legs, unavailable } = await picksCandidates(env, now);
     const list = pickList(legs);
+    // Soccer marks are read while the log is written, and waited on only so long.
+    const logos = soccerPickLogos(list).catch(() => {});
     try { await logDayPicks(env.DB, list, unavailable, now); } catch (e) { out.logError = String((e && e.message) || e); }
     try { await gradeDayPicks(env.DB, now); } catch (e) { /* next read */ }
     const kinds = await pickKindRecords(env.DB);
+    let timer;
+    await Promise.race([logos, new Promise((r) => { timer = setTimeout(r, SOC_LOGO_WAIT_MS); })]);
+    clearTimeout(timer);
     out.kinds = Object.fromEntries(Object.entries(PICK_KINDS).map(([k, v]) => [k, { ...v, record: kinds[k] }]));
     out.qualifyingGames = new Set(legs.map((l) => l.gameKey)).size;
     if (unavailable.size) out.unavailable = [...unavailable];

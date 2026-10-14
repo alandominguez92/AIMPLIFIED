@@ -1891,7 +1891,8 @@
   // A player leg shows the player; a team leg shows the club. MLB serves
   // headshots by MLB id (with its own silhouette for an unknown id) and team
   // marks by team id; ESPN serves NBA and soccer headshots by ESPN athlete id
-  // and answers 404 when it has none. Initials in the team's colours sit under
+  // and answers 404 when it has none, and every other club's mark (NBA, NFL,
+  // soccer; see teamMarkUrl). Initials in the team's colours sit under
   // every image, so a missing photo reads as initials, never a broken icon.
   const MLB_TEAM_ID = {
     ARI: 109, AZ: 109, ATL: 144, BAL: 110, BOS: 111, CHC: 112, CWS: 145, CHW: 145, CIN: 113, CLE: 114,
@@ -1906,9 +1907,14 @@
     if (sport === 'nba' || sport === 'soccer') return `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${n}.png&w=96&h=70`;
     return null;
   }
-  function teamMarkUrl(sport, abbr) {
+  // Other clubs' marks are ESPN's: the worker sends the path under
+  // /i/teamlogos/ (spec.logo, e.g. "nba/500/gs.png", "countries/500/ger.png"),
+  // and only that shape reaches the URL. 128px: a 64px face on a 3x phone.
+  function teamMarkUrl(sport, abbr, logo) {
     const id = sport === 'mlb' ? MLB_TEAM_ID[String(abbr || '').toUpperCase()] : null;
-    return id ? `https://www.mlbstatic.com/team-logos/${id}.svg` : null;
+    if (id) return `https://www.mlbstatic.com/team-logos/${id}.svg`;
+    const p = String(logo || '');
+    return /^(nba|nfl|soccer|countries)\/500\/[a-z0-9]+\.png$/.test(p) ? `https://a.espncdn.com/combiner/i?img=/i/teamlogos/${p}&w=128&h=128` : null;
   }
   // A player: "Aaron Judge" -> "AJ", "B. Williamson" -> "BW". A club: a code
   // stays a code ("LAD"); one word gives its first three letters ("Liverpool"
@@ -1926,9 +1932,9 @@
     const words = clean(name).split(/[\s.]+/).filter(Boolean);
     return (words.length >= 2 ? words[0][0] + words[words.length - 1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
   }
-  // opts: { sport, playerId, team, name, isTeam, size }
+  // opts: { sport, playerId, team, logo, name, isTeam, size }
   function avatarHtml(o) {
-    const src = o.isTeam ? teamMarkUrl(o.sport, o.team) : headshotUrl(o.sport, o.playerId);
+    const src = o.isTeam ? teamMarkUrl(o.sport, o.team, o.logo) : headshotUrl(o.sport, o.playerId);
     const c = o.sport === 'mlb' ? TEAM_COLORS[String(o.team || '').toUpperCase()] : null;
     const style = [c ? `--hs-bg:${c[0]};--hs-fg:${c[1]}` : '', o.size ? `--hs-size:${o.size}px` : ''].filter(Boolean).join(';');
     return `<span class="hs${o.isTeam ? ' hs-team' : ''}${src ? '' : ' hs-none'}"${style ? ` style="${style}"` : ''} aria-hidden="true">`
@@ -5752,7 +5758,7 @@
   function pickFace(x, size) {
     const s = x.spec || {};
     const team = pickIsTeam(x);
-    return avatarHtml({ sport: x.sport || s.sport, playerId: s.playerId, team: s.team,
+    return avatarHtml({ sport: x.sport || s.sport, playerId: s.playerId, team: s.team, logo: s.logo,
       name: team ? (s.team || String(x.title || '').replace(/ ML$/, '')) : (s.player || x.title), isTeam: team, size });
   }
 
