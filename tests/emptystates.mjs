@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const BOARD = path.join(import.meta.dirname, '..');
-const src = fs.readFileSync(BOARD + '/app.js', 'utf8');
+const src = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 function lift(name) {
   let at = src.indexOf(`function ${name}(`);
   const isConst = at < 0;

@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const BOARD = path.join(import.meta.dirname, '..');
-const html = fs.readFileSync(BOARD + '/methodology.html', 'utf8');
+const html = fs.readFileSync(BOARD + '/methodology.html', 'utf8').replace(/\r\n/g, '\n');
 const text = html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 
 let fail = 0;
@@ -27,7 +27,7 @@ ok(/moneyline board<\/b> posts plays/i.test(html), 'and says the moneyline board
 
 // The board's own note under the market tabs said the same: "Plays = batter
 // unders only -- ... the only one we post".
-const board = fs.readFileSync(BOARD + '/index.html', 'utf8');
+const board = fs.readFileSync(BOARD + '/index.html', 'utf8').replace(/\r\n/g, '\n');
 const tabnote = ((board.match(/<p class="tabnote">([\s\S]*?)<\/p>/) || [])[1] || '').replace(/<[^>]+>/g, '');
 ok(tabnote && !/only one we post|unders only|reliably overpays/i.test(tabnote) && /moneyline board posts plays/i.test(tabnote),
   `the board's tab note says the moneyline posts too (${tabnote.slice(0, 60)}…)`);
@@ -39,7 +39,7 @@ ok(formula && !formula.includes('|'), `the edge formula is signed (${formula.tri
 // Picks of the day printed its record "since 2026-10-10", the raw key. Dates on
 // the page go through shortDay: "since Oct 10".
 console.log('\n-- dates on the page --');
-const app = fs.readFileSync(BOARD + '/app.js', 'utf8');
+const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 const at = app.indexOf('function shortDay(');
 const body = at < 0 ? '' : app.slice(at, app.indexOf('\n  }\n', at) + 4);
 const shortDay = body ? new Function(body + '\nreturn shortDay;')() : () => null;

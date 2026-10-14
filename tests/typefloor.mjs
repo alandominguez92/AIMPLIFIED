@@ -18,13 +18,13 @@ const files = ['style.css', 'app.js', 'index.html', 'track-record.html', 'method
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 
-const css = strip(fs.readFileSync(BOARD + '/style.css', 'utf8'));
+const css = strip(fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n'));
 const base = css.slice(0, css.indexOf('[data-theme="light"]'));
 ok(/--fsXs:\s*11px;/.test(base) && /--fsSm:\s*12px;/.test(base), 'the size tokens are declared in the base block: --fsXs 11px, --fsSm 12px');
 
 console.log('\n-- no literal below the floor --');
 for (const f of files) {
-  const src = strip(fs.readFileSync(BOARD + '/' + f, 'utf8'));
+  const src = strip(fs.readFileSync(BOARD + '/' + f, 'utf8').replace(/\r\n/g, '\n'));
   const small = [...src.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px/g)].filter((m) => Number(m[1]) < 11);
   const svg = [...src.matchAll(/font-size="(\d+(?:\.\d+)?)"/g)].filter((m) => Number(m[1]) < 11);
   const all = small.concat(svg);
@@ -37,18 +37,18 @@ for (const f of files) {
 console.log('\n-- labels are Archivo, not uppercase mono --');
 const rules = (s) => [...strip(s).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim().split('\n').pop().trim(), body: m[2] }));
 for (const f of ['style.css', 'app.js']) {
-  const bad = rules(fs.readFileSync(BOARD + '/' + f, 'utf8'))
+  const bad = rules(fs.readFileSync(BOARD + '/' + f, 'utf8').replace(/\r\n/g, '\n'))
     .filter((r) => /font-family:\s*var\(--mono\)/.test(r.body) && /text-transform:\s*uppercase/.test(r.body));
   ok(!bad.length, bad.length ? `${f}: ${bad.length} uppercase mono rules (first: ${bad[0].sel})` : `${f}: no uppercase mono label`);
 }
 // The sport tabs' sub-labels ("Most Likely", "Model + Picks") are labels too.
 // At the 11px floor in letter-spaced mono the six tabs ran 52px past a 1280px
 // screen.
-const mini = rules(fs.readFileSync(BOARD + '/style.css', 'utf8')).filter((x) => x.sel === '.stab .mini' && /font-family/.test(x.body));
+const mini = rules(fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n')).filter((x) => x.sel === '.stab .mini' && /font-family/.test(x.body));
 ok(mini.length && mini.every((x) => /font-family:\s*var\(--sans\)/.test(x.body)), 'the sport tabs\' sub-labels are Archivo');
 // These four set no face of their own and inherit mono from their row.
 for (const sel of ['.slate-summary .k', '.fsrc', '.pin-k', '.price-read .pr-k']) {
-  const r = rules(fs.readFileSync(BOARD + '/style.css', 'utf8')).filter((x) => x.sel === sel);
+  const r = rules(fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n')).filter((x) => x.sel === sel);
   ok(r.length && r.every((x) => !/text-transform:\s*uppercase/.test(x.body)) && r.some((x) => /font-family:\s*var\(--sans\)/.test(x.body)),
     `${sel} is set in Archivo, sentence case`);
 }

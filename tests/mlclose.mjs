@@ -51,7 +51,7 @@ const db = { prepare: (sql) => { const st = { sql, args: [], bind: (...a) => { s
   all: async () => ({ results: /^SELECT \* FROM mlpicks$/i.test(sql.trim()) ? ml : /^SELECT \* FROM rlpicks$/i.test(sql.trim()) ? rl : [] }) }; return st; },
 batch: async () => [] };
 
-const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
+const src = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
 const get = async (u) => (await mod.default.fetch(new Request('https://x' + u), { DB: db }, { waitUntil() {} })).json();
 const tr = await get('/api/track-record');
@@ -106,7 +106,7 @@ ok(S.ml && S.ml.vsSharpClose && S.ml.vsSharpClose.posted && S.ml.legacy && S.ml.
 // the posted record says 219), and says so; under it, one read against the
 // close. Lifted out of app.js, so this runs what ships.
 console.log('\n-- on the page --');
-const app = fs.readFileSync(BOARD + '/app.js', 'utf8');
+const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 function lift(name) {
   let at = app.indexOf(`function ${name}(`);
   const isConst = at < 0;

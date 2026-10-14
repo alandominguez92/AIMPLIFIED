@@ -14,9 +14,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 const BOARD = path.join(import.meta.dirname, '..');
-const src = fs.readFileSync(BOARD + '/app.js', 'utf8');
-const html = fs.readFileSync(BOARD + '/index.html', 'utf8');
-const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const src = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
+const html = fs.readFileSync(BOARD + '/index.html', 'utf8').replace(/\r\n/g, '\n');
+const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '');
 function lift(name) {
   const at = src.indexOf(`function ${name}(`);
   if (at < 0) throw new Error(`app.js has no ${name}`);
