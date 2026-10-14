@@ -20,8 +20,12 @@ const BOARD = path.join(import.meta.dirname, '..');
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 
+// Hashed as LF (2026-10-13): core.autocrlf checks the tree out with CRLF, and
+// raw bytes then gave a different hash for the same files, so a fresh checkout
+// failed this check and a bump from it would have written the wrong value.
+// The repo stores LF, so for an LF copy this is the same hash as before.
 const h = crypto.createHash('sha256');
-for (const f of ['style.css', 'app.js']) h.update(fs.readFileSync(path.join(BOARD, f)));
+for (const f of ['style.css', 'app.js']) h.update(fs.readFileSync(path.join(BOARD, f), 'utf8').replace(/\r\n/g, '\n'));
 const want = h.digest('hex').slice(0, 10);
 
 const html = fs.readFileSync(path.join(BOARD, 'index.html'), 'utf8');
