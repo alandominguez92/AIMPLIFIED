@@ -2418,11 +2418,15 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      picture of the probability printed beside them, so they wait for the
      expanded row, which keeps the full layout. The whole row is the tap
      target, so the chevron goes too. */
+  /* The Play/Pass chip rides on the pick's line, beside the pick it calls
+     (2026-10-13). On the name line it took ~60px, and with the star's 44px
+     hit area a name like "B. Williamson" pushed the game time onto a line of
+     its own (3 of 24 rows at 375px). The pick line had ~150px spare. */
   .board.view-batter .board-row:not(.expanded) {
     grid-template-columns:minmax(0,1fr) auto auto auto;
     grid-template-areas:
-      "matchup matchup matchup tier"
-      "pick    pick    pick    pick"
+      "matchup matchup matchup matchup"
+      "pick    pick    pick    tier"
       "odds    odds    interval edge";
     row-gap:5px; column-gap:12px; padding:11px 14px 12px;
   }
@@ -2437,6 +2441,14 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .board.view-batter .board-row:not(.expanded) .cell-src,
   .board.view-batter .board-row:not(.expanded) > .chevron { display:none; }
   .board.view-batter .board-row:not(.expanded) > .edge-cell { align-self:center; font-size:13px; }
+  .board.view-batter .board-row:not(.expanded) > .tier-cell { align-self:center; }
+  /* The name line holds star, name, team and time on one line: tighter gaps,
+     and past that the name ends in "…" before the time is pushed to a line
+     of its own. At 320px "B. Williamson" needed 242px of a 224px line. */
+  .board.view-batter .board-row:not(.expanded) .mc-head { flex-wrap:nowrap; gap:6px; min-width:0; }
+  .board.view-batter .board-row:not(.expanded) .mc-head > b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .board.view-batter .board-row:not(.expanded) .mc-head > .team-badge,
+  .board.view-batter .board-row:not(.expanded) .mc-head > .row-when { flex:none; margin-left:0; }
   .board.view-batter .board-row:not(.expanded) > .matchup-cell { gap:0; }
   /* Alone on its line, so it may wrap rather than run past the row's edge. */
   .board.view-batter .board-row:not(.expanded) .fade-pick { font-size:13.5px; white-space:normal; overflow-wrap:anywhere; }
@@ -2966,3 +2978,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .nfl-sort-group .sort-chips { flex:0 1 auto; flex-wrap:wrap; min-width:0; }
 /* 2px less padding a side fits all four on one line at 375px; they missed by 3px. */
 @media (max-width:640px) { .nfl-sort-group .sort-chips .sort-btn { padding:0 9px; } }
+
+/* Below 360px the star's 44px box reaches 4px into the 6px gap after it (it
+   still stops short of the name), which keeps "B. Williamson" whole at 320px. */
+@media (max-width:360px) {
+  .board.view-batter .board-row:not(.expanded) .leading { margin-right:-4px; }
+}
