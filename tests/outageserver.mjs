@@ -333,10 +333,12 @@ if (NBADEMO) {
   await mod.default.fetch(new Request('https://x/api/picks'), env, { waitUntil: () => {} });    // creates the tables
   const tip = new Date(Date.now() + 3 * 3600e3).toISOString();
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
+  // player_id is the player's real ESPN athlete id, so the card's headshots load.
+  const ESPN_ID = { 'Jalen Brunson': '3934672', 'Josh Hart': '3062679', 'OG Anunoby': '3934719', 'Tyrese Maxey': '4431678', 'Joel Embiid': '3059318' };
   const leg = (date, commence, player, team, market, point, model_under, proj, book_line, min_proj, result) => sqliteDb
-    .prepare(`INSERT INTO nbapp (date, game_id, player, market, league, commence, home, away, team, point, proj, model_under, n_recent, min_proj, book_line, book_under, result)
-      VALUES (?, ?, ?, ?, 'reg', ?, 'Philadelphia 76ers', 'New York Knicks', ?, ?, ?, ?, 3, ?, ?, -125, ?)`)
-    .bind(date, result ? 'evOLD' : 'evNYK', player, market, commence, team, point, proj, model_under, min_proj, book_line, result).run();
+    .prepare(`INSERT INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, min_proj, book_line, book_under, result)
+      VALUES (?, ?, ?, ?, 'reg', ?, 'Philadelphia 76ers', 'New York Knicks', ?, ?, ?, ?, ?, 3, ?, ?, -125, ?)`)
+    .bind(date, result ? 'evOLD' : 'evNYK', player, market, commence, team, ESPN_ID[player] || null, point, proj, model_under, min_proj, book_line, result).run();
   // Tonight: one leg PrizePicks hangs above the book, two level, one below, one with no book.
   await leg(today, tip, 'Jalen Brunson', 'NY', 'ast', 7.5, 71.2, 5.9, 6.5, 35, null);
   await leg(today, tip, 'Josh Hart', 'NY', 'reb', 8.5, 66.4, 7.1, 8.5, 33, null);

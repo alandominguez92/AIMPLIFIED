@@ -2986,3 +2986,59 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 @media (max-width:360px) {
   .board.view-batter .board-row:not(.expanded) .leading { margin-right:-4px; }
 }
+
+/* ---- Faces and team marks (2026-10-14) -------------------------------------
+   A circle with the player's headshot or the club's mark, over initials in the
+   team's colours, which show when there is no photo. */
+.hs { --hs-size:36px; --hs-bg:var(--board2); --hs-fg:var(--textDim); position:relative; flex:none; width:var(--hs-size); height:var(--hs-size); border-radius:50%; overflow:hidden;
+  display:inline-flex; align-items:center; justify-content:center; background:var(--hs-bg); color:var(--hs-fg); }
+.hs-mono { font-family:var(--sans); font-weight:700; font-size:calc(var(--hs-size) * .36); line-height:1; letter-spacing:0; }
+.hs-img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 18%; }
+/* ESPN's photos are transparent, so the initials would show through them; they
+   only show when there is no photo (hs-none is set when one fails to load). */
+.hs:not(.hs-none) .hs-mono { visibility:hidden; }
+/* A club's mark sits on white, which every team's colours read against. */
+.hs-team:not(.hs-none) { background:#fff; }
+.hs-team .hs-img { object-fit:contain; padding:16%; }
+/* A leg with a face: the face spans its lines on the left. */
+.tc-leg.has-hs { display:grid; grid-template-columns:auto minmax(0,1fr); column-gap:11px; align-items:start; }
+.tc-leg.has-hs > .hs { grid-row:1 / span 4; margin-top:1px; }
+.tc-leg.has-hs > :not(.hs) { grid-column:2; min-width:0; }
+/* Beside a face the details get ~47px less: the book's number drops under them
+   rather than squeezing them to four lines. */
+.tc-leg.has-hs .tc-l2 { flex-wrap:wrap; row-gap:2px; }
+.tc-leg.has-hs .tc-l2 > span:first-child { flex:1 1 170px; min-width:0; }
+.tc-l2 .tc-team { font-weight:600; color:var(--text); }
+
+/* ---- The night's best leg (2026-10-14) -------------------------------------
+   The top of Picks of the day, large: on the Picks tab and above Today's card
+   on the MLB board. Gold is the bet -- the pick and the add button; the chance
+   goes green only when legs like it have cleared the 2-pick break-even. */
+.top-card:not([hidden]) { display:block; margin:14px 0 12px; }
+.pk-card .hero-leg { margin:10px 0 12px; }
+.hero-leg { --hl-tc:var(--accent); position:relative; overflow:hidden; border:1px solid color-mix(in srgb, var(--accent) 50%, var(--border)); border-radius:14px;
+  padding:14px 16px; background:linear-gradient(135deg, color-mix(in srgb, var(--hl-tc) 24%, var(--board)) 0%, var(--board) 64%); }
+.hl-top { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+.hl-kicker { font-family:var(--sans); font-weight:800; font-size:13px; text-transform:uppercase; letter-spacing:.02em; color:var(--accent); }
+.hl-meta { font-size:12px; color:var(--textDim); }
+.hl-main { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:12px; align-items:center; }
+.hl-what { display:grid; gap:3px; min-width:0; }
+.hl-name { font-family:var(--sans); font-weight:800; font-size:22px; line-height:1.12; color:var(--text); overflow-wrap:anywhere; }
+.hl-pick { font-size:15px; font-weight:700; color:var(--accent); }
+.hl-odds { font-family:var(--mono); font-weight:600; color:var(--text); }
+.hl-game { grid-column:1 / -1; font-size:12.5px; line-height:1.4; color:var(--textDim); }
+.hl-p { text-align:right; }
+.hl-pct { display:block; font-family:var(--mono); font-weight:700; font-size:40px; line-height:1; letter-spacing:-.02em; color:var(--text); }
+.hl-p.good .hl-pct { color:var(--positive); }
+.hl-pk { font-size:var(--fsXs); color:var(--textDim); }
+.hl-rec { margin-top:12px; font-size:13px; color:var(--textDim); }
+.hl-rec b { color:var(--text); font-weight:600; }
+.hl-actions { margin-top:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.hl-add { min-height:44px; padding:0 16px; border-radius:10px; border:1px solid var(--accentFill); background:var(--accentFill); color:var(--onAccent);
+  font-family:var(--sans); font-weight:700; font-size:14px; cursor:pointer; }
+.hl-add.on { background:transparent; color:var(--accent); }
+.hl-all { padding:12px 4px; font-size:13px; color:var(--model); text-decoration:none; }
+/* Inside the Picks card the box is ~50px narrower. */
+.pk-card .hl-name { font-size:20px; }
+.pk-card .hl-pct { font-size:34px; }
+@media (max-width:380px) { .hl-name { font-size:19px; } .hl-pct { font-size:34px; } }

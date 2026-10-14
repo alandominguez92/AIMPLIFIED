@@ -1887,6 +1887,66 @@
   // duel and the moneyline matchup both needed the same chip; a third copy of
   // the colour lookup is how one of them ends up drifting. An unknown code
   // renders unstyled rather than wrong — same posture as nflBadge.
+  // ---- Faces and team marks (2026-10-14) -----------------------------------
+  // A player leg shows the player; a team leg shows the club. MLB serves
+  // headshots by MLB id (with its own silhouette for an unknown id) and team
+  // marks by team id; ESPN serves NBA and soccer headshots by ESPN athlete id
+  // and answers 404 when it has none. Initials in the team's colours sit under
+  // every image, so a missing photo reads as initials, never a broken icon.
+  const MLB_TEAM_ID = {
+    ARI: 109, AZ: 109, ATL: 144, BAL: 110, BOS: 111, CHC: 112, CWS: 145, CHW: 145, CIN: 113, CLE: 114,
+    COL: 115, DET: 116, HOU: 117, KC: 118, KCR: 118, LAA: 108, LAD: 119, MIA: 146, MIL: 158, MIN: 142,
+    NYM: 121, NYY: 147, ATH: 133, OAK: 133, PHI: 143, PIT: 134, SD: 135, SDP: 135, SF: 137, SFG: 137,
+    SEA: 136, STL: 138, TB: 139, TBR: 139, TEX: 140, TOR: 141, WSH: 120, WSN: 120,
+  };
+  function headshotUrl(sport, id) {
+    const n = String(id == null ? '' : id).replace(/\D/g, '');
+    if (!n) return null;
+    if (sport === 'mlb') return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_120,q_auto:best/v1/people/${n}/headshot/67/current`;
+    if (sport === 'nba' || sport === 'soccer') return `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${n}.png&w=96&h=70`;
+    return null;
+  }
+  function teamMarkUrl(sport, abbr) {
+    const id = sport === 'mlb' ? MLB_TEAM_ID[String(abbr || '').toUpperCase()] : null;
+    return id ? `https://www.mlbstatic.com/team-logos/${id}.svg` : null;
+  }
+  // A player: "Aaron Judge" -> "AJ", "B. Williamson" -> "BW". A club: a code
+  // stays a code ("LAD"); one word gives its first three letters ("Liverpool"
+  // -> "LIV", "Nashville SC" -> "NAS"); several give initials ("Sporting Kansas
+  // City" -> "SKC", "Los Angeles FC" -> "LA").
+  function initialsOf(name, team) {
+    const clean = (s) => String(s || '').replace(/\s+ML$/, '').replace(/[^\p{L}\s.'-]/gu, '');
+    if (team) {
+      const raw = clean(name).trim();
+      if (/^[A-Z]{2,4}$/.test(raw)) return raw;
+      const words = raw.split(/\s+/).filter((w) => w && !/^(FC|SC|CF|AFC|AC|SV|CD|FK)$/i.test(w));
+      if (words.length <= 1) return (words[0] || raw || '?').slice(0, 3).toUpperCase();
+      return words.map((w) => w[0]).join('').slice(0, 3).toUpperCase();
+    }
+    const words = clean(name).split(/[\s.]+/).filter(Boolean);
+    return (words.length >= 2 ? words[0][0] + words[words.length - 1][0] : (words[0] || '?').slice(0, 2)).toUpperCase();
+  }
+  // opts: { sport, playerId, team, name, isTeam, size }
+  function avatarHtml(o) {
+    const src = o.isTeam ? teamMarkUrl(o.sport, o.team) : headshotUrl(o.sport, o.playerId);
+    const c = o.sport === 'mlb' ? TEAM_COLORS[String(o.team || '').toUpperCase()] : null;
+    const style = [c ? `--hs-bg:${c[0]};--hs-fg:${c[1]}` : '', o.size ? `--hs-size:${o.size}px` : ''].filter(Boolean).join(';');
+    return `<span class="hs${o.isTeam ? ' hs-team' : ''}${src ? '' : ' hs-none'}"${style ? ` style="${style}"` : ''} aria-hidden="true">`
+      + `<span class="hs-mono">${esc(initialsOf(o.name, o.isTeam ? o.team || o.name : null))}</span>`
+      + (src ? `<img class="hs-img" src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">` : '')
+      + `</span>`;
+  }
+  // A photo that fails to load is removed, leaving the initials under it.
+  // Capture phase: image errors do not bubble.
+  document.addEventListener('error', (e) => {
+    const t = e.target;
+    if (t && t.tagName === 'IMG' && t.classList && t.classList.contains('hs-img')) {
+      const box = t.parentElement;
+      t.remove();
+      if (box) box.classList.add('hs-none');
+    }
+  }, true);
+
   const mlbBadge = (abbr) => {
     if (!abbr) return '';
     const t = TEAM_COLORS[abbr];
@@ -3363,7 +3423,8 @@
         // The leg's own number takes its level's colour: a 55% leg whose level
         // lands 48% is not green (2026-10-12). It was green on every leg.
         const bandCls = todayBandClass(todayLegBand(x));
-        return `<li>${star}<button type="button" class="tc-leg" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">`
+        const face = avatarHtml({ sport: 'mlb', playerId: x.spec && x.spec.playerId, team: x.team, name: (x.spec && x.spec.player) || x.player });
+        return `<li>${star}<button type="button" class="tc-leg has-hs" data-action="today-jump" data-view="${x.view}" data-id="${esc(String(x.id))}">${face}`
           + `<span class="tc-l1"><b>${esc(x.player || '')}</b>${x.team ? ' ' + mlbBadge(x.team) : ''}<span class="tc-p${bandCls || ' tc-band-none'}">${Math.round(x.prob)}%</span></span>`
           + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(x.market)} · PrizePicks${x.when ? ' · ' + esc(String(x.when).replace(/ PT$/, '')) : ''}`
           + `${x.confirmed ? '' : ' <span class="tc-wait">lineup not out</span>'}</span>${book}</span>`
@@ -3420,6 +3481,9 @@
     } else {
       if (card.parentNode !== slate) slate.prepend(card);
       if (how && how.parentNode !== slate) card.after(how);
+      // The top card stays above Today's card.
+      const top = document.getElementById('topCard');
+      if (top && slate.firstElementChild !== top) slate.prepend(top);
     }
     // The rail is MLB furniture and hides off the MLB tab; the slip is not, so
     // off that tab it takes its own place after the board, where it sits on a
@@ -4392,6 +4456,7 @@
     if (state.sport === 'soccer') renderSoccer();
     if (state.sport === 'nba') renderNba();
     if (state.sport === 'picks') renderPicks();
+    renderTopCard();
     const n = Object.keys(state.slip).length;
     toast(adding ? `★ Added ${leg.title} · ${n} leg${n === 1 ? '' : 's'}` : `Removed ${leg.title}`);
   }
@@ -4807,6 +4872,12 @@
     setInterval(refreshTrackRecord, 600000);
     refreshTopLegs();
     setInterval(refreshTopLegs, 600000);
+    // Picks of the day, for the top card the MLB board opens on (2026-10-14).
+    // /api/picks is cached two minutes at the edge. Deferred a tick: this runs
+    // before the script has reached the consts the Picks renderer uses
+    // (PICKS_SKELETON, pickIsTeam), and touching them early throws.
+    setTimeout(refreshPicks, 0);
+    setInterval(() => { if (state.sport === 'mlb' || state.sport === 'picks') refreshPicks(); }, 600000);
     // Injury wire (recent IL moves) — refresh every 10 min.
     refreshInjuries();
     setInterval(refreshInjuries, 600000);
@@ -4880,6 +4951,7 @@
     if (pb) pb.hidden = s !== 'picks';
     // Read on every visit after two minutes: lineups post and legs move.
     if (s === 'picks') { if (!state.picks || Date.now() - (state.picksAt || 0) > 120e3) refreshPicks(); else renderPicks(); }
+    if (s === 'mlb' && state.picks && Date.now() - (state.picksAt || 0) > 120e3) refreshPicks();
     const eb = document.getElementById('entriesBoard');
     if (eb) eb.hidden = s !== 'entries';
     placeRail();
@@ -5668,12 +5740,68 @@
     }
     state.picksAt = Date.now();
     renderPicks();
+    renderTopCard();
   }
   function pickLeg(x) {
     return { id: x.legId, board: PICK_BOARD[x.kind] || 'Pick', title: x.title, sub: x.sub,
       odds: typeof x.odds === 'number' ? x.odds : null, tier: null, edge: null, spec: x.spec };
   }
   const pct0 = (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—');
+  // A Picks leg's face: the player for a prop, the club for a moneyline.
+  const pickIsTeam = (x) => ((x.spec || {}).market === 'ml') || /_(ml|fav)$/.test(x.kind || '');
+  function pickFace(x, size) {
+    const s = x.spec || {};
+    const team = pickIsTeam(x);
+    return avatarHtml({ sport: x.sport || s.sport, playerId: s.playerId, team: s.team,
+      name: team ? (s.team || String(x.title || '').replace(/ ML$/, '')) : (s.player || x.title), isTeam: team, size });
+  }
+
+  // The night's best leg, large (2026-10-14): the top of the Picks list, drawn
+  // first on the Picks tab and above Today's card on the MLB board, so the
+  // page opens on it. Gold is the bet (the pick and the add button); the
+  // chance is green only when legs like it have cleared PrizePicks' 2-pick
+  // break-even (57.7%) over five or more graded legs.
+  function heroLegHtml(x, opts) {
+    const lg = pickLeg(x);
+    const on = !!state.slip[offerLeg(lg)];
+    const s = x.spec || {};
+    const team = pickIsTeam(x);
+    const m = team ? null : String(x.title || '').match(/^(.*?) (Under|Over) (.+)$/);
+    const name = m ? m[1] : String(x.title || '').replace(/ ML$/, '');
+    const pick = m ? `${m[2]} ${m[3]}` : 'Moneyline';
+    const r = x.record || {};
+    const good = r.n >= 5 && r.hitRate >= 57.7;
+    const c = (x.sport || s.sport) === 'mlb' ? TEAM_COLORS[String(s.team || '').toUpperCase()] : null;
+    const notes = [];
+    if (x.kind === 'mlb_pp') notes.push(x.lineup === 'in' ? 'lineup in' : 'lineup not posted');
+    if (typeof x.vsBook === 'number' && x.vsBook !== 0) notes.push(`PP ${x.vsBook > 0 ? '+' : '−'}${Math.abs(x.vsBook)} vs book`);
+    if ((x.sport || s.sport) === 'nba') notes.push('check injuries');
+    return `<article class="hero-leg"${c ? ` style="--hl-tc:${c[0]}"` : ''}>`
+      + `<div class="hl-top"><span class="hl-kicker">Tonight's best leg</span>`
+      + `<span class="hl-meta">${esc(x.league || PICK_SPORT[x.sport] || x.sport || '')} · ${esc(soccerKick(x.commence))}</span></div>`
+      + `<div class="hl-main">${pickFace(x, (opts && opts.size) || 64)}`
+      + `<div class="hl-what"><b class="hl-name">${esc(name)}</b>`
+      + `<span class="hl-pick">${esc(pick)}${typeof x.odds === 'number' ? ` <span class="hl-odds">${esc(AM(x.odds))}</span>` : ''}</span>`
+      + `</div>`
+      + `<div class="hl-p${good ? ' good' : ''}"><span class="hl-pct">${pct0(x.p)}</span><span class="hl-pk">chance</span></div>`
+      // The game on its own line, so a long matchup never squeezes the name.
+      + `<span class="hl-game">${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span></div>`
+      + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
+      + `<div class="hl-actions"><button type="button" class="hl-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? '★ In your slip' : '☆ Add to slip'}</button>`
+      + (opts && opts.link ? `<a href="#" class="hl-all" data-action="set-sport" data-sport="picks">All picks →</a>` : '')
+      + `</div></article>`;
+  }
+  // The MLB board's copy of it, above Today's card.
+  function renderTopCard() {
+    const box = document.getElementById('topCard');
+    if (!box) return;
+    const d = state.picks;
+    const legs = d && !d.error ? (d.legs || []).filter((x) => Date.parse(x.commence) > Date.now()) : [];
+    if (!legs.length) { box.hidden = true; box.innerHTML = ''; return; }
+    box.innerHTML = heroLegHtml(legs[0], { link: true });
+    box.hidden = false;
+  }
+
   function renderPicks() {
     const grid = document.getElementById('picksGrid');
     if (!grid) return;
@@ -5699,7 +5827,9 @@
         + `<div class="tc-sub">${recLine}</div>${rules}</div>`;
       return;
     }
-    const items = legs.map((x) => {
+    // The first leg is the night's best, drawn large; the rest follow.
+    const hero = heroLegHtml(legs[0], { size: 52 });
+    const items = legs.slice(1).map((x) => {
       const lg = pickLeg(x);
       const on = !!state.slip[offerLeg(lg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
@@ -5711,7 +5841,7 @@
       const recTxt = r.n ? `Legs like this: ${r.hit} of ${r.n} (${pct0(r.hitRate)})${r.proven ? '' : ' · new'}` : 'Legs like this: none graded yet';
       // The sport rides on the game line, not beside the title: on a phone the
       // chip pushed "Inter Miami CF ML" onto two lines.
-      return `<li>${star}<div class="tc-leg">`
+      return `<li>${star}<div class="tc-leg has-hs">${pickFace(x)}`
         + `<span class="tc-l1"><b>${esc(x.title)}</b><span class="tc-p">${pct0(x.p)}</span></span>`
         // A soccer leg's league says the sport; the others name it.
         + `<span class="tc-l2"><span><span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
@@ -5740,7 +5870,8 @@
     }
     grid.innerHTML = `<div class="nba-pp pk-card">`
       + `<div class="tc-sub pk-intro">One leg a game, best first. Under each: how legs like it have actually done.</div>`
-      + `<ol class="tc-legs">${items}</ol>`
+      + hero
+      + (items ? `<ol class="tc-legs">${items}</ol>` : '')
       + (ent.length ? `<ul class="pk-entries"><li class="pk-eh"><span>As an entry</span><span>chance</span><span>to pay</span></li>${ent.join('')}</ul>` : '')
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
   }
@@ -5835,9 +5966,12 @@
       // than the market's; below it, harder.
       const gap = typeof x.vsBook === 'number' && x.vsBook !== 0
         ? ` <span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}" title="PrizePicks' line ${x.vsBook > 0 ? 'above' : 'below'} the book's: the under is ${x.vsBook > 0 ? 'easier' : 'harder'} here">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>` : '';
-      return `<li>${star}<div class="tc-leg">`
-        + `<span class="tc-l1"><b>${esc(x.player)}</b>${x.team ? ` <span class="ctx-chip">${esc(x.team)}</span>` : ''}<span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}</span>`
+      const face = avatarHtml({ sport: 'nba', playerId: x.player_id, team: x.team, name: x.player });
+      return `<li>${star}<div class="tc-leg has-hs">${face}`
+        // The team code leads line two: beside the face on line one it cut
+        // "Jalen Brunson" to "Jalen Bru…".
+        + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}</span>`
         + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
         + `</div></li>`;
     }).join('')}</ol></div>`;

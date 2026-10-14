@@ -7560,7 +7560,9 @@ async function picksCandidates(env, now) {
       legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
       title: `${r.player} Under ${r.point} ${PICKS_NBA_MK[r.market] || r.market}`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
       src: { date: r.date, game_id: r.game_id, player_key: r.player, market: r.market, team: r.team },
-      spec: { sport: 'nba', date: ptDateOf(Date.parse(r.commence)), gamePk: r.game_id, playerId: null, player: r.player, team: r.team || null,
+      // playerId is ESPN's athlete id (nba_box), which is what the page's
+      // headshot reads (2026-10-14); it was null.
+      spec: { sport: 'nba', date: ptDateOf(Date.parse(r.commence)), gamePk: r.game_id, playerId: r.player_id || null, player: r.player, team: r.team || null,
         market: r.market, side: 'Under', book: { line: r.book_line != null ? r.book_line : null, price: typeof r.book_under === 'number' ? r.book_under : null, under: null },
         pp: { line: r.point, under: r.model_under } } });
   }
