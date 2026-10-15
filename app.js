@@ -6236,8 +6236,16 @@
   function renderSoccerLeagues() {
     const box = document.getElementById('soccerLeagues');
     if (!box) return;
-    const list = (state.soccer && state.soccer.leagueList) || [];
-    if (!list.length) { box.innerHTML = ''; return; }
+    // Only leagues with a game on the board get a button (2026-10-15). All
+    // seven showed every day -- eight buttons, four rows on a phone -- and
+    // Nations League plays only in the international breaks. It, and MLS and
+    // Liga MX after their seasons end, now come and go with their fixtures.
+    const playing = new Set(((state.soccer && state.soccer.games) || []).map((g) => g.league));
+    const list = ((state.soccer && state.soccer.leagueList) || []).filter((l) => playing.has(l.key));
+    // A league picked earlier that has nothing left falls back to All.
+    if (state.soccerLeague !== 'all' && !list.some((l) => l.key === state.soccerLeague)) state.soccerLeague = 'all';
+    // One league is the whole board: "All" and it would show the same games.
+    if (list.length < 2) { box.innerHTML = ''; return; }
     const chip = (key, label, sub) => `<button class="nflm${state.soccerLeague === key ? ' active' : ''}" data-action="soccer-league" data-league="${esc(key)}">`
       + `<span class="nflm-k">${esc(label)}</span><span class="nflm-t">${esc(sub)}</span></button>`;
     box.innerHTML = chip('all', 'All', `${list.length} leagues`)
