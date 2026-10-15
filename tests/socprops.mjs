@@ -12,7 +12,8 @@
 //     matches, the next reads one box score: passes and tackles per player,
 //     which no match-level feed carries
 //   - only starters project, once both lineups are posted; a goalkeeper gets
-//     saves and passes, an outfield player everything but saves
+//     saves, goals allowed and passes, an outfield player everything but those
+//     two (tests/socstats.mjs has the five stats added 2026-10-15)
 //   - a projection is last season per start blended with this season's starts,
 //     moved half the way by what the opponent allows
 //   - the model's own row is logged once, at the line it showed, and graded
@@ -120,8 +121,8 @@ const row = (name, stat) => rows.find((r) => r.player === name && r.stat === sta
 const starters = SUMMARY.rosters.flatMap((t) => t.roster.filter((p) => p.starter).map((p) => p.athlete.displayName));
 ok(rows.every((r) => starters.includes(r.player)), 'only starters have rows');
 const lenoRows = rows.filter((r) => r.player === 'Bernd Leno').map((r) => r.stat).sort();
-ok(lenoRows.join(',') === 'passes,saves' && !rows.some((r) => r.stat === 'saves' && r.player !== 'Bernd Leno' && r.player !== 'Guglielmo Vicario'),
-  `a goalkeeper gets saves and passes, nobody else gets saves (${lenoRows.join(', ')})`);
+ok(lenoRows.join(',') === 'conceded,passes,saves' && !rows.some((r) => ['saves', 'conceded'].includes(r.stat) && r.player !== 'Bernd Leno' && r.player !== 'Guglielmo Vicario'),
+  `a goalkeeper gets saves, goals allowed and passes, nobody else the first two (${lenoRows.join(', ')})`);
 // The projection is last season per start (this season has no starts for them
 // yet), moved half the way by what the opponent allowed last season.
 const lenoP = pri.players[SUMMARY.rosters.find((t) => t.team.abbreviation === 'FUL').roster.find((p) => p.athlete.displayName === 'Bernd Leno').athlete.id];
@@ -131,7 +132,8 @@ const ls = row('Bernd Leno', 'saves');
 ok(ls && ls.proj === want && ls.line === Math.floor(want) + 0.5 && ls.ctx === Math.round(totConc / lgSaves * 100) / 100,
   `Leno's saves: ${lenoP.saves} a start last season, Tottenham's attack at ${ls && ls.ctx} of the league's, projects ${ls && ls.proj} (want ${want}), line ${ls && ls.line}`);
 ok(ls && Math.abs(ls.pUnder + ls.pOver - 100) < 0.2 && ls.phi === 1.3, 'at a half-point line the two sides add to 100');
-ok(rows.every((r) => r.proj >= { shots: 0.6, sot: 0.4, passes: 12, tackles: 0.8, clear: 0.8, fouls: 0.6, saves: 0.5 }[r.stat]),
+ok(rows.every((r) => r.proj >= { shots: 0.6, sot: 0.4, passes: 12, tackles: 0.8, clear: 0.8, fouls: 0.6, saves: 0.5,
+  crosses: 0.6, shot_ast: 0.5, conceded: 0.6, fouls_drawn: 0.6, goal_ast: 0.25 }[r.stat]),
   'no row below the smallest line anyone posts');
 const logged = sq.prepare('SELECT COUNT(*) AS n FROM socprops').get().n;
 ok(logged === rows.length, `every row is logged once its lineup is seen (${logged})`);

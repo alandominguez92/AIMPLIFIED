@@ -3547,7 +3547,8 @@
   const ENTRY_KEY_STORE = 'aimplified_entry_key';
   const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds',
     threes: '3PM', ast: 'Ast', reb: 'Reb',
-    shots: 'Shots', sot: 'SOT', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' };
+    shots: 'Shots', sot: 'SOT', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves',
+    crosses: 'Crosses', shot_ast: 'Shots Ast', conceded: 'Goals Allowed', fouls_drawn: 'Fouls Drawn', goal_ast: 'G+A' };
   function entryKey() {
     try {
       let k = localStorage.getItem(ENTRY_KEY_STORE);
@@ -6110,7 +6111,8 @@
   // PrizePicks' soccer board, which no feed carries: each starter's projection,
   // and the chance at a line the user sets to the app's. The server sends the
   // projection and the dispersion, so the chance follows any line typed here.
-  const SOC_STAT = { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Goalie saves' };
+  const SOC_STAT = { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Goalie saves',
+    crosses: 'Crosses', shot_ast: 'Shots assisted', conceded: 'Goals allowed', fouls_drawn: 'Fouls drawn', goal_ast: 'Goal + assist' };
   // Negative binomial P(X <= k) at a mean and variance-to-mean ratio, the
   // worker's negBinomCdf.
   function nbCdf(k, mean, phi) {
@@ -6231,7 +6233,8 @@
   const socRecB = (hit, n) => `<b${n >= 5 && hit / n * 100 >= 57.7 ? '' : ' class="sp-rec-flat"'}>${hit} of ${n}</b>`;
   // Lineup order: goalkeeper, defenders, midfielders, forwards.
   const socPosRank = (pos) => { const p = String(pos || ''); if (p === 'G') return 0; if (/^(CD|CB|LB|RB|LWB|RWB|D|SW)/.test(p)) return 1; if (/M/.test(p)) return 2; return 3; };
-  const SOC_SHORT = { shots: 'Shots', sot: 'SOT', passes: 'Pass', tackles: 'Tkl', clear: 'Clr', fouls: 'Fouls', saves: 'Saves' };
+  const SOC_SHORT = { shots: 'Shots', sot: 'SOT', passes: 'Pass', tackles: 'Tkl', clear: 'Clr', fouls: 'Fouls', saves: 'Saves',
+    crosses: 'Crs', shot_ast: 'ShAst', conceded: 'GA', fouls_drawn: 'Drawn', goal_ast: 'G+A' };
   // The card can not know PrizePicks' number, so it does not rank by a lean it
   // would have to invent: it lists each match's starters, with a search, and
   // a tapped player opens his stats. A line set there is the line played.

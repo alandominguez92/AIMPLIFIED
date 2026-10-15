@@ -4314,7 +4314,8 @@ function entryTypeLabel(e) {
 }
 const ENTRY_MARKET_LABEL = { tb: 'Total bases', hrr: 'H+R+RBI', hr: 'Home runs', K: 'Strikeouts', ml: 'Moneyline',
   rec_yds: 'Receiving yards', rush_yds: 'Rushing yards', threes: 'Threes', ast: 'Assists', reb: 'Rebounds',
-  shots: 'Shots', sot: 'Shots on target', passes: 'Passes attempted', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Goalie saves' };
+  shots: 'Shots', sot: 'Shots on target', passes: 'Passes attempted', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Goalie saves',
+  crosses: 'Crosses', shot_ast: 'Shots assisted', conceded: 'Goals allowed', fouls_drawn: 'Fouls drawn', goal_ast: 'Goal + assist' };
 
 function buildEntrySummary(entries, legs) {
   const settled = entries.filter((e) => e.status === 'settled');
@@ -9581,11 +9582,25 @@ async function nbaPpBoard(env) {
 // per player, so a match costs ~30 requests and the ingest has its own cron.
 const SOC_PROP_LEAGUES = { epl: 'eng.1', laliga: 'esp.1', seriea: 'ita.1', bundesliga: 'ger.1', mls: 'usa.1' };
 const SOC_PROP_LABEL = { epl: 'Premier League', laliga: 'La Liga', seriea: 'Serie A', bundesliga: 'Bundesliga', mls: 'MLS' };
-const SOC_PROP_STATS = ['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves'];
-// Fitted variance-to-mean ratios (both leagues agreed within 0.1-0.2).
-const SOC_PROP_PHI = { shots: 1.2, sot: 1.15, passes: 2.9, tackles: 1.3, clear: 1.6, fouls: 1.1, saves: 1.3 };
+// The last five (2026-10-15) are more PrizePicks markets read from the same
+// per-player statistics: crosses, shots assisted, a goalkeeper's goals
+// conceded, fouls drawn, and goals + assists. ESPN carries no attempted
+// dribbles, so that market cannot be built from it.
+const SOC_PROP_STATS = ['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves', 'crosses', 'shot_ast', 'conceded', 'fouls_drawn', 'goal_ast'];
+// A goalkeeper's markets: these, and passes. Everyone else: all but these.
+const SOC_KEEPER_STATS = ['saves', 'conceded'];
+// soc_box began with the first seven; the rest arrive forward-only.
+const SOC_BOX_ADDED = [['crosses', 'INTEGER'], ['shot_ast', 'INTEGER'], ['conceded', 'INTEGER'], ['fouls_drawn', 'INTEGER'], ['goal_ast', 'INTEGER']];
+// Fitted variance-to-mean ratios (both leagues agreed within 0.1-0.2). The
+// last five: tools/build-soccer-priors.mjs backtest on EPL 2025-26 + MLS 2026
+// (crosses 1.79, shot_ast 1.17, conceded 0.98, fouls_drawn 1.00, goal_ast
+// 1.01), times 1.09 -- what the first seven run above the same fit (shots
+// 1.11, sot 1.01, tackles 1.17, clear 1.50, fouls 1.01, saves 1.19).
+const SOC_PROP_PHI = { shots: 1.2, sot: 1.15, passes: 2.9, tackles: 1.3, clear: 1.6, fouls: 1.1, saves: 1.3,
+  crosses: 1.95, shot_ast: 1.3, conceded: 1.05, fouls_drawn: 1.1, goal_ast: 1.1 };
 // No row below these: a line nobody posts.
-const SOC_PROP_MIN = { shots: 0.6, sot: 0.4, passes: 12, tackles: 0.8, clear: 0.8, fouls: 0.6, saves: 0.5 };
+const SOC_PROP_MIN = { shots: 0.6, sot: 0.4, passes: 12, tackles: 0.8, clear: 0.8, fouls: 0.6, saves: 0.5,
+  crosses: 0.6, shot_ast: 0.5, conceded: 0.6, fouls_drawn: 0.6, goal_ast: 0.25 };
 const SOC_PRIOR_K = 5;            // last season counts as five starts, as the NBA prior does
 const SOC_CTX_W = 0.5;            // the opponent moves a projection half the way its rate says
 const SOC_BOX_CRON = '2-59/5 * * * *';
@@ -9603,6 +9618,7 @@ async function ensureSocPropSchema(db) {
     shots INTEGER, sot INTEGER, passes INTEGER, tackles INTEGER, clear INTEGER, fouls INTEGER, saves INTEGER,
     PRIMARY KEY (game_id, player_id)
   )`).run();
+  await addColumns(db, 'soc_box', SOC_BOX_ADDED);
   await db.prepare('CREATE INDEX IF NOT EXISTS soc_box_player ON soc_box (player_id, date)').run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS soc_box_games (
     game_id TEXT PRIMARY KEY, league TEXT, date TEXT, home TEXT, away TEXT, home_cid TEXT, away_cid TEXT,
@@ -9694,7 +9710,12 @@ async function socReadSome(g, meta, have, n) {
       shots: socNum(cats, 'offensive', 'totalShots'), sot: socNum(cats, 'offensive', 'shotsOnTarget'),
       passes: socNum(cats, 'offensive', 'totalPasses'), tackles: socNum(cats, 'defensive', 'totalTackles'),
       clear: socNum(cats, 'defensive', 'totalClearance'), fouls: socNum(cats, 'general', 'foulsCommitted'),
-      saves: socNum(cats, 'goalKeeping', 'saves') });
+      saves: socNum(cats, 'goalKeeping', 'saves'),
+      crosses: socNum(cats, 'offensive', 'totalCrosses'), shot_ast: socNum(cats, 'offensive', 'shotAssists'),
+      // Every player carries the goals conceded while he was on; only a
+      // goalkeeper's is a market (and the side's total, in socContext).
+      conceded: socNum(cats, 'goalKeeping', 'goalsConceded'), fouls_drawn: socNum(cats, 'general', 'foulsSuffered'),
+      goal_ast: socNum(cats, 'offensive', 'totalGoals') + socNum(cats, 'offensive', 'goalAssists') });
   });
   return { rows, tried: todo.length };
 }
@@ -9845,9 +9866,12 @@ async function socContext(env, pri) {
   const hit = await loadFeedCache(db, 'soc_ctx');
   if (hit.present && hit.ageMs < 6 * 3600e3) return hit.data;
   const out = {};
+  // Every player carries the goals conceded while he was on, so the side's is
+  // its goalkeeper's (or two keepers', after a change), never the sum of eleven.
+  const sel = SOC_PROP_STATS.map((s) => (s === 'conceded' ? 'SUM(CASE WHEN gk = 1 THEN conceded END) AS conceded' : `SUM(${s}) AS ${s}`)).join(', ');
   for (const lg of Object.keys(SOC_PROP_LEAGUES)) {
     const rows = (await db.prepare(
-      `SELECT game_id, team, ${SOC_PROP_STATS.map((s) => `SUM(${s}) AS ${s}`).join(', ')} FROM soc_box WHERE league = ? AND date >= ? GROUP BY game_id, team`
+      `SELECT game_id, team, ${sel} FROM soc_box WHERE league = ? AND date >= ? GROUP BY game_id, team`
     ).bind(lg, SOC_SEASON_FROM[lg]).all()).results || [];
     const games = new Map();
     for (const r of rows) { if (!games.has(r.game_id)) games.set(r.game_id, []); games.get(r.game_id).push(r); }
@@ -9855,13 +9879,15 @@ async function socContext(env, pri) {
     for (const list of games.values()) {
       if (list.length !== 2) continue;
       for (const [t, o] of [[list[0], list[1]], [list[1], list[0]]]) {
-        const c = conc[t.team] = conc[t.team] || { games: 0, sum: {} };
+        const c = conc[t.team] = conc[t.team] || { games: 0, sum: {}, n: {} };
         c.games++;
-        for (const s of SOC_PROP_STATS) c.sum[s] = (c.sum[s] || 0) + (o[s] || 0);
+        // A match read before a stat's column existed has none of it: it is
+        // not a game in which the opponent recorded zero.
+        for (const s of SOC_PROP_STATS) if (o[s] != null) { c.sum[s] = (c.sum[s] || 0) + o[s]; c.n[s] = (c.n[s] || 0) + 1; }
       }
     }
     out[lg] = Object.fromEntries(Object.entries(conc).filter(([, c]) => c.games >= 5)
-      .map(([t, c]) => [t, Object.fromEntries(SOC_PROP_STATS.map((s) => [s, c.sum[s] / c.games]))]));
+      .map(([t, c]) => [t, Object.fromEntries(SOC_PROP_STATS.map((s) => [s, c.n[s] >= 5 ? c.sum[s] / c.n[s] : null]))]));
   }
   await saveFeedCache(db, 'soc_ctx', out);
   return out;
@@ -9881,8 +9907,8 @@ function socChance(line, mean, phi) {
 function socProjectRows(lg, starters, recent, ctx, pri) {
   const slug = SOC_PROP_LEAGUES[lg];
   const avgOf = (s) => {
-    const cur = Object.values(ctx || {});
-    if (cur.length >= 6) return cur.reduce((a, c) => a + (c[s] || 0), 0) / cur.length;
+    const cur = Object.values(ctx || {}).filter((c) => c[s] != null);
+    if (cur.length >= 6) return cur.reduce((a, c) => a + c[s], 0) / cur.length;
     return pri && pri.leagueAvg && pri.leagueAvg[slug] ? pri.leagueAvg[slug][s] : null;
   };
   const allowed = (team, s) => {
@@ -9897,10 +9923,13 @@ function socProjectRows(lg, starters, recent, ctx, pri) {
     const pr = pri && pri.players ? pri.players[p.id] : null;
     const isGk = p.gk || (pr && pr.gk) || rec.some((r) => r.gk);
     for (const s of SOC_PROP_STATS) {
-      if (s === 'saves' ? !isGk : (isGk && s !== 'passes')) continue;   // goalkeepers: saves and passes
+      // Goalkeepers: saves, goals conceded and passes; nobody else the first two.
+      if (SOC_KEEPER_STATS.includes(s) ? !isGk : (isGk && s !== 'passes')) continue;
+      // A start read before this stat's column existed says nothing about it.
+      const recS = rec.filter((r) => r[s] != null);
       const k = pr && pr.starts >= 3 && pr[s] != null ? Math.min(SOC_PRIOR_K, pr.starts) : 0;
-      if (!k && rec.length < 3) continue;                              // nothing to stand on
-      const base = (rec.reduce((a, r) => a + (r[s] || 0), 0) + k * (k ? pr[s] : 0)) / (rec.length + k);
+      if (!k && recS.length < 3) continue;                             // nothing to stand on
+      const base = (recS.reduce((a, r) => a + r[s], 0) + k * (k ? pr[s] : 0)) / (recS.length + k);
       const a = allowed(p.opp, s), lgAvg = avgOf(s);
       const ratio = a != null && lgAvg ? a / lgAvg : null;
       const mean = base * (ratio != null ? 1 + SOC_CTX_W * (ratio - 1) : 1);
@@ -9911,7 +9940,7 @@ function socProjectRows(lg, starters, recent, ctx, pri) {
       out.push({ id: p.id, player: p.name, team: p.team, opp: p.opp, pos: p.pos || null, stat: s,
         proj: Math.round(mean * 100) / 100, phi: SOC_PROP_PHI[s], line,
         pUnder: round1(ch.under * 100), pOver: round1(ch.over * 100),
-        nRecent: rec.length, priorStarts: pr ? pr.starts : 0,
+        nRecent: recS.length, priorStarts: pr ? pr.starts : 0,
         ctx: ratio != null ? Math.round(ratio * 100) / 100 : null,
         early: early != null ? Math.round(early * 100) : null });
     }
