@@ -2994,9 +2994,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   display:inline-flex; align-items:center; justify-content:center; background:var(--hs-bg); color:var(--hs-fg); }
 .hs-mono { font-family:var(--sans); font-weight:700; font-size:calc(var(--hs-size) * .36); line-height:1; letter-spacing:0; }
 .hs-img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 18%; }
-/* ESPN's photos are transparent, so the initials would show through them; they
-   only show when there is no photo (hs-none is set when one fails to load). */
-.hs:not(.hs-none) .hs-mono { visibility:hidden; }
+/* ESPN's photos are transparent, so the initials would show through them: they
+   hide once a photo has loaded (hs-loaded), and show while it loads or when
+   there is none (hs-none is set when one fails). */
+.hs.hs-loaded .hs-mono { visibility:hidden; }
 /* A club's mark sits on white, which every team's colours read against. */
 .hs-team:not(.hs-none) { background:#fff; }
 .hs-team .hs-img { object-fit:contain; padding:16%; }

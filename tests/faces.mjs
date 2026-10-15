@@ -77,7 +77,12 @@ const none = F.avatarHtml({ sport: 'soccer', team: 'Liverpool', name: 'Liverpool
 ok(/hs-none/.test(none) && !/<img/.test(none) && /hs-mono">LIV</.test(none), 'with no image source, initials alone');
 ok(/document\.addEventListener\('error', \(e\) => \{[\s\S]*?hs-img[\s\S]*?t\.remove\(\);[\s\S]*?classList\.add\('hs-none'\)[\s\S]*?\}, true\);/.test(src),
   'a photo that fails is removed and the initials show (capture phase: image errors do not bubble)');
-ok(/\.hs:not\(\.hs-none\) \.hs-mono \{ visibility:hidden; \}/.test(css), 'and the initials hide under a photo, which can be transparent');
+// They hide only once the photo has arrived: hidden from the start, a slow
+// photo sat as a plain team-coloured dot (2026-10-15).
+ok(/\.hs\.hs-loaded \.hs-mono \{ visibility:hidden; \}/.test(css) && !/\.hs:not\(\.hs-none\) \.hs-mono/.test(css),
+  'the initials hide under a photo, which can be transparent, but only once it has loaded');
+ok(/document\.addEventListener\('load', \(e\) => \{[\s\S]*?hs-img[\s\S]*?classList\.add\('hs-loaded'\);[\s\S]*?\}, true\);/.test(src),
+  'a loaded photo marks its circle (capture phase: load does not bubble either)');
 
 console.log('\n-- the legs that carry one --');
 ok(/class="tc-leg has-hs" data-action="today-jump"[^`]*\$\{face\}/.test(lift('renderTodayCard')), 'Today\'s card');

@@ -1952,6 +1952,14 @@
       if (box) box.classList.add('hs-none');
     }
   }, true);
+  // And the initials stay until a photo has arrived (2026-10-15): hiding them
+  // from the start left a slow photo as a plain team-coloured dot.
+  document.addEventListener('load', (e) => {
+    const t = e.target;
+    if (t && t.tagName === 'IMG' && t.classList && t.classList.contains('hs-img') && t.parentElement) {
+      t.parentElement.classList.add('hs-loaded');
+    }
+  }, true);
 
   const mlbBadge = (abbr) => {
     if (!abbr) return '';
