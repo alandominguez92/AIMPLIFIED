@@ -140,12 +140,21 @@ if (HEALTHY) await buildOddsFixture();
 // both lineups in -- the card is otherwise empty until an hour before kickoff.
 const SOCPROPSDEMO = process.env.SOCPROPSDEMO === '1';
 // Two fixtures, so the card shows matches collapsed as a Saturday would.
-let socDemoIds = null;
+let socDemoIds = null, socDemoDay = null;
 globalThis.fetch = async (u, o) => {
   const url = String(u);
   if (SOCPROPSDEMO && url.includes('/soccer/eng.1/scoreboard?dates=')) {
     const j = await (await realFetch(url)).json();
-    const pre = (j.events || []).filter((e) => e.status && e.status.type && e.status.type.state === 'pre').slice(0, 2);
+    let pre = (j.events || []).filter((e) => e.status && e.status.type && e.status.type.state === 'pre').slice(0, 2);
+    // An international break leaves the real card empty: two fixtures of the
+    // recorded clubs stand in, on the first day asked for.
+    if (!pre.length && (!socDemoIds || socDemoDay === url)) {
+      socDemoDay = url;
+      pre = ['DEMO1', 'DEMO2'].map((id) => ({ id, date: '', status: { type: { state: 'pre', completed: false } },
+        competitions: [{ competitors: [{ id: '370', homeAway: 'home', team: { abbreviation: 'FUL', displayName: 'Fulham' } },
+          { id: '367', homeAway: 'away', team: { abbreviation: 'TOT', displayName: 'Tottenham Hotspur' } }] }] }));
+      j.events = [...(j.events || []), ...pre];
+    }
     if (pre.length && !socDemoIds) socDemoIds = pre.map((e) => e.id);
     pre.forEach((ev, i) => { if (socDemoIds.includes(ev.id)) ev.date = new Date(Date.now() + (45 + 5 * i) * 60e3).toISOString(); });
     return new Response(JSON.stringify(j), { status: 200 });
@@ -373,6 +382,27 @@ if (NBADEMO) {
   }
 }
 
+// SOCPROPSDEMO with a SQLite (NBADEMO or ENTRIESDB): last night's match graded
+// twice -- the model's rows at their default line, and a few lines saved as
+// PrizePicks' -- so the card's two records can be seen.
+if (SOCPROPSDEMO && sqliteDb) {
+  await mod.default.fetch(new Request('https://x/api/soccer-props?summary=1'), env, { waitUntil: () => {} });   // creates the tables
+  const past = new Date(Date.now() - 26 * 3600e3);
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(past);
+  const rows = [['p1', 'tackles', 2.5, 64, 'under'], ['p2', 'passes', 41.5, 58, 'under'], ['p3', 'shots', 1.5, 61, 'over'], ['p4', 'fouls', 1.5, 66, 'over'],
+    ['p5', 'clear', 2.5, 63, 'under'], ['p6', 'sot', 0.5, 57, 'under'], ['p7', 'tackles', 1.5, 55, 'under'], ['p8', 'fouls', 0.5, 59, 'under']];
+  for (const [pid, mk, line, p, res] of rows) {
+    await sqliteDb.prepare(`INSERT INTO socprops (date, game_id, player_id, market, player, league, commence, proj, line, p_under, p_over, result)
+      VALUES (?, 'DEMO0', ?, ?, ?, 'epl', ?, ?, ?, ?, ?, ?)`).bind(day, pid, mk, 'Player ' + pid, past.toISOString(), line - 0.6, line, p, 100 - p, res).run();
+  }
+  // Saved at PrizePicks' number: two a half-point off the default, one level.
+  for (const [pid, mk, line, side, p, res] of [['p1', 'tackles', 3.5, 'Under', 71, 'under'], ['p2', 'passes', 44.5, 'Under', 63, 'under'],
+    ['p4', 'fouls', 1.5, 'Under', 66, 'over'], ['p5', 'clear', 2.5, 'Under', 63, 'under']]) {
+    await sqliteDb.prepare(`INSERT INTO soc_pp_lines (game_id, player_id, market, date, league, commence, line, side, p, result, edits)
+      VALUES ('DEMO0', ?, ?, ?, 'epl', ?, ?, ?, ?, ?, 1)`).bind(pid, mk, day, past.toISOString(), line, side, p, res).run();
+  }
+}
+
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
 const cache = new Map();
 
@@ -398,14 +428,15 @@ http.createServer(async (req, res) => {
   // /api/entries is private and written to: pass the method, the key header and
   // the body straight through, and never cache it. The generic path below builds
   // a bare GET and caches by URL, which is right for the boards and wrong here —
-  // every save arrived keyless and bodiless.
-  if (url.pathname === '/api/entries') {
+  // every save arrived keyless and bodiless. The soccer card's PrizePicks lines
+  // (/api/soc-lines) are kept the same way.
+  if (url.pathname === '/api/entries' || url.pathname === '/api/soc-lines') {
     const chunks = [];
     for await (const c of req) chunks.push(c);
     const body = chunks.length ? Buffer.concat(chunks) : undefined;
     const headers = {};
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers[k] = v;
-    const wres = await mod.default.fetch(new Request('https://x/api/entries', {
+    const wres = await mod.default.fetch(new Request('https://x' + url.pathname, {
       method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body,
     }), env, { waitUntil: () => {} });
     res.writeHead(wres.status, { 'content-type': 'application/json', 'cache-control': 'private, no-store' });
@@ -441,4 +472,5 @@ http.createServer(async (req, res) => {
   }
   res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'text/plain' });
   fs.createReadStream(file).pipe(res);
-}).listen(8788, () => console.log('board preview on http://localhost:8788'));
+// PORT moves it off 8788, so a second session's board can run beside another.
+}).listen(Number(process.env.PORT) || 8788, () => console.log(`board preview on http://localhost:${Number(process.env.PORT) || 8788}`));

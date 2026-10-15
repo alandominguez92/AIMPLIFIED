@@ -147,7 +147,7 @@ const RL_MODEL_VER = 'rl-shin';
 const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
-  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries',
+  '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
 ]);
 
@@ -163,6 +163,8 @@ export default {
     // before the shared edge cache, which would otherwise hand one viewer's
     // response to the next.
     if (p === '/api/entries') return entriesApi(request, env, url);
+    // The PrizePicks soccer lines typed on the card: private the same way.
+    if (p === '/api/soc-lines') return socLinesApi(request, env);
 
     // Shared edge cache: every viewer reuses one upstream burst per TTL (the TTL
     // is each handler's Cache-Control max-age). This is what protects the paid
@@ -9614,6 +9616,17 @@ async function ensureSocPropSchema(db) {
     actual REAL, result TEXT,
     PRIMARY KEY (date, game_id, player_id, market)
   )`).run();
+  // The PrizePicks lines typed into the card (2026-10-15), one per starter and
+  // stat: the number, the side the card showed there and the model's chance of
+  // it, graded at that number beside the model's own row above.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS soc_pp_lines (
+    game_id TEXT NOT NULL, player_id TEXT NOT NULL, market TEXT NOT NULL,
+    date TEXT, league TEXT, commence TEXT, player TEXT, team TEXT, opp TEXT,
+    line REAL, side TEXT, p REAL, p_under REAL, p_over REAL, proj REAL, default_line REAL,
+    first_at TEXT, entered_at TEXT, edits INTEGER,
+    actual REAL, result TEXT,
+    PRIMARY KEY (game_id, player_id, market)
+  )`).run();
 }
 
 async function socPriors(env) {
@@ -9751,23 +9764,77 @@ async function socBoxTick(env, opts = {}) {
 }
 
 // The model's own log, graded from the box scores: under / over / push at the
-// line it showed, void for a starter who never appeared.
+// line it showed, void for a starter who never appeared. Then the PrizePicks
+// lines the user set, the same way at their own number, in their own table.
 async function gradeSocProps(db) {
-  const open = (await db.prepare(
-    `SELECT s.date, s.game_id, s.player_id, s.market, s.line FROM socprops s JOIN soc_box_games g ON g.game_id = s.game_id
-      WHERE s.result IS NULL AND g.done = 1 LIMIT 200`).all()).results || [];
-  if (!open.length) return;
-  const ids = [...new Set(open.map((r) => r.game_id))];
-  const box = (await db.prepare(`SELECT * FROM soc_box WHERE game_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results || [];
-  const by = new Map(box.map((b) => [`${b.game_id}|${b.player_id}`, b]));
-  const ups = open.map((r) => {
-    const b = by.get(`${r.game_id}|${r.player_id}`);
-    const actual = b && b[r.market] != null ? b[r.market] : null;
-    const result = actual == null ? 'void' : actual === r.line ? 'push' : actual < r.line ? 'under' : 'over';
-    return db.prepare('UPDATE socprops SET actual = ?, result = ? WHERE date = ? AND game_id = ? AND player_id = ? AND market = ?')
-      .bind(actual, result, r.date, r.game_id, r.player_id, r.market);
-  });
-  await db.batch(ups);
+  for (const table of ['socprops', 'soc_pp_lines']) {
+    const open = (await db.prepare(
+      `SELECT s.date, s.game_id, s.player_id, s.market, s.line FROM ${table} s JOIN soc_box_games g ON g.game_id = s.game_id
+        WHERE s.result IS NULL AND g.done = 1 LIMIT 200`).all()).results || [];
+    if (!open.length) continue;
+    const ids = [...new Set(open.map((r) => r.game_id))];
+    const box = (await db.prepare(`SELECT * FROM soc_box WHERE game_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results || [];
+    const by = new Map(box.map((b) => [`${b.game_id}|${b.player_id}`, b]));
+    const ups = open.map((r) => {
+      const b = by.get(`${r.game_id}|${r.player_id}`);
+      const actual = b && b[r.market] != null ? b[r.market] : null;
+      const result = actual == null ? 'void' : actual === r.line ? 'push' : actual < r.line ? 'under' : 'over';
+      return db.prepare(`UPDATE ${table} SET actual = ?, result = ? WHERE date = ? AND game_id = ? AND player_id = ? AND market = ?`)
+        .bind(actual, result, r.date, r.game_id, r.player_id, r.market);
+    });
+    await db.batch(ups);
+  }
+}
+
+// POST/GET /api/soc-lines: the PrizePicks soccer lines set on the props card.
+// No feed carries them (the Odds API has FanDuel overs only, and PrizePicks'
+// own API is behind a captcha), so the number typed on the phone is the only
+// record of PrizePicks' line there is. Private by the entries key and never
+// cached or readable cross-origin, exactly as /api/entries is.
+//
+// POST { gameId, playerId, stat, line, proj } saves one line until kickoff
+// (later changes replace it; after kickoff it is locked). The row must be one
+// the model logged -- a starter on a posted lineup -- and the chance is the
+// projection the card showed at that line, the side the one it favours, as
+// the card draws it. GET lists the lines saved for matches not yet graded, so
+// a reload shows them again.
+async function socLinesApi(request, env) {
+  if (!env || !env.DB) return entryResponse({ error: 'no DB binding' }, 500);
+  const auth = await entryAuth(env, request);
+  if (!auth.ok) return entryResponse({ error: auth.error }, auth.status);
+  const db = env.DB;
+  await ensureSocPropSchema(db);
+  if (request.method === 'POST') {
+    let b;
+    try { b = await request.json(); } catch (e) { return entryResponse({ error: 'Body must be JSON.' }, 400); }
+    const gid = String((b && b.gameId) || ''), pid = String((b && b.playerId) || ''), stat = String((b && b.stat) || '');
+    const line = Number(b && b.line);
+    if (!SOC_PROP_STATS.includes(stat)) return entryResponse({ error: 'Unknown stat.' }, 400);
+    if (!(line >= 0 && line <= 200 && Number.isInteger(line * 2))) return entryResponse({ error: 'A line is a whole or half number.' }, 400);
+    const row = await db.prepare('SELECT * FROM socprops WHERE game_id = ? AND player_id = ? AND market = ?').bind(gid, pid, stat).first();
+    if (!row) return entryResponse({ error: 'No projection was logged for that player and stat.' }, 404);
+    if (!(Date.parse(row.commence) > Date.now())) return entryResponse({ error: 'That match has kicked off: its lines are locked.' }, 409);
+    const shown = Number(b.proj);
+    const proj = isFinite(shown) && shown > 0 ? shown : row.proj;
+    const ch = socChance(line, proj, SOC_PROP_PHI[stat]);
+    const side = ch.under >= ch.over ? 'Under' : 'Over';
+    const pu = round1(ch.under * 100), po = round1(ch.over * 100);
+    const at = new Date().toISOString();
+    await db.prepare(
+      `INSERT INTO soc_pp_lines (game_id, player_id, market, date, league, commence, player, team, opp,
+         line, side, p, p_under, p_over, proj, default_line, first_at, entered_at, edits)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+       ON CONFLICT(game_id, player_id, market) DO UPDATE SET line = excluded.line, side = excluded.side, p = excluded.p,
+         p_under = excluded.p_under, p_over = excluded.p_over, proj = excluded.proj, entered_at = excluded.entered_at,
+         edits = soc_pp_lines.edits + 1`
+    ).bind(gid, pid, stat, row.date, row.league, row.commence, row.player, row.team, row.opp,
+      line, side, side === 'Under' ? pu : po, pu, po, proj, row.line, at, at).run();
+    return entryResponse({ ok: true, line, side, p: side === 'Under' ? pu : po, claimed: !!auth.claimed });
+  }
+  const rows = (await db.prepare(
+    'SELECT game_id, player_id, market, line, side, p, entered_at FROM soc_pp_lines WHERE result IS NULL ORDER BY commence LIMIT 500'
+  ).all()).results || [];
+  return entryResponse({ lines: rows });
 }
 
 // What each club has allowed its opponents per game this season, from the box
@@ -9903,7 +9970,7 @@ async function socPropsBoard(env, url) {
   const summary = !!(url && url.searchParams && url.searchParams.get('summary') === '1');
   const out = {
     note: 'LOGGED, not posted. Each starter\'s projection: last season per start blended with this season, moved half the way by what the opponent allows. '
-      + 'No feed carries PrizePicks\' soccer lines: set the line to the app\'s and the chance follows.',
+      + 'No feed carries PrizePicks\' soccer lines: set the line to the app\'s and the chance follows. A line you set is saved and graded at that number (ppRecord).',
     asOf: new Date().toISOString(), leagues: SOC_PROP_LABEL, matches: [], record: null,
   };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
@@ -9952,8 +10019,27 @@ async function socPropsBoard(env, url) {
       return { market: g.market, p: under ? g.p_under : g.p_over, won: g.result === 'push' ? null : ((g.result === 'under') === under ? 1 : 0), gap: null };
     });
     const split = ppSplitRecord(items);
+    const byStat = (list) => Object.fromEntries(SOC_PROP_STATS.map((s) => { const c = ppSplitRecord(list.filter((x) => x.market === s)); return [s, { n: c.n, hit: c.hit, hitRate: c.hitRate }]; }));
     out.record = { scope: 'the side each row leans at the line it showed, before kickoff', graded: split.n, hit: split.hit, hitRate: split.hitRate,
-      byBand: split.byBand, byMarket: Object.fromEntries(SOC_PROP_STATS.map((s) => { const c = ppSplitRecord(items.filter((x) => x.market === s)); return [s, { n: c.n, hit: c.hit, hitRate: c.hitRate }]; })) };
+      byBand: split.byBand, byMarket: byStat(items) };
+    // The record at PrizePicks' own numbers: each line set on the card, the
+    // side the card showed there, graded from the same box scores. This, not
+    // the default-line record above, is what decides whether soccer props
+    // join Picks of the day -- once 100 to 150 of them have graded.
+    const ppRows = (await db.prepare('SELECT market, side, p, result FROM soc_pp_lines').all()).results || [];
+    const ppItems = ppRows.filter((g) => ['under', 'over', 'push'].includes(g.result)).map((g) => ({ market: g.market, p: g.p,
+      won: g.result === 'push' ? null : (g.result === (g.side === 'Under' ? 'under' : 'over') ? 1 : 0), gap: null }));
+    const pps = ppSplitRecord(ppItems), exF = ppSplitRecord(ppItems.filter((x) => x.market !== 'fouls'));
+    out.ppRecord = { scope: 'the side the card showed at the PrizePicks line you set, before kickoff',
+      saved: ppRows.length, open: ppRows.filter((g) => g.result == null).length, void: ppRows.filter((g) => g.result === 'void').length,
+      graded: pps.n, hit: pps.hit, hitRate: pps.hitRate, byBand: pps.byBand, byMarket: byStat(ppItems),
+      exFouls: { n: exF.n, hit: exF.hit, hitRate: exF.hitRate },
+      // Fouls on their own: the one stat whose leaning side landed under half
+      // the time at the default line (7 of 15 by 2026-10-15), so it is shown
+      // apart rather than left to sink or carry the rest.
+      fouls: { atDefault: out.record.byMarket.fouls, atPP: byStat(ppItems).fouls,
+        note: 'Fouls ran below 50% at the default line; read them apart from the other stats.' },
+      picksGate: { need: 100, have: pps.n, note: 'Soccer props stay off Picks of the day until 100-150 legs have graded at real PrizePicks lines.' } };
     const ing = await db.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM soc_box_games').first();
     const look = await loadFeedCache(db, 'soc_box_disc');
     out.ingest = { games: Number((ing && ing.n) || 0), read: Number((ing && ing.d) || 0), lastDay: (ing && ing.last) || null, priors: !!pri,

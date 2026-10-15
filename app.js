@@ -189,6 +189,8 @@
     soccerLeague: 'all',   // 'all' | 'epl' | 'laliga' | 'ucl'
     socProps: null,        // /api/soccer-props
     socLines: {},          // soccer prop line set by the user, per match:player:stat
+    socSaved: {},          // the line the worker holds for that key (/api/soc-lines)
+    socSaving: {},         // keys with a save on its way
     socOpen: {},           // soccer prop matches showing every row
     soccerOpen: null,      // expanded fixture id
     slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
@@ -3556,10 +3558,11 @@
       return k;
     } catch (e) { return null; }
   }
-  async function entriesFetch(method, body) {
+  // The soccer card's PrizePicks lines (/api/soc-lines) ride the same key.
+  async function entriesFetch(method, body, route = '/api/entries') {
     const key = entryKey();
     if (!key) throw new Error('This browser is blocking storage, so it cannot hold an entries key.');
-    const r = await fetch('/api/entries', {
+    const r = await fetch(route, {
       method, cache: 'no-store',
       headers: { 'content-type': 'application/json', 'x-entry-key': key },
       body: body ? JSON.stringify(body) : undefined,
@@ -4613,10 +4616,12 @@
         const k = target.dataset.key;
         const inp = el.soccerGrid && el.soccerGrid.querySelector(`input[data-socp="${CSS.escape(k)}"]`);
         const cur = inp && isFinite(Number(inp.value)) ? Number(inp.value) : 0;
-        state.socLines = { ...(state.socLines || {}), [k]: Math.max(0, Math.round((cur + Number(target.dataset.d)) * 2) / 2) };
+        socLineSave(k, Math.max(0, Math.round((cur + Number(target.dataset.d)) * 2) / 2));
         renderSoccer();
         break;
       }
+      // The line shown already is PrizePicks': saved as it stands.
+      case 'socp-save': socLineSave(target.dataset.key, Number(target.dataset.line), 0); socSaveMark(target.dataset.key); break;
       case 'socp-match': {
         const id = target.dataset.id;
         state.socMatchOpen = { ...(state.socMatchOpen || {}), [id]: !(state.socMatchOpen && state.socMatchOpen[id]) };
@@ -4713,6 +4718,11 @@
         if (e) { e.stopPropagation(); e.preventDefault(); }
         const leg = LEG_OFFERS.get(target.dataset.leg) || state.slip[target.dataset.leg];
         if (leg) toggleLeg(leg);
+        // A soccer prop starred is played at that line: PrizePicks' number, saved.
+        if (leg && /^socp:/.test(leg.id) && state.slip[leg.id] && leg.spec && leg.spec.pp) {
+          const k = leg.id.slice(5);
+          if (!(state.socSaved && state.socSaved[k] === leg.spec.pp.line)) { socLineSave(k, leg.spec.pp.line, 0); socSaveMark(k); }
+        }
         break;
       }
       case 'k-add': {
@@ -4822,7 +4832,7 @@
     // A soccer prop's line typed to PrizePicks' number (48.5 passes is a lot of taps).
     if (t.dataset.socp) {
       const v = Number(t.value);
-      if (isFinite(v) && v >= 0) { state.socLines = { ...(state.socLines || {}), [t.dataset.socp]: Math.round(v * 2) / 2 }; renderSoccer(); }
+      if (isFinite(v) && v >= 0) { socLineSave(t.dataset.socp, Math.round(v * 2) / 2); renderSoccer(); }
     }
     if (t.dataset.action === 'entry-payout') {
       const v = t.value.trim();
@@ -6093,6 +6103,7 @@
       : ((d && Array.isArray(d.games)) ? d : { games: [], empty: true });
     state.socProps = pp && Array.isArray(pp.matches) ? pp : null;
     renderSoccer();
+    socSavedLoad();
   }
 
   // ---- Soccer player props (2026-10-10) --------------------------------------
@@ -6123,6 +6134,62 @@
     const sl = leg && leg.spec && leg.spec.pp && leg.spec.pp.line;
     return typeof sl === 'number' && isFinite(sl) ? sl : r.line;
   };
+  // A line set here is PrizePicks' number, and no feed carries it: each one is
+  // saved to the worker (private by the entries key, as the log is) a moment
+  // after the last tap, and graded there at that number. That record, not the
+  // default line's, decides whether soccer props join Picks of the day. A line
+  // that already matches is saved with a tap, or by starring it.
+  const socSaveTimers = {};
+  function socLineSave(key, line, wait = 1200) {
+    if (typeof line !== 'number' || !isFinite(line)) return;
+    state.socLines = { ...(state.socLines || {}), [key]: line };
+    state.socSaving = { ...(state.socSaving || {}), [key]: true };
+    clearTimeout(socSaveTimers[key]);
+    socSaveTimers[key] = setTimeout(() => socLineSend(key), wait);
+  }
+  async function socLineSend(key) {
+    const line = state.socLines && state.socLines[key];
+    const [mid, pid, stat] = key.split(':');
+    const m = ((state.socProps && state.socProps.matches) || []).find((x) => x.id === mid);
+    const r = m && (m.rows || []).find((x) => x.id === pid && x.stat === stat);
+    try {
+      if (!r || typeof line !== 'number') throw new Error('That row has left the card.');
+      const j = await entriesFetch('POST', { gameId: mid, playerId: pid, stat, line, proj: r.proj }, '/api/soc-lines');
+      // A later tap while this was out wins: only the line it saved is marked.
+      state.socSaved = { ...(state.socSaved || {}), [key]: j.line };
+    } catch (e) { toast(`Line not saved: ${e.message}`); }
+    state.socSaving = { ...(state.socSaving || {}), [key]: false };
+    socSaveMark(key);
+  }
+  // The stepper's label is its save state: a Save button until the worker
+  // holds this line, then "PP line ✓". Drawn in place too, so a save landing
+  // mid-search keeps focus. (A phone row has room for one of them, not both.)
+  function socSaveHtml(key, line) {
+    if (state.socSaving && state.socSaving[key]) return `<span class="sp-lbl" data-socs="${esc(key)}">Saving…</span>`;
+    if (state.socSaved && state.socSaved[key] === line) return `<span class="sp-lbl" data-socs="${esc(key)}" title="Saved as PrizePicks' line: graded at this number">PP line <span class="sp-ok">✓</span></span>`;
+    return `<button type="button" class="sp-save" data-socs="${esc(key)}" data-action="socp-save" data-key="${esc(key)}" data-line="${esc(String(line))}" aria-label="Save ${esc(String(line))} as PrizePicks' line">Save line</button>`;
+  }
+  function socSaveMark(key) {
+    const n = el.soccerGrid && el.soccerGrid.querySelector(`[data-socs="${CSS.escape(key)}"]`);
+    const inp = el.soccerGrid && el.soccerGrid.querySelector(`input[data-socp="${CSS.escape(key)}"]`);
+    if (n && inp) n.outerHTML = socSaveHtml(key, Number(inp.value));
+  }
+  // After a reload: the lines this key has saved for matches not yet graded.
+  // Only a device that already holds a key asks (no key is made just to look);
+  // a line set on this page since keeps its own number.
+  async function socSavedLoad() {
+    let k = null;
+    try { k = localStorage.getItem(ENTRY_KEY_STORE); } catch (e) { /* no storage, nothing saved here */ }
+    if (!k) return;
+    try {
+      const j = await entriesFetch('GET', null, '/api/soc-lines');
+      const saved = {};
+      for (const x of (j.lines || [])) saved[`${x.game_id}:${x.player_id}:${x.market}`] = x.line;
+      state.socSaved = { ...saved, ...(state.socSaved || {}) };
+      state.socLines = { ...saved, ...(state.socLines || {}) };
+      renderSoccer();
+    } catch (e) { /* the card works without them; a save says what is wrong */ }
+  }
   function socpLeg(m, r, line, side, under) {
     return { id: `socp:${socKey(m, r)}`, board: 'PrizePicks',
       title: `${r.player} ${side === 'Under' ? 'U' : 'O'} ${line} ${SOC_STAT[r.stat] || r.stat}`, sub: `${m.away} @ ${m.home}`,
@@ -6155,9 +6222,13 @@
       + `<span class="sp-line"><button type="button" class="sp-step" data-action="socp-line" data-key="${esc(key)}" data-d="${-step}" aria-label="Lower the line">−</button>`
       + `<input class="sp-in" type="number" inputmode="decimal" step="0.5" min="0" value="${esc(String(line))}" data-socp="${esc(key)}" aria-label="PrizePicks line for ${esc(r.player)} ${esc(SOC_STAT[r.stat] || r.stat)}">`
       + `<button type="button" class="sp-step" data-action="socp-line" data-key="${esc(key)}" data-d="${step}" aria-label="Raise the line">+</button>`
-      + `<span class="sp-lbl">PP line</span></span>`
+      + `${socSaveHtml(key, line)}</span>`
       + `</div></li>`;
   }
+  // A record's count, green only once it has cleared PrizePicks' 2-pick
+  // break-even (57.7%) over five or more, as the Picks list draws a chance: a
+  // first "1 of 3" at the PrizePicks lines is not a result yet.
+  const socRecB = (hit, n) => `<b${n >= 5 && hit / n * 100 >= 57.7 ? '' : ' class="sp-rec-flat"'}>${hit} of ${n}</b>`;
   // Lineup order: goalkeeper, defenders, midfielders, forwards.
   const socPosRank = (pos) => { const p = String(pos || ''); if (p === 'G') return 0; if (/^(CD|CB|LB|RB|LWB|RWB|D|SW)/.test(p)) return 1; if (/M/.test(p)) return 2; return 3; };
   const SOC_SHORT = { shots: 'Shots', sot: 'SOT', passes: 'Pass', tackles: 'Tkl', clear: 'Clr', fouls: 'Fouls', saves: 'Saves' };
@@ -6171,12 +6242,17 @@
     const lg = state.soccerLeague;
     const q = String(state.socQuery || '').trim().toLowerCase();
     const ms = (d.matches || []).filter((m) => Date.parse(m.commence) > now && (lg === 'all' || !lg || m.league === lg));
-    const rec = d.record && d.record.graded
-      ? `<span class="tc-rec">Leaning side: <b>${d.record.hit} of ${d.record.graded}</b></span>` : '';
+    // Two records: the default line's, and the one at the lines saved here --
+    // PrizePicks' own numbers, the one that counts.
+    const ppr = d.ppRecord;
+    const ppRec = ppr && ppr.graded ? `At your PP lines: ${socRecB(ppr.hit, ppr.graded)}`
+      : ppr && ppr.saved ? `${ppr.saved} PP line${ppr.saved === 1 ? '' : 's'} saved` : '';
+    const rec = (d.record && d.record.graded) || ppRec
+      ? `<span class="tc-rec">${d.record && d.record.graded ? `Default line: ${socRecB(d.record.hit, d.record.graded)}` : ''}${d.record && d.record.graded && ppRec ? ' · ' : ''}${ppRec}</span>` : '';
     const posted = ms.filter((m) => m.lineup === 'posted' && (m.rows || []).length);
     const waiting = ms.filter((m) => m.lineup !== 'posted');
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks player props</span>${rec}</div>`
-      + `<div class="tc-sub">Find the player PrizePicks shows you, set the line to the app's number, and the chance follows. Starters only, once lineups post (about an hour before kickoff).`
+      + `<div class="tc-sub">Find the player PrizePicks shows you, set the line to the app's number, and the chance follows. Each line you set is saved and graded at that number. Starters only, once lineups post (about an hour before kickoff).`
       + `${posted.some((m) => m.rows.some((r) => r.nRecent < 3)) ? ' Early season: most projections are still last season’s numbers.' : ''}</div>`
       + (posted.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">` : '');
     let found = 0;

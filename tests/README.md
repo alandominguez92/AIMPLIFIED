@@ -27,7 +27,15 @@ node outageserver.mjs                    # outage: odds 401, projections only
 HEALTHY=1 node outageserver.mjs          # synthetic feed — priced rows, edges, play/pass
 PREGAME=1 node outageserver.mjs          # rewrite today's slate to Preview a few hours out
 CARDS=1   node outageserver.mjs          # post a 9-man lineup card -> pulled rows
+PORT=8790 node outageserver.mjs          # off 8788, beside another session's board
 ```
+
+`SOCPROPSDEMO=1` (with `NBADEMO=1` or `ENTRIESDB=1` for the SQLite) shows the
+soccer props card with a lineup posted, and a graded match behind both of its
+records -- the default line's and the one at the PrizePicks lines saved on the
+card (`/api/soc-lines`, passed through with its key like `/api/entries`). On an
+international break, when ESPN's Premier League card is empty, two fixtures of
+the recorded Fulham-Tottenham lineup stand in.
 
 `HEALTHY=1` prices all three MLB boards, not just batters: batter total bases,
 `pitcher_strikeouts`, and a league-wide `h2h`. It covered only batters until the
