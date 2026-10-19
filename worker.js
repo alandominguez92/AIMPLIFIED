@@ -9454,6 +9454,8 @@ async function nbaMaybeIngest(env) {
 // by price. The NBA version is the same claim. Threes, assists and rebounds,
 // because those are where the under beat a player's recent average across two
 // seasons of box scores (55.5%, 53.4% and 53.3%); points did not (51.6%).
+// Every other PrizePicks market was run the same way on 2026-10-19, with a
+// stricter median-line check: tools/nba-market-backtest.md.
 //
 // Projection: the player's last ten regular-season games blended with last
 // season's per-game average (nba-priors.json), the prior counting as
