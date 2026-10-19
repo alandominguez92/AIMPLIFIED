@@ -258,6 +258,7 @@ export default {
     // than waiting for someone to open the track record.
     ctx.waitUntil(gradeGamePicks(env).catch(() => null));
     ctx.waitUntil(gradePassTds(env).catch(() => null));
+    ctx.waitUntil(gradePassYds(env).catch(() => null));
     ctx.waitUntil(nflGradeCron(env).catch(() => null));
     ctx.waitUntil(gradeEntryLegs(env).catch(() => null));
     // Picks of the day: every fifteen minutes, so the log knows which legs were
@@ -3033,6 +3034,7 @@ async function trackRecordSummary(res) {
     soccerMl: pick(d.soccerMl, gm),
     nflMl: pick(d.nflMl, gm),
     nflPassTds: pick(d.nflPassTds, [...gm, 'verdict']),
+    nflPassYds: pick(d.nflPassYds, ['logged', 'pending', 'n', 'hit', 'hitRate', 'byLineGap', 'ppHigherBy5', 'controlAtBookLine', 'meanGap', 'ci', 'verdict']),
     nbaMl: pick(d.nbaMl, [...gm, 'byLeague']),
   };
   return cors(json(out, 300));
@@ -3072,6 +3074,7 @@ async function trackRecord(env) {
     try { await gradePpPicks(env); } catch (e) { /* additive */ }
     try { await gradeGamePicks(env); } catch (e) { /* additive */ }
     try { await gradePassTds(env); } catch (e) { /* additive */ }
+    try { await gradePassYds(env); } catch (e) { /* additive */ }
     const kres = await env.DB.prepare('SELECT * FROM picks').all();
     const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
     // Normalize both feeds to one row shape: pitcher picks are market 'K' with
@@ -3120,6 +3123,10 @@ async function trackRecord(env) {
       out.soccerFav = buildSoccerFavRecord(gm);
       out.nflPassTds = buildPassTdRecord(gm);
       out.nbaMl = buildGmRecord(gm, 'nba');
+    } catch (e) { /* additive */ }
+    try {
+      await ensurePassYdsSchema(env.DB);
+      out.nflPassYds = buildPassYdsRecord(((await env.DB.prepare('SELECT * FROM nflpyd').all()).results) || []);
     } catch (e) { /* additive */ }
     out.recent = buildRecent(unified, mlRows);
     return cors(json(out, 120));
@@ -3790,6 +3797,80 @@ function passTdEntries(rows, week, seasonType) {
   return out;
 }
 
+// The season a date's game belongs to. ESPN's NFL scoreboard is asked by
+// season year, and Weeks 17-18 and the playoffs are played the January after.
+function nflSeasonOf(date) {
+  const y = Number(String(date).slice(0, 4)), m = Number(String(date).slice(5, 7));
+  return m && m <= 6 ? y - 1 : y;
+}
+
+// Every passer's line for one NFL week, read from the box score of each final
+// game a pending row is in -- one fetch a game.
+//
+// The first passing-TD grader read the scoreboard's leaders instead. Checked
+// against the real Week 3 payload it was wrong twice over: ESPN hangs leaders
+// on the competition, not on each team, and it lists only the single game
+// leader -- Jordan Love, 312 yards -- so Michael Penix never appeared at all.
+// The box score carries both passers:
+//   ATL  Michael Penix Jr.  18/25  256  ...  TD 1
+//   GB   Jordan Love        28/53  312  ...  TD 2
+//
+// stats: base name -> { td, yds }. passersBy: `away|home` -> the base names of
+// everyone who threw a pass, for each game whose box score was read. Null when
+// the scoreboard could not be read.
+async function nflPassingWeek(yr, lg, wk, rs) {
+  let events = [];
+  try {
+    events = await espnScoreboard(`nfl/scoreboard?xhr=1&year=${yr}&seasontype=${String(lg).toUpperCase() === 'PRE' ? 1 : 2}&week=${wk}`);
+  } catch (e) { return null; }
+  const stats = new Map();
+  const passersBy = new Map();
+  const want = new Set(rs.map((r) => `${r.away}|${r.home}`));
+  for (const ev of events) {
+    const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
+    if (!/FINAL/.test(String(st))) continue;
+    const c = (ev.competitions || [])[0];
+    const names = ((c && c.competitors) || []).map((t) => (t.team || {}).displayName || '');
+    const keys = [...want].filter((k) => { const [a, h] = k.split('|'); return names.includes(a) && names.includes(h); });
+    if (!keys.length || !ev.id) continue;
+    let sum;
+    try {
+      const r = await fetch(`${ESPN_CDN}/boxscore?xhr=1&gameId=${ev.id}`,
+        { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+      if (!r.ok) continue;
+      sum = await r.json();
+    } catch (e) { continue; }
+    const box = (sum.gamepackageJSON && sum.gamepackageJSON.boxscore) || sum.boxscore || {};
+    const passers = [];
+    for (const team of (box.players || [])) {
+      const cat = (team.statistics || []).find((x) => x.name === 'passing');
+      if (!cat) continue;
+      const labels = (cat.labels || []).map((l) => String(l).toUpperCase());
+      const ti = labels.indexOf('TD'), yi = labels.indexOf('YDS');
+      if (ti < 0 && yi < 0) continue;
+      for (const a of (cat.athletes || [])) {
+        const nm = (a.athlete || {}).displayName;
+        const td = ti < 0 ? NaN : Number((a.stats || [])[ti]);
+        const yds = yi < 0 ? NaN : Number((a.stats || [])[yi]);
+        if (!nm || (!Number.isFinite(td) && !Number.isFinite(yds))) continue;
+        stats.set(nflBaseName(nm), { td: Number.isFinite(td) ? td : null, yds: Number.isFinite(yds) ? yds : null });
+        passers.push(nflBaseName(nm));
+      }
+    }
+    if (passers.length) for (const k2 of keys) passersBy.set(k2, passers);
+  }
+  return { stats, passersBy };
+}
+
+// A quarterback with no stat line did not play once his game's box score has
+// been read and no passer in it shares even his surname; the row is void. A
+// surname match (a "Cam" against a "Cameron") stays pending instead, where a
+// name mismatch can be seen. `passers` is undefined until the box score is in.
+function nflPasserAbsent(passers, name) {
+  const last = nflBaseName(name).split(' ').pop();
+  return !!(passers && last && !passers.some((p) => p.split(' ').pop() === last));
+}
+
 // Grades from the box score the NFL projections already read, not from a
 // scoreboard: the result needed is one player's passing touchdowns.
 async function gradePassTds(env) {
@@ -3804,7 +3885,7 @@ async function gradePassTds(env) {
   if (!rows.length) return out;
   const byWeek = new Map();
   for (const r of rows) {
-    const k = `${r.date.slice(0, 4)}|${r.league}|${r.week}`;
+    const k = `${nflSeasonOf(r.date)}|${r.league}|${r.week}`;
     if (!byWeek.has(k)) byWeek.set(k, []);
     byWeek.get(k).push(r);
   }
@@ -3812,66 +3893,17 @@ async function gradePassTds(env) {
   for (const [k, rs] of byWeek) {
     const [yr, lg, wk] = k.split('|');
     if (!wk || wk === 'null') continue;
-    let events = [];
-    try {
-      events = await espnScoreboard(`nfl/scoreboard?xhr=1&year=${yr}&seasontype=${String(lg).toUpperCase() === 'PRE' ? 1 : 2}&week=${wk}`);
-    } catch (e) { continue; }
-    // Every passer's touchdowns come from the BOX SCORE, one fetch per game.
-    //
-    // The first version read the scoreboard's leaders, from the competitors.
-    // Checked against the real Week 3 payload it was wrong twice over: ESPN
-    // hangs leaders on the competition, not on each team, and it lists only the
-    // single game leader — Jordan Love, 312 yards — so Michael Penix never
-    // appeared at all. Nothing graded. The box score is what the projection
-    // grader has read for three weeks, and it carries both passers:
-    //   ATL  Michael Penix Jr.  18/25  256  ...  TD 1
-    //   GB   Jordan Love        28/53  312  ...  TD 2
-    const tds = new Map();
-    // Everyone who threw a pass, per game whose box score was read, keyed like
-    // `want`. See the void below.
-    const passersBy = new Map();
-    const want = new Set(rs.map((r) => `${r.away}|${r.home}`));
-    for (const ev of events) {
-      const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
-      if (!/FINAL/.test(String(st))) continue;
-      const c = (ev.competitions || [])[0];
-      const names = ((c && c.competitors) || []).map((t) => (t.team || {}).displayName || '');
-      const keys = [...want].filter((k) => { const [a, h] = k.split('|'); return names.includes(a) && names.includes(h); });
-      if (!keys.length || !ev.id) continue;
-      let sum;
-      try {
-        const r = await fetch(`${ESPN_CDN}/boxscore?xhr=1&gameId=${ev.id}`,
-          { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
-        if (!r.ok) continue;
-        sum = await r.json();
-      } catch (e) { continue; }
-      const box = (sum.gamepackageJSON && sum.gamepackageJSON.boxscore) || sum.boxscore || {};
-      const passers = [];
-      for (const team of (box.players || [])) {
-        const cat = (team.statistics || []).find((x) => x.name === 'passing');
-        if (!cat) continue;
-        const ti = (cat.labels || []).map((l) => String(l).toUpperCase()).indexOf('TD');
-        if (ti < 0) continue;
-        for (const a of (cat.athletes || [])) {
-          const nm = (a.athlete || {}).displayName;
-          const v = Number((a.stats || [])[ti]);
-          if (nm && Number.isFinite(v)) { tds.set(nflBaseName(nm), v); passers.push(nflBaseName(nm)); }
-        }
-      }
-      if (passers.length) for (const k2 of keys) passersBy.set(k2, passers);
-    }
+    const week = await nflPassingWeek(yr, lg, wk, rs);
+    if (!week) continue;
     for (const r of rs) {
       const nm = String(r.pick || '').replace(/ under .*$/, '');
-      const got = tds.get(nflBaseName(nm));
+      const s = week.stats.get(nflBaseName(nm));
+      const got = s ? s.td : null;
       if (got == null) {
         // Not final yet, or the quarterback did not play. Week 3's Tyson Bagent
-        // row sat pending for good because Case Keenum started. Once the game's
-        // box score has been read and no passer in it shares even his surname,
-        // he did not play and the row is void. A surname match (a "Cam" against
-        // a "Cameron") stays pending instead, where a name mismatch can be seen.
-        const passers = passersBy.get(`${r.away}|${r.home}`);
-        const last = nflBaseName(nm).split(' ').pop();
-        if (passers && last && !passers.some((p) => p.split(' ').pop() === last)) {
+        // row sat pending for good because Case Keenum started. See
+        // nflPasserAbsent for when that is called.
+        if (nflPasserAbsent(week.passersBy.get(`${r.away}|${r.home}`), nm)) {
           stmts.push(env.DB.prepare(
             "UPDATE gmpicks SET result=?, home_score=? WHERE sport='nflptd' AND date=? AND game_id=? AND market=?"
           ).bind('void', null, r.date, r.game_id, r.market));
@@ -3933,6 +3965,215 @@ function buildPassTdRecord(rows) {
       : (avg(fair) >= NFL_PASS_TD_BASE
         ? 'sharp pool is at or above the realised rate — priced, no edge visible'
         : 'sharp pool is below the realised rate — worth continuing to watch'),
+  };
+}
+
+// Passing yards, logged only (2026-10-15).
+//
+// Nothing is projected -- the projection failed its backtest -- and there is no
+// price: PrizePicks pays by entry, not by line, and no two sharp books hang the
+// same number, so no two-book fair exists. What is logged is every book's
+// number for each quarterback PrizePicks quotes, and what is asked of it after
+// the game is whether PrizePicks' under landed below PrizePicks' number, split
+// by where that number sat against the books'.
+//
+// Its own table, not gmpicks: a gmpicks row needs a price and a fair to pass
+// mlPriceSane, and its close refresh rewrites the fair -- neither fits a row
+// whose only numbers are lines. pp_open/book_open are the first capture's,
+// pp_line/book_line the last before kickoff, which is what is graded.
+async function ensurePassYdsSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nflpyd (
+    event_id TEXT NOT NULL, player TEXT NOT NULL,
+    season INTEGER, week INTEGER, season_type TEXT, date TEXT, commence TEXT, home TEXT, away TEXT,
+    pp_open REAL, book_open REAL,
+    pp_line REAL, book_line REAL, book_n INTEGER, sharp_line REAL, sharp_n INTEGER, dk_line REAL,
+    quotes TEXT, first_at TEXT, last_at TEXT,
+    actual REAL, result TEXT, graded_at TEXT,
+    PRIMARY KEY (event_id, player)
+  )`).run();
+  // The grader asks every cron tick; this keeps that to the ungraded rows.
+  await db.prepare('CREATE INDEX IF NOT EXISTS nflpyd_open ON nflpyd (date) WHERE result IS NULL').run();
+}
+
+// A book's main number for one player: of the points it quotes, the two-sided
+// one priced nearest even money. A one-sided point (PrizePicks' demons and
+// goblins come over-only) is used only when there is nothing else.
+function pydMainPoint(list) {
+  const score = (x) => (typeof x[1] === 'number' && typeof x[2] === 'number'
+    ? Math.abs(amProb(x[1]) - amProb(x[2])) : 2);
+  const best = [...list].sort((a, b) => score(a) - score(b) || a[0] - b[0])[0];
+  return best ? best[0] : null;
+}
+
+// Pure: one event's odds payload in, one row per quarterback PrizePicks
+// quotes out. quotes = { book: [[point, over, under], ...] }.
+function passYdsEntries(ev, d, week, seasonType) {
+  const out = [];
+  if (!ev || !d) return out;
+  const byName = new Map();
+  for (const bm of (d.bookmakers || [])) {
+    for (const mk of (bm.markets || [])) {
+      if (mk.key !== NFL_PASS_YDS_MARKET) continue;
+      const cells = new Map();
+      for (const o of (mk.outcomes || [])) {
+        if (!o.description || o.point == null || !Number.isFinite(Number(o.point))) continue;
+        const k = `${o.description}|${o.point}`;
+        const c = cells.get(k) || { player: o.description, point: Number(o.point), over: null, under: null };
+        if (o.name === 'Over') c.over = o.price; else if (o.name === 'Under') c.under = o.price;
+        cells.set(k, c);
+      }
+      for (const c of cells.values()) {
+        const nk = nflBaseName(c.player);
+        const q = byName.get(nk) || { player: c.player, quotes: {} };
+        // PrizePicks' spelling names the row, so it keys the same way every
+        // capture whatever order the books come back in.
+        if (bm.key === 'prizepicks') q.player = c.player;
+        (q.quotes[bm.key] = q.quotes[bm.key] || []).push([c.point, c.over, c.under]);
+        byName.set(nk, q);
+      }
+    }
+  }
+  const lineOf = (q, books) => {
+    const pts = books.filter((b) => q.quotes[b]).map((b) => pydMainPoint(q.quotes[b])).filter((x) => x != null);
+    return { line: pts.length ? median(pts) : null, n: pts.length };
+  };
+  for (const q of byName.values()) {
+    if (!q.quotes.prizepicks) continue;
+    const others = Object.keys(q.quotes).filter((b) => b !== 'prizepicks');
+    const bk = lineOf(q, others);
+    const sh = lineOf(q, PTD_SHARP);
+    out.push({
+      event_id: ev.id, player: q.player,
+      season: nflSeasonOf(ptDateOf(Date.parse(ev.commence_time))), week: week == null ? null : week,
+      season_type: seasonType || 'REG', date: ptDateOf(Date.parse(ev.commence_time)),
+      commence: ev.commence_time || null, home: ev.home_team || null, away: ev.away_team || null,
+      pp_line: pydMainPoint(q.quotes.prizepicks),
+      book_line: bk.line, book_n: bk.n,
+      sharp_line: sh.line, sharp_n: sh.n,
+      dk_line: q.quotes.draftkings ? pydMainPoint(q.quotes.draftkings) : null,
+      quotes: JSON.stringify(q.quotes),
+    });
+  }
+  return out;
+}
+
+// First capture sets the open; every later one before kickoff moves the line
+// that is graded. A graded row is never rewritten.
+async function logPassYds(db, rows, stamp) {
+  if (!db || !rows || !rows.length) return 0;
+  await ensurePassYdsSchema(db);
+  const stmts = rows.map((r) => db.prepare(
+    `INSERT INTO nflpyd (event_id, player, season, week, season_type, date, commence, home, away,
+       pp_open, book_open, pp_line, book_line, book_n, sharp_line, sharp_n, dk_line, quotes, first_at, last_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT (event_id, player) DO UPDATE SET
+       pp_line = excluded.pp_line, book_line = excluded.book_line, book_n = excluded.book_n,
+       sharp_line = excluded.sharp_line, sharp_n = excluded.sharp_n, dk_line = excluded.dk_line,
+       quotes = excluded.quotes, last_at = excluded.last_at
+     WHERE nflpyd.result IS NULL`
+  ).bind(r.event_id, r.player, r.season, r.week, r.season_type, r.date, r.commence, r.home, r.away,
+    r.pp_line, r.book_line, r.pp_line, r.book_line, r.book_n, r.sharp_line, r.sharp_n, r.dk_line,
+    r.quotes, stamp, stamp));
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return stmts.length;
+}
+
+async function gradePassYds(env) {
+  const out = { graded: 0, pending: 0, voided: 0 };
+  if (!env || !env.DB) return out;
+  await ensurePassYdsSchema(env.DB);
+  // Two weeks back at most. A row the box score cannot settle (a name that
+  // matches only by surname) would otherwise send the cron to ESPN every tick
+  // for the rest of the season; past two weeks it is left pending, visibly.
+  const rows = (await env.DB.prepare('SELECT * FROM nflpyd WHERE result IS NULL AND date < ? AND date >= ?')
+    .bind(slateDate(), slateDateOffset(-14)).all()).results || [];
+  out.pending = rows.length;
+  if (!rows.length) return out;
+  const byWeek = new Map();
+  for (const r of rows) {
+    const k = `${r.season}|${r.season_type}|${r.week}`;
+    if (!byWeek.has(k)) byWeek.set(k, []);
+    byWeek.get(k).push(r);
+  }
+  const at = new Date().toISOString();
+  const stmts = [];
+  for (const [k, rs] of byWeek) {
+    const [yr, lg, wk] = k.split('|');
+    if (!wk || wk === 'null' || !yr || yr === 'null') continue;
+    const week = await nflPassingWeek(yr, lg, wk, rs);
+    if (!week) continue;
+    for (const r of rs) {
+      const s = week.stats.get(nflBaseName(r.player));
+      const yds = s ? s.yds : null;
+      let result = null;
+      if (yds == null) {
+        if (nflPasserAbsent(week.passersBy.get(`${r.away}|${r.home}`), r.player)) result = 'void';
+      } else if (r.pp_line != null) {
+        result = yds === r.pp_line ? 'push' : (yds < r.pp_line ? 'under' : 'over');
+      }
+      if (!result) continue;
+      stmts.push(env.DB.prepare('UPDATE nflpyd SET result=?, actual=?, graded_at=? WHERE event_id=? AND player=?')
+        .bind(result, yds, at, r.event_id, r.player));
+      if (result === 'void') out.voided++; else out.graded++;
+    }
+  }
+  for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+  return out;
+}
+
+// The question, and what would make it worth posting: PrizePicks' under, at
+// PrizePicks' number, where that number sits above the books'. Posting needs
+// the 95% interval clear of the entry break-even, not a point estimate above it.
+const PYD_MIN_N = 30;
+function buildPassYdsRecord(rows) {
+  const graded = rows.filter((r) => r.result === 'under' || r.result === 'over');
+  const split = ppSplitRecord(graded.map((r) => ({
+    p: null, won: r.result === 'under' ? 1 : 0,
+    gap: r.book_line != null && r.pp_line != null ? round1(r.pp_line - r.book_line) : null,
+  })));
+  const vsSharp = ppSplitRecord(graded.map((r) => ({
+    p: null, won: r.result === 'under' ? 1 : 0,
+    gap: r.sharp_line != null && r.pp_line != null ? round1(r.pp_line - r.sharp_line) : null,
+  }))).byLineGap;
+  const cell = (l) => {
+    const hit = l.filter((r) => r.result === 'under').length;
+    return { n: l.length, hit, hitRate: l.length ? round1(hit / l.length * 100) : null };
+  };
+  // A control: the books' own under at the books' own number. If that runs
+  // well above half too, a PrizePicks result is the season, not the gap.
+  const atBook = graded.filter((r) => r.book_line != null && typeof r.actual === 'number');
+  const controlAtBookLine = cell(atBook.filter((r) => r.actual !== r.book_line)
+    .map((r) => ({ result: r.actual < r.book_line ? 'under' : 'over' })));
+  const gaps = rows.filter((r) => r.pp_line != null && r.book_line != null).map((r) => r.pp_line - r.book_line);
+  const hi = split.byLineGap.ppHigher;
+  const BE = { '6-pick flex': 54.2, '2-pick power': 57.7 };
+  let ci = null, verdict;
+  if (hi.n < PYD_MIN_N) {
+    verdict = `too few to say: ${hi.n} graded where PrizePicks sat above the books, ${PYD_MIN_N} needed before reading anything`;
+  } else {
+    const p = hi.hit / hi.n, se = Math.sqrt(p * (1 - p) / hi.n) * 100;
+    ci = { lo: round1(p * 100 - 1.96 * se), hi: round1(p * 100 + 1.96 * se) };
+    verdict = ci.lo > BE['6-pick flex']
+      ? `worth posting: PrizePicks-higher unders ${hi.hitRate}%, interval ${ci.lo}-${ci.hi} clears the ${BE['6-pick flex']}% flex break-even`
+      : (ci.hi < BE['6-pick flex']
+        ? `not worth posting: PrizePicks-higher unders ${hi.hitRate}%, interval ${ci.lo}-${ci.hi} sits below the ${BE['6-pick flex']}% flex break-even`
+        : `inconclusive: PrizePicks-higher unders ${hi.hitRate}%, interval ${ci.lo}-${ci.hi} straddles the ${BE['6-pick flex']}% flex break-even`);
+  }
+  return {
+    note: "passing yards, LOGGED ONLY — nothing projected and nothing posted. hit = PrizePicks' under landed below PrizePicks' number; "
+      + "byLineGap.ppHigher = that number sat above the books' median line, so its under was easier than the market's.",
+    logged: rows.length,
+    pending: rows.filter((r) => r.result == null).length,
+    voided: rows.filter((r) => r.result === 'void').length,
+    pushed: rows.filter((r) => r.result === 'push').length,
+    n: split.n, hit: split.hit, hitRate: split.hitRate,
+    byLineGap: split.byLineGap,
+    ppHigherBy5: cell(graded.filter((r) => r.book_line != null && r.pp_line != null && r.pp_line - r.book_line >= 5)),
+    vsSharpLine: vsSharp,
+    controlAtBookLine,
+    meanGap: gaps.length ? round1(gaps.reduce((s, x) => s + x, 0) / gaps.length) : null,
+    breakEvens: BE,
+    ci, verdict,
   };
 }
 
@@ -4922,6 +5163,23 @@ const NFL_GAME_MARKETS = 'h2h,spreads,totals';
 const NFL_PROP_MARKETS = 'player_reception_yds,player_rush_yds,player_pass_tds';
 const NFL_PASS_TD_LINE = 1.5;
 const NFL_PASS_TD_BASE = 55.4;   // realised under-1.5 rate, 2024-25 regular season
+// Passing yards, measured too (2026-10-15), and bought only near kickoff.
+//
+// The projection stays rejected: it landed under its own mean 42.0% and 49.5%
+// of the time in the two backtested seasons. This asks something else, with no
+// model in it -- does PrizePicks' under land when its number sits above the
+// books'? Its receiving and rushing unders did 30 of 51 there.
+//
+// Probed on SEA @ DEN the same day: all ten books, PrizePicks included, quote
+// both quarterbacks, but no two sharp books hang the same number, so there is
+// no two-book fair at any line. What gets logged is each book's number.
+//
+// The capture prices every game in a ten-day horizon twice a slate day, so
+// adding the market to every call would have bought each game ten-odd times,
+// ~150 credits a week. Inside NFL_PASS_YDS_WINDOW_MS only the two day-of
+// captures buy it: about 2 credits a game, ~30 a week.
+const NFL_PASS_YDS_MARKET = 'player_pass_yds';
+const NFL_PASS_YDS_WINDOW_MS = 20 * 3600 * 1000;
 // Books are named explicitly rather than pulled by region. Three reasons, all
 // found by dry-running the live payload: regions=us,eu returned 23 books, 13 of
 // them European retail we will never price against; it billed 6 credits where a
@@ -5028,12 +5286,17 @@ async function ingestNflProps(env, opts, reqUrl) {
 
   const stamp = new Date().toISOString();
   const stmts = [];
+  const pydRows = [];
+  out.passYdsEvents = 0;
   for (const ev of upcoming) {
     let d;
+    // Passing yards only inside the day-of window -- see NFL_PASS_YDS_WINDOW_MS.
+    const nearKick = Date.parse(ev.commence_time) - now <= NFL_PASS_YDS_WINDOW_MS;
+    const markets = NFL_PROP_MARKETS + (nearKick ? ',' + NFL_PASS_YDS_MARKET : '');
     try {
       const r = await fetch(
         `https://api.the-odds-api.com/v4/sports/${sp.key}/events/${ev.id}/odds`
-        + `?apiKey=${key}&bookmakers=${NFL_PROP_BOOKS.join(',')}&markets=${NFL_PROP_MARKETS}`
+        + `?apiKey=${key}&bookmakers=${NFL_PROP_BOOKS.join(',')}&markets=${markets}`
         + '&oddsFormat=american&dateFormat=iso',
         { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, 'nfl:props');
@@ -5076,6 +5339,13 @@ async function ingestNflProps(env, opts, reqUrl) {
       }
     }
     if (priced) out.eventsPriced++;
+    // Passing yards are logged from the payload just bought rather than read
+    // back from nfl_lines: the read-back runs before this capture's rows are
+    // written, so a game captured once would never be logged at all.
+    if (nearKick) {
+      out.passYdsEvents++;
+      for (const e of passYdsEntries(ev, d, wk, sp.seasonType)) pydRows.push(e);
+    }
   }
   out.wrote = stmts.length;
 
@@ -5146,6 +5416,10 @@ async function ingestNflProps(env, opts, reqUrl) {
     }
     out.passTdsLogged = wrote;
   } catch (e) { out.errors.push('pass-tds: ' + String((e && e.message) || e)); }
+  try {
+    out.passYdsLogged = dry ? 0 : await logPassYds(env.DB, pydRows, stamp);
+    if (dry) out.passYdsWouldLog = pydRows.length;
+  } catch (e) { out.errors.push('pass-yds: ' + String((e && e.message) || e)); }
 
 
   if (dry) { out.dryRun = true; return out; }
@@ -8940,6 +9214,9 @@ async function nflMaybeIngest(env, ctx) {
     //
     // 3 markets x 1 region-equivalent per event: about 3 credits for a Thursday,
     // 48 for a sixteen-game Sunday, so roughly 110 a week at twice a slate day.
+    // (Measured 2026-10-14/15: ~83 a day, since every game inside the ten-day
+    // horizon is priced on each capture.) Passing yards add 1 a game on the two
+    // day-of captures only -- see NFL_PASS_YDS_WINDOW_MS.
     let props = null;
     try { props = await ingestNflProps(env, { sport: 'nfl' }, new URL('https://x/api/nfl-capture')); }
     catch (e) { /* the game lines are already in; props retry next tick */ }

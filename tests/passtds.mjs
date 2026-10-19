@@ -1,9 +1,10 @@
 // Passing touchdowns are measured, not projected.
 //
-// Passing YARDS is rejected and stays rejected: it failed its own premise in
-// both backtested seasons (42.0% and 49.5% under-mean) because summing ~20
-// completions flattens the right skew the model trades. Passing TDs is a
-// different distribution — a count from 0 to 5 — and a different question.
+// The passing-YARDS projection is rejected and stays rejected: it failed its
+// own premise in both backtested seasons (42.0% and 49.5% under-mean) because
+// summing ~20 completions flattens the right skew the model trades. (The line
+// itself is measured, PrizePicks against the books, in passyds.mjs.) Passing
+// TDs is a different distribution — a count from 0 to 5 — and a different question.
 //
 // The line hangs at 1.5 and the book prices P(0 or 1) directly rather than
 // setting a number near a skewed mean, so there is no gap for skew to hide in.
