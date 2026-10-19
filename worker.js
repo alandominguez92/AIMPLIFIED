@@ -149,6 +149,7 @@ const API_ROUTES = new Set([
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/mlb-void-moved',
 ]);
 
 export default {
@@ -206,7 +207,7 @@ export default {
     }
 
     // Both write; caching either would serve a stale body and skip the write.
-    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest') return handleApi(p, env, ctx, url);
+    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest' || p === '/api/mlb-void-moved') return handleApi(p, env, ctx, url);
     // The query string is dropped from the key on purpose — every viewer should
     // share one response — EXCEPT where it changes what the route returns.
     // /api/nfl-compare was keyed by path alone, so ?all=1 (played games included,
@@ -494,6 +495,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/top-legs') return topLegs(env, url);
   if (p === '/api/picks') return cors(json(await picksBoard(env), 120));
   if (p === '/api/mlpicks-export') return mlpicksExport(env, url);
+  if (p === '/api/mlb-void-moved') return voidMovedGameRows(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
   if (p === '/api/sports-list') return sportsList(env, url);
   if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
@@ -4926,6 +4928,7 @@ async function gradeRlPicks(env) {
     const scoreByGame = {};
     for (const g of games) {
       if (((g.status || {}).abstractGameState) !== 'Final') continue;
+      if (movedOffDate(g, d)) continue;   // postponed: see movedOffDate
       const ls = g.linescore || {};
       const homeR = numOr((ls.teams && ls.teams.home && ls.teams.home.runs), g.teams.home.score);
       const awayR = numOr((ls.teams && ls.teams.away && ls.teams.away.runs), g.teams.away.score);
@@ -4938,16 +4941,19 @@ async function gradeRlPicks(env) {
     const missing = byDate[d].filter((p) => !scoreByGame[p.game_id]).map((p) => p.game_id);
     if (missing.length) {
       const byPk = await gamesByPk(missing);
-      const voids = [];
+      const voids = [], moved = [];
       for (const [gid, g] of Object.entries(byPk)) {
-        if (g.state === 'Final' && g.homeR != null && g.awayR != null) scoreByGame[gid] = { homeR: g.homeR, awayR: g.awayR };
+        if (movedOffDate(g, d)) moved.push(gid);
+        else if (g.state === 'Final' && g.homeR != null && g.awayR != null) scoreByGame[gid] = { homeR: g.homeR, awayR: g.awayR };
         else if (isAbandoned(g)) voids.push(gid);
       }
-      if (voids.length) {
-        try {
-          await db.batch(voids.map((gid) => db.prepare(
-            "UPDATE rlpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)));
-        } catch (e) { /* retry next pass */ }
+      const stmts = [
+        ...voids.map((gid) => db.prepare("UPDATE rlpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)),
+        ...moved.map((gid) => db.prepare(
+          "UPDATE rlpicks SET result='void', team_score=NULL, opp_score=NULL WHERE date=? AND game_id=? AND result IS NULL").bind(d, gid)),
+      ];
+      if (stmts.length) {
+        try { await db.batch(stmts); } catch (e) { /* retry next pass */ }
       }
     }
     const stmts = [];
@@ -5842,6 +5848,21 @@ function isAbandoned(g) {
   return ['C', 'D', 'T'].includes(g.coded) || /cancel/i.test(g.detailed || '');
 }
 
+// A game line logged for a day the game was not played on. Postponed-and-
+// rescheduled keeps its gamePk, so the pk lookup above hands back the MAKEUP's
+// score: ALCS Game 4, TB @ CLE (849817), was rained out 2026-10-16 and played
+// 2026-10-18 as Game 5, and the 10-16 moneyline row graded 1-3 off Game 5 --
+// the same game counted on two dates. Books void a postponed MLB moneyline not
+// played that day, so the row is void. officialDate is the day the game counts
+// on, and the original date's listing carries the NEW one, so either listing
+// answers. A suspended game is not this: resumed later, it keeps its original
+// officialDate (824912, 2026-06-16, finished 06-17) and grades as before.
+// Game lines only (moneyline, run line, totals). The prop graders still read
+// box scores by pk and are not covered by this.
+function movedOffDate(g, date) {
+  return !!(g && g.officialDate && date && g.officialDate !== date);
+}
+
 async function gradeUngraded(env) {
   const db = env.DB;
   const today = slateDate();
@@ -6002,6 +6023,7 @@ async function gradeTotPicks(env) {
     const runsByGame = {};
     for (const g of games) {
       if (((g.status || {}).abstractGameState) !== 'Final') continue;
+      if (movedOffDate(g, d)) continue;   // postponed: see movedOffDate
       const ls = g.linescore || {};
       const h = numOr((ls.teams && ls.teams.home && ls.teams.home.runs), g.teams.home.score);
       const a = numOr((ls.teams && ls.teams.away && ls.teams.away.runs), g.teams.away.score);
@@ -6010,13 +6032,19 @@ async function gradeTotPicks(env) {
     const missing = byDate[d].filter((p) => runsByGame[p.game_id] == null).map((p) => p.game_id);
     if (missing.length) {
       const byPk = await gamesByPk(missing);
-      const voids = [];
+      const voids = [], moved = [];
       for (const [gid, g] of Object.entries(byPk)) {
-        if (g.state === 'Final' && g.homeR != null && g.awayR != null) runsByGame[gid] = g.homeR + g.awayR;
+        if (movedOffDate(g, d)) moved.push(gid);
+        else if (g.state === 'Final' && g.homeR != null && g.awayR != null) runsByGame[gid] = g.homeR + g.awayR;
         else if (isAbandoned(g)) voids.push(gid);
       }
-      if (voids.length) {
-        try { await db.batch(voids.map((gid) => db.prepare("UPDATE totpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid))); } catch (e) { /* next pass */ }
+      const stmts = [
+        ...voids.map((gid) => db.prepare("UPDATE totpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)),
+        ...moved.map((gid) => db.prepare(
+          "UPDATE totpicks SET result='void', total_runs=NULL WHERE date=? AND game_id=? AND result IS NULL").bind(d, gid)),
+      ];
+      if (stmts.length) {
+        try { await db.batch(stmts); } catch (e) { /* next pass */ }
       }
     }
     const stmts = [];
@@ -6082,6 +6110,8 @@ async function gradeMlPicks(env) {
     const scoreByGame = {};
     for (const g of games) {
       if (((g.status || {}).abstractGameState) !== 'Final') continue;
+      // A postponed game's listing reads 'Final' on its original date.
+      if (movedOffDate(g, d)) continue;
       const ls = g.linescore || {};
       const homeR = numOr((ls.teams && ls.teams.home && ls.teams.home.runs), g.teams.home.score);
       const awayR = numOr((ls.teams && ls.teams.away && ls.teams.away.runs), g.teams.away.score);
@@ -6095,19 +6125,25 @@ async function gradeMlPicks(env) {
     const missing = byDate[d].filter((p) => !scoreByGame[p.game_id]).map((p) => p.game_id);
     if (missing.length) {
       const byPk = await gamesByPk(missing);
-      const voids = [];
+      const voids = [], moved = [];
       for (const [gid, g] of Object.entries(byPk)) {
-        if (g.state === 'Final' && g.homeR != null && g.awayR != null) {
+        if (movedOffDate(g, d)) {
+          moved.push(gid);
+        } else if (g.state === 'Final' && g.homeR != null && g.awayR != null) {
           scoreByGame[gid] = { homeR: g.homeR, awayR: g.awayR };
         } else if (isAbandoned(g)) {
           voids.push(gid);
         }
       }
-      if (voids.length) {
-        try {
-          await db.batch(voids.map((gid) => db.prepare(
-            "UPDATE mlpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)));
-        } catch (e) { /* retry next pass */ }
+      // Scoped to this date: the makeup's own row, logged on the day it was
+      // played, grades normally.
+      const stmts = [
+        ...voids.map((gid) => db.prepare("UPDATE mlpicks SET result='void' WHERE game_id=? AND result IS NULL").bind(gid)),
+        ...moved.map((gid) => db.prepare(
+          "UPDATE mlpicks SET result='void', team_score=NULL, opp_score=NULL WHERE date=? AND game_id=? AND result IS NULL").bind(d, gid)),
+      ];
+      if (stmts.length) {
+        try { await db.batch(stmts); } catch (e) { /* retry next pass */ }
       }
     }
     const stmts = [];
@@ -6121,6 +6157,57 @@ async function gradeMlPicks(env) {
         .bind(result, teamR, oppR, p.date, p.game_id));
     }
     if (stmts.length) { try { await db.batch(stmts); } catch (e) { /* skip */ } }
+  }
+}
+
+// /api/mlb-void-moved?since=YYYY-MM-DD -- one-off repair for game-line rows
+// graded before movedOffDate existed (2026-10-19). The graders only read
+// result IS NULL, so a row already graded off a makeup's score stays wrong
+// without this. Idempotent: a voided row is never a candidate again.
+//
+// Candidates are rows whose gamePk was logged on two or more dates inside the
+// window -- a gamePk has one official day, so that is the reschedule leaving a
+// trace -- which keeps it to one StatsAPI call. Only a row whose date differs
+// from that game's officialDate is touched. The row on the day it was played,
+// a row whose lookup failed, and anything outside the window are left alone.
+// Default window two weeks; ?since= reaches further back.
+const MOVED_VOID_SET = {
+  mlpicks: "result='void', team_score=NULL, opp_score=NULL",
+  rlpicks: "result='void', team_score=NULL, opp_score=NULL",
+  totpicks: "result='void', total_runs=NULL",
+};
+async function voidMovedGameRows(env, url) {
+  if (!env || !env.DB) return cors(json({ error: 'env.DB not configured' }, 30));
+  const db = env.DB;
+  try {
+    await ensureMlPickSchema(db); await ensureRlPickSchema(db); await ensureTotSchema(db);
+    const q = url && url.searchParams ? String(url.searchParams.get('since') || '').trim() : '';
+    const since = /^\d{4}-\d{2}-\d{2}$/.test(q) ? q : slateDateOffset(-14);
+    const until = slateDate();
+    const found = [];
+    for (const table of Object.keys(MOVED_VOID_SET)) {
+      const rows = (await db.prepare(`SELECT date, game_id, result FROM ${table} WHERE date >= ? AND date < ?`)
+        .bind(since, until).all()).results || [];
+      const dates = {};
+      for (const r of rows) (dates[r.game_id] = dates[r.game_id] || new Set()).add(r.date);
+      for (const r of rows) {
+        if (r.result != null && r.result !== 'void' && dates[r.game_id].size > 1) found.push({ table, ...r });
+      }
+    }
+    const byPk = found.length ? await gamesByPk(found.map((r) => r.game_id)) : {};
+    const voided = [], stmts = [];
+    for (const r of found) {
+      const g = byPk[r.game_id];
+      if (!movedOffDate(g, r.date)) continue;
+      stmts.push(db.prepare(`UPDATE ${r.table} SET ${MOVED_VOID_SET[r.table]} WHERE date=? AND game_id=? AND result IS NOT NULL AND result <> 'void'`)
+        .bind(r.date, r.game_id));
+      voided.push({ table: r.table, date: r.date, game_id: r.game_id, was: r.result, playedOn: g.officialDate });
+    }
+    if (stmts.length) await db.batch(stmts);
+    for (const v of voided) console.log(`mlb-void-moved: ${v.table} ${v.date} ${v.game_id} ${v.was} -> void (played ${v.playedOn})`);
+    return cors(json({ since, until, checked: found.length, voided }, 5));
+  } catch (e) {
+    return cors(json({ error: String((e && e.message) || e) }, 5));
   }
 }
 

@@ -1,0 +1,45 @@
+{
+ "totalGames": 1,
+ "dates": [
+  {
+   "date": "2026-10-16",
+   "games": [
+    {
+     "gamePk": 849817,
+     "gameType": "L",
+     "gameDate": "2026-10-17T00:00:00Z",
+     "officialDate": "2026-10-18",
+     "status": {
+      "abstractGameState": "Final",
+      "codedGameState": "D",
+      "detailedState": "Postponed",
+      "statusCode": "DR",
+      "startTimeTBD": false,
+      "reason": "Rain",
+      "abstractGameCode": "F"
+     },
+     "description": "ALCS Game 4",
+     "seriesGameNumber": 4,
+     "rescheduleDate": "2026-10-18T21:08:00Z",
+     "rescheduleGameDate": "2026-10-18",
+     "teams": {
+      "away": {
+       "team": {
+        "id": 139,
+        "name": "Tampa Bay Rays",
+        "abbreviation": "TB"
+       }
+      },
+      "home": {
+       "team": {
+        "id": 114,
+        "name": "Cleveland Guardians",
+        "abbreviation": "CLE"
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,103 @@
+{
+ "totalGames": 2,
+ "dates": [
+  {
+   "date": "2026-10-16",
+   "games": [
+    {
+     "gamePk": 849817,
+     "gameType": "L",
+     "gameDate": "2026-10-17T00:00:00Z",
+     "officialDate": "2026-10-18",
+     "status": {
+      "abstractGameState": "Final",
+      "codedGameState": "D",
+      "detailedState": "Postponed",
+      "statusCode": "DR",
+      "startTimeTBD": false,
+      "reason": "Rain",
+      "abstractGameCode": "F"
+     },
+     "description": "ALCS Game 4",
+     "seriesGameNumber": 4,
+     "rescheduleDate": "2026-10-18T21:08:00Z",
+     "rescheduleGameDate": "2026-10-18",
+     "teams": {
+      "away": {
+       "team": {
+        "id": 139,
+        "name": "Tampa Bay Rays",
+        "abbreviation": "TB"
+       }
+      },
+      "home": {
+       "team": {
+        "id": 114,
+        "name": "Cleveland Guardians",
+        "abbreviation": "CLE"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "date": "2026-10-18",
+   "games": [
+    {
+     "gamePk": 849817,
+     "gameType": "L",
+     "gameDate": "2026-10-18T21:08:00Z",
+     "officialDate": "2026-10-18",
+     "status": {
+      "abstractGameState": "Final",
+      "codedGameState": "F",
+      "detailedState": "Final",
+      "statusCode": "F",
+      "startTimeTBD": false,
+      "abstractGameCode": "F"
+     },
+     "description": "ALCS Game 5, Makeup of 10/16",
+     "seriesGameNumber": 5,
+     "rescheduledFrom": "2026-10-17T00:00:00Z",
+     "rescheduledFromDate": "2026-10-16",
+     "teams": {
+      "away": {
+       "score": 3,
+       "isWinner": true,
+       "team": {
+        "id": 139,
+        "name": "Tampa Bay Rays",
+        "abbreviation": "TB"
+       }
+      },
+      "home": {
+       "score": 1,
+       "isWinner": false,
+       "team": {
+        "id": 114,
+        "name": "Cleveland Guardians",
+        "abbreviation": "CLE"
+       }
+      }
+     },
+     "linescore": {
+      "currentInning": 9,
+      "teams": {
+       "home": {
+        "runs": 1,
+        "hits": 5,
+        "errors": 0
+       },
+       "away": {
+        "runs": 3,
+        "hits": 12,
+        "errors": 0
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

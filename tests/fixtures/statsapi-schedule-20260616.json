@@ -1,0 +1,62 @@
+{
+ "totalGames": 1,
+ "dates": [
+  {
+   "date": "2026-06-16",
+   "games": [
+    {
+     "gamePk": 824912,
+     "gameType": "R",
+     "gameDate": "2026-06-16T23:15:00Z",
+     "officialDate": "2026-06-16",
+     "status": {
+      "abstractGameState": "Final",
+      "codedGameState": "F",
+      "detailedState": "Final",
+      "statusCode": "F",
+      "startTimeTBD": false,
+      "abstractGameCode": "F"
+     },
+     "seriesGameNumber": 1,
+     "resumeDate": "2026-06-17T18:00:00Z",
+     "resumeGameDate": "2026-06-17",
+     "teams": {
+      "away": {
+       "score": 7,
+       "isWinner": true,
+       "team": {
+        "id": 137,
+        "name": "San Francisco Giants",
+        "abbreviation": "SF"
+       }
+      },
+      "home": {
+       "score": 2,
+       "isWinner": false,
+       "team": {
+        "id": 144,
+        "name": "Atlanta Braves",
+        "abbreviation": "ATL"
+       }
+      }
+     },
+     "linescore": {
+      "currentInning": 9,
+      "teams": {
+       "home": {
+        "runs": 2,
+        "hits": 7,
+        "errors": 0
+       },
+       "away": {
+        "runs": 7,
+        "hits": 10,
+        "errors": 0
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}
