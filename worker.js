@@ -4389,7 +4389,6 @@ async function gradeEntryLegs(env) {
 // no second set of matching rules to drift from the ones the records use. A
 // leg whose game those rows do not cover stays open for its one-tap result.
 const ENTRY_NFL_YDS = { rec_yds: 'receiving', rush_yds: 'rushing' };
-const ENTRY_NBA_PROPS = new Set(['threes', 'ast', 'reb']);
 // An NFL leg's game is keyed "AWAY @ HOME|YYYY-MM-DD" (Pacific day): the
 // moneyline and yardage rows share no event id, but both write the matchup.
 function entryNflKey(gameId) {
@@ -4402,7 +4401,7 @@ async function gradeEntryLegsOther(db) {
   const open = ((await db.prepare(
     "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer','nba') AND game_id IS NOT NULL"
   ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market])
-    || (l.sport === 'nba' && ENTRY_NBA_PROPS.has(l.market))
+    || (l.sport === 'nba' && nbaPropMarket(l.market))
     || (l.sport === 'soccer' && SOC_PROP_STATS.includes(l.market)));
   if (!open.length) return [];
   // Soccer props grade from the soccer box scores, by ESPN's event and player
@@ -4483,10 +4482,10 @@ async function gradeEntryLegsOther(db) {
       if (!d) continue;
       const b = d.byName.get(nbaName(l.player));
       if (b) {
-        if (b.dnp || b[l.market] == null) result = 'void';
+        if (b.dnp || nbaStat(b, l.market) == null) result = 'void';
         else if (l.line == null) continue;
         else {
-          actual = b[l.market];
+          actual = nbaStat(b, l.market);
           result = actual === l.line ? 'push' : ((actual < l.line) === (l.side === 'Under') ? 'win' : 'loss');
         }
       } else if (d.settled) result = 'void';
@@ -9458,6 +9457,8 @@ async function nbaMaybeIngest(env) {
 // by price. The NBA version is the same claim. Threes, assists and rebounds,
 // because those are where the under beat a player's recent average across two
 // seasons of box scores (55.5%, 53.4% and 53.3%); points did not (51.6%).
+// Every other PrizePicks market was run the same way on 2026-10-19, with a
+// stricter median-line check: tools/nba-market-backtest.md.
 //
 // Projection: the player's last ten regular-season games blended with last
 // season's per-game average (nba-priors.json), the prior counting as
@@ -9513,6 +9514,22 @@ function ppSplitRecord(items) {
   return out;
 }
 
+// Every count in ESPN's box score line, kept since 2026-10-15 so any PrizePicks
+// market can be graded and backtested, not only the three logged. Each column
+// is its market's key: threes is 3-pointers made, fg3a attempted, fga shots
+// taken. A combo is the sum of its parts, and a part missing is no stat --
+// games read before these columns existed grade void on them, never 0.
+const NBA_BOX_STATS = ['pts', 'reb', 'ast', 'threes', 'fg3a', 'fgm', 'fga', 'ftm', 'fta', 'oreb', 'dreb', 'stl', 'blk', 'tov', 'pf'];
+const NBA_COMBOS = { pra: ['pts', 'reb', 'ast'], pts_reb: ['pts', 'reb'], pts_ast: ['pts', 'ast'], reb_ast: ['reb', 'ast'], blk_stl: ['blk', 'stl'] };
+function nbaStat(b, market) {
+  const parts = NBA_COMBOS[market] || (NBA_BOX_STATS.includes(market) ? [market] : null);
+  if (!b || !parts) return null;
+  let s = 0;
+  for (const k of parts) { if (b[k] == null) return null; s += b[k]; }
+  return s;
+}
+const nbaPropMarket = (m) => NBA_BOX_STATS.includes(m) || !!NBA_COMBOS[m];
+
 async function ensureNbaSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS nba_box (
     game_id TEXT NOT NULL, date TEXT NOT NULL, season_type INTEGER,
@@ -9520,6 +9537,8 @@ async function ensureNbaSchema(db) {
     min REAL, threes INTEGER, ast INTEGER, reb INTEGER, starter INTEGER, dnp INTEGER,
     PRIMARY KEY (game_id, player_id)
   )`).run();
+  // Forward only: rows already read keep what they were read with.
+  await addColumns(db, 'nba_box', NBA_BOX_STATS.filter((k) => !['threes', 'ast', 'reb'].includes(k)).map((k) => [k, 'INTEGER']));
   await db.prepare('CREATE INDEX IF NOT EXISTS nba_box_date ON nba_box (date)').run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS nba_box_games (
     game_id TEXT PRIMARY KEY, date TEXT, season_type INTEGER, done INTEGER DEFAULT 0
@@ -9684,16 +9703,29 @@ function nbaBoxRows(sum, gameId, date, seasonType) {
     const L = (st.labels || st.names || []).map((x) => String(x).toUpperCase());
     const at = (k) => L.indexOf(k);
     const iMin = at('MIN'), i3 = at('3PT'), iReb = at('REB'), iAst = at('AST');
+    const iPts = at('PTS'), iFg = at('FG'), iFt = at('FT'), iOreb = at('OREB'), iDreb = at('DREB');
+    const iStl = at('STL'), iBlk = at('BLK'), iTo = at('TO'), iPf = at('PF');
     for (const a of (st.athletes || [])) {
       const ath = a.athlete || {};
       if (!ath.id) continue;
       const v = a.stats || [];
-      const num = (i) => { const n = Number(String(v[i] == null ? '' : v[i]).split('-')[0]); return Number.isFinite(n) ? n : null; };
+      // "4-7" is made-attempted: part 0 is made, part 1 attempted. A column
+      // ESPN did not send is no stat, not a zero.
+      const part = (i, k) => {
+        if (i < 0) return null;
+        const n = Number(String(v[i] == null ? '' : v[i]).split('-')[k]); return Number.isFinite(n) ? n : null;
+      };
+      const num = (i) => part(i, 0), att = (i) => part(i, 1);
       const dnp = !!a.didNotPlay || !v.length;
+      const line = {
+        min: num(iMin), pts: num(iPts), reb: num(iReb), ast: num(iAst),
+        threes: num(i3), fg3a: att(i3), fgm: num(iFg), fga: att(iFg), ftm: num(iFt), fta: att(iFt),
+        oreb: num(iOreb), dreb: num(iDreb), stl: num(iStl), blk: num(iBlk), tov: num(iTo), pf: num(iPf),
+      };
       out.push({
         game_id: String(gameId), date, season_type: seasonType, player_id: String(ath.id), player: ath.displayName || '',
         team: (team.team && team.team.abbreviation) || null,
-        min: dnp ? null : num(iMin), threes: dnp ? null : num(i3), ast: dnp ? null : num(iAst), reb: dnp ? null : num(iReb),
+        ...Object.fromEntries(Object.entries(line).map(([k, x]) => [k, dnp ? null : x])),
         starter: a.starter ? 1 : 0, dnp: dnp ? 1 : 0,
       });
     }
@@ -9733,10 +9765,10 @@ async function nbaBoxIngest(env) {
       if (!r.ok) continue;
       const rows = nbaBoxRows(await r.json(), g.game_id, g.date, g.season_type);
       if (!rows.length) continue;
+      const cols = ['game_id', 'date', 'season_type', 'player_id', 'player', 'team', 'min', ...NBA_BOX_STATS, 'starter', 'dnp'];
       const stmts = rows.map((x) => env.DB.prepare(
-        `INSERT OR REPLACE INTO nba_box (game_id, date, season_type, player_id, player, team, min, threes, ast, reb, starter, dnp)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(x.game_id, x.date, x.season_type, x.player_id, x.player, x.team, x.min, x.threes, x.ast, x.reb, x.starter, x.dnp));
+        `INSERT OR REPLACE INTO nba_box (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(',')})`
+      ).bind(...cols.map((c) => (x[c] === undefined ? null : x[c]))));
       stmts.push(env.DB.prepare('UPDATE nba_box_games SET done = 1 WHERE game_id = ?').bind(g.game_id));
       for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
       read++;
@@ -9763,9 +9795,10 @@ async function gradeNbaPp(db) {
     for (const r of open.filter((x) => x.date === day)) {
       const b = (r.player_id && byId.get(r.player_id)) || byName.get(nbaName(r.player));
       let result = null, actual = null;
+      const v = nbaStat(b, r.market);
       if (b) {
-        if (b.dnp || b[r.market] == null) result = 'void';
-        else { actual = b[r.market]; result = actual < r.point ? 'under' : actual > r.point ? 'over' : 'push'; }
+        if (b.dnp || v == null) result = 'void';
+        else { actual = v; result = actual < r.point ? 'under' : actual > r.point ? 'over' : 'push'; }
       } else if (settled) result = 'void';
       if (!result) continue;
       stmts.push(db.prepare('UPDATE nbapp SET result=?, actual=? WHERE date=? AND game_id=? AND player=? AND market=?')
