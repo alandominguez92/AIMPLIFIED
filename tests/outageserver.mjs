@@ -361,6 +361,10 @@ if (NBADEMO) {
   await leg(today, tip, 'OG Anunoby', 'NY', 'threes', 2.5, 64.1, 1.9, 2.5, 34, null);
   await leg(today, tip, 'Tyrese Maxey', 'PHI', 'ast', 6.5, 62.0, 5.6, 7.5, 37, null);
   await leg(today, tip, 'Joel Embiid', 'PHI', 'reb', 10.5, 60.3, 9.4, null, 31, null);
+  // Blocks and steals, logged since 2026-10-20: on the card, never on Picks of
+  // the day -- the steals leg tops this game, and the list still shows Brunson.
+  await leg(today, tip, 'OG Anunoby', 'NY', 'stl', 1.5, 74.5, 1.4, 1.5, 34, null);
+  await leg(today, tip, 'Joel Embiid', 'PHI', 'blk', 1.5, 68.0, 1.1, null, 31, null);
   // Game-line favourites for Picks of the day: an NBA regular-season game, an
   // NFL game tomorrow, a Premier League match, and one under the bar.
   const gm = (sport, gid, market, league, hrs, side, pick, home, away, wp, price) => sqliteDb

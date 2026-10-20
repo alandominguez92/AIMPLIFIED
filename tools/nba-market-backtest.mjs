@@ -6,6 +6,7 @@
 //
 //   node tools/nba-market-backtest.mjs fetch <cacheDir> [espnSeason ...]
 //   node tools/nba-market-backtest.mjs report <cacheDir> [out.json]
+//   node tools/nba-market-backtest.mjs disp <cacheDir>
 //
 // fetch reads ESPN's scoreboard a day at a time (it refuses a date range) and
 // each finished regular-season game's box score from cdn.espn.com -- the host
@@ -14,14 +15,15 @@
 // espnSeason 2025 is 2024-25, 2026 is 2025-26 (the default: both).
 //
 // report prints the tables tools/nba-market-backtest.md was written from, and
-// with out.json also writes them as data.
+// with out.json also writes them as data. disp fits the dispersions in
+// worker.js NBA_DISP (see below).
 import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const [cmd, cache, ...rest] = process.argv.slice(2);
 if (!cmd || !cache) {
-  console.error('usage: nba-market-backtest.mjs fetch <cacheDir> [season ...] | report <cacheDir> [out.json]');
+  console.error('usage: nba-market-backtest.mjs fetch <cacheDir> [season ...] | report <cacheDir> [out.json] | disp <cacheDir>');
   process.exit(2);
 }
 const UA = { 'user-agent': 'Mozilla/5.0', accept: 'application/json' };
@@ -241,7 +243,122 @@ function report() {
   }
 }
 
+// ---- disp -----------------------------------------------------------------------
+// The dispersion each logged market gets in worker.js (NBA_DISP), fitted on
+// the card's own projection: 2025-26 replayed game by game, each player's
+// last ten games this season blended with his 2024-25 per-game average as
+// NBA_PRIOR_K games (the average only for a player with 5+ games that season,
+// as the priors file is read), rotation players only (20+ minutes projected
+// the same way). The dispersion is the negative binomial's variance / mean;
+// the one that makes what the players then did likeliest is the fit. The
+// chance of the under is then read at the median-of-ten line (the backtest's
+// stand-in for PrizePicks' number) against how often it landed, by band.
+//
+//   node tools/nba-market-backtest.mjs disp <cacheDir>
+const DISP_MARKETS = ['threes', 'ast', 'reb', 'blk', 'stl'];
+const PRIOR_K = 5;
+function lgamma(x) {
+  // Lanczos, g = 7: good to ~1e-13 for x > 0.
+  const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+    12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  x -= 1;
+  let a = c[0];
+  const t = x + 7.5;
+  for (let i = 1; i < 9; i++) a += c[i] / (x + i);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+function nbLogPmf(k, m, phi) {
+  if (!(phi > 1)) return k * Math.log(m) - m - lgamma(k + 1);
+  const r = m / (phi - 1);
+  return lgamma(k + r) - lgamma(r) - lgamma(k + 1) + r * Math.log(r / (r + m)) + k * Math.log(m / (r + m));
+}
+// P(X <= k), as worker.js negBinomCdf computes it.
+function nbCdf(k, m, phi) {
+  let s = 0;
+  for (let i = 0; i <= k; i++) s += Math.exp(nbLogPmf(i, m, phi));
+  return Math.min(1, s);
+}
+function dispSamples() {
+  const prior = new Map();
+  for (const g of loadSeason('2025')) {
+    for (const r of g.rows) {
+      if (r.dnp || r.min == null) continue;
+      const p = prior.get(r.player_id) || { gp: 0, min: 0, ...Object.fromEntries(DISP_MARKETS.map((k) => [k, 0])), miss: new Set() };
+      p.gp++; p.min += r.min;
+      for (const k of DISP_MARKETS) { if (r[k] == null) p.miss.add(k); else p[k] += r[k]; }
+      prior.set(r.player_id, p);
+    }
+  }
+  const out = [];
+  const hist = new Map();
+  for (const g of loadSeason('2026')) {
+    for (const r of g.rows) {
+      if (r.dnp || r.min == null) continue;
+      const h = hist.get(r.player_id) || [];
+      const rec = h.slice(-10);
+      const pr = prior.get(r.player_id);
+      const hasPrior = pr && pr.gp >= 5;
+      const avg = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+      const blend = (vals, pAvg) => (pAvg != null ? (vals.reduce((s, v) => s + v, 0) + PRIOR_K * pAvg) / (vals.length + PRIOR_K)
+        : vals.length >= 3 ? avg(vals) : null);
+      const minProj = blend(rec.map((x) => x.min), hasPrior ? pr.min / pr.gp : null);
+      if (minProj != null && minProj >= ROTATION) {
+        for (const k of DISP_MARKETS) {
+          if (r[k] == null) continue;
+          const vals = rec.map((x) => x[k]).filter((v) => v != null);
+          const proj = blend(vals, hasPrior && !pr.miss.has(k) ? pr[k] / pr.gp : null);
+          if (proj == null) continue;
+          let med = null;
+          if (vals.length === 10) { const s = [...vals].sort((a, b) => a - b); med = Math.max(0.5, Math.round(s[4] + s[5]) / 2); }
+          out.push({ k, proj: Math.max(proj, 0.02), actual: r[k], med, n: vals.length });
+        }
+      }
+      h.push(r);
+      hist.set(r.player_id, h);
+    }
+  }
+  return out;
+}
+function disp() {
+  const all = dispSamples();
+  const grid = Array.from({ length: 31 }, (_, i) => Math.round((1 + i * 0.05) * 100) / 100);
+  const BANDS = [[50, 55], [55, 60], [60, 65], [65, 70], [70, 75], [75, 80], [80, 85], [85, 90], [90, 101]];
+  console.log('2025-26 replayed, 2024-25 as the prior (K = 5), rotation = 20+ projected minutes\n');
+  for (const k of DISP_MARKETS) {
+    const s = all.filter((x) => x.k === k);
+    const ll = grid.map((phi) => [phi, s.reduce((a, x) => a + nbLogPmf(x.actual, x.proj, phi), 0)]);
+    const [best] = [...ll].sort((a, b) => b[1] - a[1]);
+    const mean = s.reduce((a, x) => a + x.proj, 0) / s.length, act = s.reduce((a, x) => a + x.actual, 0) / s.length;
+    console.log(`${k}: ${s.length} rotation player-games, mean proj ${mean.toFixed(3)} vs actual ${act.toFixed(3)}; `
+      + `best dispersion ${best[0]} (log-lik ${best[1].toFixed(0)}; 1.0 ${ll[0][1].toFixed(0)}, 1.2 ${ll[4][1].toFixed(0)}, 1.5 ${ll[10][1].toFixed(0)})`);
+    const lines = s.filter((x) => x.med != null && x.actual !== x.med);
+    // Every .5 line whose under the model puts at 50%+: the model's own
+    // distribution tested where a line could sit, with no line chosen from the
+    // recent games (the median line carries that information of its own).
+    // The Brier score is over every line, so each dispersion is scored on the
+    // same set; the table shows the lines a card could rank (50-97%).
+    const everyAll = (phi) => s.flatMap((x) => Array.from({ length: 8 }, (_, j) => j + 0.5).map((line) => ({
+      p: 100 * nbCdf(Math.ceil(line) - 1, x.proj, phi), won: x.actual < line })));
+    const table = (list) => BANDS.map(([lo, hi]) => {
+      const b = list.filter((x) => x.p >= lo && x.p < hi);
+      if (!b.length) return null;
+      const claim = b.reduce((a, x) => a + x.p, 0) / b.length, real = 100 * b.filter((x) => x.won).length / b.length;
+      return `${lo}-${hi > 100 ? 100 : hi}: ${claim.toFixed(1)} vs ${real.toFixed(1)} (${b.length})`;
+    }).filter(Boolean).join(' · ');
+    const brier = (list) => list.reduce((a, x) => a + (x.p / 100 - (x.won ? 1 : 0)) ** 2, 0) / list.length;
+    for (const phi of [...new Set([best[0], 1.0, 1.1, 1.2, 1.3])].sort()) {
+      const med = lines.map((x) => ({ p: 100 * nbCdf(Math.ceil(x.med) - 1, x.proj, phi), won: x.actual < x.med }));
+      const ev = everyAll(phi);
+      console.log(`  at ${phi.toFixed(2)} (Brier, every line ${brier(ev).toFixed(5)}; median line ${brier(med).toFixed(5)})`);
+      console.log(`    every .5 line:   ${table(ev.filter((y) => y.p >= 50 && y.p < 97))}`);
+      console.log(`    the median line: ${table(med)}`);
+    }
+  }
+}
+
 if (cmd === 'fetch') {
   for (const s of (rest.length ? rest : ['2025', '2026'])) await fetchSeason(Number(s));
 } else if (cmd === 'report') report();
+else if (cmd === 'disp') disp();
 else { console.error('unknown command ' + cmd); process.exit(2); }
