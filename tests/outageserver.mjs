@@ -139,6 +139,26 @@ if (HEALTHY) await buildOddsFixture();
 // is the recorded Fulham-Tottenham one (tests/fixtures/espn-soc-740870.json),
 // both lineups in -- the card is otherwise empty until an hour before kickoff.
 const SOCPROPSDEMO = process.env.SOCPROPSDEMO === '1';
+// NHLDEMO=1 serves an NHL slate to the odds stub and seeds a graded week into
+// the in-memory SQLite, so the NHL tab shows its rows and its record line.
+const NHLDEMO = process.env.NHLDEMO === '1';
+function nhlDemoOdds() {
+  const at = (h) => new Date(Date.now() + h * 3600e3).toISOString();
+  const bk = (key, home, away, hp, ap) => ({ key, title: key, last_update: new Date().toISOString(),
+    markets: [{ key: 'h2h', outcomes: [{ name: away, price: ap }, { name: home, price: hp }] }] });
+  const g = (id, h, home, away, q) => ({ id, sport_key: 'icehockey_nhl', sport_title: 'NHL', commence_time: at(h), home_team: home, away_team: away,
+    bookmakers: Object.entries(q).map(([k, [hp, ap]]) => bk(k, home, away, hp, ap)) });
+  return [
+    g('nhlMTL', 3, 'Montréal Canadiens', 'San Jose Sharks', { lowvig: [-190, 160], betonlineag: [-192, 162], novig: [-185, 170], prophetx: [-188, 160],
+      draftkings: [-195, 162], fanduel: [-188, 158], betmgm: [-200, 165], williamhill_us: [-190, 160] }),
+    g('nhlNJD', 3, 'New Jersey Devils', 'Colorado Avalanche', { lowvig: [118, -138], betonlineag: [120, -140], novig: [125, -135], prophetx: [122, -142],
+      draftkings: [115, -135], fanduel: [112, -132], betmgm: [120, -145] }),
+    g('nhlCBJ', 3.2, 'Columbus Blue Jackets', 'Toronto Maple Leafs', { pinnacle: [105, -125], draftkings: [102, -122], fanduel: [100, -120] }),
+    g('nhlNYI', 3.5, 'New York Islanders', 'Anaheim Ducks', { novig: [-130, 115], draftkings: [-135, 114], fanduel: [-132, 112] }),
+    g('nhlVGK', 6.5, 'Vegas Golden Knights', 'Tampa Bay Lightning', { lowvig: [-150, 130], betonlineag: [-152, 132], novig: [-145, 135], prophetx: [-148, 128],
+      draftkings: [-155, 130], fanduel: [-150, 128], betrivers: [-158, 135] }),
+  ];
+}
 // Two fixtures, so the card shows matches collapsed as a Saturday would.
 let socDemoIds = null, socDemoDay = null;
 globalThis.fetch = async (u, o) => {
@@ -169,6 +189,14 @@ globalThis.fetch = async (u, o) => {
   if (process.env.NBADEMO === '1' && url.startsWith('https://cdn.espn.com/core/soccer/scoreboard') && url.includes('league=eng.1')) {
     const rec = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-team-logos.json'), 'utf8'));
     return new Response(JSON.stringify(rec['https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=eng.1&date=20261018']), { status: 200 });
+  }
+  // NHLDEMO=1: tonight's NHL moneylines, in the Odds API's documented /odds
+  // shape, puck drop a few hours out, so the NHL tab draws its priced state
+  // (the tab buys one capture on its first read, which lands here).
+  if (NHLDEMO && /\/v4\/sports\/icehockey_nhl\/(odds|events)\?/.test(url)) {
+    const evs = nhlDemoOdds();
+    return new Response(JSON.stringify(url.includes('/events?') ? evs.map(({ bookmakers, ...e }) => e) : evs), { status: 200,
+      headers: { 'content-type': 'application/json', 'x-requests-remaining': '90000', 'x-requests-last': url.includes('/events?') ? '0' : '1' } });
   }
   if (url.includes('api.the-odds-api.com')) {
     if (HEALTHY) {
@@ -315,7 +343,7 @@ const ENTRIESDB = process.env.ENTRIESDB === '1';
 // record line -- can be seen before PrizePicks has posted a single NBA line.
 const NBADEMO = process.env.NBADEMO === '1';
 let sqliteDb = null;
-if (ENTRIESDB || NBADEMO) {
+if (ENTRIESDB || NBADEMO || NHLDEMO) {
   const { DatabaseSync } = await import('node:sqlite');
   const sq = new DatabaseSync(':memory:');
   const norm = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v);
@@ -335,7 +363,7 @@ if (ENTRIESDB || NBADEMO) {
 
 const env = {
   ODDS_API_KEY: 'test-key',
-  DB: (ENTRIESDB || NBADEMO) ? sqliteDb : ((NFLDEMO || SOCCERDEMO) ? nflDb : null),
+  DB: (ENTRIESDB || NBADEMO || NHLDEMO) ? sqliteDb : ((NFLDEMO || SOCCERDEMO) ? nflDb : null),
   // The priors and schedule the NFL projections read, served off disk.
   ASSETS: { fetch: async (r) => {
     const name = new URL(r.url).pathname;
@@ -384,6 +412,23 @@ if (NBADEMO) {
     ['A Four', 68, 6.5, 6.5, 'under'], ['A Five', 58, 4.5, 5.5, 'over'], ['A Six', 61, 2.5, 2.5, 'under']]) {
     await leg(pastDay, past.toISOString(), p, 'NY', 'reb', pt, mu, pt - 1, bk, 30, res);
   }
+}
+
+// NHLDEMO: a graded week under the record line -- the recorded Oct 13 results,
+// at sharp chances spread over the bands.
+if (NHLDEMO) {
+  await mod.default.fetch(new Request('https://x/api/gmpicks-export'), env, { waitUntil: () => {} });   // creates the table
+  const ins = sqliteDb.prepare(`INSERT INTO gmpicks (sport, date, game_id, market, league, commence, side, pick, home, away, win_prob, entry_price, close_price, result, home_score, away_score)
+    VALUES ('nhl', '2026-10-13', ?, 'h2h', 'reg', '2026-10-13T23:30:00Z', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  for (const [id, side, home, away, wp, price, res, hs, as] of [
+    ['h90', 'home', 'Detroit Red Wings', 'New Jersey Devils', 62, -150, 'loss', 4, 5],
+    ['h92', 'home', 'Montréal Canadiens', 'Buffalo Sabres', 66, -180, 'win', 4, 3],
+    ['h94', 'home', 'Philadelphia Flyers', 'Seattle Kraken', 53, -115, 'loss', 2, 3],
+    ['h96', 'away', 'Ottawa Senators', 'St Louis Blues', 68, -190, 'win', 2, 7],
+    ['h100', 'away', 'Dallas Stars', 'Colorado Avalanche', 58, -135, 'win', 2, 3],
+    ['h102', 'home', 'Utah Mammoth', 'Toronto Maple Leafs', 57, -130, 'win', 5, 4],
+    ['h107', 'home', 'Colorado Avalanche', 'Dallas Stars', 67, -185, 'loss', 2, 3],
+  ]) await ins.bind(id, side, side === 'home' ? home : away, home, away, wp, price, price, res, hs, as).run();
 }
 
 // SOCPROPSDEMO with a SQLite (NBADEMO or ENTRIESDB): last night's match graded

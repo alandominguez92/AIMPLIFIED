@@ -117,7 +117,11 @@ console.log('\n-- where it sits --');
 ok(/<div id="topCard" class="top-card" hidden><\/div>\s*<div id="todayCard"/.test(html), 'above Today\'s card on the MLB board');
 ok(/const top = document\.getElementById\('topCard'\);\s*if \(top && slate\.firstElementChild !== top\) slate\.prepend\(top\);/.test(src),
   'and kept above it when the rail hands Today\'s card back on a phone');
-ok(/setTimeout\(refreshPicks, 0\);/.test(src), 'loaded with the page, a tick late so the Picks renderer\'s consts exist');
+// Since 2026-10-20 the page opens on Picks: the first read rides the starting
+// tab, in a microtask (after the script, so the consts exist), and the MLB
+// top card still gets the list when a link opens MLB instead.
+ok(/queueMicrotask\(\(\) => \{[\s\S]{0,200}setSport\(START_SPORT\);[\s\S]{0,200}if \(START_SPORT !== 'picks'\) refreshPicks\(\);/.test(src),
+  'loaded with the page, after the script, so the Picks renderer\'s consts exist');
 ok(/const hero = heroLegHtml\(legs\[0\], \{ size: 52 \}\);[\s\S]*?legs\.slice\(1\)\.map/.test(lift('renderPicks')), 'on the Picks tab it is the list\'s first leg, and the rest follow');
 
 // ---- the worker: which logo a moneyline leg carries (2026-10-14) ----------------------

@@ -14,6 +14,7 @@ pass on the current tree. A check that has never failed is decoration.
 | `nflpriorsguard.mjs` | The priors page's colour posture — `--positive` nowhere, `--danger` only on the unrostered flag — and the ARI/AZ normalisation. nflverse writes Arizona as ARI in 2025 play-by-play, AZ in 2026 rosters, and ARI in the schedule; untreated, 8 players read as transfers who never moved and **10** fail a join on team code. The guard asserts the drop count EXCEEDS the rename count, because counting only renames understates it by two. |
 | `crontest.mjs` | The close-capture cron fetches only the games inside the close window, not the whole slate. Measured 22 per-event fetches unscoped against 2 scoped. Also asserts `CLOSE_WINDOW_MIN` stays 15 — narrowing it costs sharp-sourced closes, which is what put 13.5% of rows on a different tier at close than at entry. |
 | `pulledtest.mjs` | The pulled-row contract: a batter priced by books but left off the posted lineup card still reaches the board, carries nothing conditioned on tonight, keeps his season percentiles, and can reach neither the log nor a play tier. Needs a HEALTHY props feed — seeding from the card makes everyone on-card by construction and the test passes vacuously. |
+| `nhl.mjs` | The NHL moneyline log: fair from the sharp books, price from the books being bet, two captures a day. Grading reads `api-web.nhle.com/v1/score/{date}` (ESPN's cdn has no NHL scoreboard) for the row's own day only — the Avalanche and Stars met on Oct 13 and Oct 14 with the home side swapped, and a grader that also asked the next day would score one night off the other. Overtime and shootout finals are wins and losses like any other. The NHL days are recorded; the Odds API payload is the documented v4 shape, since the key lives only in the Worker. |
 | `trackrecord.mjs` | `/api/track-record` internal consistency: the headline, the interval, the tier table and the era table are slices of one population and must sum to it. Runs against live D1. |
 
 ## outageserver.mjs
@@ -36,6 +37,10 @@ records -- the default line's and the one at the PrizePicks lines saved on the
 card (`/api/soc-lines`, passed through with its key like `/api/entries`). On an
 international break, when ESPN's Premier League card is empty, two fixtures of
 the recorded Fulham-Tottenham lineup stand in.
+
+`NHLDEMO=1` gives the NHL tab a slate a few hours out (its first read buys
+one capture, which the stub answers in the Odds API's /odds shape) and a
+graded week under its record line, in the in-memory SQLite.
 
 `HEALTHY=1` prices all three MLB boards, not just batters: batter total bases,
 `pitcher_strikeouts`, and a league-wide `h2h`. It covered only batters until the

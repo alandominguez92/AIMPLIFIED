@@ -3026,7 +3026,7 @@
         + `Remove ${deadLegs.length === 1 ? 'it' : 'them'} before you bet the rest.</div>`
       : '';
 
-    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter', 'PrizePicks': 'pp', 'NFL': 'nfl', 'NFL ML': 'nfl', 'Soccer': 'soc', 'NBA ML': 'nba' };
+    const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter', 'PrizePicks': 'pp', 'NFL': 'nfl', 'NFL ML': 'nfl', 'Soccer': 'soc', 'NBA ML': 'nba', 'NHL ML': 'nhl' };
     const legHtml = legs.map((leg) => `
       <div class="slip-leg">
         <span class="slip-tag ${boardTag[leg.board] || ''}">${esc(leg.board)}</span>
@@ -4452,6 +4452,25 @@
         player: team, team: nbaNick(team), market: 'ml', side,
         book: { line: null, price: typeof price === 'number' ? price : null, win: fair != null ? fair : null }, pp: null } };
   }
+  // NHL names are city plus nickname too, and four nicknames are two words
+  // ("Blue Jackets", "Golden Knights", "Maple Leafs", "Red Wings").
+  const nhlNick = (name) => {
+    const w = String(name || '').trim().split(/\s+/);
+    return w.length >= 3 && /^(blue|golden|maple|red)$/i.test(w[w.length - 2]) ? w.slice(-2).join(' ') : w[w.length - 1];
+  };
+  // The NBA moneyline leg, for hockey (2026-10-20): the odds feed's event id is
+  // the id the NHL log keeps, so the entry log grades the leg from it.
+  function nhlMlLeg(g, side) {
+    const team = side === 'home' ? g.home : g.away;
+    const price = side === 'home' ? g.homePrice : g.awayPrice;
+    const fair = side === 'home' ? g.homeFair : g.awayFair;
+    const value = side === 'home' ? g.homeValue : g.awayValue;
+    return { id: `nhl:ml:${g.id}:${side}`, board: 'NHL ML', title: `${nhlNick(team)} ML`, sub: `${nhlNick(g.away)} @ ${nhlNick(g.home)}`,
+      odds: typeof price === 'number' ? price : null, tier: null, edge: typeof value === 'number' ? value : null,
+      spec: { sport: 'nhl', date: ptDayOf(Date.parse(g.commence)), gamePk: g.id,
+        player: team, team: nhlNick(team), market: 'ml', side,
+        book: { line: null, price: typeof price === 'number' ? price : null, win: fair != null ? fair : null }, pp: null } };
+  }
   function soccerMlLeg(g, p) {
     const side = p.selection === 'Draw' ? 'draw' : (p.selection === g.home ? 'home' : 'away');
     return { id: `soc:${g.id}:${side}`, board: 'Soccer',
@@ -4473,6 +4492,7 @@
     if (state.sport === 'nfl') renderNfl();
     if (state.sport === 'soccer') renderSoccer();
     if (state.sport === 'nba') renderNba();
+    if (state.sport === 'nhl') renderNhl();
     if (state.sport === 'picks') renderPicks();
     renderTopCard();
     const n = Object.keys(state.slip).length;
@@ -4641,6 +4661,12 @@
         const nid = target.dataset.id;
         state.nbaOpen = state.nbaOpen === nid ? null : nid;
         renderNba();
+        break;
+      }
+      case 'nhl-toggle': {
+        const hid = target.dataset.id;
+        state.nhlOpen = state.nhlOpen === hid ? null : hid;
+        renderNhl();
         break;
       }
       case 'soccer-toggle': {
@@ -4897,11 +4923,9 @@
     setInterval(refreshTrackRecord, 600000);
     refreshTopLegs();
     setInterval(refreshTopLegs, 600000);
-    // Picks of the day, for the top card the MLB board opens on (2026-10-14).
-    // /api/picks is cached two minutes at the edge. Deferred a tick: this runs
-    // before the script has reached the consts the Picks renderer uses
-    // (PICKS_SKELETON, pickIsTeam), and touching them early throws.
-    setTimeout(refreshPicks, 0);
+    // Picks of the day loads with the starting tab (START_SPORT, at INIT below),
+    // which is where the first read happens. /api/picks is cached two minutes
+    // at the edge.
     setInterval(() => { if (state.sport === 'mlb' || state.sport === 'picks') refreshPicks(); }, 600000);
     // Injury wire (recent IL moves) — refresh every 10 min.
     refreshInjuries();
@@ -4936,6 +4960,29 @@
 
   el.searchInput.value = state.searchQuery;
   renderAll();
+
+  // The site opens on Picks of the day (2026-10-20): the favourites in every
+  // sport on one list, where MLB's board says "no games posted yet" on most
+  // days once its season is down to the World Series. A link to a board opens
+  // that board instead -- /#slate from the track-record page, /#nflBoard from
+  // the NFL priors page.
+  //
+  // A microtask, not a call here: setSport and the Picks renderer read consts
+  // declared further down this script (MLB_ONLY, DOC_TITLE, PICKS_SKELETON),
+  // and touching them before the script has run throws. A microtask still runs
+  // before the first frame is drawn, so the page never shows the MLB layout
+  // first. The boot code above renders as MLB, so the sport is cleared to make
+  // setSport apply every flag rather than return early on "mlb".
+  // Built-in mock mode (file://, no API) has MLB demo data only, so it opens there.
+  const START_SPORT = !LIVE_MODE ? 'mlb'
+    : ({ '#slate': 'mlb', '#nflBoard': 'nfl' }[location.hash] || 'picks');
+  queueMicrotask(() => {
+    state.sport = null;
+    setSport(START_SPORT);
+    // The MLB board's top card is the first leg of the Picks list, and setSport
+    // reads the list only when it opens the Picks tab.
+    if (START_SPORT !== 'picks') refreshPicks();
+  });
 
   // -------------------------------------------------------------------------
   // NFL — game-line context board
@@ -4972,6 +5019,9 @@
     const nbaBoard = document.getElementById('nbaBoard');
     if (nbaBoard) nbaBoard.hidden = s !== 'nba';
     if (s === 'nba' && !state.nba) refreshNba();             // lazy first load
+    const nhlBoard = document.getElementById('nhlBoard');
+    if (nhlBoard) nhlBoard.hidden = s !== 'nhl';
+    if (s === 'nhl' && !state.nhl) refreshNhl();
     const pb = document.getElementById('picksBoard');
     if (pb) pb.hidden = s !== 'picks';
     // Read on every visit after two minutes: lineups post and legs move.
@@ -5738,7 +5788,7 @@
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
   // sport switch and never changed back.
-  const DOC_TITLE = { mlb: document.title, picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
+  const DOC_TITLE = { mlb: document.title, picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', nhl: 'Aimplified — NHL Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
 
   // -------------------------------------------------------------------------
   // Picks of the day (2026-10-09)
@@ -6025,11 +6075,18 @@
       .map((h) => `<span>${h}</span>`).join('');
     grid.innerHTML = nbaPpCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
-      + `<div>${games.map(nbaRow).join('')}</div>`
+      + `<div>${games.map((g) => mlTabRow(g, 'nba')).join('')}</div>`
       + `</div></div>`;
   }
-  function nbaRow(g) {
-    const open = state.nbaOpen === g.id;
+  // The NBA and NHL moneyline tabs draw one table. Per sport: the nickname
+  // rule, the slip leg, the row toggle and the open-row key.
+  const ML_TABS = {
+    nba: { nick: (n) => nbaNick(n), leg: (g, sd) => nbaMlLeg(g, sd), toggle: 'nba-toggle', open: 'nbaOpen' },
+    nhl: { nick: (n) => nhlNick(n), leg: (g, sd) => nhlMlLeg(g, sd), toggle: 'nhl-toggle', open: 'nhlOpen' },
+  };
+  function mlTabRow(g, sport) {
+    const t = ML_TABS[sport], nick = t.nick, leg = t.leg;
+    const open = state[t.open] === g.id;
     const isMkt = !g.pickSide;
     const side = g.pickSide;
     const fair = side ? (side === 'home' ? g.homeFair : g.awayFair) : null;
@@ -6038,23 +6095,23 @@
     const val = side ? (side === 'home' ? g.homeValue : g.awayValue) : null;
     const valColor = val == null ? 'var(--textFaint)' : (val > 0 ? 'var(--positive)' : 'var(--textDim)');
     const upcoming = Date.parse(g.commence) > Date.now();
-    const star = upcoming && side && typeof price === 'number' ? offerStar(nbaMlLeg(g, side)) : '';
+    const star = upcoming && side && typeof price === 'number' ? offerStar(leg(g, side)) : '';
     const imp = impliedPct(price);
     const bar = !isMkt && fair != null
       ? miniBar(fair, imp, (v) => v) + `<span class="bw-cush">fair <b>${fair}%</b>${imp != null ? ` · tick: price <b>${r1(imp)}%</b>` : ''}</span>`
       : '';
     const pick = isMkt ? '<span class="odds-blank">no sharp book yet</span>'
-      : `<span class="ctx-pick">${esc(nbaNick(side === 'home' ? g.home : g.away))}</span>${bar}`;
+      : `<span class="ctx-pick">${esc(nick(side === 'home' ? g.home : g.away))}</span>${bar}`;
     const odds = typeof price === 'number'
       ? `<span class="odds-cell mono">${AM(price)}<i class="bk-tag">${bkLabel(book)}</i></span>`
       : (g.awayPrice != null || g.homePrice != null
         ? `<span class="odds-cell mono">${AM(g.awayPrice)} / ${AM(g.homePrice)}</span>` : '<span class="odds-blank">no price</span>');
     const chip = isMkt ? 'MKT' : g.fairSrc === 'pinnacle' ? 'Pinnacle' : 'sharp ' + g.sharpN;
-    const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="nba-toggle" data-id="${esc(g.id)}"
+    const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="${t.toggle}" data-id="${esc(g.id)}"
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${esc(g.away)} at ${esc(g.home)} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head">${star}<b>${esc(nbaNick(g.away))}</b><span class="at-sep">@</span><b>${esc(nbaNick(g.home))}</b>${
+          <span class="mc-head">${star}<b>${esc(nick(g.away))}</b><span class="at-sep">@</span><b>${esc(nick(g.home))}</b>${
             g.commence ? `<span class="row-when">${esc(soccerKick(g.commence))}</span>` : ''}</span>
           <span class="matchup-sub">${esc(g.away)} at ${esc(g.home)}${g.league === 'pre' ? ' · preseason' : ''}</span>
         </div>
@@ -6065,17 +6122,18 @@
         <span class="tier-cell"><span class="ctx-chip">${chip}</span></span>
         <span class="chevron">${open ? '▲' : '▼'}</span>
       </div>`;
-    return row + (open ? nbaDetail(g) : '');
+    return row + (open ? mlTabDetail(g, sport) : '');
   }
-  function nbaDetail(g) {
+  function mlTabDetail(g, sport) {
+    const { nick, leg: legOf } = ML_TABS[sport];
     const cell = (k, v) => `<div class="nfd-c"><span>${esc(k)}</span><b>${v}</b></div>`;
-    const sideCell = (team, fair, price, book, value) => cell(nbaNick(team),
+    const sideCell = (team, fair, price, book, value) => cell(nick(team),
       `${fair != null ? fair + '%' : '—'} fair · ${AM(price)}${book ? ' ' + bkLabel(book) : ''}`
       + `<span class="rl-cov">${value == null ? '' : (value > 0 ? '+' : '') + value + '% vs fair'}</span>`);
     const upcoming = Date.parse(g.commence) > Date.now();
     const adds = upcoming
       ? ['away', 'home'].filter((sd) => typeof (sd === 'home' ? g.homePrice : g.awayPrice) === 'number')
-        .map((sd) => { const leg = nbaMlLeg(g, sd); return offerButton(leg, `${nbaNick(sd === 'home' ? g.home : g.away)} ML ${AM(leg.odds)}`); }).join('')
+        .map((sd) => { const leg = legOf(g, sd); return offerButton(leg, `${nick(sd === 'home' ? g.home : g.away)} ML ${AM(leg.odds)}`); }).join('')
       : '';
     const read = g.fairSrc === 'sharp-pool'
       ? `Fair from ${g.sharpN} sharp books, Shin de-vigged and medianed. Value is that fair number minus what the best price implies.`
@@ -6089,6 +6147,51 @@
       <div class="nfd-grid">${sideCell(g.away, g.awayFair, g.awayPrice, g.awayBook, g.awayValue)}${sideCell(g.home, g.homeFair, g.homePrice, g.homeBook, g.homeValue)}</div>
       <div class="nfd-foot">Not modelled and not posted. The side the sharp books favour is logged and graded on the site's own record${g.league === 'pre' ? '; preseason rows are kept apart from the regular season' : ''}.</div>
     </div>`;
+  }
+
+  // -------------------------------------------------------------------------
+  // NHL — moneylines (2026-10-20)
+  // -------------------------------------------------------------------------
+  // The NBA table on hockey: the sharp fair against the best price, captured
+  // twice a day, overtime and the shootout in the price. Above it, the log's
+  // record -- the 65%+ favourites first, the bar Picks of the day lists other
+  // sports' favourites at. NHL is not on that list until that number holds.
+  async function refreshNhl() {
+    if (!LIVE_MODE) return;
+    const d = await fetchJson('/api/nhl-board').catch(() => null);
+    state.nhl = d && Array.isArray(d.games) ? d : { games: [], empty: true, error: d ? undefined : 'unreachable' };
+    renderNhl();
+  }
+  function nhlRecordHtml(r) {
+    if (!r || !r.n) return '<p class="soc-note">Record: logged from Oct 20, graded from the NHL’s finals each morning.</p>';
+    const hi = (r.byBand && r.byBand['65+']) || { n: 0 };
+    const won = hi.n ? Number(String(hi.record).split('–')[0]) : 0;
+    return `<p class="soc-note">Record so far <b>${esc(r.record)}</b>`
+      + (hi.n ? ` · favourites at 65%+ <b>${won} of ${hi.n}</b> (${esc(String(hi.expected))}% expected)` : ' · none at 65%+ yet')
+      + '</p>';
+  }
+  function renderNhl() {
+    const grid = document.getElementById('nhlGrid');
+    if (!grid) return;
+    const d = state.nhl;
+    const count = document.getElementById('nhlCount');
+    const note = document.getElementById('nhlNote');
+    if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
+    if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
+    const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
+    if (count) count.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}` : '';
+    if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '');
+    const rec = nhlRecordHtml(d.record);
+    if (!games.length) {
+      grid.innerHTML = rec + `<div class="nfl-empty">No NHL games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+      return;
+    }
+    const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
+      .map((h) => `<span>${h}</span>`).join('');
+    grid.innerHTML = rec + `<div class="board view-moneyline"><div class="board-inner">`
+      + `<div class="board-head-row">${head}</div>`
+      + `<div>${games.map((g) => mlTabRow(g, 'nhl')).join('')}</div>`
+      + `</div></div>`;
   }
 
   // -------------------------------------------------------------------------
