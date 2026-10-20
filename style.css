@@ -1496,13 +1496,21 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .stab .mini { display:none; }
   /* Six tabs since Picks (2026-10-09), seven since NHL (2026-10-20). At 8px a
      side inside the page's 32px margin the seventh ran 27px past a 390 screen;
-     6px a side in a 12px margin keeps all seven on one row from 360 up. */
+     6px a side in a 12px margin keeps all seven on one row from 360 up; the
+     max-width:360px rule below takes it down to 320. */
   .stab { padding:11px 6px 10px; gap:6px; font-size:13px; }
   .sports-inner { width:auto; justify-content:space-between; gap:0; }
   .wrap.sports-inner { padding:0 12px; }
 }
 @media (max-width:380px) {
   .stab { padding:11px 5px 10px; font-size:12.5px; }
+}
+/* 320 (iPhone SE, small Androids), since the seventh tab: at 5px a side and
+   12.5px the row was 344px, so Entries sat cut off past the edge. Measured at
+   320 with this: the seven tabs span 8-312px, nothing scrolls sideways. */
+@media (max-width:360px) {
+  .stab { padding:11px 4px 10px; font-size:12px; letter-spacing:0; }
+  .wrap.sports-inner { padding:0 8px; }
 }
 
 @media (max-width:900px) {

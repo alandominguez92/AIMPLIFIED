@@ -4923,11 +4923,9 @@
     setInterval(refreshTrackRecord, 600000);
     refreshTopLegs();
     setInterval(refreshTopLegs, 600000);
-    // Picks of the day, for the top card the MLB board opens on (2026-10-14).
-    // /api/picks is cached two minutes at the edge. Deferred a tick: this runs
-    // before the script has reached the consts the Picks renderer uses
-    // (PICKS_SKELETON, pickIsTeam), and touching them early throws.
-    setTimeout(refreshPicks, 0);
+    // Picks of the day loads with the starting tab (START_SPORT, at INIT below),
+    // which is where the first read happens. /api/picks is cached two minutes
+    // at the edge.
     setInterval(() => { if (state.sport === 'mlb' || state.sport === 'picks') refreshPicks(); }, 600000);
     // Injury wire (recent IL moves) — refresh every 10 min.
     refreshInjuries();
@@ -4962,6 +4960,29 @@
 
   el.searchInput.value = state.searchQuery;
   renderAll();
+
+  // The site opens on Picks of the day (2026-10-20): the favourites in every
+  // sport on one list, where MLB's board says "no games posted yet" on most
+  // days once its season is down to the World Series. A link to a board opens
+  // that board instead -- /#slate from the track-record page, /#nflBoard from
+  // the NFL priors page.
+  //
+  // A microtask, not a call here: setSport and the Picks renderer read consts
+  // declared further down this script (MLB_ONLY, DOC_TITLE, PICKS_SKELETON),
+  // and touching them before the script has run throws. A microtask still runs
+  // before the first frame is drawn, so the page never shows the MLB layout
+  // first. The boot code above renders as MLB, so the sport is cleared to make
+  // setSport apply every flag rather than return early on "mlb".
+  // Built-in mock mode (file://, no API) has MLB demo data only, so it opens there.
+  const START_SPORT = !LIVE_MODE ? 'mlb'
+    : ({ '#slate': 'mlb', '#nflBoard': 'nfl' }[location.hash] || 'picks');
+  queueMicrotask(() => {
+    state.sport = null;
+    setSport(START_SPORT);
+    // The MLB board's top card is the first leg of the Picks list, and setSport
+    // reads the list only when it opens the Picks tab.
+    if (START_SPORT !== 'picks') refreshPicks();
+  });
 
   // -------------------------------------------------------------------------
   // NFL — game-line context board
