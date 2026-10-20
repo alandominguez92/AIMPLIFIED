@@ -10147,8 +10147,10 @@ async function nbaPpBoard(env) {
 // Every input is ESPN and free: lineups and fixtures from the site API, the
 // box scores from sports.core.api.espn.com -- passes and tackles exist only
 // per player, so a match costs ~30 requests and the ingest has its own cron.
-const SOC_PROP_LEAGUES = { epl: 'eng.1', laliga: 'esp.1', seriea: 'ita.1', bundesliga: 'ger.1', mls: 'usa.1' };
-const SOC_PROP_LABEL = { epl: 'Premier League', laliga: 'La Liga', seriea: 'Serie A', bundesliga: 'Bundesliga', mls: 'MLS' };
+// The Champions League since 2026-10-20 (see socUclCtx). ESPN serves its
+// lineups, rosters and per-player statistics in the same shape as the leagues'.
+const SOC_PROP_LEAGUES = { epl: 'eng.1', laliga: 'esp.1', seriea: 'ita.1', bundesliga: 'ger.1', mls: 'usa.1', ucl: 'uefa.champions' };
+const SOC_PROP_LABEL = { epl: 'Premier League', laliga: 'La Liga', seriea: 'Serie A', bundesliga: 'Bundesliga', mls: 'MLS', ucl: 'Champions League' };
 // The last five (2026-10-15) are more PrizePicks markets read from the same
 // per-player statistics: crosses, shots assisted, a goalkeeper's goals
 // conceded, fouls drawn, and goals + assists. ESPN carries no attempted
@@ -10173,7 +10175,7 @@ const SOC_CTX_W = 0.5;            // the opponent moves a projection half the wa
 const SOC_BOX_CRON = '2-59/5 * * * *';
 const SOC_LINEUP_LEAD_MS = 100 * 60e3;   // lineups post about an hour out; read from 100 minutes
 const SOC_PROPS_AHEAD_MS = 14 * 3600e3;
-const SOC_SEASON_FROM = { epl: '2026-07-01', laliga: '2026-07-01', seriea: '2026-07-01', bundesliga: '2026-07-01', mls: '2026-01-01' };
+const SOC_SEASON_FROM = { epl: '2026-07-01', laliga: '2026-07-01', seriea: '2026-07-01', bundesliga: '2026-07-01', mls: '2026-01-01', ucl: '2026-07-01' };
 const ESPN_SOC_SITE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 const ESPN_SOC_CORE = 'https://sports.core.api.espn.com/v2/sports/soccer/leagues';
 let SOC_PRIORS = null;
@@ -10474,6 +10476,7 @@ function socChance(line, mean, phi) {
 function socProjectRows(lg, starters, recent, ctx, pri) {
   const slug = SOC_PROP_LEAGUES[lg];
   const avgOf = (s) => {
+    if (lg === 'ucl') return 1;          // its ctx holds ratios to each club's own league (socUclCtx)
     const cur = Object.values(ctx || {}).filter((c) => c[s] != null);
     if (cur.length >= 6) return cur.reduce((a, c) => a + c[s], 0) / cur.length;
     return pri && pri.leagueAvg && pri.leagueAvg[slug] ? pri.leagueAvg[slug][s] : null;
@@ -10515,6 +10518,43 @@ function socProjectRows(lg, starters, recent, ctx, pri) {
   return out;
 }
 
+// What a Champions League opponent allows (2026-10-20). Its clubs come from
+// every league, so each one's rate is read from its own league -- this
+// season's box scores, else last season's priors -- as a ratio to that
+// league's average, and socProjectRows takes the Champions League average as
+// 1. teams: [{ abbr, lg }], lg the club's own league (socTeamLeague). A club
+// from a league the card does not read (Slovan, Viking) has no rate, so it
+// moves nothing.
+function socUclCtx(ctxAll, teams, pri) {
+  const out = {};
+  for (const t of teams) {
+    if (!t || !t.abbr || !t.lg || t.lg === 'ucl') continue;
+    const lgCtx = (ctxAll && ctxAll[t.lg]) || {};
+    const slug = SOC_PROP_LEAGUES[t.lg];
+    const prior = pri && pri.teams && pri.teams[slug] && pri.teams[slug][t.abbr];
+    const row = {};
+    for (const s of SOC_PROP_STATS) {
+      const cur = Object.values(lgCtx).filter((x) => x[s] != null);
+      const avg = cur.length >= 6 ? cur.reduce((a, x) => a + x[s], 0) / cur.length
+        : (pri && pri.leagueAvg && pri.leagueAvg[slug] ? pri.leagueAvg[slug][s] : null);
+      const rate = lgCtx[t.abbr] && lgCtx[t.abbr][s] != null ? lgCtx[t.abbr][s] : (prior && prior.conc ? prior.conc[s] : null);
+      row[s] = rate != null && avg ? rate / avg : null;
+    }
+    out[t.abbr] = row;
+  }
+  return out;
+}
+// A club's own league, from the matches the box-score ingest has seen: by
+// abbreviation AND ESPN team id, since abbreviations repeat across leagues
+// ("SCP" is St. Pauli in the Bundesliga and Sporting CP in Europe).
+async function socTeamLeague(db, abbr, id) {
+  if (!abbr || !id) return null;
+  const r = await db.prepare(
+    "SELECT league FROM soc_box_games WHERE league != 'ucl' AND ((home = ? AND home_cid = ?) OR (away = ? AND away_cid = ?)) ORDER BY date DESC LIMIT 1"
+  ).bind(abbr, String(id), abbr, String(id)).first();
+  return r ? r.league : null;
+}
+
 // Upcoming fixtures for a league and day, cached half an hour.
 async function socFixtures(env, lg, ymd) {
   const key = `soc_fix:${lg}:${ymd}`;
@@ -10526,6 +10566,7 @@ async function socFixtures(env, lg, ymd) {
     const cs = (e.competitions && e.competitions[0] && e.competitions[0].competitors) || [];
     const h = cs.find((c) => c.homeAway === 'home') || {}, a = cs.find((c) => c.homeAway === 'away') || {};
     return { id: String(e.id), lg, commence: e.date, home: h.team && h.team.abbreviation, away: a.team && a.team.abbreviation,
+      homeId: h.id != null ? String(h.id) : null, awayId: a.id != null ? String(a.id) : null,
       homeName: h.team && h.team.displayName, awayName: a.team && a.team.displayName,
       state: (e.status && e.status.type && e.status.type.state) || 'pre' };
   });
@@ -10558,7 +10599,7 @@ async function socLineup(env, f) {
 }
 
 // GET /api/soccer-props: the next fourteen hours of fixtures in the five
-// leagues; for each whose lineup is posted, every starter's projection in each
+// leagues and the Champions League; for each whose lineup is posted, every starter's projection in each
 // stat, the line at the half point above it and the chance either way there.
 // The card lets the user move the line to PrizePicks' number; the phi rides
 // along so the chance can be recomputed in the browser.
@@ -10598,7 +10639,13 @@ async function socPropsBoard(env, url) {
           .bind(...chunk, SOC_SEASON_FROM[f.lg]).all()).results || [];
         for (const r of rs) { if (!recent.has(r.player_id)) recent.set(r.player_id, []); recent.get(r.player_id).push(r); }
       }
-      m.rows = socProjectRows(f.lg, starters, recent, ctxAll && ctxAll[f.lg], pri);
+      let ctx = ctxAll && ctxAll[f.lg];
+      if (f.lg === 'ucl') {
+        const teams = [];
+        for (const [abbr, id] of [[f.home, f.homeId], [f.away, f.awayId]]) teams.push({ abbr, lg: await socTeamLeague(db, abbr, id) });
+        ctx = socUclCtx(ctxAll, teams, pri);
+      }
+      m.rows = socProjectRows(f.lg, starters, recent, ctx, pri);
       const day = ptDateOf(Date.parse(f.commence));
       for (const r of m.rows) logs.push(db.prepare(
         `INSERT OR IGNORE INTO socprops (date, game_id, player_id, market, player, team, opp, league, commence, proj, line, p_under, p_over, n_recent, logged_at)

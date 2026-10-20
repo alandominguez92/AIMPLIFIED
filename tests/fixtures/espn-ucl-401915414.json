@@ -1,0 +1,539 @@
+{
+ "_recorded": "Recorded 2026-10-20 from ESPN site API: Champions League matchday, Real Madrid at Roma (2026-10-14, event 401915414), trimmed to the fields the props card reads. The scoreboard shows the match finished; the test moves the clock before kickoff and marks it pre.",
+ "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard?dates=20261014": {
+  "events": [
+   {
+    "id": "401915414",
+    "date": "2026-10-14T19:00Z",
+    "name": "Real Madrid at AS Roma",
+    "shortName": "RMA @ ROMA",
+    "status": {
+     "type": {
+      "state": "post",
+      "completed": true
+     }
+    },
+    "competitions": [
+     {
+      "competitors": [
+       {
+        "id": "104",
+        "homeAway": "home",
+        "team": {
+         "id": "104",
+         "abbreviation": "ROMA",
+         "displayName": "AS Roma"
+        }
+       },
+       {
+        "id": "86",
+        "homeAway": "away",
+        "team": {
+         "id": "86",
+         "abbreviation": "RMA",
+         "displayName": "Real Madrid"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/summary?event=401915414": {
+  "header": {
+   "competitions": [
+    {
+     "competitors": [
+      {
+       "id": "104",
+       "homeAway": "home",
+       "team": {
+        "id": "104",
+        "abbreviation": "ROMA"
+       }
+      },
+      {
+       "id": "86",
+       "homeAway": "away",
+       "team": {
+        "id": "86",
+        "abbreviation": "RMA"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "rosters": [
+   {
+    "team": {
+     "id": "104",
+     "abbreviation": "ROMA",
+     "displayName": "AS Roma"
+    },
+    "roster": [
+     {
+      "starter": true,
+      "athlete": {
+       "id": "206587",
+       "displayName": "Pierluigi Gollini"
+      },
+      "position": {
+       "abbreviation": "G"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "242593",
+       "displayName": "Evan Ndicka"
+      },
+      "position": {
+       "abbreviation": "CD"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "222529",
+       "displayName": "Mario Hermoso"
+      },
+      "position": {
+       "abbreviation": "CD-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "212597",
+       "displayName": "Gianluca Mancini"
+      },
+      "position": {
+       "abbreviation": "CD-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "285226",
+       "displayName": "Manu Koné"
+      },
+      "position": {
+       "abbreviation": "CM-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "146335",
+       "displayName": "Marten de Roon"
+      },
+      "position": {
+       "abbreviation": "CM-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "164826",
+       "displayName": "Nahuel Molina"
+      },
+      "position": {
+       "abbreviation": "LM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "332354",
+       "displayName": "Wesley"
+      },
+      "position": {
+       "abbreviation": "RM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "259481",
+       "displayName": "Donyell Malen"
+      },
+      "position": {
+       "abbreviation": "F"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "164839",
+       "displayName": "Paulo Dybala"
+      },
+      "position": {
+       "abbreviation": "CF-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "323974",
+       "displayName": "Matìas Soulè"
+      },
+      "position": {
+       "abbreviation": "CF-R"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "398120",
+       "displayName": "Giorgio De Marzi"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "360235",
+       "displayName": "Niccolò Pisilli"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "234300",
+       "displayName": "Devis Vásquez"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "409371",
+       "displayName": "Emanuele Lulli"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "387204",
+       "displayName": "Rodrigo Mora"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "336104",
+       "displayName": "Konstantinos Koulierakis"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "297300",
+       "displayName": "Devyne Rensch"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "271555",
+       "displayName": "Leonardo Balerdi"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "340705",
+       "displayName": "Daniele Ghilardi"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "204320",
+       "displayName": "Lorenzo Pellegrini"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "250284",
+       "displayName": "Santiago Castro"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     }
+    ]
+   },
+   {
+    "team": {
+     "id": "86",
+     "abbreviation": "RMA",
+     "displayName": "Real Madrid"
+    },
+    "roster": [
+     {
+      "starter": true,
+      "athlete": {
+       "id": "134283",
+       "displayName": "Thibaut Courtois"
+      },
+      "position": {
+       "abbreviation": "G"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "169438",
+       "displayName": "Antonio Rüdiger"
+      },
+      "position": {
+       "abbreviation": "CD-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "251634",
+       "displayName": "Ibrahima Konaté"
+      },
+      "position": {
+       "abbreviation": "CD-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "259910",
+       "displayName": "Marc Cucurella"
+      },
+      "position": {
+       "abbreviation": "LB"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "213248",
+       "displayName": "Denzel Dumfries"
+      },
+      "position": {
+       "abbreviation": "RB"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "291281",
+       "displayName": "Jude Bellingham"
+      },
+      "position": {
+       "abbreviation": "AM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "265919",
+       "displayName": "Aurélien Tchouaméni"
+      },
+      "position": {
+       "abbreviation": "LM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "235818",
+       "displayName": "Federico Valverde"
+      },
+      "position": {
+       "abbreviation": "RM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "231388",
+       "displayName": "Kylian Mbappé"
+      },
+      "position": {
+       "abbreviation": "F"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "252107",
+       "displayName": "Vinícius Júnior"
+      },
+      "position": {
+       "abbreviation": "AM-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "402479",
+       "displayName": "Yan Diomande"
+      },
+      "position": {
+       "abbreviation": "AM-R"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "285150",
+       "displayName": "Eduardo Camavinga"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "223532",
+       "displayName": "Trent Alexander-Arnold"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "409019",
+       "displayName": "Thiago Pitarch"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "356000",
+       "displayName": "Dean Huijsen"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "246532",
+       "displayName": "Brahim Díaz"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "350351",
+       "displayName": "Sergio Mestre"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "199833",
+       "displayName": "Bernardo Silva"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "310452",
+       "displayName": "Arda Güler"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "257237",
+       "displayName": "Andriy Lunin"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "380286",
+       "displayName": "Carlos Espí"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "346612",
+       "displayName": "Endrick"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "310637",
+       "displayName": "Álvaro Carreras"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     }
+    ]
+   }
+  ]
+ }
+}
