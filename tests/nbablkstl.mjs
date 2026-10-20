@@ -8,21 +8,23 @@
 // at +2 credits a game.
 //
 // Real SQLite underneath (node:sqlite, as tests/nbapp.mjs). Real payloads:
+//   - the Odds API's answer to the first live capture, Celtics @ Pistons on
+//     opening night (tests/fixtures/odds-nba-pp-26b036ff-20261020.json, read
+//     back from /api/nba-pp?raw=1; it billed 5 credits, one per market).
+//     PrizePicks quoted blocks for one player and steals for six, all at 0.5
+//     and -137 a side; DraftKings and FanDuel quoted other players at 1.5.
+//     What production logged from it at 08:01 PT is what this has to log.
 //   - nba-priors.json, rebuilt from ESPN's 2025-26 season totals (blocks and
 //     steals per game) and opening-night rosters
 //   - ESPN's recorded box score for 401810437 (Spurs 119, Bucks 101: Wembanyama
 //     2 blocks, Keldon Johnson 3 steals, Bismack Biyombo did-not-play) and that
-//     day's recorded scoreboard, served for the night the captured game is
-//     played. The fetch stub answers only the exact requests the cron should make.
-//   - the Odds API payload is its per-event shape, as the 2026-10-20 probe of
-//     BOS @ DET returned it: PrizePicks quotes player_steals two-sided at -137
-//     a side, description = player, name = Over/Under. To be replaced by the
-//     first capture's own payload (/api/nba-pp?raw=1) once one is recorded.
+//     day's recorded scoreboard, served for a later night. The fetch stub
+//     answers only the exact requests the cron should make.
 //
 // What has to hold:
 //   - the one paid call per game asks for blocks and steals with the other three
-//   - a blocks or steals leg is projected from his recent games blended with
-//     last season's rate, at the fitted dispersions (blocks 1.15, steals 1.1)
+//   - a blocks or steals leg is projected from his games this season blended
+//     with last season's rate, at the fitted dispersions (blocks 1.15, steals 1.1)
 //   - the line is the point PrizePicks takes an under on: an over-only point
 //     (a demon) listed first is not it
 //   - graded from the box score; a player who did not play is void
@@ -44,7 +46,7 @@ globalThis.caches = { default: {
 } };
 
 const RealDate = Date;
-let NOW = RealDate.parse('2026-10-22T19:00:00Z');        // Thursday noon Pacific
+let NOW = RealDate.parse('2026-10-20T15:01:05Z');        // when production captured it: 8:01 AM Pacific
 globalThis.Date = class extends RealDate {
   constructor(...a) { super(...(a.length ? a : [NOW])); }
   static now() { return NOW; }
@@ -75,27 +77,18 @@ const env = { DB, ODDS_API_KEY: 'k', ASSETS: { fetch: async (r) => (new URL(r.ur
 // ---- the feeds -----------------------------------------------------------------------------
 const SCORE = fs.readFileSync(path.join(FIX, 'espn-nba-20260115.json'), 'utf8');
 const BOX = fs.readFileSync(path.join(FIX, 'espn-nba-box-401810437.json'), 'utf8');
+const ODDS = JSON.parse(fs.readFileSync(path.join(FIX, 'odds-nba-pp-26b036ff-20261020.json'), 'utf8'));
+const EV = ODDS.id;
 const finalOn = new Set();                     // the days ESPN has the recorded game final on
-const TIP = iso(NOW + 3 * 3600e3);              // 3 PM Pacific, inside the four-hour window
-const ODDS_URL = 'https://api.the-odds-api.com/v4/sports/basketball_nba/events/evSAMIL/odds?apiKey=k'
+const ODDS_URL = `https://api.the-odds-api.com/v4/sports/basketball_nba/events/${EV}/odds?apiKey=k`
   + '&markets=player_threes,player_assists,player_rebounds,player_blocks,player_steals&oddsFormat=american&dateFormat=iso'
   + '&bookmakers=prizepicks,draftkings,fanduel';
-const ou = (player, point, over = -137, under = -137) => [
-  { name: 'Over', description: player, price: over, point }, { name: 'Under', description: player, price: under, point }];
-const PAYLOAD = { id: 'evSAMIL', sport_key: 'basketball_nba', commence_time: TIP, home_team: 'San Antonio Spurs', away_team: 'Milwaukee Bucks', bookmakers: [
-  { key: 'prizepicks', title: 'PrizePicks', markets: [
-    { key: 'player_blocks', outcomes: [
-      // A demon: over-only, listed ahead of the line PrizePicks takes an under on.
-      { name: 'Over', description: 'Victor Wembanyama', price: 100, point: 4.5 },
-      ...ou('Victor Wembanyama', 3.5), ...ou('Myles Turner', 1.5), ...ou('Keldon Johnson', 0.5), ...ou('Bismack Biyombo', 0.5)] },
-    { key: 'player_steals', outcomes: [...ou('Keldon Johnson', 1.5), ...ou('Giannis Antetokounmpo', 1.5), ...ou('Ryan Rollins', 1.5)] },
-    { key: 'player_threes', outcomes: ou('Stephon Castle', 2.5) },
-  ] },
-  { key: 'draftkings', title: 'DraftKings', markets: [
-    { key: 'player_blocks', outcomes: ou('Victor Wembanyama', 3.5, -105, -125) },
-    { key: 'player_steals', outcomes: ou('Keldon Johnson', 1.5, -140, 110) },
-  ] },
-] };
+// The recorded payload with one point added: an over-only 1.5 for Cunningham's
+// blocks, ahead of his 0.5 -- how a PrizePicks demon comes (the NFL passing-
+// yards capture, 2026-10-15). It must change nothing.
+const served = structuredClone(ODDS);
+const ppBlk = served.bookmakers.find((b) => b.key === 'prizepicks').markets.find((m) => m.key === 'player_blocks');
+ppBlk.outcomes.unshift({ name: 'Over', description: 'Cade Cunningham', price: 100, point: 1.5 });
 let paid = 0;
 globalThis.fetch = async (u) => {
   const url = String(u);
@@ -103,7 +96,7 @@ globalThis.fetch = async (u) => {
     headers: { 'content-type': 'application/json', ...(h || {}) } });
   for (const d of finalOn) if (url === `https://cdn.espn.com/core/nba/scoreboard?xhr=1&date=${d}`) return J(SCORE);
   if (finalOn.size && url === 'https://cdn.espn.com/core/nba/boxscore?xhr=1&gameId=401810437') return J(BOX);
-  if (url === ODDS_URL) { paid++; return J(PAYLOAD, { 'x-requests-last': '5', 'x-requests-remaining': '92000' }); }
+  if (url === ODDS_URL) { paid++; return J(served, { 'x-requests-last': '5', 'x-requests-remaining': '92942' }); }
   return new Response('{}', { status: 404 });
 };
 
@@ -128,40 +121,50 @@ console.log('-- last season, per game --');
 const withAvg = Object.values(priors).filter((p) => p.gp >= 5);
 ok(withAvg.length > 500 && withAvg.every((p) => typeof p.blk === 'number' && typeof p.stl === 'number'),
   `every player with 5+ games last season has a blocks and a steals rate (${withAvg.filter((p) => typeof p.blk === 'number').length} of ${withAvg.length})`);
-const [wembyId, wemby] = prior('Victor Wembanyama');
+const [, wemby] = prior('Victor Wembanyama');
 ok(wemby.blk === 3.08 && wemby.stl === 1.03, `from the season totals, to two places: Wembanyama ${wemby.blk} blocks, ${wemby.stl} steals a game (197 and 66 in 64)`);
 
 // ---- capture, projection, log -----------------------------------------------------------
-console.log('\n-- captured with the other three, projected, logged --');
-await tick();                                            // tables made; no game is final yet
-// One regular-season game each, the night before: these must feed the projection.
-const [kjId] = prior('Keldon Johnson');
+console.log('\n-- opening night: captured with the other three, projected, logged --');
+await tick();                                            // tables made; nothing in the window yet
+// One game this season for Queta (2 steals), which must feed his projection.
+// Everyone else has none, as on opening night.
+const [quetaId, queta] = prior('Neemias Queta');
 sq.prepare(`INSERT INTO nba_box (game_id, date, season_type, player_id, player, team, min, threes, ast, reb, blk, stl, starter, dnp)
-  VALUES ('r1', '2026-10-21', 2, ?, 'Victor Wembanyama', 'SA', 32, 2, 3, 12, 5, 1, 1, 0),
-         ('r1', '2026-10-21', 2, ?, 'Keldon Johnson', 'SA', 25, 1, 1, 6, 0, 2, 0, 0)`).run(wembyId, kjId);
+  VALUES ('r1', '2026-10-19', 2, ?, 'Neemias Queta', 'BOS', 26, 0, 1, 9, 1, 2, 1, 0)`).run(quetaId);
 sq.prepare('INSERT OR REPLACE INTO feed_cache (key, data, updated_at) VALUES (?, ?, ?)').run('nba_board:reg',
-  JSON.stringify({ asOf: iso(NOW), games: [{ id: 'evSAMIL', league: 'reg', commence: TIP, home: 'San Antonio Spurs', away: 'Milwaukee Bucks' }] }), NOW);
+  JSON.stringify({ asOf: iso(NOW), games: [{ id: EV, league: 'reg', commence: ODDS.commence_time, home: ODDS.home_team, away: ODDS.away_team }] }), NOW);
 await tick();
 ok(paid === 1, `one paid call, asking for blocks and steals with threes, assists and rebounds (${paid})`);
 const rows = sq.prepare('SELECT * FROM nbapp ORDER BY model_under DESC').all();
 const leg = (p, m) => rows.find((l) => l.player === p && l.market === m) || {};
-console.log('  logged: ' + rows.map((l) => `${l.player} ${l.market} u${l.point} proj ${l.proj} (${l.n_recent}) ${l.model_under}%`).join(' | '));
-const wb = leg('Victor Wembanyama', 'blk');
-const wbProj = (5 + 5 * wemby.blk) / (1 + 5);
-ok(wb.point === 3.5, `the line is the one PrizePicks takes the under on, 3.5, not the over-only 4.5 listed first (${wb.point})`);
-ok(wb.proj === r1(wbProj) && wb.n_recent === 1, `last night's 5 blocks blend with last season's ${wemby.blk} as five games' worth (${wb.proj}, want ${r1(wbProj)}, ${wb.n_recent} recent)`);
-ok(wb.model_under === r1(nbCdf(3, wbProj, 1.15) * 100), `the chance of the under is the negative binomial at the blocks dispersion, 1.15 (${wb.model_under}%)`);
-ok(wb.book_line === 3.5 && wb.book_under === -125 && wb.date === '2026-10-22', `with DraftKings' line and under price beside it (${wb.book_line} ${wb.book_under}), dated by tip`);
-const [, kj] = prior('Keldon Johnson');
-const ks = leg('Keldon Johnson', 'stl');
-const ksProj = (2 + 5 * kj.stl) / (1 + 5);
-ok(ks.proj === r1(ksProj) && ks.n_recent === 1 && ks.model_under === r1(nbCdf(1, ksProj, 1.1) * 100),
-  `steals the same way, at 1.1: Keldon Johnson u1.5, proj ${ks.proj} (want ${r1(ksProj)}), ${ks.model_under}% (want ${r1(nbCdf(1, ksProj, 1.1) * 100)})`);
-const [, gi] = prior('Giannis Antetokounmpo');
-const gs = leg('Giannis Antetokounmpo', 'stl');
-ok(gs.proj === r1(gi.stl) && gs.n_recent === 0, `no games yet: last season's rate is the projection (${gs.proj} vs ${gi.stl})`);
-ok(['Myles Turner', 'Keldon Johnson', 'Bismack Biyombo'].every((p) => leg(p, 'blk').point === 0.5 || leg(p, 'blk').point === 1.5)
-  && leg('Ryan Rollins', 'stl').point === 1.5 && leg('Stephon Castle', 'threes').point === 2.5, 'every PrizePicks line is logged, threes beside them as before');
+const by = (m) => rows.filter((l) => l.market === m).length;
+console.log('  logged blocks/steals: ' + rows.filter((l) => l.market === 'blk' || l.market === 'stl')
+  .map((l) => `${l.player} ${l.market} u${l.point} proj ${l.proj} (${l.n_recent}) ${l.model_under}%`).join(' | '));
+ok(rows.length === 29 && by('blk') === 1 && by('stl') === 6 && by('threes') === 6 && by('ast') === 5 && by('reb') === 11,
+  `every PrizePicks line on a player the priors know, as production logged them: 29 = 1 blocks, 6 steals, 6 threes, 5 assists, 11 rebounds (${rows.length} = ${['blk', 'stl', 'threes', 'ast', 'reb'].map(by).join(', ')})`);
+// What production logged at 08:01 PT from this payload: player, market, proj, chance.
+const PROD = [['Cade Cunningham', 'blk', 0.8, 45.7], ['Duncan Robinson', 'stl', 0.6, 58.1], ['Jordan Walsh', 'stl', 0.7, 50.3],
+  ['Payton Pritchard', 'stl', 0.7, 49.9], ['Jalen Duren', 'stl', 0.8, 46.2], ['Kevin Huerter', 'stl', 0.9, 42.0],
+  ['Jayson Tatum', 'ast', 5.3, 57.0], ['Derrick White', 'threes', 2.7, 50.6], ['Jalen Duren', 'reb', 10.5, 41.3]];
+const off = PROD.filter(([p, m, pj, mu]) => leg(p, m).proj !== pj || leg(p, m).model_under !== mu);
+ok(!off.length, `the same projection and chance production logged, leg for leg (${off.map(([p, m]) => `${p} ${m}: ${leg(p, m).proj}/${leg(p, m).model_under}`).join(', ') || '9 of 9'})`);
+const cade = leg('Cade Cunningham', 'blk');
+const [, cadeP] = prior('Cade Cunningham');
+ok(cade.point === 0.5, `the line is the one PrizePicks takes the under on, 0.5, not the over-only 1.5 listed ahead of it (${cade.point})`);
+ok(cade.n_recent === 0 && cade.model_under === r1(nbCdf(0, cadeP.blk, 1.15) * 100),
+  `no games yet: last season's ${cadeP.blk} blocks a game, at the blocks dispersion 1.15 (${cade.model_under}%)`);
+const rob = leg('Duncan Robinson', 'stl');
+const [, robP] = prior('Duncan Robinson');
+ok(rob.model_under === r1(nbCdf(0, robP.stl, 1.1) * 100), `steals at 1.1: Duncan Robinson ${robP.stl} a game, ${rob.model_under}% he has none`);
+const qs = leg('Neemias Queta', 'stl');
+const qProj = (2 + 5 * queta.stl) / (1 + 5);
+ok(qs.n_recent === 1 && qs.proj === r1(qProj) && qs.model_under === r1(nbCdf(0, qProj, 1.1) * 100),
+  `a game this season blends with last season as five games' worth: Queta's 2 steals and ${queta.stl} a game (${qs.proj}, want ${r1(qProj)}; ${qs.model_under}%)`);
+ok(rows.filter((l) => l.market === 'blk' || l.market === 'stl').every((l) => l.book_line == null) && leg('Jayson Tatum', 'ast').book_line === 5.5
+  && leg('Jayson Tatum', 'ast').book_under === -104,
+  "no book line beside PrizePicks' blocks and steals here -- the books quoted other players -- and the book's beside the assists, as before");
+ok(cade.date === '2026-10-20' && cade.team === 'DET' && cade.min_proj === 33.9, `dated by tip, with his team and minutes (${cade.date}, ${cade.team}, ${cade.min_proj})`);
 
 // ---- the card --------------------------------------------------------------------------------
 console.log('\n-- the NBA card --');
@@ -172,63 +175,70 @@ ok(/blocks, steals/.test(card.note || ''), 'and its note names them');
 const appSrc = fs.readFileSync(path.join(BOARD, 'app.js'), 'utf8').replace(/\r\n/g, '\n');
 const lift = (name) => { const m = new RegExp(`const ${name} = (\\{[\\s\\S]*?\\});`).exec(appSrc); return m ? Function(`return ${m[1]}`)() : {}; };
 const NBA_MK = lift('NBA_MK'), SHORT = lift('MARKET_SHORT');
-ok(NBA_MK.blk === 'blocks' && NBA_MK.stl === 'steals', `the card reads "Under 0.5 blocks", "Under 1.5 steals" (${NBA_MK.blk}, ${NBA_MK.stl})`);
+ok(NBA_MK.blk === 'blocks' && NBA_MK.stl === 'steals', `the card reads "Under 0.5 blocks", "Under 0.5 steals" (${NBA_MK.blk}, ${NBA_MK.stl})`);
 ok(SHORT.blk === 'Blk' && SHORT.stl === 'Stl', `and the slip and your entries name them (${SHORT.blk}, ${SHORT.stl})`);
 ok(/Threes, assists, rebounds, blocks, steals; rotation players only/.test(appSrc), 'the card says which markets it logs');
 
 // ---- the payload, kept --------------------------------------------------------------------
 console.log('\n-- the last payload, kept --');
 const raw = await hit('/api/nba-pp?raw=1');
-ok(raw.game === 'evSAMIL' && raw.credits === 5 && raw.body && raw.body.bookmakers[0].markets.some((m) => m.key === 'player_blocks'),
-  `/api/nba-pp?raw=1 is the capture's payload as it came, with what it cost (${raw.game}, ${raw.credits} credits)`);
+ok(raw.game === EV && raw.credits === 5 && raw.body && raw.body.bookmakers.some((b) => b.key === 'prizepicks'),
+  `/api/nba-pp?raw=1 is the capture's payload as it came, with what it cost (${raw.credits} credits)`);
 const again = await hit('/api/nba-pp');
 ok(Array.isArray(again.legs) && !again.body, 'and has its own cache entry: the board is still the board');
 ok(paid === 1, 'reading either costs nothing');
 
 // ---- Picks of the day --------------------------------------------------------------------
 console.log('\n-- Picks of the day: blocks and steals stay off --');
-// A blocks and a steals leg in another game, far above the bar, rotation players.
+// Another game tonight with a blocks and a steals leg far above the bar, and a
+// threes leg under both; rotation players.
 const np = (date, gid, player, market, mu, result, commence) => sq.prepare(
   `INSERT INTO nbapp (date, game_id, player, market, league, commence, home, away, team, point, proj, model_under, n_recent, min_proj, result)
    VALUES (?, ?, ?, ?, 'reg', ?, 'Utah Jazz', 'Denver Nuggets', 'DEN', 0.5, 0.2, ?, 5, 30, ?)`).run(date, gid, player, market, commence, mu, result);
-np('2026-10-22', 'evOTHER', 'Other Big', 'blk', 95, null, iso(NOW + 5 * 3600e3));
-np('2026-10-22', 'evOTHER', 'Other Guard', 'stl', 92, null, iso(NOW + 5 * 3600e3));
-// And a graded steals leg from last night, which must not count as an NBA PrizePicks hit or miss.
-np('2026-10-21', 'evOLD', 'Old Guard', 'stl', 80, 'over', iso(NOW - 20 * 3600e3));
-const kb = leg('Keldon Johnson', 'blk'), c3 = leg('Stephon Castle', 'threes');
-ok(kb.model_under > c3.model_under && c3.model_under >= 70 && kb.min_proj >= 20,
-  `precondition: in the Spurs game the blocks under (${kb.model_under}%) tops the threes under (${c3.model_under}%), both rotation and over the bar`);
+const late = iso(NOW + 9 * 3600e3);
+np('2026-10-20', 'evOTHER', 'Other Big', 'blk', 95, null, late);
+np('2026-10-20', 'evOTHER', 'Other Guard', 'stl', 92, null, late);
+np('2026-10-20', 'evOTHER', 'Other Shooter', 'threes', 80, null, late);
+// Graded last night: a threes under that landed and a steals under that did not.
+np('2026-10-19', 'evOLD', 'Old Shooter', 'threes', 80, 'under', iso(NOW - 20 * 3600e3));
+np('2026-10-19', 'evOLD', 'Old Guard', 'stl', 80, 'over', iso(NOW - 20 * 3600e3));
 const picks = await hit('/api/picks');
 const pl = picks.legs || [];
 console.log('  ' + pl.map((x) => `${x.rank}. ${x.title} ${x.p}% [${x.kind}]`).join(' | '));
-ok(pl.some((x) => x.title === 'Stephon Castle Under 2.5 3PM') && !pl.some((x) => / (BLK|STL|blk|stl)$/.test(x.title)),
-  "the Spurs game's leg is the threes under, not the higher blocks one, and no blocks or steals leg is on the list");
-ok(!pl.some((x) => x.sub === 'Nuggets @ Jazz'), 'a game whose only legs are blocks and steals is not on it at all');
+ok(pl.some((x) => x.title === 'Other Shooter Under 0.5 3PM') && !pl.some((x) => / (BLK|STL|blk|stl)$/.test(x.title)),
+  "that game's leg is the threes under, not the higher blocks or steals one; no blocks or steals leg is on the list");
 ok(/3PM, AST, REB/.test((picks.kinds.nba_pp || {}).label || ''), `the kind says what it carries (${(picks.kinds.nba_pp || {}).label})`);
+const kr = (picks.kinds.nba_pp || {}).record || {};
+ok(kr.n === 1 && kr.hit === 1, `its NBA record is the threes under alone, not the steals one that missed (${kr.hit} of ${kr.n})`);
 
 // ---- graded ---------------------------------------------------------------------------------
 console.log('\n-- graded from the box score --');
-NOW = RealDate.parse('2026-10-23T18:00:00Z');           // the next morning
+// The Spurs and Bucks on a later night, logged as the capture logs them.
+const gl = (player, id, market, point, min) => sq.prepare(
+  `INSERT INTO nbapp (date, game_id, player, market, league, commence, home, away, player_id, point, proj, model_under, min_proj)
+   VALUES ('2026-10-21', 'evSAMIL', ?, ?, 'reg', '2026-10-22T00:30:00Z', 'San Antonio Spurs', 'Milwaukee Bucks', ?, ?, 1, 60, ?)`).run(player, market, id, point, min);
+gl('Victor Wembanyama', '5104157', 'blk', 1.5, 29); gl('Myles Turner', '3133628', 'blk', 0.5, 27); gl('Bismack Biyombo', '6427', 'blk', 0.5, 6);
+gl('Keldon Johnson', '4395723', 'stl', 2.5, 24); gl('Giannis Antetokounmpo', '3032977', 'stl', 1.5, 29);
+gl('Ryan Rollins', '4591725', 'stl', 0.5, 32); gl('Stephon Castle', '4845367', 'stl', 0.5, 30);
+NOW = RealDate.parse('2026-10-22T18:00:00Z');           // the morning after
 edge.clear();                                            // every cached response has long expired
-finalOn.add('20261022');
+finalOn.add('20261021');
 await tick();
-const g = (p, m) => sq.prepare('SELECT result, actual FROM nbapp WHERE player = ? AND market = ?').get(p, m) || {};
+const g = (p, m) => sq.prepare("SELECT result, actual FROM nbapp WHERE game_id = 'evSAMIL' AND player = ? AND market = ?").get(p, m) || {};
 // From the box score (STL, BLK): Wembanyama 0, 2; Turner 0, 0; Keldon Johnson 3, 0;
-// Giannis 2, 0; Rollins 1, 1; Castle 1-2 from three; Biyombo did not play.
-const want = [['Victor Wembanyama', 'blk', 'under', 2], ['Myles Turner', 'blk', 'under', 0], ['Keldon Johnson', 'blk', 'under', 0],
-  ['Keldon Johnson', 'stl', 'over', 3], ['Giannis Antetokounmpo', 'stl', 'over', 2], ['Ryan Rollins', 'stl', 'under', 1],
-  ['Stephon Castle', 'threes', 'under', 1]];
+// Giannis 2, 0; Rollins 1, 1; Castle 0, 0; Biyombo did not play.
+const want = [['Victor Wembanyama', 'blk', 'over', 2], ['Myles Turner', 'blk', 'under', 0], ['Keldon Johnson', 'stl', 'over', 3],
+  ['Giannis Antetokounmpo', 'stl', 'over', 2], ['Ryan Rollins', 'stl', 'over', 1], ['Stephon Castle', 'stl', 'under', 0]];
 const got = want.map(([p, m]) => g(p, m));
 ok(want.every(([, , res, act], i) => got[i].result === res && got[i].actual === act),
   `each graded from its own column: ${want.map(([p, m], i) => `${p.split(' ').pop()} ${m} ${got[i].result} ${got[i].actual}`).join(', ')}`);
 ok(g('Bismack Biyombo', 'blk').result === 'void', `a did-not-play is void, never a free under (${g('Bismack Biyombo', 'blk').result})`);
+ok(sq.prepare(`SELECT COUNT(*) AS n FROM nbapp WHERE game_id = '${EV}' AND result IS NOT NULL`).get().n === 0,
+  'and opening night, whose box score has not been read, waits rather than voiding');
 const after = await hit('/api/nba-pp');
 const bm = (after.record || {}).byMarket || {};
-ok(bm.blk && bm.blk.n === 3 && bm.blk.hitRate === 100 && bm.stl && bm.stl.n === 4 && bm.stl.hitRate === 25,
-  `the card's record splits them out: blocks ${JSON.stringify(bm.blk)}, steals ${JSON.stringify(bm.stl)}`);
-const kinds = (await hit('/api/picks')).kinds || {};
-const kr = (kinds.nba_pp || {}).record || {};
-ok(kr.n === 1 && kr.hit === 1, `Picks of the day's NBA record is the threes under alone, not the blocks under or the steals over (${kr.hit} of ${kr.n})`);
+ok(bm.blk && bm.blk.n === 2 && bm.blk.hitRate === 50 && bm.stl && bm.stl.n === 5 && bm.stl.hitRate === 20,
+  `the card's record splits them out, rotation players only: blocks ${JSON.stringify(bm.blk)}, steals ${JSON.stringify(bm.stl)}`);
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
