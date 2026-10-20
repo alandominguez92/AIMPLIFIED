@@ -194,6 +194,57 @@ typing PrizePicks' line in by hand, as the soccer card does.
 - **Free option:** hand-enter PrizePicks' offensive-rebounds lines from the
   phone, the way soccer lines are entered.
 
+**Approved 2026-10-20 and logged from opening night:** blocks and steals
+(+2 credits a game). They stay off Picks of the day until they have a graded
+record of their own.
+
+## Dispersions for blocks and steals (2026-10-20)
+
+```
+node tools/nba-market-backtest.mjs disp <cacheDir>
+```
+
+The card's own projection, replayed over 2025-26 with 2024-25 as the prior:
+each player's last ten games this season blended with his 2024-25 per-game
+average as `NBA_PRIOR_K` = 5 games (the average only if he played 5+ games),
+rotation players only (20+ minutes projected the same way), 15,857
+player-games. The dispersion is the negative binomial's variance ÷ mean, and
+the fit is the one that makes what the players then did likeliest.
+
+| | best fit | in worker.js |
+| --- | ---: | ---: |
+| threes | 1.25 | 1.15 |
+| assists | 1.3 | 1.25 |
+| rebounds | 1.35 | 1.2 |
+| **blocks** | **1.15** | **1.15** |
+| **steals** | **1.1** | **1.1** |
+
+The first three reproduce the 2026-10-09 fit (1.25, 1.3, 1.4), which kept
+the starting values because a refit moved no leg by more than 1.2 points. So
+this is the same method, and blocks and steals take their best fit.
+
+Calibration at those values, claimed against landed, at every .5 line the
+model put at 50%+:
+
+```
+blocks 1.15  50-55: 52.5 vs 54.5 · 55-60: 57.5 vs 56.9 · 60-65: 62.6 vs 65.5 · 65-70: 67.7 vs 69.4 · 70-75: 72.4 vs 74.3
+             75-80: 77.4 vs 76.9 · 80-85: 82.6 vs 81.7 · 85-90: 87.6 vs 86.7 · 90+: 94.1 vs 93.7
+steals 1.1   50-55: 52.5 vs 52.4 · 55-60: 57.5 vs 56.5 · 60-65: 62.5 vs 61.4 · 65-70: 67.5 vs 66.5 · 70-75: 72.6 vs 74.0
+             75-80: 77.5 vs 77.4 · 80-85: 82.6 vs 81.6 · 85-90: 87.6 vs 87.2 · 90+: 94.1 vs 93.9
+```
+
+At the median-of-ten line the high bands run hot (steals at 70-75% landed
+65%; blocks at 85-90% landed 81%). Threes, assists and rebounds do the same
+there, at every dispersion tried. That is the line carrying information of its
+own, not the dispersion being wrong, and the log's bands at PrizePicks' real
+lines are what will show whether it holds.
+
+The priors file now carries blocks and steals per game from ESPN's season
+totals, to two decimals (`tools/build-nba-priors.py`). ESPN's own average is
+rounded to one, which is a sixth of a 0.3-a-game player's rate. The rebuild on
+2026-10-20 changed no other stat; it moved three players to new teams and left
+42 cut players with no team.
+
 Adding a market to the log is more than a config line. It needs
 `NBA_PP_MARKETS` (`player_blocks` → `blk`, `player_steals` → `stl`), blocks and
 steals in `nba-priors.json` (the builder reads only threes, assists and

@@ -219,7 +219,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -503,7 +503,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
   if (p === '/api/soccer-props') return cors(json(await socPropsBoard(env, url), 120));
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
-  if (p === '/api/nba-pp') return cors(json(await nbaPpBoard(env), 120));
+  if (p === '/api/nba-pp') return cors(json(url && url.searchParams.get('raw') === '1' ? await nbaPpRaw(env) : await nbaPpBoard(env), 120));
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
@@ -7807,6 +7807,8 @@ async function topLegs(env, url) {
 //     number there is and the NBA model held up on last season's games, but
 //     none has PICKS_PROVEN_N graded legs at its bar yet. NBA preseason is out:
 //     its favourites sat their starters (11 of 23 against 63% claimed).
+//   NBA blocks and steals unders (logged from 2026-10-20): out until they have
+//     a graded record of their own (NBA_PICK_MARKETS).
 // Every leg comes from a log the site already keeps and grades, so the list
 // reads no odds and spends no credit. It keeps a record of its own: a leg on
 // the list when its game starts is logged in daypicks and graded from the log
@@ -7818,7 +7820,7 @@ const PICK_KINDS = {
   mlb_ml: { sport: 'mlb', label: 'MLB moneyline favourite', min: 65 },
   mlb_pp: { sport: 'mlb', label: 'MLB PrizePicks under (TB, H+R+RBI)', min: 70 },
   nba_ml: { sport: 'nba', label: 'NBA moneyline favourite', min: 65 },
-  nba_pp: { sport: 'nba', label: 'NBA PrizePicks under', min: 70 },
+  nba_pp: { sport: 'nba', label: 'NBA PrizePicks under (3PM, AST, REB)', min: 70 },
   nfl_ml: { sport: 'nfl', label: 'NFL moneyline favourite', min: 65 },
   soccer_fav: { sport: 'soccer', label: 'Soccer favourite to win', min: 65 },
 };
@@ -7826,7 +7828,7 @@ const PICK_KINDS = {
 // power; 3 to 6, flex). The same table the slip's parlay read uses.
 const PICKS_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 4: ['4-pick flex', 56.9], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
 const PICKS_MLB_MK = { tb: 'TB', hrr: 'H+R+RBI' };
-const PICKS_NBA_MK = { threes: '3PM', ast: 'AST', reb: 'REB' };
+const PICKS_NBA_MK = { threes: '3PM', ast: 'AST', reb: 'REB', blk: 'BLK', stl: 'STL' };
 const lastWord = (s) => String(s || '').trim().split(/\s+/).pop();
 const gamePkNum = (id) => { const m = /(\d{5,})/.exec(String(id || '')); return m ? Number(m[1]) : null; };
 
@@ -8005,9 +8007,11 @@ async function picksCandidates(env, now) {
     }
   }
 
-  // NBA PrizePicks unders: rotation players, as on the NBA card.
+  // NBA PrizePicks unders: rotation players, as on the NBA card, in the
+  // markets the list was built on (blocks and steals are logged only).
   await ensureNbaSchema(db);
-  const np = (await db.prepare('SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
+  const np = (await db.prepare(`SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
+    .bind(...days, ...NBA_PICK_MARKETS).all()).results || [];
   for (const r of np) {
     if (!soon(r.commence) || r.model_under == null || r.model_under < PICK_KINDS.nba_pp.min) continue;
     if (!(r.min_proj >= NBA_ROTATION_MIN)) continue;
@@ -8115,7 +8119,10 @@ async function pickKindRecords(db) {
         : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null;
     if (kind && r.win_prob != null && r.win_prob >= PICK_KINDS[kind].min) add(kind, r.result === 'win');
   }
-  for (const r of ((await db.prepare("SELECT model_under, min_proj, result FROM nbapp WHERE result IN ('under','over')").all()).results || [])) {
+  // The kind's record is the markets the list carries, so a blocks or steals
+  // leg cannot vouch for a threes leg beside it.
+  for (const r of ((await db.prepare(`SELECT model_under, min_proj, result FROM nbapp WHERE result IN ('under','over') AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
+    .bind(...NBA_PICK_MARKETS).all()).results || [])) {
     if (r.min_proj >= NBA_ROTATION_MIN && r.model_under >= PICK_KINDS.nba_pp.min) add('nba_pp', r.result === 'under');
   }
   for (const v of Object.values(rec)) {
@@ -9650,7 +9657,12 @@ function nhlMatch(a, b) {
 // because those are where the under beat a player's recent average across two
 // seasons of box scores (55.5%, 53.4% and 53.3%); points did not (51.6%).
 // Every other PrizePicks market was run the same way on 2026-10-19, with a
-// stricter median-line check: tools/nba-market-backtest.md.
+// stricter median-line check: tools/nba-market-backtest.md. Blocks and steals
+// were the two that held up at a line set at the median of a player's last ten
+// (62.8% and 57.9%, rotation players, 2024-26), and are logged from opening
+// night 2026-10-20 (the user's call: +2 credits a game). Logged only: Picks of
+// the day leaves them out until they have a graded record of their own
+// (NBA_PICK_MARKETS).
 //
 // Projection: the player's last ten regular-season games blended with last
 // season's per-game average (nba-priors.json), the prior counting as
@@ -9660,18 +9672,27 @@ function nhlMatch(a, b) {
 // 2024-25 as the prior, 2026-10-09): within 1-2 points of the realised under
 // rate at every band from 50% to 90%, and a refit moved no leg by more than 1.2
 // points, so they stand. That tests the model against any line, not against
-// PrizePicks' -- which is what the record's bands are for.
+// PrizePicks' -- which is what the record's bands are for. Blocks and steals
+// were fitted the same way on 2026-10-20 (`node tools/nba-market-backtest.mjs
+// disp`, 15,857 rotation games, which gives threes 1.25, ast 1.3, reb 1.35 --
+// the Oct 9 fit): the likeliest dispersions are blocks 1.15 and steals 1.1,
+// and at those the chance of the under at every .5 line is within 3 points of
+// how often it landed, in every band from 50% to 100%.
 // Recent games come from ESPN's box scores, read nightly into nba_box (free).
 //
 // Nothing here is posted. It is logged and graded, so the card has a record
 // before anyone trusts it.
-const NBA_PP_MARKETS = { player_threes: 'threes', player_assists: 'ast', player_rebounds: 'reb' };
+const NBA_PP_MARKETS = { player_threes: 'threes', player_assists: 'ast', player_rebounds: 'reb', player_blocks: 'blk', player_steals: 'stl' };
 const NBA_PP_BOOKS = ['prizepicks', 'draftkings', 'fanduel'];
 const NBA_PRIOR_K = 5;
-const NBA_DISP = { threes: 1.15, ast: 1.25, reb: 1.2 };
+const NBA_DISP = { threes: 1.15, ast: 1.25, reb: 1.2, blk: 1.15, stl: 1.1 };
+// The markets Picks of the day may carry: the ones whose under it was built on.
+// Blocks and steals join once their own graded record says their chance holds.
+const NBA_PICK_MARKETS = ['threes', 'ast', 'reb'];
 const NBA_PP_VER = 'nbapp-v1';
 const NBA_PP_WINDOW_MS = 4 * 3600 * 1000;   // capture a game once, inside 4h of tip
 const NBA_PP_PER_TICK = 5;                   // per-event calls a tick may make
+const NBA_PP_RAW_KEY = 'nba_pp_raw';         // feed_cache: the last capture's payload
 const NBA_BOX_PER_TICK = 4;                  // box scores a tick may read
 const NBA_SEASON_FROM = '2026-10-01';        // recent games: this season only
 const ESPN_CDN_NBA = 'https://cdn.espn.com/core/nba';
@@ -9772,8 +9793,10 @@ async function nbaPriors(env) {
 // One player's per-game rows, newest first, from this season's regular season
 // and playoffs. Preseason minutes are not a player's real role.
 async function nbaRecentMap(db) {
+  // Every logged market's column: a market missing here projects from last
+  // season alone, however many games he has played.
   const rows = ((await db.prepare(
-    'SELECT player_id, date, min, threes, ast, reb FROM nba_box WHERE season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date DESC'
+    `SELECT player_id, date, min, ${[...new Set(Object.values(NBA_PP_MARKETS))].join(', ')} FROM nba_box WHERE season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date DESC`
   ).bind(NBA_SEASON_FROM).all()).results || []);
   const m = new Map();
   for (const r of rows) {
@@ -9804,6 +9827,9 @@ function nbaPpLegs(ev, pri, recent) {
     if (!market) continue;
     const seen = new Set();
     for (const o of (m.outcomes || [])) {
+      // The line is the one PrizePicks takes an under on. A point it quotes
+      // over-only (its demons and goblins) is not that, whichever comes first.
+      if (o.name !== 'Under') continue;
       const name = nbaName(o.description);
       if (!name || seen.has(name) || o.point == null) continue;
       seen.add(name);
@@ -9877,7 +9903,14 @@ async function nbaPpMaybeCapture(env) {
       { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, `nba:${lg}:pp`);
       if (!r.ok) continue;
-      logged += await logNbaPp(env.DB, lg, nbaPpLegs(await r.json(), pri, recent));
+      const body = await r.json();
+      logged += await logNbaPp(env.DB, lg, nbaPpLegs(body, pri, recent));
+      // The last payload with PrizePicks on it, kept as it came so a test can
+      // replay a real one (/api/nba-pp?raw=1). No extra call, no extra credit.
+      if (body && (body.bookmakers || []).some((b) => b.key === 'prizepicks')) {
+        await saveFeedCache(env.DB, NBA_PP_RAW_KEY, { at: new Date().toISOString(), league: lg, game: g.id,
+          credits: Number(r.headers.get('x-requests-last')) || null, body });
+      }
       done.add(g.id);
     } catch (e) { /* this game waits for the next tick */ }
   }
@@ -10001,10 +10034,17 @@ async function gradeNbaPp(db) {
   return stmts.length;
 }
 
+// GET /api/nba-pp?raw=1: the last capture's odds payload, from D1. Free.
+async function nbaPpRaw(env) {
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  const hit = await loadFeedCache(env.DB, NBA_PP_RAW_KEY);
+  return hit.present ? hit.data : { none: 'no capture with PrizePicks on it yet' };
+}
+
 // GET /api/nba-pp: tonight's logged legs, best under first, and the record.
 async function nbaPpBoard(env) {
   const out = {
-    note: 'LOGGED, not posted. The model\u2019s chance the under lands at PrizePicks\u2019 line: a player\u2019s last ten games blended with last season. Threes, assists, rebounds.',
+    note: 'LOGGED, not posted. The model\u2019s chance the under lands at PrizePicks\u2019 line: a player\u2019s last ten games blended with last season. Threes, assists, rebounds, blocks, steals.',
     legs: [], record: null,
   };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }

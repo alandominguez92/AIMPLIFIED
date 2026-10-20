@@ -3546,7 +3546,7 @@
   // probability — so "which options win" is answered from real entries.
   const ENTRY_KEY_STORE = 'aimplified_entry_key';
   const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds',
-    threes: '3PM', ast: 'Ast', reb: 'Reb',
+    threes: '3PM', ast: 'Ast', reb: 'Reb', blk: 'Blk', stl: 'Stl',
     shots: 'Shots', sot: 'SOT', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves',
     crosses: 'Crosses', shot_ast: 'Shots Ast', conceded: 'Goals Allowed', fouls_drawn: 'Fouls Drawn', goal_ast: 'G+A' };
   function entryKey() {
@@ -5970,7 +5970,7 @@
   // only. The highest chances belong to the bench (an 0.5 line on a player who
   // barely plays), and those are the players who sit out entirely.
   const NBA_ROTATION_MIN = 20;
-  const NBA_MK = { threes: 'threes', ast: 'assists', reb: 'rebounds' };
+  const NBA_MK = { threes: 'threes', ast: 'assists', reb: 'rebounds', blk: 'blocks', stl: 'steals' };
   function nbaPpLeg(x) {
     return { id: `nbapp:${x.game_id}:${x.player}:${x.market}`, board: 'PrizePicks',
       title: `${x.player} Under ${x.point} ${MARKET_SHORT[x.market] || x.market}`, sub: x.game, odds: null, tier: null, edge: null,
@@ -6004,7 +6004,7 @@
       ppHi.n ? `PP line above book <b>${ppHi.hit} of ${ppHi.n}</b>` : null,
     ].filter(Boolean).join(' · ');
     const head = `<div class="tc-head"><span class="tc-title">Tonight's PrizePicks unders</span>${rec}</div>`
-      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds; rotation players only. Logged, not posted.</div>`
+      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">${recLine}</div>` : '');
     if (!top.length) {
       return `<div class="nba-pp">${head}<div class="tc-wait-note">${all.length

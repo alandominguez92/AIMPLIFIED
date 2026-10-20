@@ -1,5 +1,6 @@
-"""Build nba-priors.json: every NBA player's per-game threes, assists and
-rebounds from the last completed regular season, and the team he is on now.
+"""Build nba-priors.json: every NBA player's per-game threes, assists,
+rebounds, blocks and steals from the last completed regular season, and the
+team he is on now.
 
 The NBA PrizePicks log projects each leg from a player's recent games blended
 with this prior, weighted toward the recent games as they accumulate (see
@@ -63,6 +64,11 @@ def season_averages(season):
         if not aid:
             continue
         gp = stat(a, 'general', 'gamesPlayed')
+        # Blocks and steals from the season totals: ESPN's average is rounded
+        # to one decimal, which is a sixth of a 0.3-a-game player's rate.
+        def per_game(total):
+            t = stat(a, 'defensive', total)
+            return round(t / gp, 2) if t is not None and gp else None
         out[aid] = {
             'n': ath.get('displayName'),
             'tm25': ath.get('teamShortName') or None,
@@ -71,6 +77,8 @@ def season_averages(season):
             'threes': stat(a, 'offensive', 'avgThreePointFieldGoalsMade'),
             'ast': stat(a, 'offensive', 'avgAssists'),
             'reb': stat(a, 'general', 'avgRebounds'),
+            'blk': per_game('blocks'),
+            'stl': per_game('steals'),
         }
     return out
 
@@ -109,7 +117,8 @@ def main():
     # listed with no averages, so the log knows them and projects nothing yet.
     for aid, cur in rosters.items():
         if aid not in players:
-            players[aid] = {'n': cur['n'], 'tm': cur['tm'], 'tm25': None, 'gp': 0, 'min': None, 'threes': None, 'ast': None, 'reb': None}
+            players[aid] = {'n': cur['n'], 'tm': cur['tm'], 'tm25': None, 'gp': 0, 'min': None, 'threes': None, 'ast': None, 'reb': None,
+                            'blk': None, 'stl': None}
 
     doc = {
         'season': f'{a.season - 1}-{str(a.season)[2:]}',
