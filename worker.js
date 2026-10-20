@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nhl-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved',
 ]);
 
@@ -251,6 +251,8 @@ export default {
     ctx.waitUntil(nflMaybeIngest(env, ctx).catch(() => null));
     // And the NBA moneyline, recorded only -- see nbaMaybeIngest.
     ctx.waitUntil(nbaMaybeIngest(env).catch(() => null));
+    // The NHL moneyline the same way, on its own counter (2026-10-20).
+    ctx.waitUntil(nhlMaybeIngest(env).catch(() => null));
     // NBA PrizePicks unders: the night's box scores in, each game's PrizePicks
     // lines captured once inside four hours of tip, the log graded.
     ctx.waitUntil(nbaBoxIngest(env).catch(() => null));
@@ -502,6 +504,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/soccer-props') return cors(json(await socPropsBoard(env, url), 120));
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
   if (p === '/api/nba-pp') return cors(json(await nbaPpBoard(env), 120));
+  if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-compare') return nflCompare(env, url);
@@ -3038,6 +3041,7 @@ async function trackRecordSummary(res) {
     nflPassTds: pick(d.nflPassTds, [...gm, 'verdict']),
     nflPassYds: pick(d.nflPassYds, ['logged', 'pending', 'n', 'hit', 'hitRate', 'byLineGap', 'ppHigherBy5', 'controlAtBookLine', 'meanGap', 'ci', 'verdict']),
     nbaMl: pick(d.nbaMl, [...gm, 'byLeague']),
+    nhlMl: pick(d.nhlMl, [...gm, 'byBand']),
   };
   return cors(json(out, 300));
 }
@@ -3125,6 +3129,7 @@ async function trackRecord(env) {
       out.soccerFav = buildSoccerFavRecord(gm);
       out.nflPassTds = buildPassTdRecord(gm);
       out.nbaMl = buildGmRecord(gm, 'nba');
+      out.nhlMl = buildGmRecord(gm, 'nhl');
     } catch (e) { /* additive */ }
     try {
       await ensurePassYdsSchema(env.DB);
@@ -3611,7 +3616,7 @@ async function gradeGamePicks(env) {
   }
   const stmts = [];
   for (const job of need.values()) {
-    let events = [];
+    let events = [], finals = null;
     if (job.sport === 'nfl') {
       // The NFL scoreboard is week-oriented and ignores any date parameter
       // entirely — ?dates= and ?date= both return whatever week is current, so
@@ -3639,6 +3644,9 @@ async function gradeGamePicks(env) {
         const nxt = new Date(Date.parse(job.date + 'T12:00:00Z') + 86400e3).toISOString().slice(0, 10).replace(/-/g, '');
         events = events.concat(await day(nxt));
       } catch (e) { /* the first day covers most of them */ }
+    } else if (job.sport === 'nhl') {
+      // The NHL's own feed, asked for the row's day only -- see nhlFinals.
+      try { finals = await nhlScoreDay(job.date); } catch (e) { continue; }
     } else {
       // Passing touchdowns live in this table too and are graded from box
       // scores by gradePassTds. They used to fall through to the soccer branch
@@ -3646,7 +3654,7 @@ async function gradeGamePicks(env) {
       continue;
     }
 
-    const finals = [];
+    if (!finals) finals = [];
     for (const ev of events) {
       const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
       if (!/FINAL|FULL_TIME/.test(String(st))) continue;
@@ -3666,7 +3674,7 @@ async function gradeGamePicks(env) {
     // NBA names differ the way club names do -- the feed's "Los Angeles
     // Clippers" is ESPN's "LA Clippers" -- but every NBA nickname is unique, so
     // matching on the last word settles all thirty without an alias table.
-    const same = job.sport === 'nba' ? nbaMatch : clubMatch;
+    const same = job.sport === 'nba' ? nbaMatch : job.sport === 'nhl' ? nhlMatch : clubMatch;
     for (const r of job.rows) {
       let f = finals.find((x) => (r.sport === 'nfl'
         ? (clubMatch(x.homeAb, r.home) || clubMatch(x.home, r.home)) && (clubMatch(x.awayAb, r.away) || clubMatch(x.away, r.away))
@@ -3674,8 +3682,9 @@ async function gradeGamePicks(env) {
       // National teams play at neutral grounds, and the two feeds do not always
       // agree which side is "home". Found reversed, the scores are flipped back
       // into our orientation so r.side still means what it meant when logged.
-      // NBA preseason plays neutral sites too (Knicks-76ers in Abu Dhabi).
-      if (!f && (r.sport === 'soccer' || r.sport === 'nba')) {
+      // NBA preseason plays neutral sites too (Knicks-76ers in Abu Dhabi), and
+      // the NHL plays a few regular-season games in Europe.
+      if (!f && (r.sport === 'soccer' || r.sport === 'nba' || r.sport === 'nhl')) {
         const x = finals.find((y) => same(y.home, r.away) && same(y.away, r.home));
         if (x) f = { ...x, hs: x.as, as: x.hs };
       }
@@ -3696,8 +3705,9 @@ async function gradeGamePicks(env) {
         const winner = f.hs > f.as ? 'home' : (f.as > f.hs ? 'away' : 'draw');
         // An NFL tie is a push — no draw price is offered, so there was no such
         // side to be on. Soccer prices the draw, so there it grades like any other.
-        // (An NBA final cannot be level; if one ever read that way it pushes.)
-        result = r.sport === 'nfl' || r.sport === 'nba'
+        // (An NBA final cannot be level; if one ever read that way it pushes.
+        // Nor can an NHL final: overtime and the shootout are in the price.)
+        result = r.sport === 'nfl' || r.sport === 'nba' || r.sport === 'nhl'
           ? (winner === 'draw' ? 'push' : (winner === r.side ? 'win' : 'loss'))
           : (winner === r.side ? 'win' : 'loss');
       }
@@ -4179,6 +4189,17 @@ function buildPassYdsRecord(rows) {
   };
 }
 
+// One band of graded game-line rows by the sharp win probability: how they did,
+// and what they were expected to do (the band's average win probability).
+function gmBand(graded, lo, hi) {
+  const b = graded.filter((r) => r.win_prob >= lo && r.win_prob < hi);
+  let w = 0, u = 0;
+  for (const r of b) { if (r.result === 'win') w++; u += profitUnits(r.result, mlGradePrice(r)); }
+  const exp = b.length ? round1(b.reduce((s, r) => s + r.win_prob, 0) / b.length) : null;
+  return { n: b.length, record: `${w}–${b.length - w}`, winRate: b.length ? round1(w / b.length * 100) : null,
+    expected: exp, units: Math.round(u * 10) / 10, roi: b.length ? round1(u / b.length * 100) : null };
+}
+
 // "Do the teams rated likeliest to win, win often enough to pay?" Banded by the
 // sharp win probability, because a 70% favourite at -300 and a 45% one at +150
 // are different bets and a single record would average them into nothing.
@@ -4186,14 +4207,7 @@ function buildSoccerFavRecord(rows) {
   const fav = rows.filter((r) => r.sport === 'soccer' && r.market === 'fav');
   const base = buildGmRecord(fav, 'soccer');
   const graded = fav.filter((r) => r.result === 'win' || r.result === 'loss');
-  const band = (lo, hi) => {
-    const b = graded.filter((r) => r.win_prob >= lo && r.win_prob < hi);
-    let w = 0, u = 0;
-    for (const r of b) { if (r.result === 'win') w++; u += profitUnits(r.result, mlGradePrice(r)); }
-    const exp = b.length ? round1(b.reduce((s, r) => s + r.win_prob, 0) / b.length) : null;
-    return { n: b.length, record: `${w}–${b.length - w}`, winRate: b.length ? round1(w / b.length * 100) : null,
-      expected: exp, units: Math.round(u * 10) / 10, roi: b.length ? round1(u / b.length * 100) : null };
-  };
+  const band = (lo, hi) => gmBand(graded, lo, hi);
   return {
     ...base,
     note: 'Soccer: the side the sharp books rate likeliest to win in each fixture, at the best DK/FD price. LOGGED ONLY. expected = the average sharp win probability in the band; a winRate above it means the favourites beat their own odds.',
@@ -4225,13 +4239,18 @@ function buildGmRecord(rows, sport) {
     clvN++; if (ic > ie) beat++;
   }
   return {
-    note: `${sport} game lines, LOGGED ONLY — not posted and not ranked. The sharp pool's fair number against the best executable price, graded from free ESPN finals.`,
+    note: `${sport} game lines, LOGGED ONLY — not posted and not ranked. The sharp pool's fair number against the best executable price, graded from free ${sport === 'nhl' ? 'NHL (api-web.nhle.com)' : 'ESPN'} finals.`,
     logged: mine.length,
     pending: mine.filter((r) => r.result == null).length,
     pushed: mine.filter((r) => r.result === 'push').length,
     ...sum(graded),
     bySide, byMarket,
     ...(sport === 'soccer' || sport === 'nba' ? { byLeague } : {}),
+    // The NHL log is judged band by band, 65%+ first: that is the bar Picks of
+    // the day lists every other sport's favourites at (PICK_KINDS), and NHL is
+    // not on that list until its own 65%+ favourites have held up (2026-10-20).
+    ...(sport === 'nhl' ? { byBand: { '65+': gmBand(graded, 65, 101), '60-65': gmBand(graded, 60, 65),
+      '55-60': gmBand(graded, 55, 60), 'under 55': gmBand(graded, 0, 55) } } : {}),
     clvBeatRate: clvN ? round1(beat / clvN * 100) : null, clvN,
   };
 }
@@ -4401,7 +4420,7 @@ function entryNflKey(gameId) {
 }
 async function gradeEntryLegsOther(db) {
   const open = ((await db.prepare(
-    "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer','nba') AND game_id IS NOT NULL"
+    "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer','nba','nhl') AND game_id IS NOT NULL"
   ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market])
     || (l.sport === 'nba' && nbaPropMarket(l.market))
     || (l.sport === 'soccer' && SOC_PROP_STATS.includes(l.market)));
@@ -4421,15 +4440,15 @@ async function gradeEntryLegsOther(db) {
     } catch (e) { /* no soccer box tables yet */ }
   }
   const winnerOf = (hs, as) => (hs > as ? 'home' : as > hs ? 'away' : 'draw');
-  // Soccer and the NBA keep the odds feed's event id on both sides: the log's
-  // game_id and the leg's.
-  const byIdLegs = open.filter((l) => (l.sport === 'soccer' || l.sport === 'nba') && l.market === 'ml');
+  // Soccer, the NBA and the NHL keep the odds feed's event id on both sides:
+  // the log's game_id and the leg's.
+  const byIdLegs = open.filter((l) => (l.sport === 'soccer' || l.sport === 'nba' || l.sport === 'nhl') && l.market === 'ml');
   const socIds = [...new Set(byIdLegs.map((l) => String(l.game_id).replace(/^g/, '')))];
   let soc = [];
   if (socIds.length) {
     await ensureGamePickSchema(db);
     soc = ((await db.prepare(
-      `SELECT sport, game_id, result, home_score, away_score FROM gmpicks WHERE sport IN ('soccer','nba') AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})`
+      `SELECT sport, game_id, result, home_score, away_score FROM gmpicks WHERE sport IN ('soccer','nba','nhl') AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})`
     ).bind(...socIds).all()).results || []);
   }
   const keys = open.filter((l) => l.sport === 'nfl').map((l) => entryNflKey(l.game_id)).filter(Boolean);
@@ -4492,7 +4511,7 @@ async function gradeEntryLegsOther(db) {
         }
       } else if (d.settled) result = 'void';
       else continue;
-    } else if (l.sport === 'soccer' || l.sport === 'nba') {
+    } else if (l.sport === 'soccer' || l.sport === 'nba' || l.sport === 'nhl') {
       const g = soc.find((x) => x.sport === l.sport && x.game_id === String(l.game_id).replace(/^g/, ''));
       if (!g) continue;
       // A fixture the log voided (listed, then moved) voids the leg with it.
@@ -4500,9 +4519,9 @@ async function gradeEntryLegsOther(db) {
       else if (g.home_score == null || g.away_score == null) continue;
       else {
         const w = winnerOf(g.home_score, g.away_score);
-        // The draw is a side in soccer; an NBA final cannot be level, and if one
-        // ever read that way it pushes.
-        result = l.sport === 'nba' && w === 'draw' ? 'push' : (w === l.side ? 'win' : 'loss');
+        // The draw is a side in soccer; an NBA or NHL final cannot be level, and
+        // if one ever read that way it pushes.
+        result = (l.sport === 'nba' || l.sport === 'nhl') && w === 'draw' ? 'push' : (w === l.side ? 'win' : 'loss');
       }
     } else {
       const k = entryNflKey(l.game_id);
@@ -9118,10 +9137,10 @@ const PROBE_SPORTS = {
   // rotation games each); points and PRA did not (51.6%, 51.2%).
   nba: 'basketball_nba',
   nbapre: 'basketball_nba_preseason',
-  // NHL, probe-only (2026-10-14): nothing is ingested. The question before any
-  // hockey is built is whether shots on goal has a sharp fair line (two sharp
-  // books on the same number, two-sided) and whether PrizePicks and DraftKings
-  // quote the same players.
+  // NHL (2026-10-14): the question before any hockey props are built is
+  // whether shots on goal has a sharp fair line (two sharp books on the same
+  // number, two-sided) and whether PrizePicks and DraftKings quote the same
+  // players. The moneyline is logged since 2026-10-20 (NHL_ML); props are not.
   nhl: 'icehockey_nhl',
 };
 // ---------------------------------------------------------------------------
@@ -9378,6 +9397,13 @@ const NBA_MAX_PER_DAY = 2;
 const NBA_MIN_GAP_MS = 3600 * 1000;
 const NBA_HORIZON_MS = 36 * 3600 * 1000;
 const NBA_CLOSE_MS = 3 * 3600 * 1000;
+// The log's settings as one object, so the NHL moneyline (below) runs the same
+// capture, board and cron gate on its own league under its own keys:
+// `${sport}_board:${lg}` snapshots, `${sport}_cap:${lg}:${day}` counters and
+// `${sport}:${lg}:odds` on the usage ledger. For the NBA those are the keys it
+// has always used.
+const NBA_ML = { sport: 'nba', leagues: NBA_LEAGUES, sharp: NBA_SHARP, exec: NBA_EXEC, maxPerDay: NBA_MAX_PER_DAY,
+  minGap: NBA_MIN_GAP_MS, horizon: NBA_HORIZON_MS, close: NBA_CLOSE_MS };
 
 // Pure: an /odds response in, one read per game inside the window -- both
 // sides' fair and best executable price. Fair is the median Shin de-vig of two
@@ -9385,11 +9411,11 @@ const NBA_CLOSE_MS = 3 * 3600 * 1000;
 // same fallback the Nations League uses -- preseason has nothing else. With
 // neither, the game is still listed (the board shows its prices) but carries
 // no fair and logs nothing.
-function nbaGames(evs, lg, now) {
+function h2hGames(cfg, evs, lg, now) {
   const out = [];
   for (const e of (Array.isArray(evs) ? evs : [])) {
     const t = Date.parse(e && e.commence_time);
-    if (!isFinite(t) || t <= now || t - now > NBA_HORIZON_MS) continue;
+    if (!isFinite(t) || t <= now || t - now > cfg.horizon) continue;
     const home = e.home_team, away = e.away_team;
     const px = {};
     for (const bm of (e.bookmakers || [])) {
@@ -9399,7 +9425,7 @@ function nbaGames(evs, lg, now) {
       if (h && a && typeof h.price === 'number' && typeof a.price === 'number') px[bm.key] = { home: h.price, away: a.price };
     }
     const fairs = [];
-    for (const bk of NBA_SHARP) {
+    for (const bk of cfg.sharp) {
       const q = px[bk];
       const f = q ? shinDevig(q.home, q.away) : null;
       if (f != null && isFinite(f)) fairs.push(f);
@@ -9411,7 +9437,7 @@ function nbaGames(evs, lg, now) {
     if (fairHome == null) fairSrc = 'MKT';
     const best = (side) => {
       let price = null, book = null;
-      for (const bk of NBA_EXEC) {
+      for (const bk of cfg.exec) {
         const q = px[bk] && px[bk][side];
         if (typeof q !== 'number') continue;
         if (price == null || amProb(q) < amProb(price)) { price = q; book = bk; }
@@ -9437,9 +9463,9 @@ function nbaGames(evs, lg, now) {
 
 // gmpicks entries from those reads: the side the sharp books favour, at its
 // best price. A game with no fair, or no price on that side, logs nothing.
-function nbaEntries(evs, lg, now) {
+function h2hEntries(cfg, evs, lg, now) {
   const out = [];
-  for (const g of nbaGames(evs, lg, now)) {
+  for (const g of h2hGames(cfg, evs, lg, now)) {
     if (!g.pickSide) continue;
     const side = g.pickSide;
     const price = side === 'home' ? g.homePrice : g.awayPrice;
@@ -9456,41 +9482,41 @@ function nbaEntries(evs, lg, now) {
   return out;
 }
 
-async function nbaCapture(env, lg) {
-  const r = await fetch(`https://api.the-odds-api.com/v4/sports/${NBA_LEAGUES[lg]}/odds?apiKey=${env.ODDS_API_KEY}`
-    + `&markets=h2h&oddsFormat=american&dateFormat=iso&bookmakers=${[...NBA_SHARP, ...NBA_EXEC].join(',')}`,
+async function h2hCapture(env, cfg, lg) {
+  const r = await fetch(`https://api.the-odds-api.com/v4/sports/${cfg.leagues[lg]}/odds?apiKey=${env.ODDS_API_KEY}`
+    + `&markets=h2h&oddsFormat=american&dateFormat=iso&bookmakers=${[...cfg.sharp, ...cfg.exec].join(',')}`,
   { headers: { accept: 'application/json' } });
-  await recordOddsUsage(env, r, `nba:${lg}:odds`);
+  await recordOddsUsage(env, r, `${cfg.sport}:${lg}:odds`);
   if (!r.ok) return { league: lg, error: `HTTP ${r.status}` };
   const evs = await r.json();
   // Each row is dated by its own tip, Pacific, like every other date here.
   const byDay = new Map();
-  for (const e of nbaEntries(evs, lg, Date.now())) {
+  for (const e of h2hEntries(cfg, evs, lg, Date.now())) {
     const d = ptDateOf(Date.parse(e.commence));
     if (!byDay.has(d)) byDay.set(d, []);
     byDay.get(d).push(e);
   }
   let logged = 0;
-  for (const [d, list] of byDay) logged += await logGamePicks(env.DB, 'nba', d, list);
+  for (const [d, list] of byDay) logged += await logGamePicks(env.DB, cfg.sport, d, list);
   // The board reads this snapshot, so it costs nothing to open: its prices are
   // the ones the last capture bought, and it says how old they are.
-  await saveFeedCache(env.DB, `nba_board:${lg}`, { asOf: new Date().toISOString(), games: nbaGames(evs, lg, Date.now()) });
+  await saveFeedCache(env.DB, `${cfg.sport}_board:${lg}`, { asOf: new Date().toISOString(), games: h2hGames(cfg, evs, lg, Date.now()) });
   return { league: lg, events: Array.isArray(evs) ? evs.length : 0, logged, credits: r.headers.get('x-requests-last') };
 }
 
-// GET /api/nba-board. The upcoming games of both leagues from the captures'
-// snapshots -- no Odds API call on a read. The one exception is a league that
+// GET /api/nba-board (and /api/nhl-board). The upcoming games of every league
+// from the captures' snapshots -- no Odds API call on a read. The one exception is a league that
 // has never been captured since the board shipped: that read buys one capture
 // (1 credit) under a lease, so the tab is not blank until the next cron window.
-async function nbaBoardData(env) {
+async function h2hBoardData(env, cfg) {
   const out = { games: [], asOf: null, note: 'Sharp-book fair line against the best DK/FD/BetMGM/BetRivers/Caesars price. Not modelled and not posted; the side the sharp books favour is logged and graded.' };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   const now = Date.now();
-  for (const lg of Object.keys(NBA_LEAGUES)) {
-    const key = `nba_board:${lg}`;
+  for (const lg of Object.keys(cfg.leagues)) {
+    const key = `${cfg.sport}_board:${lg}`;
     let snap = await loadFeedCache(env.DB, key);
     if (!snap.present && env.ODDS_API_KEY && await claimFeedRefresh(env.DB, key, 120000)) {
-      try { await nbaCapture(env, lg); snap = await loadFeedCache(env.DB, key); } catch (e) { /* next read */ }
+      try { await h2hCapture(env, cfg, lg); snap = await loadFeedCache(env.DB, key); } catch (e) { /* next read */ }
     }
     const d = snap.present && snap.data ? snap.data : null;
     if (!d) continue;
@@ -9501,39 +9527,118 @@ async function nbaBoardData(env) {
   out.empty = out.games.length === 0;
   return out;
 }
+function nbaBoardData(env) { return h2hBoardData(env, NBA_ML); }
 
 // Cron gate, the soccer and NFL shape: a free events read first, a paid capture
 // only when a game is close enough, counted per league per day.
-async function nbaMaybeIngest(env) {
+async function h2hMaybeIngest(env, cfg) {
   if (!env || !env.DB || !env.ODDS_API_KEY) return null;
   const today = slateDate();
   const out = [];
-  for (const lg of Object.keys(NBA_LEAGUES)) {
+  for (const lg of Object.keys(cfg.leagues)) {
     try {
-      const cacheKey = `nba_cap:${lg}:${today}`;
+      const cacheKey = `${cfg.sport}_cap:${lg}:${today}`;
       const hit = await loadFeedCache(env.DB, cacheKey);
       const state = (hit.present && hit.data) || { n: 0, last: 0 };
-      if (state.n >= NBA_MAX_PER_DAY) continue;
-      if (state.last && Date.now() - state.last < NBA_MIN_GAP_MS) continue;
+      if (state.n >= cfg.maxPerDay) continue;
+      if (state.last && Date.now() - state.last < cfg.minGap) continue;
       if (state.checked && Date.now() - state.checked < EVENTS_RECHECK_MS) continue;
-      const evR = await fetch(`https://api.the-odds-api.com/v4/sports/${NBA_LEAGUES[lg]}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`,
+      const evR = await fetch(`https://api.the-odds-api.com/v4/sports/${cfg.leagues[lg]}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`,
         { headers: { accept: 'application/json' } });
-      await recordOddsUsage(env, evR, `nba:${lg}:events`);
+      await recordOddsUsage(env, evR, `${cfg.sport}:${lg}:events`);
       if (!evR.ok) continue;
       const evs = await evR.json();
       // The entry wants a game inside 36h; the close, one inside 3h of tip.
-      const within = state.n === 0 ? NBA_HORIZON_MS : NBA_CLOSE_MS;
+      const within = state.n === 0 ? cfg.horizon : cfg.close;
       const soon = (Array.isArray(evs) ? evs : []).some((e) => {
         const t = Date.parse(e.commence_time);
         return isFinite(t) && t > Date.now() && t - Date.now() <= within;
       });
       if (!soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: Date.now() }); continue; }
-      const res = await nbaCapture(env, lg);
+      const res = await h2hCapture(env, cfg, lg);
       await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
       out.push(res);
     } catch (e) { /* next tick */ }
   }
   return out.length ? out : null;
+}
+function nbaMaybeIngest(env) { return h2hMaybeIngest(env, NBA_ML); }
+
+// ---------------------------------------------------------------------------
+// NHL — the moneyline, recorded only (2026-10-20).
+//
+// Player props wait: the Oct 14 probe found no Pinnacle on shots on goal,
+// Novig and ProphetX on the same number for 6 lines in two games, and
+// PrizePicks on five players. The moneyline is another market. The Oct 20
+// probe (three games, 00:30 Pacific on game day) found lowvig, betonlineag,
+// Novig and ProphetX on every game, and DraftKings, FanDuel, BetMGM, BetRivers
+// and Caesars too; Pinnacle had not posted yet. So this is the NBA log on
+// another league: the side the sharp pool rates likelier to win, at the best
+// price that could be taken, logged and graded, not posted. Same books, same
+// windows, same cap -- two captures a day, 1 credit each.
+//
+// h2h is the two-way line, overtime and shootout included (the regulation
+// three-way is its own market key, h2h_3_way, never asked for here), so a row
+// grades on the final winner. Graded from the NHL's own scores: see nhlFinals.
+const NHL_LEAGUES = { reg: 'icehockey_nhl' };
+const NHL_ML = { sport: 'nhl', leagues: NHL_LEAGUES, sharp: NBA_SHARP, exec: NBA_EXEC, maxPerDay: 2,
+  minGap: NBA_MIN_GAP_MS, horizon: NBA_HORIZON_MS, close: NBA_CLOSE_MS };
+function nhlMaybeIngest(env) { return h2hMaybeIngest(env, NHL_ML); }
+
+// GET /api/nhl-board: the NBA board's read for hockey, plus the log's record --
+// above all its 65%+ favourites, the bar Picks of the day lists the other
+// sports' favourites at. NHL is not on that list; this is the number to judge
+// it by.
+async function nhlBoardData(env) {
+  const out = await h2hBoardData(env, NHL_ML);
+  if (!env || !env.DB) return out;
+  try {
+    const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'nhl'").all()).results) || [], 'nhl');
+    out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand };
+  } catch (e) { /* no log yet */ }
+  return out;
+}
+
+// The NHL's free score feed, one day at a time. ESPN serves no NHL scoreboard
+// on its cdn host -- core/nhl/scoreboard answers 404, and site.api is the host
+// that has refused Cloudflare -- so hockey grades off the league's own feed.
+// From a Cloudflare Worker on 2026-10-20: api-web.nhle.com/v1/score/{date}
+// answered 200, about 14 KB a day; ESPN's core/nhl/schedule also answers, but
+// as a 1.5 MB week. The date is honoured -- each day asked returned that day's
+// games. A shootout winner's score already carries the deciding goal (Red
+// Wings 0, Canadiens 1, on Oct 10), so the higher score is the winner in
+// every final.
+//
+// Rows are dated by the Pacific day of puck drop, and the league dates a game
+// by its local day; those agree for every North American start and for the
+// European ones, so the day is asked alone. The next day is not asked: two
+// clubs can meet on consecutive nights, and a game still unplayed on its own
+// day would have been graded by the next night's.
+function nhlFinals(j) {
+  const out = [];
+  for (const g of ((j && j.games) || [])) {
+    if (g.gameState !== 'OFF' && g.gameState !== 'FINAL') continue;
+    const h = g.homeTeam || {}, a = g.awayTeam || {};
+    out.push({
+      home: (h.name && h.name.default) || '', away: (a.name && a.name.default) || '',
+      homeAb: h.abbrev || '', awayAb: a.abbrev || '',
+      hs: Number(h.score), as: Number(a.score),
+    });
+  }
+  return out;
+}
+async function nhlScoreDay(date) {
+  const r = await fetch(`https://api-web.nhle.com/v1/score/${date}`, { headers: { accept: 'application/json' } });
+  if (!r.ok) return [];
+  return nhlFinals(await r.json());
+}
+// The feed names a club by its nickname ("Blue Jackets", "Mammoth"); the odds
+// feed by city and nickname ("Columbus Blue Jackets", "Montréal Canadiens").
+// No two of the 32 nicknames end the same way, so the full name ending in the
+// nickname settles every club without an alias table.
+function nhlMatch(a, b) {
+  const x = clubKey(a), y = clubKey(b);
+  return !!x && !!y && (x === y || x.endsWith(y) || y.endsWith(x));
 }
 
 // ---------------------------------------------------------------------------

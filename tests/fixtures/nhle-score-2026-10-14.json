@@ -1,0 +1,75 @@
+{
+ "prevDate": "2026-10-13",
+ "currentDate": "2026-10-14",
+ "nextDate": "2026-10-15",
+ "games": [
+  {
+   "id": 2026020106,
+   "season": 20262027,
+   "gameType": 2,
+   "gameDate": "2026-10-14",
+   "startTimeUTC": "2026-10-14T23:30:00Z",
+   "gameState": "OFF",
+   "gameScheduleState": "OK",
+   "neutralSite": false,
+   "awayTeam": {
+    "id": 8,
+    "name": {
+     "default": "Canadiens"
+    },
+    "abbrev": "MTL",
+    "score": 4
+   },
+   "homeTeam": {
+    "id": 15,
+    "name": {
+     "default": "Capitals"
+    },
+    "abbrev": "WSH",
+    "score": 5
+   },
+   "periodDescriptor": {
+    "number": 3,
+    "periodType": "REG",
+    "maxRegulationPeriods": 3
+   },
+   "gameOutcome": {
+    "lastPeriodType": "REG"
+   }
+  },
+  {
+   "id": 2026020107,
+   "season": 20262027,
+   "gameType": 2,
+   "gameDate": "2026-10-14",
+   "startTimeUTC": "2026-10-15T00:30:00Z",
+   "gameState": "OFF",
+   "gameScheduleState": "OK",
+   "neutralSite": false,
+   "awayTeam": {
+    "id": 25,
+    "name": {
+     "default": "Stars"
+    },
+    "abbrev": "DAL",
+    "score": 3
+   },
+   "homeTeam": {
+    "id": 21,
+    "name": {
+     "default": "Avalanche"
+    },
+    "abbrev": "COL",
+    "score": 2
+   },
+   "periodDescriptor": {
+    "number": 5,
+    "periodType": "SO",
+    "maxRegulationPeriods": 3
+   },
+   "gameOutcome": {
+    "lastPeriodType": "SO"
+   }
+  }
+ ]
+}
