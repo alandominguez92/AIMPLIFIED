@@ -64,6 +64,15 @@ ok(F.teamMarkUrl('nba', 'Warriors', 'nba/500/gs.png') === 'https://a.espncdn.com
   'any other club\'s mark from ESPN, by the path the worker sends, at 128px');
 ok(['nba/500/gs.png"><script>', 'https://evil.example/x.png', '../../x.png', 'nba/500/gs.svg', 'mlb/500/lad.png']
   .every((p) => F.teamMarkUrl('nba', 'x', p) === null), 'and nothing else of that path reaches the URL');
+// NHL clubs' marks since the NHL board (2026-10-20). Before this the path was
+// refused, so every hockey club would have shown initials only.
+ok(F.teamMarkUrl('nhl', 'Canadiens', 'nhl/500/mtl.png') === 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/nhl/500/mtl.png&w=128&h=128',
+  'an NHL club\'s mark from ESPN by the same path rule');
+// The NBA and NHL boards draw each club's mark beside its name, kept with the
+// name as one unit so a wrapped phone row never strands a logo.
+ok(/const club = \(team, logo\) => `<span class="mc-club">\$\{avatarHtml\(\{ sport, isTeam: true[\s\S]{0,120}\}\)\}<b>/.test(lift('mlTabRow'))
+  && /\$\{club\(g\.away, g\.awayLogo\)\}<span class="at-sep">@<\/span>\$\{club\(g\.home, g\.homeLogo\)\}/.test(lift('mlTabRow')),
+  'the NBA and NHL boards show both clubs\' marks, each beside its own name');
 
 console.log('\n-- initials, under every face --');
 const cases = [['Aaron Judge', null, 'AJ'], ['B. Williamson', null, 'BW'], ['LAD', 'LAD', 'LAD'], ['Liverpool', 'Liverpool', 'LIV'],
@@ -129,8 +138,8 @@ ok(/const hero = heroLegHtml\(legs\[0\], \{ size: 52 \}\);[\s\S]*?legs\.slice\(1
 // nop.png 404, sas.png is the Spurs' wordmark and la.png the Rams' alternate.
 console.log('\n-- each club\'s ESPN logo --');
 const FX = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-team-logos.json'), 'utf8'));
-const W = new Function(['NFL_ABBR', 'lastWord', 'NBA_LOGO', 'NFL_LOGO', 'moneylineLogo'].map((n) => lift(n, worker)).join('\n')
-  + '\nreturn { moneylineLogo, NFL_ABBR };')();
+const W = new Function(['NFL_ABBR', 'lastWord', 'NBA_LOGO', 'NFL_LOGO', 'NHL_LOGO', 'moneylineLogo', 'withLogos'].map((n) => lift(n, worker)).join('\n')
+  + '\nreturn { moneylineLogo, NFL_ABBR, withLogos };')();
 const espnTeams = (lg) => FX[`https://site.api.espn.com/apis/site/v2/sports/${lg}/teams`].sports[0].leagues[0].teams.map((t) => t.team);
 const logoPath = (href) => href.replace('https://a.espncdn.com/i/teamlogos/', '');
 const nbaT = espnTeams('basketball/nba');
@@ -146,6 +155,20 @@ ok(Object.keys(W.NFL_ABBR).length === 32 && !nflBad.length,
   `all 32 NFL clubs, by the site's code: WAS is ESPN's wsh, LA its lar (wrong: ${nflBad.map(([f]) => f).join(', ') || 'none'})`);
 ok(W.moneylineLogo('nfl', 'Las Vegas Raiders') === null && W.moneylineLogo('nba', 'Hapoel Jerusalem') === null,
   'a club neither table knows gets no logo, so its initials show');
+// NHL (2026-10-20), held to ESPN's recorded NHL team list the same way.
+const nhlT = espnTeams('hockey/nhl');
+const nhlBad = nhlT.filter((t) => W.moneylineLogo('nhl', t.displayName) !== logoPath(t.logos[0].href));
+ok(nhlT.length === 32 && !nhlBad.length,
+  `all 32 NHL clubs, by nickname, to the logo ESPN lists for each (wrong: ${nhlBad.map((t) => t.displayName).join(', ') || 'none'})`);
+// As the odds feed actually spells them on the live board (read 2026-10-20).
+ok(W.moneylineLogo('nhl', 'Montréal Canadiens') === 'nhl/500/mtl.png' && W.moneylineLogo('nhl', 'St Louis Blues') === 'nhl/500/stl.png'
+  && W.moneylineLogo('nhl', 'Columbus Blue Jackets') === 'nhl/500/cbj.png' && W.moneylineLogo('nhl', 'Vegas Golden Knights') === 'nhl/500/vgk.png',
+  'the odds feed\'s spellings find theirs: an accented Montréal, "St Louis" with no stop, and the two-word nicknames');
+ok(W.moneylineLogo('nhl', 'HC Davos') === null && W.moneylineLogo('nhl', '') === null,
+  'a club the NHL table does not know gets no logo, so its initials show');
+const board = W.withLogos({ games: [{ home: 'New York Islanders', away: 'Anaheim Ducks' }] }, 'nhl');
+ok(board.games[0].homeLogo === 'nhl/500/nyi.png' && board.games[0].awayLogo === 'nhl/500/ana.png',
+  'the board sends both clubs\' paths with each game');
 
 // /api/picks end to end: real SQLite, the real worker, and ESPN's recorded
 // scoreboards from cdn.espn.com (the host the worker reads) for soccer.

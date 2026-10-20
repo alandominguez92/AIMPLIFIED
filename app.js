@@ -1916,7 +1916,7 @@
     const id = sport === 'mlb' ? MLB_TEAM_ID[String(abbr || '').toUpperCase()] : null;
     if (id) return `https://www.mlbstatic.com/team-logos/${id}.svg`;
     const p = String(logo || '');
-    return /^(nba|nfl|soccer|countries)\/500\/[a-z0-9]+\.png$/.test(p) ? `https://a.espncdn.com/combiner/i?img=/i/teamlogos/${p}&w=128&h=128` : null;
+    return /^(nba|nfl|nhl|soccer|countries)\/500\/[a-z0-9]+\.png$/.test(p) ? `https://a.espncdn.com/combiner/i?img=/i/teamlogos/${p}&w=128&h=128` : null;
   }
   // A player: "Aaron Judge" -> "AJ", "B. Williamson" -> "BW". A club: a code
   // stays a code ("LAD"); one word gives its first three letters ("Liverpool"
@@ -6107,11 +6107,14 @@
       : (g.awayPrice != null || g.homePrice != null
         ? `<span class="odds-cell mono">${AM(g.awayPrice)} / ${AM(g.homePrice)}</span>` : '<span class="odds-blank">no price</span>');
     const chip = isMkt ? 'MKT' : g.fairSrc === 'pinnacle' ? 'Pinnacle' : 'sharp ' + g.sharpN;
+    // Each club's mark beside its name (2026-10-20), kept with the name so a
+    // wrapped phone row never strands a logo. The worker sends the path.
+    const club = (team, logo) => `<span class="mc-club">${avatarHtml({ sport, isTeam: true, team: nick(team), logo, name: nick(team), size: 22 })}<b>${esc(nick(team))}</b></span>`;
     const row = `<div class="board-row${open ? ' expanded' : ''}" data-action="${t.toggle}" data-id="${esc(g.id)}"
         role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
         aria-label="${esc(g.away)} at ${esc(g.home)} — toggle breakdown">
         <div class="matchup-cell">
-          <span class="mc-head">${star}<b>${esc(nick(g.away))}</b><span class="at-sep">@</span><b>${esc(nick(g.home))}</b>${
+          <span class="mc-head">${star}${club(g.away, g.awayLogo)}<span class="at-sep">@</span>${club(g.home, g.homeLogo)}${
             g.commence ? `<span class="row-when">${esc(soccerKick(g.commence))}</span>` : ''}</span>
           <span class="matchup-sub">${esc(g.away)} at ${esc(g.home)}${g.league === 'pre' ? ' · preseason' : ''}</span>
         </div>

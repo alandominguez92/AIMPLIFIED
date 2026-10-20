@@ -7849,7 +7849,23 @@ const NBA_LOGO = {      // by nickname: the leg's team, the feed's last word
 };
 // By the site's code (NFL_ABBR). ESPN's is the same, lower-cased, but for two.
 const NFL_LOGO = { WAS: 'wsh', LA: 'lar' };
+// By nickname, as ESPN's NHL team list files them (2026-10-20). The odds feed
+// writes "Montréal Canadiens" and "St Louis Blues", so the club is found by the
+// nickname its full name ends with -- two words first, for the Blue Jackets,
+// Red Wings, Maple Leafs and Golden Knights.
+const NHL_LOGO = {
+  ducks: 'ana', bruins: 'bos', sabres: 'buf', flames: 'cgy', hurricanes: 'car', blackhawks: 'chi', avalanche: 'col',
+  'blue jackets': 'cbj', stars: 'dal', 'red wings': 'det', oilers: 'edm', panthers: 'fla', kings: 'la', wild: 'min',
+  canadiens: 'mtl', predators: 'nsh', devils: 'nj', islanders: 'nyi', rangers: 'nyr', senators: 'ott', flyers: 'phi',
+  penguins: 'pit', sharks: 'sj', kraken: 'sea', blues: 'stl', lightning: 'tb', 'maple leafs': 'tor', mammoth: 'utah',
+  canucks: 'van', 'golden knights': 'vgk', capitals: 'wsh', jets: 'wpg',
+};
 function moneylineLogo(sport, team) {
+  if (sport === 'nhl') {
+    const w = String(team || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim().split(/\s+/);
+    const c = NHL_LOGO[w.slice(-2).join(' ')] || NHL_LOGO[w[w.length - 1]];
+    return c ? `nhl/500/${c}.png` : null;
+  }
   if (sport === 'nba') {
     const c = NBA_LOGO[lastWord(team).toLowerCase()];
     return c ? `nba/500/${c}.png` : null;
@@ -9534,7 +9550,16 @@ async function h2hBoardData(env, cfg) {
   out.empty = out.games.length === 0;
   return out;
 }
-function nbaBoardData(env) { return h2hBoardData(env, NBA_ML); }
+// Each row shows both clubs' marks (2026-10-20): the path under ESPN's
+// /i/teamlogos/, the same one a Picks-of-the-day leg carries as spec.logo.
+function withLogos(out, sport) {
+  for (const g of ((out && out.games) || [])) {
+    g.homeLogo = moneylineLogo(sport, g.home);
+    g.awayLogo = moneylineLogo(sport, g.away);
+  }
+  return out;
+}
+async function nbaBoardData(env) { return withLogos(await h2hBoardData(env, NBA_ML), 'nba'); }
 
 // Cron gate, the soccer and NFL shape: a free events read first, a paid capture
 // only when a game is close enough, counted per league per day.
@@ -9597,7 +9622,7 @@ function nhlMaybeIngest(env) { return h2hMaybeIngest(env, NHL_ML); }
 // sports' favourites at. NHL is not on that list; this is the number to judge
 // it by.
 async function nhlBoardData(env) {
-  const out = await h2hBoardData(env, NHL_ML);
+  const out = withLogos(await h2hBoardData(env, NHL_ML), 'nhl');
   if (!env || !env.DB) return out;
   try {
     const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'nhl'").all()).results) || [], 'nhl');

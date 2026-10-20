@@ -801,6 +801,8 @@ section { padding:44px 0; }
 }
 .view-kprops .board-row.expanded .mc-head b, .view-moneyline .board-row.expanded .mc-head b { color:var(--model); }
 .mc-head { display:flex; align-items:center; gap:9px; }
+/* A club's mark and its name, as one unit (NBA and NHL boards, 2026-10-20). */
+.mc-club { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
 .board-row .leading { font-size:13px; line-height:1; color:var(--textFaint); cursor:pointer; user-select:none; flex:none; }
 .board-row .leading.tracked { color:var(--accent); }
 .board-row .leading.checkbox { width:16px; height:16px; border-radius:4px; border:1px solid var(--muted); display:flex; align-items:center; justify-content:center; font-size:var(--fsXs); color:var(--ink); font-weight:700; }
