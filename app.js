@@ -3613,12 +3613,25 @@
     if (book === 'pp') return n >= 3 ? 'flex' : 'power';
     return n === 1 ? 'straight' : 'parlay';
   }
+  // The entry types a slip of n legs can actually be (2026-10-20). A PrizePicks
+  // entry is 2 to 6 picks and Flex starts at 3, so a one-leg slip offered
+  // "1-pick Power" and "1-pick Flex", neither of which exists. Empty = none.
+  function entryKinds(book, n) {
+    if (book === 'pp') return n < 2 || n > 6 ? [] : [['power', 'Power'], ...(n >= 3 ? [['flex', 'Flex']] : [])];
+    return [['straight', 'Straight'], ['parlay', 'Parlay']];
+  }
+  // The kind chosen, if it still fits the slip; otherwise the default for it.
+  function entryKind(book, n) {
+    const kinds = entryKinds(book, n);
+    const chosen = state.logKind[book];
+    return kinds.some(([k]) => k === chosen) ? chosen : (kinds.length ? defaultKind(book, n) : null);
+  }
 
   function logFormHtml(legs) {
     const book = state.logBook;
     const n = legs.length;
-    const kind = state.logKind[book] || defaultKind(book, n);
-    const kinds = book === 'pp' ? [['power', 'Power'], ['flex', 'Flex']] : [['straight', 'Straight'], ['parlay', 'Parlay']];
+    const kind = entryKind(book, n);
+    const kinds = entryKinds(book, n);
     const stake = state.logStake != null ? state.logStake : (() => { try { return localStorage.getItem('aimplified_log_stake') || ''; } catch (e) { return ''; } })();
     const rows = legs.map((leg) => {
       const e = entryLegFrom(leg, book);
@@ -3639,8 +3652,9 @@
       <div class="le-head">Log this entry</div>
       <div class="le-seg" role="group" aria-label="Book">${[['pp', 'PrizePicks'], ['dk', 'DraftKings']].map(([k, v]) =>
         `<button type="button" data-action="log-book" data-book="${k}" class="${book === k ? 'on' : ''}">${v}</button>`).join('')}</div>
-      <div class="le-seg" role="group" aria-label="Entry type">${kinds.map(([k, v]) =>
-        `<button type="button" data-action="log-kind" data-kind="${k}" class="${kind === k ? 'on' : ''}">${n}-pick ${v}</button>`).join('')}</div>
+      ${kinds.length ? `<div class="le-seg" role="group" aria-label="Entry type">${kinds.map(([k, v]) =>
+        `<button type="button" data-action="log-kind" data-kind="${k}" class="${kind === k ? 'on' : ''}">${n}-pick ${v}</button>`).join('')}</div>`
+        : `<div class="le-note le-need">${n < 2 ? 'PrizePicks needs at least 2 picks — star another leg.' : 'PrizePicks entries are 6 picks at most — remove a leg.'}</div>`}
       <div class="le-legs">${rows}</div>
       <div class="le-foot">
         <label class="le-stake">Stake $<input id="logStake" data-action="log-stake" inputmode="decimal" value="${esc(String(stake))}" placeholder="10"></label>
@@ -3653,7 +3667,8 @@
   async function saveLoggedEntry() {
     const legs = Object.values(state.slip);
     const book = state.logBook;
-    const kind = state.logKind[book] || defaultKind(book, legs.length);
+    const kind = entryKind(book, legs.length);
+    if (!kind) { toast(legs.length < 2 ? 'PrizePicks needs at least 2 picks' : 'PrizePicks entries are 6 picks at most'); return; }
     const stakeEl = document.getElementById('logStake');
     const stake = Number(stakeEl ? stakeEl.value : state.logStake);
     if (!(stake > 0)) { toast('Enter a stake first'); return; }
@@ -3734,7 +3749,7 @@
     }).join('');
 
     box.innerHTML = tiles + analysis
-      + `<div class="en-block"><div class="en-h">Entries</div>${list || '<div class="nfl-empty">Nothing logged yet. Star legs on the MLB board, then log the entry from your slip — or add one below.</div>'}</div>`
+      + `<div class="en-block"><div class="en-h">Entries</div>${list || '<div class="nfl-empty">Nothing logged yet. Star legs on any board, then log the entry from your slip — or add one below.</div>'}</div>`
       + manualFormHtml() + entryKeyHtml();
   }
 
@@ -5852,7 +5867,7 @@
     if (typeof x.vsBook === 'number' && x.vsBook !== 0) notes.push(`PP ${x.vsBook > 0 ? '+' : '−'}${Math.abs(x.vsBook)} vs book`);
     if ((x.sport || s.sport) === 'nba') notes.push('check injuries');
     return `<article class="hero-leg"${c ? ` style="--hl-tc:${c[0]}"` : ''}>`
-      + `<div class="hl-top"><span class="hl-kicker">Tonight's best leg</span>`
+      + `<div class="hl-top"><span class="hl-kicker">Today's best leg</span>`
       + `<span class="hl-meta">${esc(x.league || PICK_SPORT[x.sport] || x.sport || '')} · ${esc(soccerKick(x.commence))}</span></div>`
       + `<div class="hl-main">${pickFace(x, (opts && opts.size) || 64)}`
       + `<div class="hl-what"><b class="hl-name">${esc(name)}</b>`

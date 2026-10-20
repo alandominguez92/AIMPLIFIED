@@ -2580,6 +2580,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .mf summary, .en-key summary { cursor:pointer; font-size:14px; color:var(--model); padding:6px 0; }
 .mf-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0; font-size:13px; color:var(--textDim); }
 .mf-leg { display:grid; grid-template-columns:90px minmax(0,1.4fr) minmax(0,1fr) 70px 90px 80px; gap:6px; margin:6px 0; }
+/* Each box fills its cell and no wider (2026-10-20): left at their own width,
+   the right-hand column ran 5px past a 375 phone and was clipped. */
+.mf-leg input, .mf-leg select { width:100%; min-width:0; box-sizing:border-box; }
 .en-key p { font-size:13px; color:var(--textDim); margin:6px 0; }
 .en-key code { font-family:var(--mono); font-size:12px; word-break:break-all; color:var(--text); }
 
@@ -2587,7 +2590,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   /* Four tabs across a phone. The icons come off so MLB, NFL, Soccer and
      Entries fit on one row without the strip scrolling sideways again. */
   .stab .sport-ico { display:none; }
-  .mf-leg { grid-template-columns:1fr 1fr; }
+  .mf-leg { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .le-side { margin-left:0; }
   .en-v { font-size:21px; }
 }
