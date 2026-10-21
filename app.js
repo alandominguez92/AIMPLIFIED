@@ -5866,8 +5866,13 @@
     if (x.kind === 'mlb_pp') notes.push(x.lineup === 'in' ? 'lineup in' : 'lineup not posted');
     if (typeof x.vsBook === 'number' && x.vsBook !== 0) notes.push(`PP ${x.vsBook > 0 ? '+' : '−'}${Math.abs(x.vsBook)} vs book`);
     if ((x.sport || s.sport) === 'nba') notes.push('check injuries');
+    // By the leg's own Pacific day (2026-10-21): the list looks a day ahead,
+    // so its first leg is often tomorrow's -- Inter at noon read "Today's".
+    const legDay = ptDayOf(Date.parse(x.commence));
+    const kicker = legDay === ptDayOf(Date.now()) ? "Today's best leg"
+      : (legDay === ptDayOf(Date.now() + 864e5) ? "Tomorrow's best leg" : 'Best leg');
     return `<article class="hero-leg"${c ? ` style="--hl-tc:${c[0]}"` : ''}>`
-      + `<div class="hl-top"><span class="hl-kicker">Today's best leg</span>`
+      + `<div class="hl-top"><span class="hl-kicker">${kicker}</span>`
       + `<span class="hl-meta">${esc(x.league || PICK_SPORT[x.sport] || x.sport || '')} · ${esc(soccerKick(x.commence))}</span></div>`
       + `<div class="hl-main">${pickFace(x, (opts && opts.size) || 64)}`
       + `<div class="hl-what"><b class="hl-name">${esc(name)}</b>`

@@ -55,8 +55,11 @@ ok(/@media \(max-width:640px\) \{[\s\S]*?\.mf-leg \{ grid-template-columns:minma
 console.log('\n-- copy --');
 ok(/Star legs on any board, then log the entry from your slip/.test(src) && !/Star legs on the MLB board/.test(src),
   'the Entries empty state names every board, not only MLB');
-ok(/<span class="hl-kicker">Today's best leg<\/span>/.test(src) && !/Tonight's best leg/.test(src),
-  'the top card reads right at a noon kickoff');
+// And by the leg's own day (2026-10-21): the list looks a day ahead, so the
+// first leg is often tomorrow's.
+ok(/const kicker = legDay === ptDayOf\(Date\.now\(\)\) \? "Today's best leg"\s*: \(legDay === ptDayOf\(Date\.now\(\) \+ 864e5\) \? "Tomorrow's best leg" : 'Best leg'\);/.test(src)
+  && /<span class="hl-kicker">\$\{kicker\}<\/span>/.test(src) && !/Tonight's best leg/.test(src),
+  'the top card says Today\'s or Tomorrow\'s by the leg\'s own day, and never Tonight\'s');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
