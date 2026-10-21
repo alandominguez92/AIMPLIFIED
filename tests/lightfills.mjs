@@ -33,8 +33,8 @@ ok(/background:var\(--accentFill\)/.test(rule('.nflm.is-on')), 'and so is the NF
 ok(/--hl-tc:var\(--accentFill\)/.test(rule('.hero-leg')), 'the top card\'s tint is mixed from the fill gold, not the text gold');
 ok(/color:var\(--accentDim\)/.test(rule('[data-theme="light"] .ctx-banner.nfl-banner .ctx-banner-tag')),
   'the NFL banner tag takes the darker gold on its blue tint in light mode');
-ok(/border-color:transparent;\s*background:transparent/.test(rule('[data-theme="light"] .nba-pp.pk-card')),
-  'and in light mode the Picks list drops the outer box around its own white cards');
+ok(/border-color:transparent;\s*background:transparent/.test(rule('[data-theme="light"] .nba-pp')),
+  'and in light mode the Picks list, the NBA PrizePicks card and the soccer props card drop the outer box around their own white cards');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

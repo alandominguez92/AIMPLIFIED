@@ -2932,10 +2932,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Tonight's PrizePicks unders, above the NBA board (2026-10-06). Today's card's
    inner styles, in a box of its own since it shows on every width. */
 .nba-pp { margin:0 0 18px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--board, transparent); }
-/* Light mode: the Picks list drops its outer box (2026-10-21). Its legs are
-   white cards with borders of their own, and a white box around white boxes
-   read as boxy on the light page. */
-[data-theme="light"] .nba-pp.pk-card { border-color:transparent; background:transparent; padding-left:0; padding-right:0; }
+/* Light mode: the Picks list, the NBA PrizePicks card and the soccer props
+   card drop their outer box (2026-10-21). Their legs are white cards with
+   borders of their own, and a white box around white boxes read as boxy on
+   the light page. */
+[data-theme="light"] .nba-pp { border-color:transparent; background:transparent; padding-left:0; padding-right:0; }
 .nba-pp .tc-legs li { position:relative; display:block; }
 .nba-pp .tc-leg { cursor:default; }
 
