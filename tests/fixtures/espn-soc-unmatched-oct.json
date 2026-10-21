@@ -1,0 +1,437 @@
+{
+ "_recorded": "Recorded 2026-10-21 from cdn.espn.com (the host the Worker grades from): the scoreboards for the eight soccer games that never graded, trimmed to those games and the fields the grader reads.",
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=esp.1&date=20261010": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401882849",
+      "date": "2026-10-10T12:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_ABANDONED",
+        "state": "post",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "displayName": "Rayo Vallecano",
+           "name": "Rayo Vallecano",
+           "abbreviation": "RAY"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "displayName": "Athletic Club",
+           "name": "Athletic Club",
+           "abbreviation": "ATH"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=esp.1&date=20261011": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=eng.1&date=20261010": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401878772",
+      "date": "2026-10-10T14:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "displayName": "Sunderland",
+           "name": "Sunderland",
+           "abbreviation": "SUN"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "team": {
+           "displayName": "Brighton & Hove Albion",
+           "name": "Brighton & Hove Albion",
+           "abbreviation": "BHA"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=eng.1&date=20261011": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401879266",
+      "date": "2026-10-11T13:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "team": {
+           "displayName": "Crystal Palace",
+           "name": "Crystal Palace",
+           "abbreviation": "CRY"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "displayName": "Nottingham Forest",
+           "name": "Nottingham Forest",
+           "abbreviation": "NFO"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.champions&date=20261013": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401915418",
+      "date": "2026-10-13T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "displayName": "Lens",
+           "name": "Lens",
+           "abbreviation": "RCL"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "team": {
+           "displayName": "Sporting CP",
+           "name": "Sporting CP",
+           "abbreviation": "SCP"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915436",
+      "date": "2026-10-13T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "displayName": "Sabah FK",
+           "name": "Sabah FK",
+           "abbreviation": "SAB"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "displayName": "Slavia Prague",
+           "name": "Slavia Prague",
+           "abbreviation": "SLP"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915413",
+      "date": "2026-10-13T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "team": {
+           "displayName": "Internazionale",
+           "name": "Internazionale",
+           "abbreviation": "INT"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "4",
+          "team": {
+           "displayName": "Club Brugge",
+           "name": "Club Brugge",
+           "abbreviation": "BRU"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.champions&date=20261014": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401915393",
+      "date": "2026-10-14T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "displayName": "Bodo/Glimt",
+           "name": "Bodo/Glimt",
+           "abbreviation": "BODO"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "displayName": "Borussia Dortmund",
+           "name": "Borussia Dortmund",
+           "abbreviation": "DOR"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.champions&date=20261015": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ita.1&date=20261017": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401874953",
+      "date": "2026-10-17T16:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "displayName": "Bologna",
+           "name": "Bologna",
+           "abbreviation": "BOL"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "3",
+          "team": {
+           "displayName": "Internazionale",
+           "name": "Internazionale",
+           "abbreviation": "INT"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ita.1&date=20261018": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=eng.1&date=20261018": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401879263",
+      "date": "2026-10-18T13:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "displayName": "AFC Bournemouth",
+           "name": "AFC Bournemouth",
+           "abbreviation": "BOU"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "displayName": "Sunderland",
+           "name": "Sunderland",
+           "abbreviation": "SUN"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401879261",
+      "date": "2026-10-18T13:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "5",
+          "team": {
+           "displayName": "Brighton & Hove Albion",
+           "name": "Brighton & Hove Albion",
+           "abbreviation": "BHA"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "displayName": "Crystal Palace",
+           "name": "Crystal Palace",
+           "abbreviation": "CRY"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=eng.1&date=20261019": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ }
+}

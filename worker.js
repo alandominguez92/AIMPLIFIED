@@ -3570,14 +3570,24 @@ const CLUB_NOISE = /\b(afc|fc|cf|sc|ud|cd|rcd|ac|as|ss|sv|bv|club|de|the)\b/g;
 // is ESPN's "Red Bull New York" and "LAFC" against the feed's "New York Red
 // Bulls" and "Los Angeles FC" -- neither ever graded, and the other 28 MLS
 // clubs match as they are.
+// The last three (2026-10-21) are the feed's Inter Milan, Sporting Lisbon and
+// Slavia Praha against ESPN's Internazionale, Sporting CP and Slavia Prague:
+// none of their games had ever graded, and their Picks legs had no crest.
 const TEAM_ALIAS = {
   czechrepublic: 'czechia', turkey: 'turkiye',
   bosniaandherzegovina: 'bosniaherzegovina',
   redbullnewyork: 'newyorkredbulls', lafc: 'losangeles',
+  intermilan: 'internazionale', sportinglisbon: 'sportingcp', slaviapraha: 'slaviaprague',
 };
+// Letters NFD leaves whole are spelled out, and "&" is read as "and", so the
+// feed's "Bod\u00f8/Glimt" is ESPN's "Bodo/Glimt" and its "Brighton and Hove
+// Albion" is ESPN's "Brighton & Hove Albion" (2026-10-21: neither had graded;
+// the \u00f8 was simply dropped, leaving "bodglimt").
+const CLUB_LETTERS = { '\u00f8': 'o', '\u00e6': 'ae', '\u0153': 'oe', '\u00df': 'ss', '\u0111': 'd', '\u0142': 'l', '\u0131': 'i', '\u00fe': 'th', '\u00f0': 'd' };
 function clubKey(s) {
-  const k = String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(CLUB_NOISE, ' ').replace(/[^a-z0-9]+/g, '');
+  const k = String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[\u00f8\u00e6\u0153\u00df\u0111\u0142\u0131\u00fe\u00f0]/g, (c) => CLUB_LETTERS[c])
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(CLUB_NOISE, ' ').replace(/[^a-z0-9]+/g, '');
   return TEAM_ALIAS[k] || k;
 }
 function clubMatch(a, b) {
@@ -3655,8 +3665,19 @@ async function gradeGamePicks(env) {
     }
 
     if (!finals) finals = [];
+    // Matches called off for good: abandoned or cancelled. Rayo Vallecano and
+    // Athletic Club on 2026-10-10 was abandoned at 0-0, and its rows waited
+    // for a final that was never coming. A bet on one is void.
+    const offs = [];
     for (const ev of events) {
       const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
+      if (/ABANDONED|CANCELED|CANCELLED/.test(String(st))) {
+        const c0 = (ev.competitions || [])[0];
+        const h0 = c0 && (c0.competitors || []).find((t) => t.homeAway === 'home');
+        const a0 = c0 && (c0.competitors || []).find((t) => t.homeAway === 'away');
+        if (h0 && a0) offs.push({ home: (h0.team && (h0.team.displayName || h0.team.name)) || '', away: (a0.team && (a0.team.displayName || a0.team.name)) || '' });
+        continue;
+      }
       if (!/FINAL|FULL_TIME/.test(String(st))) continue;
       const c = (ev.competitions || [])[0];
       if (!c) continue;
@@ -3687,6 +3708,13 @@ async function gradeGamePicks(env) {
       if (!f && (r.sport === 'soccer' || r.sport === 'nba' || r.sport === 'nhl')) {
         const x = finals.find((y) => same(y.home, r.away) && same(y.away, r.home));
         if (x) f = { ...x, hs: x.as, as: x.hs };
+      }
+      if (!f && r.sport !== 'nfl' && offs.some((x) => (same(x.home, r.home) && same(x.away, r.away)) || (same(x.home, r.away) && same(x.away, r.home)))) {
+        stmts.push(env.DB.prepare(
+          'UPDATE gmpicks SET result=?, home_score=NULL, away_score=NULL WHERE sport=? AND date=? AND game_id=? AND market=?'
+        ).bind('void', r.sport, r.date, r.game_id, r.market || 'h2h'));
+        out.voidedOff = (out.voidedOff || 0) + 1;
+        continue;
       }
       if (!f || !isFinite(f.hs) || !isFinite(f.as)) {
         out.unmatched.push(`${r.sport} ${r.date} ${r.away}@${r.home}`);
