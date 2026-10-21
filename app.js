@@ -6620,6 +6620,22 @@
       + list.map((l) => chip(l.key, l.label, l.country || '')).join('');
   }
 
+  // An empty board here is usually "no fixtures today", which is most days —
+  // say that rather than leaving a blank panel that reads as broken.
+  // Two different empties. "Nothing within 36h" is the whole board on a
+  // break week and should name the date play resumes; "nothing for this
+  // league" is a chip filter and should not claim the season has paused.
+  // On All with no day to name (2026-10-21) it said "for this league": the
+  // worker sends no nextDay when nothing upcoming is stored at all.
+  function soccerEmptyHtml(d, league) {
+    const read = d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : '';
+    if (league && league !== 'all') return `<div class="nfl-empty">No fixtures on the next matchday for this league${read}.</div>`;
+    if (!d.nextDay) return `<div class="nfl-empty">No fixtures in the next day and a half${read}.</div>`;
+    const t = Date.parse(d.nextDay + 'T12:00:00Z');
+    const day = isFinite(t) ? new Date(t).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }) : d.nextDay;
+    return `<div class="nfl-empty">No fixtures in the next day and a half. Next matchday is <b>${esc(day)}</b>${
+      d.gamesAllUpcoming ? ` — ${d.gamesAllUpcoming} fixtures are already priced` : ''}.</div>`;
+  }
   // The props card's stat chips scroll sideways and every redraw replaces
   // them: the scroll is kept, and the chip picked is brought into view (from
   // the Picks strip it was off the right edge).
@@ -6649,23 +6665,7 @@
         ? `${games.length} fixture${games.length === 1 ? '' : 's'}${d.slateDay ? ' · one matchday' : ''}`
         : '';
     }
-    if (!games.length) {
-      // An empty board here is usually "no fixtures today", which is most days —
-      // say that rather than leaving a blank panel that reads as broken.
-      // Two different empties. "Nothing within 36h" is the whole board on a
-      // break week and should name the date play resumes; "nothing for this
-      // league" is a chip filter and should not claim the season has paused.
-      const dayLabel = (ymd) => {
-        const t = Date.parse(ymd + 'T12:00:00Z');
-        return isFinite(t) ? new Date(t).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }) : ymd;
-      };
-      el.soccerGrid.innerHTML = props + ((d.nextDay && state.soccerLeague === 'all')
-        ? `<div class="nfl-empty">No fixtures in the next day and a half. Next matchday is <b>${esc(dayLabel(d.nextDay))}</b>${
-            d.gamesAllUpcoming ? ` — ${d.gamesAllUpcoming} fixtures are already priced` : ''}.</div>`
-        : `<div class="nfl-empty">No fixtures on the next matchday for this league${
-            d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`);
-      return;
-    }
+    if (!games.length) { el.soccerGrid.innerHTML = props + soccerEmptyHtml(d, state.soccerLeague); return; }
     // view-moneyline carries --bcols, and the soccer row has the same seven
     // cells as the NFL moneyline row. Without the wrapper .board-row has no
     // column template at all and every cell collapses to content width — the
