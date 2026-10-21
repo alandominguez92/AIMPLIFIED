@@ -130,6 +130,13 @@ const B = await world(JSON.stringify(two), 'two-hollands');
 ok(!B.rows.some((l) => /Holland/.test(l.player)),
   `with a second "Ron Holland" in the priors, neither is given the leg (${B.rows.filter((l) => /Holland/.test(l.player)).map((l) => l.player_id).join(', ') || 'no Holland leg'})`);
 ok(B.rows.length === 29, `and the other 29 legs are logged as before (${B.rows.length})`);
+// The raw payload says which names went unlogged, and why (tests/nbaunmatched.mjs).
+const raw = async (W) => (await W.mod.default.fetch(new Request('https://x/api/nba-pp?raw=1'), W.env, { waitUntil: () => {} })).json();
+const rawA = await raw(A), rawB = await raw(B);
+ok(Array.isArray(rawA.unmatched) && !rawA.unmatched.length && !rawA.unmatchedLog.length,
+  `with the real priors nothing goes unmatched (${JSON.stringify(rawA.unmatched)})`);
+ok(JSON.stringify(rawB.unmatched) === JSON.stringify([{ name: 'Ron Holland', why: 'two players', markets: ['reb'] }]),
+  `with two, the raw payload lists him as two players (${JSON.stringify(rawB.unmatched)})`);
 
 // ---- your entries ----------------------------------------------------------------------------
 console.log('\n-- your entry on "Ron Holland" --');

@@ -9746,6 +9746,7 @@ const NBA_PP_VER = 'nbapp-v1';
 const NBA_PP_WINDOW_MS = 4 * 3600 * 1000;   // capture a game once, inside 4h of tip
 const NBA_PP_PER_TICK = 5;                   // per-event calls a tick may make
 const NBA_PP_RAW_KEY = 'nba_pp_raw';         // feed_cache: the last capture's payload
+const NBA_PP_UNMATCHED_DAYS = 30;            // a name with no prior stays on the raw payload's log this long after last seen
 const NBA_BOX_PER_TICK = 4;                  // box scores a tick may read
 const NBA_SEASON_FROM = '2026-10-01';        // recent games: this season only
 const ESPN_CDN_NBA = 'https://cdn.espn.com/core/nba';
@@ -9927,6 +9928,49 @@ function nbaPpLegs(ev, pri, recent) {
   return out;
 }
 
+// Pure: the PrizePicks names in one event that find no prior -- none by that
+// name, or two (nbaPriors drops both). Every leg of theirs goes unlogged, and a
+// name ESPN spells differently belongs in NBA_NAME_ALIAS.
+function nbaPpUnmatched(ev, pri) {
+  const pp = ev && pri && (ev.bookmakers || []).find((b) => b.key === 'prizepicks');
+  if (!pp) return [];
+  const out = new Map();
+  for (const m of (pp.markets || [])) {
+    const market = NBA_PP_MARKETS[m.key];
+    if (!market) continue;
+    for (const o of (m.outcomes || [])) {
+      if (o.name !== 'Under' || !o.description) continue;
+      const pl = pri.byName.get(nbaName(o.description));
+      if (pl) continue;
+      const u = out.get(o.description) || { name: o.description, why: pl === null ? 'two players' : 'no prior', markets: [] };
+      if (!u.markets.includes(market)) u.markets.push(market);
+      out.set(o.description, u);
+    }
+  }
+  return [...out.values()];
+}
+
+// Pure: the misses across captures, last seen first. The raw payload is only
+// ever the last game, and a miss in an earlier one went with it (opening
+// night's 76ers @ Knicks), so each capture carries the list on. A name that
+// matches now -- an alias added, the priors rebuilt -- comes off, and so does
+// one not seen in NBA_PP_UNMATCHED_DAYS.
+function nbaPpUnmatchedLog(prev, cur, pri, at, ev) {
+  const stamp = new Date(at).toISOString();
+  const out = new Map();
+  for (const u of (prev || [])) {
+    if ((pri && pri.byName.get(nbaName(u.name))) || !(Date.parse(u.last) >= at - NBA_PP_UNMATCHED_DAYS * 86400e3)) continue;
+    out.set(u.name, u);
+  }
+  for (const u of cur) {
+    const was = out.get(u.name);
+    out.set(u.name, { name: u.name, why: u.why, markets: [...new Set([...(was ? was.markets : []), ...u.markets])],
+      captures: (was ? was.captures : 0) + 1, first: was ? was.first : stamp, last: stamp,
+      game: `${ev.away_team} @ ${ev.home_team}`, date: ptDateOf(Date.parse(ev.commence_time)) });
+  }
+  return [...out.values()].sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : 0));
+}
+
 async function logNbaPp(db, lg, legs) {
   if (!legs.length) return 0;
   const stamp = new Date().toISOString();
@@ -9972,9 +10016,14 @@ async function nbaPpMaybeCapture(env) {
       logged += await logNbaPp(env.DB, lg, nbaPpLegs(body, pri, recent));
       // The last payload with PrizePicks on it, kept as it came so a test can
       // replay a real one (/api/nba-pp?raw=1). No extra call, no extra credit.
+      // With it, the PrizePicks names that found no prior: this game's, and
+      // the log carried on from earlier captures.
       if (body && (body.bookmakers || []).some((b) => b.key === 'prizepicks')) {
+        const unmatched = nbaPpUnmatched(body, pri);
+        const prev = await loadFeedCache(env.DB, NBA_PP_RAW_KEY);
         await saveFeedCache(env.DB, NBA_PP_RAW_KEY, { at: new Date().toISOString(), league: lg, game: g.id,
-          credits: Number(r.headers.get('x-requests-last')) || null, body });
+          credits: Number(r.headers.get('x-requests-last')) || null, unmatched,
+          unmatchedLog: nbaPpUnmatchedLog(prev.present && prev.data && prev.data.unmatchedLog, unmatched, pri, Date.now(), body), body });
       }
       done.add(g.id);
     } catch (e) { /* this game waits for the next tick */ }
@@ -10100,6 +10149,8 @@ async function gradeNbaPp(db) {
 }
 
 // GET /api/nba-pp?raw=1: the last capture's odds payload, from D1. Free.
+// `unmatched` is that game's PrizePicks names with no prior; `unmatchedLog`,
+// every such name seen in the last NBA_PP_UNMATCHED_DAYS that still misses.
 async function nbaPpRaw(env) {
   if (!env || !env.DB) return { error: 'no DB binding' };
   const hit = await loadFeedCache(env.DB, NBA_PP_RAW_KEY);
