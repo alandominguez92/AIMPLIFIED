@@ -2838,18 +2838,29 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .sp-save { height:30px; padding:0 8px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text);
   font-family:var(--sans); font-size:var(--fsSm); white-space:nowrap; cursor:pointer; flex:none; }
 .sp-save:active { border-color:var(--accent); }
-.sp-card .tc-p.sp-flat { color:var(--textDim); }
 .sp-search { width:100%; margin-top:10px; height:38px; border:1px solid var(--border); border-radius:10px; background:transparent;
   color:var(--text); font-size:15px; padding:0 12px; }
-.sp-players { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
-.sp-player { border:1px solid var(--border); border-radius:10px; }
-.sp-player.open { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
-.sp-ph { display:block; width:100%; text-align:left; background:none; border:none; color:inherit; font:inherit; padding:10px 12px; cursor:pointer; }
-.sp-pn { display:block; font-size:14.5px; }
-.sp-pn b { font-weight:700; color:var(--text); }
-.sp-ps { display:block; margin-top:3px; font-family:var(--mono); font-size:11.5px; color:var(--textDim); line-height:1.5; }
-.sp-star { color:var(--accent); font-size:12px; }
-.sp-stats { padding:0 10px 10px; }
+/* By lean, in plain words (2026-10-21): stat chips that scroll sideways, one
+   row a lean, the line setter on a tap. A chance is teal at 60% or more and
+   plain below it, so the strong ones stand out of a list of numbers. */
+.sp-chips { display:flex; gap:6px; overflow-x:auto; margin-top:10px; padding-bottom:2px; scrollbar-width:none; }
+.sp-chips::-webkit-scrollbar { display:none; }
+.sp-chip { flex:none; height:32px; padding:0 11px; border:1px solid var(--border); border-radius:8px; background:var(--card);
+  color:var(--text); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
+.sp-chip.on { background:var(--accentFill); border-color:var(--accentFill); color:var(--onAccent); font-weight:600; }
+.sp-hint { margin-top:8px; font-family:var(--sans); font-size:var(--fsSm); color:var(--textFaint); }
+.sp-match .tc-legs { margin-top:2px; gap:6px; }
+.sp-tap { display:block; width:100%; text-align:left; background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; }
+.sp-row.open .tc-leg { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.sp-row .tc-l1 .pk-sport { flex:none; }
+.sp-set { display:block; margin-top:9px; padding-top:9px; border-top:1px solid var(--borderSoft); }
+.sp-sh { display:flex; justify-content:space-between; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.sp-best .tc-legs li .tc-l1 { padding-right:0; }
+.sp-card .tc-p { color:var(--text); }
+.sp-card .tc-p.sp-strong { color:var(--positive); }
+.sp-more { display:block; margin:8px auto 0; background:none; border:0; font:inherit; font-size:13px; color:var(--model); padding:6px 10px; cursor:pointer; }
+.sp-best { margin-top:16px; }
+.nba-pp.sp-best .tc-leg { cursor:pointer; }
 .pk-sport { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none; color:var(--textFaint); }
 .pk-when { white-space:nowrap; }
 .pk-entries { list-style:none; margin:12px 0 0; padding:10px 12px; display:grid; gap:5px;

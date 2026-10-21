@@ -234,7 +234,8 @@ ok(keeperC.length > 50 && keeperC.every((c) => c > 0.3 && c < 3), `goalkeepers a
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 const keysOf = (name, text) => { const m = new RegExp(`const ${name} = \\{([\\s\\S]*?)\\};`).exec(text); return m ? [...m[1].matchAll(/(\w+):\s*'/g)].map((x) => x[1]) : []; };
 const stats = (/const SOC_PROP_STATS = \[([^\]]*)\]/.exec(src) || [])[1].match(/'(\w+)'/g).map((x) => x.slice(1, -1));
-const missing = ['SOC_STAT', 'SOC_SHORT', 'MARKET_SHORT'].map((n) => [n, stats.filter((s) => !keysOf(n, app).includes(s))])
+// (SOC_SHORT went with the abbreviations on 2026-10-21: the card is in plain words.)
+const missing = ['SOC_STAT', 'MARKET_SHORT'].map((n) => [n, stats.filter((s) => !keysOf(n, app).includes(s))])
   .concat([['ENTRY_MARKET_LABEL', stats.filter((s) => !keysOf('ENTRY_MARKET_LABEL', src).includes(s))]]).filter(([, l]) => l.length);
 ok(stats.length === 12 && !missing.length, `every stat the worker logs has a label on the card, the slip and the entries record${missing.length ? ' -- MISSING ' + JSON.stringify(missing) : ''}`);
 

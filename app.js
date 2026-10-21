@@ -191,7 +191,8 @@
     socLines: {},          // soccer prop line set by the user, per match:player:stat
     socSaved: {},          // the line the worker holds for that key (/api/soc-lines)
     socSaving: {},         // keys with a save on its way
-    socOpen: {},           // soccer prop matches showing every row
+    socOpen: {},           // soccer prop rows with the line setter open, per match:player:stat
+    socStat: 'best',       // the soccer props card's chip: 'best' or a stat
     soccerOpen: null,      // expanded fixture id
     slip: {},   // legId -> { id, board, matchup, pick, odds, tier }
     stake: 1,   // units per bet
@@ -4665,10 +4666,35 @@
         renderSoccer();
         break;
       }
-      case 'socp-player': {
+      // A row tapped opens its line setter; a stat chip lists that stat.
+      case 'socp-row': {
         const k = target.dataset.key;
         state.socOpen = { ...(state.socOpen || {}), [k]: !(state.socOpen && state.socOpen[k]) };
         renderSoccer();
+        break;
+      }
+      case 'socp-stat': state.socStat = target.dataset.stat; renderSoccer(); break;
+      case 'socp-all': state.socAll = { ...(state.socAll || {}), [target.dataset.id]: true }; renderSoccer(); break;
+      // From the Picks tab's strip: the Soccer tab, on that stat, with the
+      // row's line setter open and in view.
+      case 'socp-go': {
+        if (e) e.preventDefault();
+        const k = target.dataset.key;
+        const [mid, , stat] = k.split(':');
+        state.soccerLeague = 'all';
+        state.socQuery = '';
+        state.socStat = stat;
+        state.socMatchOpen = { ...(state.socMatchOpen || {}), [mid]: true };
+        state.socOpen = { ...(state.socOpen || {}), [k]: true };
+        setSport('soccer');
+        renderSoccer();
+        // The board may still be loading: look for the row for a few seconds.
+        const find = (n) => {
+          const row = el.soccerGrid && el.soccerGrid.querySelector(`[data-sprow="${CSS.escape(k)}"]`);
+          if (row) row.scrollIntoView({ block: 'center' });
+          else if (n > 0) setTimeout(() => find(n - 1), 250);
+        };
+        setTimeout(() => find(12), 60);
         break;
       }
       // Its own toggle, not the NFL one: sharing 'nfl-toggle' re-rendered the NFL
@@ -5825,6 +5851,10 @@
   async function refreshPicks() {
     if (!LIVE_MODE) return;
     if (!state.picks) renderPicks();
+    // The Picks tab's soccer strip reads the props card's feed (ESPN lineups
+    // and the D1 projections, no odds credits), at most every two minutes.
+    const soc = state.sport === 'picks' && (!state.socProps || Date.now() - (state.socPropsAt || 0) > 120e3)
+      ? fetchJson('/api/soccer-props').catch(() => null) : null;
     try {
       const d = await fetchJson('/api/picks');
       state.picks = d && Array.isArray(d.legs) ? d : { legs: [], error: 'unreadable' };
@@ -5834,6 +5864,15 @@
     state.picksAt = Date.now();
     renderPicks();
     renderTopCard();
+    const pp = soc && await soc;
+    if (pp && Array.isArray(pp.matches)) {
+      state.socProps = pp;
+      state.socPropsAt = Date.now();
+      renderPicks();
+      // A line saved as PrizePicks' shows there too.
+      await socSavedLoad();
+      renderPicks();
+    }
   }
   function pickLeg(x) {
     return { id: x.legId, board: PICK_BOARD[x.kind] || 'Pick', title: x.title, sub: x.sub,
@@ -5932,7 +5971,10 @@
     const d = state.picks;
     const count = document.getElementById('picksCount');
     if (!d) { grid.innerHTML = PICKS_SKELETON; return; }
-    if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>`; return; }
+    // The soccer props strip follows the list in every state: its own feed,
+    // and not on the list until it has a record at PrizePicks' lines.
+    const soc = socBestStripHtml();
+    if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + soc; return; }
     const legs = (d.legs || []).filter((x) => Date.parse(x.commence) > Date.now());
     if (count) count.textContent = legs.length ? `${legs.length} leg${legs.length === 1 ? '' : 's'}` : '';
     const kinds = d.kinds || {};
@@ -5948,7 +5990,7 @@
       : 'This list keeps its own record from today: each leg on it when its game starts is graded.';
     if (!legs.length) {
       grid.innerHTML = `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines about four hours before tip.</div>`
-        + `<div class="tc-sub">${recLine}</div>${rules}</div>`;
+        + `<div class="tc-sub">${recLine}</div>${rules}</div>` + soc;
       return;
     }
     // The first leg is the night's best, drawn large; the rest follow.
@@ -5997,7 +6039,7 @@
       + hero
       + (items ? `<ol class="tc-legs">${items}</ol>` : '')
       + (ent.length ? `<ul class="pk-entries"><li class="pk-eh"><span>As an entry</span><span>chance</span><span>to pay</span></li>${ent.join('')}</ul>` : '')
-      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
+      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>` + soc;
   }
 
   function applySportChrome(sport) {
@@ -6258,6 +6300,7 @@
     state.soccer = d === 'unreachable' ? { games: [], empty: true, error: 'unreachable' }
       : ((d && Array.isArray(d.games)) ? d : { games: [], empty: true });
     state.socProps = pp && Array.isArray(pp.matches) ? pp : null;
+    state.socPropsAt = Date.now();
     renderSoccer();
     socSavedLoad();
   }
@@ -6355,44 +6398,67 @@
       spec: { sport: 'soccer', date: ptDayOf(Date.parse(m.commence)), gamePk: m.id, playerId: Number(r.id), player: r.player, team: r.team || null,
         market: r.stat, side, book: { line: null, price: null, under: null }, pp: { line, under: pct1(under) } } };
   }
-  // One stat of one player: the line set to PrizePicks' number, the chance
-  // either way there, and the star that takes the side the chance favours.
-  function socPropRow(m, r) {
-    const line = socLineOf(m, r);
+  // A row's lean at a line: the side its chance favours there, and that chance.
+  function socLean(r, line) {
     const ch = socChanceAt(line, r.proj, r.phi);
     const side = ch.under >= ch.over ? 'Under' : 'Over';
-    const p = side === 'Under' ? ch.under : ch.over;
-    const leg = socpLeg(m, r, line, side, ch.under);
-    const on = !!state.slip[offerLeg(leg)];
+    return { line, ch, side, p: side === 'Under' ? ch.under : ch.over };
+  }
+  // The stat inside a sentence: "Under 2.5 tackles".
+  const socStatWords = (stat) => String(SOC_STAT[stat] || stat).toLowerCase();
+  // Positions in words (2026-10-21): ESPN's codes ("CD-L", "AM-R") were noise
+  // on a phone. The side is dropped: a left centre back is a centre back.
+  const SOC_POS = { G: 'goalkeeper', CD: 'centre back', CB: 'centre back', SW: 'sweeper', LB: 'left back', RB: 'right back',
+    LWB: 'left wing-back', RWB: 'right wing-back', D: 'defender', DM: 'defensive mid', CM: 'centre mid', AM: 'attacking mid',
+    LM: 'left mid', RM: 'right mid', M: 'midfielder', LW: 'left winger', RW: 'right winger', F: 'forward', CF: 'forward', SS: 'forward' };
+  const socPosWords = (pos) => SOC_POS[String(pos || '').replace(/-[LRC]$/, '')] || '';
+  // One stat of one player (2026-10-21): the lean in words and its chance,
+  // teal at 60% or more. A tap opens the line setter, where the line is set to
+  // PrizePicks' number and the chance follows; the star takes the side the
+  // chance favours at the line shown.
+  function socPropRow(m, r) {
     const key = socKey(m, r);
+    const l = socLean(r, socLineOf(m, r));
+    const leg = socpLeg(m, r, l.line, l.side, l.ch.under);
+    const on = !!state.slip[offerLeg(leg)];
+    const open = !!(state.socOpen && state.socOpen[key]);
     const tags = [];
-    if (r.ctx != null && r.ctx < 0.9) tags.push(`<span class="tc-gap" title="This opponent allows ${Math.round((1 - r.ctx) * 100)}% less of it than the league">tight opp</span>`);
-    if (r.ctx != null && r.ctx > 1.1) tags.push(`<span class="tc-wait" title="This opponent allows ${Math.round((r.ctx - 1) * 100)}% more of it than the league">open opp</span>`);
+    if (r.ctx != null && r.ctx < 0.9) tags.push(`<span class="tc-gap" title="This opponent allows ${Math.round((1 - r.ctx) * 100)}% less of it than the league">tight opponent</span>`);
+    if (r.ctx != null && r.ctx > 1.1) tags.push(`<span class="tc-wait" title="This opponent allows ${Math.round((r.ctx - 1) * 100)}% more of it than the league">open opponent</span>`);
+    if (r.early != null && r.early >= 25) tags.push(`<span class="tc-wait" title="Off before 70' in ${r.early}% of starts">off early ${r.early}%</span>`);
+    const pos = socPosWords(r.pos);
     const step = r.stat === 'passes' ? 1 : 0.5;
-    return `<li>`
+    return `<li class="sp-row${open ? ' open' : ''}" data-sprow="${esc(key)}">`
       + `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`
       + `<div class="tc-leg">`
-      + `<span class="tc-l1"><b>${esc(SOC_STAT[r.stat] || r.stat)}</b><span class="tc-p${p < 55 ? ' sp-flat' : ''}">${side === 'Under' ? 'U' : 'O'} ${pct0(p)}</span></span>`
-      // Both sides beside the projection (a whole-number line also pushes), so
-      // the stepper row holds only the controls and fits beside the star.
-      + `<span class="tc-l2"><span>proj ${esc(String(r.proj))} · <span class="sp-both">U ${pct0(ch.under)} · O ${pct0(ch.over)}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span></span>`
-      + `<span class="sp-line"><button type="button" class="sp-step" data-action="socp-line" data-key="${esc(key)}" data-d="${-step}" aria-label="Lower the line">−</button>`
-      + `<input class="sp-in" type="number" inputmode="decimal" step="0.5" min="0" value="${esc(String(line))}" data-socp="${esc(key)}" aria-label="PrizePicks line for ${esc(r.player)} ${esc(SOC_STAT[r.stat] || r.stat)}">`
-      + `<button type="button" class="sp-step" data-action="socp-line" data-key="${esc(key)}" data-d="${step}" aria-label="Raise the line">+</button>`
-      + `${socSaveHtml(key, line)}</span>`
+      + `<button type="button" class="sp-tap" data-action="socp-row" data-key="${esc(key)}" aria-expanded="${open}">`
+      + `<span class="tc-l1"><b>${esc(r.player)}</b><span class="pk-sport">${esc(r.team || '')}</span><span class="tc-p${l.p >= 60 ? ' sp-strong' : ''}">${pct0(l.p)}</span></span>`
+      + `<span class="tc-l2"><span>${l.side} ${esc(String(l.line))} ${esc(socStatWords(r.stat))} · proj ${esc(String(r.proj))}${pos ? ' · ' + esc(pos) : ''}${tags.length ? ' ' + tags.join(' ') : ''}</span></span>`
+      + `</button>`
+      // Both sides at the line (a whole-number line also pushes), then the
+      // stepper on a row of its own: with its label it ran 17px past a 375px
+      // phone's row.
+      + (open ? `<div class="sp-set"><span class="sp-sh"><span class="sp-lbl">PrizePicks line</span><span class="sp-both">Under ${pct0(l.ch.under)} · Over ${pct0(l.ch.over)}</span></span>`
+        + `<span class="sp-line">`
+        + `<button type="button" class="sp-step" data-action="socp-line" data-key="${esc(key)}" data-d="${-step}" aria-label="Lower the line">−</button>`
+        + `<input class="sp-in" type="number" inputmode="decimal" step="0.5" min="0" value="${esc(String(l.line))}" data-socp="${esc(key)}" aria-label="PrizePicks line for ${esc(r.player)} ${esc(SOC_STAT[r.stat] || r.stat)}">`
+        + `<button type="button" class="sp-step" data-action="socp-line" data-key="${esc(key)}" data-d="${step}" aria-label="Raise the line">+</button>`
+        + `${socSaveHtml(key, l.line)}</span></div>` : '')
       + `</div></li>`;
   }
   // A record's count, green only once it has cleared PrizePicks' 2-pick
   // break-even (57.7%) over five or more, as the Picks list draws a chance: a
   // first "1 of 3" at the PrizePicks lines is not a result yet.
   const socRecB = (hit, n) => `<b${n >= 5 && hit / n * 100 >= 57.7 ? '' : ' class="sp-rec-flat"'}>${hit} of ${n}</b>`;
-  // Lineup order: goalkeeper, defenders, midfielders, forwards.
-  const socPosRank = (pos) => { const p = String(pos || ''); if (p === 'G') return 0; if (/^(CD|CB|LB|RB|LWB|RWB|D|SW)/.test(p)) return 1; if (/M/.test(p)) return 2; return 3; };
-  const SOC_SHORT = { shots: 'Shots', sot: 'SOT', passes: 'Pass', tackles: 'Tkl', clear: 'Clr', fouls: 'Fouls', saves: 'Saves',
-    crosses: 'Crs', shot_ast: 'ShAst', conceded: 'GA', fouls_drawn: 'Drawn', goal_ast: 'G+A' };
-  // The card can not know PrizePicks' number, so it does not rank by a lean it
-  // would have to invent: it lists each match's starters, with a search, and
-  // a tapped player opens his stats. A line set there is the line played.
+  // The soccer props card (2026-10-21): each match opens on its strongest
+  // leans, one per starter, best first, and the chips above it list one stat
+  // at a time, the way PrizePicks lays out its own board. The lean is at the
+  // app's default line until PrizePicks' number is set on the row, so the card
+  // says so. Ranked by the chance at the default line: a line being stepped
+  // would otherwise move its row, or swap it for another stat, under the
+  // finger. A row shows the chance at the line set.
+  const SOC_BEST_N = 8;
+  const socRankP = (r) => socLean(r, r.line).p;
   function socPropsCardHtml() {
     const d = state.socProps;
     if (!d) return '';
@@ -6409,48 +6475,116 @@
       ? `<span class="tc-rec">${d.record && d.record.graded ? `Default line: ${socRecB(d.record.hit, d.record.graded)}` : ''}${d.record && d.record.graded && ppRec ? ' · ' : ''}${ppRec}</span>` : '';
     const posted = ms.filter((m) => m.lineup === 'posted' && (m.rows || []).length);
     const waiting = ms.filter((m) => m.lineup !== 'posted');
+    // The stats on offer, in PrizePicks' order; a stat picked earlier that no
+    // posted match has falls back to Best.
+    const stats = Object.keys(SOC_STAT).filter((s) => posted.some((m) => m.rows.some((r) => r.stat === s)));
+    const view = stats.includes(state.socStat) ? state.socStat : 'best';
+    const hint = view !== 'best' ? `${SOC_STAT[view]}: every starter, best first`
+      : (q ? 'Every stat of the players found' : 'Each starter’s strongest lean, best first');
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks player props</span>${rec}</div>`
-      + `<div class="tc-sub">Find the player PrizePicks shows you, set the line to the app's number, and the chance follows. Each line you set is saved and graded at that number. Starters only, once lineups post (about an hour before kickoff).`
+      + `<div class="tc-sub">At the app’s line until you set PrizePicks’: tap a player to set it, and the chance follows. Each line you set is saved and graded at that number. Starters only, once lineups post (about an hour before kickoff).`
       + `${posted.some((m) => m.rows.some((r) => r.nRecent < 3)) ? ' Early season: most projections are still last season’s numbers.' : ''}</div>`
-      + (posted.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">` : '');
+      + (posted.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">`
+        + `<div class="sp-chips">${['best', ...stats].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="socp-stat" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : SOC_STAT[s])}</button>`).join('')}</div>`
+        + `<div class="sp-hint">${esc(hint)}</div>` : '');
     let found = 0;
     const body = posted.map((m) => {
-      const byP = new Map();
-      for (const r of m.rows) { if (!byP.has(r.id)) byP.set(r.id, { id: r.id, player: r.player, team: r.team, pos: r.pos, early: r.early, nRecent: r.nRecent, rows: [] }); byP.get(r.id).rows.push(r); }
-      const teams = [...new Set(m.rows.map((r) => r.team))];
-      const players = [...byP.values()]
-        .filter((p) => !q || String(p.player).toLowerCase().includes(q))
-        .sort((a, b) => teams.indexOf(a.team) - teams.indexOf(b.team) || socPosRank(a.pos) - socPosRank(b.pos));
-      if (!players.length) return '';
-      found += players.length;
+      let rows = m.rows.filter((r) => !q || String(r.player).toLowerCase().includes(q));
+      if (view !== 'best') rows = rows.filter((r) => r.stat === view);
+      else if (!q) {
+        // One row a starter. A row open or starred keeps its place, so a line
+        // being set never swaps it for the player's other stat.
+        const held = (x) => !!((state.socOpen && state.socOpen[socKey(m, x)]) || state.slip[`socp:${socKey(m, x)}`]);
+        const by = new Map();
+        for (const r of rows) {
+          const cur = by.get(r.id);
+          if (!cur || (held(r) !== held(cur) ? held(r) : socRankP(r) > socRankP(cur))) by.set(r.id, r);
+        }
+        rows = [...by.values()];
+      }
+      if (!rows.length) return '';
+      rows.sort((a, b) => socRankP(b) - socRankP(a));
+      found += rows.length;
       // A Saturday posts fifteen lineups at once: each match is one line until
       // it is opened, unless it is the only one, or a search reaches into it.
       const mOpen = !!q || posted.length === 1 || !!(state.socMatchOpen && state.socMatchOpen[m.id]);
+      const starters = new Set(m.rows.map((r) => r.id)).size;
+      const count = q ? `${rows.length} found` : `${view === 'best' ? starters : rows.length} starter${(view === 'best' ? starters : rows.length) === 1 ? '' : 's'}`;
       const mHead = `<button type="button" class="sp-mh" data-action="socp-match" data-id="${esc(m.id)}" aria-expanded="${mOpen}">`
         + `<b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span>`
-        + `<span class="sp-mc">${players.length} starter${players.length === 1 ? '' : 's'} ${mOpen ? '▾' : '▸'}</span></button>`;
+        + `<span class="sp-mc">${count} ${mOpen ? '▾' : '▸'}</span></button>`;
       if (!mOpen) return `<div class="sp-match">${mHead}</div>`;
-      const items = players.map((p) => {
-        const pk = `${m.id}:${p.id}`;
-        const open = !!q || !!(state.socOpen && state.socOpen[pk]);
-        const starred = p.rows.filter((r) => state.slip[`socp:${socKey(m, r)}`]).length;
-        const summary = p.rows.map((r) => `${SOC_SHORT[r.stat] || r.stat} ${r.stat === 'passes' ? Math.round(r.proj) : (Math.round(r.proj * 10) / 10)}`).join(' · ');
-        const tags = [];
-        if (p.early != null && p.early >= 25) tags.push(`<span class="tc-wait" title="Off before 70' in ${p.early}% of his starts">off early ${p.early}%</span>`);
-        return `<li class="sp-player${open ? ' open' : ''}">`
-          + `<button type="button" class="sp-ph" data-action="socp-player" data-key="${esc(pk)}" aria-expanded="${open}">`
-          + `<span class="sp-pn"><b>${esc(p.player)}</b> <span class="pk-sport">${esc(p.team || '')}${p.pos ? ' · ' + esc(p.pos) : ''}</span>${starred ? ` <span class="sp-star">★${starred > 1 ? starred : ''}</span>` : ''}</span>`
-          + `<span class="sp-ps">${esc(summary)}${tags.length ? ' ' + tags.join(' ') : ''}</span></button>`
-          + (open ? `<ol class="tc-legs sp-stats">${p.rows.map((r) => socPropRow(m, r)).join('')}</ol>` : '')
-          + `</li>`;
-      }).join('');
-      return `<div class="sp-match">${mHead}<ul class="sp-players">${items}</ul></div>`;
+      // Best shows the top eight until asked for the rest; a stat's list and a
+      // search show all.
+      const all = !!q || view !== 'best' || !!(state.socAll && state.socAll[m.id]);
+      const shown = all ? rows : rows.slice(0, SOC_BEST_N);
+      const more = shown.length < rows.length
+        ? `<button type="button" class="sp-more" data-action="socp-all" data-id="${esc(m.id)}">All ${rows.length} starters</button>` : '';
+      return `<div class="sp-match">${mHead}<ol class="tc-legs">${shown.map((r) => socPropRow(m, r)).join('')}</ol>${more}</div>`;
     }).join('');
-    const nothing = q && posted.length && !found ? `<div class="tc-wait-note">No starter matches “${esc(state.socQuery)}”.</div>` : '';
+    const nothing = q && posted.length && !found ? `<div class="tc-wait-note">No starter matches “${esc(state.socQuery)}”${view !== 'best' ? ` in ${esc(socStatWords(view))}` : ''}.</div>` : '';
     const wait = waiting.length
       ? `<div class="tc-wait-note">Lineups not posted yet: ${waiting.slice(0, 6).map((m) => `${esc(m.away)} @ ${esc(m.home)} ${esc(soccerKick(m.commence))}`).join(' · ')}${waiting.length > 6 ? ` · and ${waiting.length - 6} more` : ''}.</div>` : '';
     const none = !posted.length && !waiting.length ? '<div class="tc-wait-note">No fixtures in the five leagues in the next fourteen hours.</div>' : '';
     return `<div class="nba-pp pk-card sp-card">${head}${body}${nothing}${wait}${none}</div>`;
+  }
+
+  // The best soccer prop in each stat, for the Picks tab (2026-10-21): across
+  // the posted lineups, the row whose lean is strongest at the line shown --
+  // the app's default line until PrizePicks' is set on the Soccer tab. Its own
+  // strip, not the ranked list: that admits only kinds whose chance has held
+  // up, and these have not graded at PrizePicks' numbers yet. A stat whose
+  // lean has landed under half the time over ten or more at the default line
+  // is left off (fouls: 7 of 15 by Oct 15). One per player too, strongest
+  // first: on the recorded Fulham v Tottenham lineup three players took six
+  // of the eleven stats, a keeper twice.
+  const socWeakStat = (rec, s) => { const x = rec && rec.byMarket && rec.byMarket[s]; return !!(x && x.n >= 10 && x.hitRate < 50); };
+  function socBestByStat(d, now) {
+    const all = [];
+    for (const m of (d && d.matches) || []) {
+      if (m.lineup !== 'posted' || !(Date.parse(m.commence) > now)) continue;
+      for (const r of m.rows || []) if (!socWeakStat(d.record, r.stat)) all.push({ m, r, l: socLean(r, socLineOf(m, r)) });
+    }
+    all.sort((a, b) => b.l.p - a.l.p);
+    const stats = new Set(), players = new Set();
+    return all.filter((x) => {
+      if (stats.has(x.r.stat) || players.has(x.r.id)) return false;
+      stats.add(x.r.stat); players.add(x.r.id);
+      return true;
+    });
+  }
+  // No star here: starring saves the line as PrizePicks', and nobody has
+  // checked it yet. A tap takes the row to the Soccer tab, open on its line.
+  function socBestStripHtml() {
+    const d = state.socProps;
+    if (!d || !Array.isArray(d.matches)) return '';
+    const now = Date.now();
+    const list = socBestByStat(d, now);
+    const waiting = d.matches.filter((m) => m.lineup !== 'posted' && Date.parse(m.commence) > now);
+    if (!list.length && !waiting.length) return '';
+    const weak = Object.keys(SOC_STAT).filter((s) => socWeakStat(d.record, s)).map((s) => {
+      const x = d.record.byMarket[s];
+      return `${SOC_STAT[s]} left off: the lean has landed ${x.hit} of ${x.n}.`;
+    });
+    const head = `<div class="tc-head"><span class="tc-title">Soccer props</span><span class="tc-rec">best in each stat</span></div>`
+      + `<div class="tc-sub">At the app’s line, not PrizePicks’: tap one to set PrizePicks’ number on the Soccer tab. Not on the list above until these grade at PrizePicks’ lines.${weak.length ? ' ' + esc(weak.join(' ')) : ''}</div>`;
+    if (!list.length) {
+      const next = waiting.slice().sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence))[0];
+      return `<div class="nba-pp pk-card sp-card sp-best">${head}<div class="tc-wait-note">Lineups not posted yet (about an hour before kickoff). Next: ${esc(next.away)} @ ${esc(next.home)} ${esc(soccerKick(next.commence))}.</div></div>`;
+    }
+    const items = list.map(({ m, r, l }) => {
+      const key = socKey(m, r);
+      const x = d.record && d.record.byMarket && d.record.byMarket[r.stat];
+      const recTxt = x && x.n ? `${SOC_STAT[r.stat]} at the default line: ${x.hit} of ${x.n} landed` : `${SOC_STAT[r.stat]}: none graded yet`;
+      const pp = state.socSaved && state.socSaved[key] === l.line;
+      return `<li><button type="button" class="tc-leg has-hs" data-action="socp-go" data-key="${esc(key)}">`
+        + avatarHtml({ sport: 'soccer', playerId: r.id, name: r.player })
+        + `<span class="tc-l1"><b>${esc(r.player)} ${l.side} ${esc(String(l.line))} ${esc(socStatWords(r.stat))}</b><span class="tc-p${l.p >= 60 ? ' sp-strong' : ''}">${pct0(l.p)}</span></span>`
+        + `<span class="tc-l2"><span><span class="pk-sport">${esc(m.label || 'Soccer')}</span> · ${esc(m.away)} @ ${esc(m.home)} · <span class="pk-when">${esc(soccerKick(m.commence))}</span></span></span>`
+        + `<span class="pk-rec thin">${esc(recTxt)}${pp ? ' · at your PrizePicks line' : ''}</span>`
+        + `</button></li>`;
+    }).join('');
+    return `<div class="nba-pp pk-card sp-card sp-best">${head}<ol class="tc-legs">${items}</ol></div>`;
   }
 
   function setSoccerLeague(lg) {
@@ -6486,7 +6620,21 @@
       + list.map((l) => chip(l.key, l.label, l.country || '')).join('');
   }
 
+  // The props card's stat chips scroll sideways and every redraw replaces
+  // them: the scroll is kept, and the chip picked is brought into view (from
+  // the Picks strip it was off the right edge).
   function renderSoccer() {
+    const was = el.soccerGrid && el.soccerGrid.querySelector('.sp-chips');
+    const left = was ? was.scrollLeft : 0;
+    renderSoccerGrid();
+    const box = el.soccerGrid && el.soccerGrid.querySelector('.sp-chips');
+    const on = box && box.querySelector('.sp-chip.on');
+    if (!on) return;
+    box.scrollLeft = left;
+    const a = box.getBoundingClientRect(), b = on.getBoundingClientRect();
+    if (b.left < a.left || b.right > a.right) box.scrollLeft += b.left - a.left - (a.width - b.width) / 2;
+  }
+  function renderSoccerGrid() {
     if (!el.soccerGrid) return;
     renderSoccerLeagues();
     const d = state.soccer;
