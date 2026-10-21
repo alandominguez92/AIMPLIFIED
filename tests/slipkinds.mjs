@@ -57,7 +57,8 @@ ok(/Star legs on any board, then log the entry from your slip/.test(src) && !/St
   'the Entries empty state names every board, not only MLB');
 // And by the leg's own day (2026-10-21): the list looks a day ahead, so the
 // first leg is often tomorrow's.
-ok(/const kicker = legDay === ptDayOf\(Date\.now\(\)\) \? "Today's best leg"\s*: \(legDay === ptDayOf\(Date\.now\(\) \+ 864e5\) \? "Tomorrow's best leg" : 'Best leg'\);/.test(src)
+// (Since 2026-10-21 a sport tab's card also names its sport: tests/faces.mjs.)
+ok(/const kicker = legDay === ptDayOf\(Date\.now\(\)\) \? `Today's \$\{what\}`\s*: \(legDay === ptDayOf\(Date\.now\(\) \+ 864e5\) \? `Tomorrow's \$\{what\}`/.test(src)
   && /<span class="hl-kicker">\$\{kicker\}<\/span>/.test(src) && !/Tonight's best leg/.test(src),
   'the top card says Today\'s or Tomorrow\'s by the leg\'s own day, and never Tonight\'s');
 

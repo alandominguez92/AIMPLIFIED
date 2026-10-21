@@ -121,16 +121,40 @@ ok(/class="hs hs-team" style="--hs-size:64px"[^>]*><span class="hs-mono">CEL<\/s
   && /teamlogos\/soccer\/500\/359\.png/.test(socMl) && /hs-mono">ARS</.test(socMl),
   'an NBA or soccer moneyline: the club\'s ESPN mark over its initials (they were initials alone)');
 ok(/\.hl-pick \{[^}]*color:var\(--accent\)/.test(css) && /\.hl-p\.good \.hl-pct \{ color:var\(--positive\); \}/.test(css), 'gold is the pick; green is the record clearing break-even');
+// On a sport tab the card names its sport (2026-10-21).
+ok(/Today's best NBA leg/.test(F.heroLegHtml(nbaMlToday(), { link: true, sport: 'nba' })) && /Today's best leg/.test(F.heroLegHtml(nbaMlToday(), {})),
+  'on a sport tab it reads "Today\'s best NBA leg"; on the Picks tab, "Today\'s best leg"');
+function nbaMlToday() { return { ...pp, kind: 'nba_ml', sport: 'nba', title: 'Celtics ML', odds: -330, commence: new Date(Date.now() + 60e3).toISOString(),
+  spec: { sport: 'nba', team: 'Celtics', market: 'ml', logo: 'nba/500/bos.png' } }; }
+
+// Each sport tab heads with ITS best leg (2026-10-21). The MLB tab showed the
+// whole list's best, so a soccer favourite headed the MLB board.
+const T = new Function(['TOP_HOST', 'topLegFor'].map((n) => lift(n)).join('\n') + '\nreturn { topLegFor };')();
+const now = Date.now(), soon = new Date(now + 36e5).toISOString(), gone = new Date(now - 6e4).toISOString();
+const list = { legs: [
+  { sport: 'soccer', title: 'Inter Milan ML', commence: soon },
+  { sport: 'nba', title: 'Raptors ML', commence: soon },
+  { sport: 'nba', title: 'Rockets ML', commence: soon },
+  { sport: 'mlb', title: 'LAD ML', commence: gone },
+] };
+const pick = (s) => { const l = T.topLegFor(list, s, now); return l ? l.title : null; };
+ok(pick('nba') === 'Raptors ML' && pick('soccer') === 'Inter Milan ML', `each sport tab gets its own best leg, the first of its sport on the list (NBA: ${pick('nba')})`);
+ok(pick('mlb') === null, 'MLB, whose only leg has started, gets no card, not another sport\'s');
+ok(pick('nhl') === null && pick('nfl') === null, 'nor does a sport with nothing on the list (NHL until it has a record)');
+ok(pick('picks') === null && pick('entries') === null, 'and the Picks and Entries tabs get none: Picks draws its own');
+ok(T.topLegFor({ error: 'unreachable', legs: list.legs }, 'nba', now) === null && T.topLegFor(null, 'nba', now) === null, 'or while the list is unread');
 
 console.log('\n-- where it sits --');
 ok(/<div id="topCard" class="top-card" hidden><\/div>\s*<div id="todayCard"/.test(html), 'above Today\'s card on the MLB board');
-ok(/const top = document\.getElementById\('topCard'\);\s*if \(top && slate\.firstElementChild !== top\) slate\.prepend\(top\);/.test(src),
-  'and kept above it when the rail hands Today\'s card back on a phone');
-// Since 2026-10-20 the page opens on Picks: the first read rides the starting
-// tab, in a microtask (after the script, so the consts exist), and the MLB
-// top card still gets the list when a link opens MLB instead.
-ok(/queueMicrotask\(\(\) => \{[\s\S]{0,200}setSport\(START_SPORT\);[\s\S]{0,200}if \(START_SPORT !== 'picks'\) refreshPicks\(\);/.test(src),
-  'loaded with the page, after the script, so the Picks renderer\'s consts exist');
+// On the MLB tab only (2026-10-21): on the others the card sits on their board.
+ok(/const top = document\.getElementById\('topCard'\);\s*if \(top && state\.sport === 'mlb' && slate\.firstElementChild !== top\) slate\.prepend\(top\);/.test(src),
+  'and kept above it when the rail hands Today\'s card back on a phone, on the MLB tab');
+// The page opens on Picks (2026-10-20), in a microtask after the script, so
+// the consts exist; since 2026-10-21 setSport reads the list for every tab
+// that shows a card, so the start needs no read of its own.
+ok(/queueMicrotask\(\(\) => \{\s*state\.sport = null;\s*setSport\(START_SPORT\);\s*\}\);/.test(src)
+  && /if \(TOP_HOST\[s\] && \(!state\.picks \|\| Date\.now\(\) - \(state\.picksAt \|\| 0\) > 120e3\)\) refreshPicks\(\);/.test(src),
+  'loaded with the page, after the script, and read by whichever tab opens');
 ok(/const hero = heroLegHtml\(legs\[0\], \{ size: 52 \}\);[\s\S]*?legs\.slice\(1\)\.map/.test(lift('renderPicks')), 'on the Picks tab it is the list\'s first leg, and the rest follow');
 
 // ---- the worker: which logo a moneyline leg carries (2026-10-14) ----------------------

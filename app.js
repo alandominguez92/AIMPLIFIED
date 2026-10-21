@@ -3497,9 +3497,10 @@
     } else {
       if (card.parentNode !== slate) slate.prepend(card);
       if (how && how.parentNode !== slate) card.after(how);
-      // The top card stays above Today's card.
+      // The top card stays above Today's card -- on the MLB tab. On the other
+      // sport tabs it sits on their own board (placeTopCard).
       const top = document.getElementById('topCard');
-      if (top && slate.firstElementChild !== top) slate.prepend(top);
+      if (top && state.sport === 'mlb' && slate.firstElementChild !== top) slate.prepend(top);
     }
     // The rail is MLB furniture and hides off the MLB tab; the slip is not, so
     // off that tab it takes its own place after the board, where it sits on a
@@ -4941,7 +4942,7 @@
     // Picks of the day loads with the starting tab (START_SPORT, at INIT below),
     // which is where the first read happens. /api/picks is cached two minutes
     // at the edge.
-    setInterval(() => { if (state.sport === 'mlb' || state.sport === 'picks') refreshPicks(); }, 600000);
+    setInterval(() => { if (state.sport === 'picks' || TOP_HOST[state.sport]) refreshPicks(); }, 600000);
     // Injury wire (recent IL moves) — refresh every 10 min.
     refreshInjuries();
     setInterval(refreshInjuries, 600000);
@@ -4991,12 +4992,11 @@
   // Built-in mock mode (file://, no API) has MLB demo data only, so it opens there.
   const START_SPORT = !LIVE_MODE ? 'mlb'
     : ({ '#slate': 'mlb', '#nflBoard': 'nfl' }[location.hash] || 'picks');
+  // setSport reads the Picks list for the Picks tab and every sport tab (each
+  // heads with its own best leg), so the start needs no read of its own.
   queueMicrotask(() => {
     state.sport = null;
     setSport(START_SPORT);
-    // The MLB board's top card is the first leg of the Picks list, and setSport
-    // reads the list only when it opens the Picks tab.
-    if (START_SPORT !== 'picks') refreshPicks();
   });
 
   // -------------------------------------------------------------------------
@@ -5041,10 +5041,13 @@
     if (pb) pb.hidden = s !== 'picks';
     // Read on every visit after two minutes: lineups post and legs move.
     if (s === 'picks') { if (!state.picks || Date.now() - (state.picksAt || 0) > 120e3) refreshPicks(); else renderPicks(); }
-    if (s === 'mlb' && state.picks && Date.now() - (state.picksAt || 0) > 120e3) refreshPicks();
+    // Every sport tab heads with its own best leg from the same list, so each
+    // one reads it too (refreshPicks redraws the card when it lands).
+    if (TOP_HOST[s] && (!state.picks || Date.now() - (state.picksAt || 0) > 120e3)) refreshPicks();
     const eb = document.getElementById('entriesBoard');
     if (eb) eb.hidden = s !== 'entries';
     placeRail();
+    renderTopCard();
     if (s === 'entries') { if (!state.entries) refreshEntries(); else renderEntries(); }
     // Hiding on the way out was only half of it. Coming BACK to MLB left the
     // strip hidden until the next batter poll happened to re-render it, which
@@ -5869,8 +5872,10 @@
     // By the leg's own Pacific day (2026-10-21): the list looks a day ahead,
     // so its first leg is often tomorrow's -- Inter at noon read "Today's".
     const legDay = ptDayOf(Date.parse(x.commence));
-    const kicker = legDay === ptDayOf(Date.now()) ? "Today's best leg"
-      : (legDay === ptDayOf(Date.now() + 864e5) ? "Tomorrow's best leg" : 'Best leg');
+    // On a sport tab the card names its sport: "Today's best NBA leg".
+    const what = opts && opts.sport && PICK_SPORT[opts.sport] ? `best ${PICK_SPORT[opts.sport]} leg` : 'best leg';
+    const kicker = legDay === ptDayOf(Date.now()) ? `Today's ${what}`
+      : (legDay === ptDayOf(Date.now() + 864e5) ? `Tomorrow's ${what}` : what[0].toUpperCase() + what.slice(1));
     return `<article class="hero-leg"${c ? ` style="--hl-tc:${c[0]}"` : ''}>`
       + `<div class="hl-top"><span class="hl-kicker">${kicker}</span>`
       + `<span class="hl-meta">${esc(x.league || PICK_SPORT[x.sport] || x.sport || '')} · ${esc(soccerKick(x.commence))}</span></div>`
@@ -5887,13 +5892,37 @@
       + `</div></article>`;
   }
   // The MLB board's copy of it, above Today's card.
+  // Each sport tab heads with ITS best leg (2026-10-21): the first leg of that
+  // sport in the Picks list, which is ranked best first and admits only kinds
+  // whose stated chance has held up. The MLB tab used to show the whole list's
+  // best, so a soccer favourite headed the MLB board. Picks and Entries get no
+  // card -- the Picks tab draws its own -- and nor does a sport with nothing on
+  // the list (NHL until it has a record): the slot is not filled with a leg
+  // that did not qualify.
+  const TOP_HOST = { mlb: 'slate', nfl: 'nflBoard', nba: 'nbaBoard', nhl: 'nhlBoard', soccer: 'soccerBoard' };
+  function topLegFor(picks, sport, now) {
+    if (!TOP_HOST[sport] || !picks || picks.error) return null;
+    return (picks.legs || []).find((x) => Date.parse(x.commence) > now && (x.sport || (x.spec && x.spec.sport)) === sport) || null;
+  }
+  // The card sits at the top of the MLB slate, and on the other boards under
+  // their heading and note.
+  function placeTopCard(sport) {
+    const top = document.getElementById('topCard');
+    const host = TOP_HOST[sport] && document.getElementById(TOP_HOST[sport]);
+    if (!top || !host) return;
+    if (sport === 'mlb') { if (host.firstElementChild !== top) host.prepend(top); return; }
+    const head = host.querySelector(':scope > .sec-head');
+    if (!head) return;
+    const note = head.nextElementSibling && head.nextElementSibling.classList.contains('soc-note') ? head.nextElementSibling : head;
+    if (note.nextElementSibling !== top) note.after(top);
+  }
   function renderTopCard() {
     const box = document.getElementById('topCard');
     if (!box) return;
-    const d = state.picks;
-    const legs = d && !d.error ? (d.legs || []).filter((x) => Date.parse(x.commence) > Date.now()) : [];
-    if (!legs.length) { box.hidden = true; box.innerHTML = ''; return; }
-    box.innerHTML = heroLegHtml(legs[0], { link: true });
+    placeTopCard(state.sport);
+    const leg = topLegFor(state.picks, state.sport, Date.now());
+    if (!leg) { box.hidden = true; box.innerHTML = ''; return; }
+    box.innerHTML = heroLegHtml(leg, { link: true, sport: state.sport });
     box.hidden = false;
   }
 
