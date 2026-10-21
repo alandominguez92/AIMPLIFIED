@@ -9793,7 +9793,19 @@ async function ensureNbaSchema(db) {
 
 // Accents are stripped as well as case and suffixes: "Nikola Jokić" in one feed
 // is "Nikola Jokic" in the other.
-const nbaName = (s) => nflBaseName(String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+const nbaBaseName = (s) => nflBaseName(String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+// Where PrizePicks' name for a player is not ESPN's even then: its name -> the
+// one in nba-priors.json. On opening night 2026-10-20 its "Ron Holland" found
+// no prior and his rebounds leg was never logged. Every name goes through it,
+// priors included, so a player whose own name is one of these collides with the
+// aliased one and both are dropped (nbaPriors), never given each other's legs.
+const NBA_NAME_ALIAS = { 'Ron Holland': 'Ronald Holland II' };
+let NBA_ALIAS = null;   // built on first use: nflBaseName is defined further down
+const nbaName = (s) => {
+  if (!NBA_ALIAS) NBA_ALIAS = new Map(Object.entries(NBA_NAME_ALIAS).map(([a, b]) => [nbaBaseName(a), nbaBaseName(b)]));
+  const k = nbaBaseName(s);
+  return NBA_ALIAS.get(k) || k;
+};
 
 let NBA_PRIORS = null;
 async function nbaPriors(env) {

@@ -141,8 +141,10 @@ const leg = (p, m) => rows.find((l) => l.player === p && l.market === m) || {};
 const by = (m) => rows.filter((l) => l.market === m).length;
 console.log('  logged blocks/steals: ' + rows.filter((l) => l.market === 'blk' || l.market === 'stl')
   .map((l) => `${l.player} ${l.market} u${l.point} proj ${l.proj} (${l.n_recent}) ${l.model_under}%`).join(' | '));
-ok(rows.length === 29 && by('blk') === 1 && by('stl') === 6 && by('threes') === 6 && by('ast') === 5 && by('reb') === 11,
-  `every PrizePicks line on a player the priors know, as production logged them: 29 = 1 blocks, 6 steals, 6 threes, 5 assists, 11 rebounds (${rows.length} = ${['blk', 'stl', 'threes', 'ast', 'reb'].map(by).join(', ')})`);
+// Production logged 29; the 30th is Ron Holland's rebounds, whose name found no
+// prior until the alias (tests/nbaalias.mjs).
+ok(rows.length === 30 && by('blk') === 1 && by('stl') === 6 && by('threes') === 6 && by('ast') === 5 && by('reb') === 12,
+  `every PrizePicks line on a player the priors know, as production logged them plus Ron Holland: 30 = 1 blocks, 6 steals, 6 threes, 5 assists, 12 rebounds (${rows.length} = ${['blk', 'stl', 'threes', 'ast', 'reb'].map(by).join(', ')})`);
 // What production logged at 08:01 PT from this payload: player, market, proj, chance.
 const PROD = [['Cade Cunningham', 'blk', 0.8, 45.7], ['Duncan Robinson', 'stl', 0.6, 58.1], ['Jordan Walsh', 'stl', 0.7, 50.3],
   ['Payton Pritchard', 'stl', 0.7, 49.9], ['Jalen Duren', 'stl', 0.8, 46.2], ['Kevin Huerter', 'stl', 0.9, 42.0],
