@@ -29,8 +29,8 @@
   --accentGrad:#e0ad33;   /* deep end of the active-tab gradient */
   --danger:#f0776b;
   --warm:#d9a83c;
-  --positive:#6fd6a2;
-  --positiveDim:#4f8f6c;  /* the SHARP caption under an edge */
+  --positive:#5fd3c6;     /* deep teal (2026-10-21; was mint #6fd6a2) */
+  --positiveDim:#4a9a94;  /* the SHARP caption under an edge */
   --model:#7fb2f0;
   --clv:#b0a4f0;
   --ink:#15110a;          /* text on a gold fill */
@@ -105,8 +105,8 @@
   --accentGrad:#E0A81F;
   --danger:#BE3B2C;
   --warm:#9c6a12;
-  --positive:#177a45; /* 5.4:1 on white */
-  --positiveDim:#1f6b42;
+  --positive:#0b6b73; /* deep teal, 6.2:1 on white (2026-10-21; was forest green #177a45) */
+  --positiveDim:#17595e;
   --model:#1a5fa8;
   --clv:#5a48b5;
   --ink:#FFFFFF;
@@ -171,7 +171,7 @@
      accentHover      #ffd970    --accentHover
      accentPressed    #e0ad33    --accentGrad
      onAccent         #15110a    --onAccent
-     good             #6fd6a2    --positive
+     good             #5fd3c6    --positive   (deep teal since 2026-10-21)
      bad              #f0776b    --danger
      caution          #d18a47    --caution
      cautionTint      #2a2418    --cautionTint
@@ -1376,9 +1376,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 :root {
   --stateProvisional: #6b7684;
   --stateFirming:     #f2c34d;
-  --stateLocked:      #6fd6a2;
+  --stateLocked:      var(--positive);
   --statePulled:      #f0776b;
-  --srcSharp:         #6fd6a2;
+  --srcSharp:         var(--positive);
   --srcMkt:           #7d8796;
   --envDome:          #7fb2f0;
   --envWind:          #f2c34d;
