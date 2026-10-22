@@ -186,7 +186,7 @@
     logStake: null,
     manualLegs: 1,         // rows in the "add by hand" form
     soccer: null,          // /api/soccer-board payload, loaded on first visit
-    soccerLeague: 'all',   // 'all' | 'epl' | 'laliga' | 'ucl'
+    soccerLeague: 'all',   // 'all' or a league key from the payload ('epl', 'ucl', 'uel', ...)
     socProps: null,        // /api/soccer-props
     socLines: {},          // soccer prop line set by the user, per match:player:stat
     socSaved: {},          // the line the worker holds for that key (/api/soc-lines)
@@ -6525,7 +6525,7 @@
     const nothing = q && posted.length && !found ? `<div class="tc-wait-note">No starter matches “${esc(state.socQuery)}”${view !== 'best' ? ` in ${esc(socStatWords(view))}` : ''}.</div>` : '';
     const wait = waiting.length
       ? `<div class="tc-wait-note">Lineups not posted yet: ${waiting.slice(0, 6).map((m) => `${esc(m.away)} @ ${esc(m.home)} ${esc(soccerKick(m.commence))}`).join(' · ')}${waiting.length > 6 ? ` · and ${waiting.length - 6} more` : ''}.</div>` : '';
-    const none = !posted.length && !waiting.length ? '<div class="tc-wait-note">No fixtures in the five leagues in the next fourteen hours.</div>' : '';
+    const none = !posted.length && !waiting.length ? '<div class="tc-wait-note">No covered fixture in the next fourteen hours.</div>' : '';
     return `<div class="nba-pp pk-card sp-card">${head}${body}${nothing}${wait}${none}</div>`;
   }
 

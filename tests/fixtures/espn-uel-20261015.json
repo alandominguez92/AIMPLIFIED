@@ -1,0 +1,1667 @@
+{
+ "_recorded": "Recorded 2026-10-22 from ESPN site API: Europa League matchday 2 (2026-10-15), Juventus at Celta Vigo (401915560) and Bayer Leverkusen at Lech Poznan (401915576), the scoreboard trimmed to those two events and each summary to header and rosters, the fields the props card reads. Both finished; the test moves the clock before kickoff and marks them pre. Plus the cdn.espn.com scoreboards the Worker grades from, for 2026-10-15 and the day after, trimmed to status and competitors.",
+ "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard?dates=20261015": {
+  "leagues": [
+   {
+    "id": "776",
+    "slug": "uefa.europa",
+    "abbreviation": "UEFA Europa League"
+   }
+  ],
+  "events": [
+   {
+    "id": "401915576",
+    "date": "2026-10-15T16:45Z",
+    "name": "Bayer Leverkusen at Lech Poznan",
+    "status": {
+     "type": {
+      "name": "STATUS_FULL_TIME",
+      "state": "post",
+      "completed": true
+     }
+    },
+    "competitions": [
+     {
+      "id": "401915576",
+      "date": "2026-10-15T16:45Z",
+      "competitors": [
+       {
+        "id": "2990",
+        "homeAway": "home",
+        "score": "0",
+        "team": {
+         "id": "2990",
+         "abbreviation": "LECH",
+         "displayName": "Lech Poznan",
+         "shortDisplayName": "Lech Poznan",
+         "name": "Lech Poznan"
+        }
+       },
+       {
+        "id": "131",
+        "homeAway": "away",
+        "score": "4",
+        "team": {
+         "id": "131",
+         "abbreviation": "B04",
+         "displayName": "Bayer Leverkusen",
+         "shortDisplayName": "Leverkusen",
+         "name": "Bayer Leverkusen"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "401915560",
+    "date": "2026-10-15T19:00Z",
+    "name": "Juventus at Celta Vigo",
+    "status": {
+     "type": {
+      "name": "STATUS_FULL_TIME",
+      "state": "post",
+      "completed": true
+     }
+    },
+    "competitions": [
+     {
+      "id": "401915560",
+      "date": "2026-10-15T19:00Z",
+      "competitors": [
+       {
+        "id": "85",
+        "homeAway": "home",
+        "score": "1",
+        "team": {
+         "id": "85",
+         "abbreviation": "CEL",
+         "displayName": "Celta Vigo",
+         "shortDisplayName": "Celta Vigo",
+         "name": "Celta Vigo"
+        }
+       },
+       {
+        "id": "111",
+        "homeAway": "away",
+        "score": "2",
+        "team": {
+         "id": "111",
+         "abbreviation": "JUV",
+         "displayName": "Juventus",
+         "shortDisplayName": "Juventus",
+         "name": "Juventus"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/summary?event=401915560": {
+  "header": {
+   "competitions": [
+    {
+     "id": "401915560",
+     "date": "2026-10-15T19:00Z",
+     "competitors": [
+      {
+       "id": "85",
+       "homeAway": "home",
+       "team": {
+        "id": "85",
+        "abbreviation": "CEL",
+        "displayName": "Celta Vigo"
+       }
+      },
+      {
+       "id": "111",
+       "homeAway": "away",
+       "team": {
+        "id": "111",
+        "abbreviation": "JUV",
+        "displayName": "Juventus"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "rosters": [
+   {
+    "team": {
+     "id": "85",
+     "abbreviation": "CEL",
+     "displayName": "Celta Vigo"
+    },
+    "roster": [
+     {
+      "starter": true,
+      "athlete": {
+       "id": "144720",
+       "displayName": "Andrei Radu"
+      },
+      "position": {
+       "abbreviation": "G"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "384643",
+       "displayName": "Yoel Lago"
+      },
+      "position": {
+       "abbreviation": "CD"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "146127",
+       "displayName": "Marcos Alonso"
+      },
+      "position": {
+       "abbreviation": "CD-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "376147",
+       "displayName": "Javi Rodríguez"
+      },
+      "position": {
+       "abbreviation": "CD-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "240235",
+       "displayName": "Aleix Febas"
+      },
+      "position": {
+       "abbreviation": "CM-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "297829",
+       "displayName": "Ilaix Moriba"
+      },
+      "position": {
+       "abbreviation": "CM-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "298343",
+       "displayName": "Sergio Carreira"
+      },
+      "position": {
+       "abbreviation": "LM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "331586",
+       "displayName": "Javi Rueda"
+      },
+      "position": {
+       "abbreviation": "RM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "279904",
+       "displayName": "Ferran Jutglà"
+      },
+      "position": {
+       "abbreviation": "F"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "322652",
+       "displayName": "Williot Swedberg"
+      },
+      "position": {
+       "abbreviation": "CF-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "188391",
+       "displayName": "Hugo Álvarez"
+      },
+      "position": {
+       "abbreviation": "CF-R"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "415036",
+       "displayName": "Ángel Arcos"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "21990",
+       "displayName": "Abdoulaye Faye"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "304592",
+       "displayName": "Couhaib Driouech"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "3100792",
+       "displayName": "Frank Germain Jonathan Miller"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "324811",
+       "displayName": "Hugo Gonzalez"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "274272",
+       "displayName": "Altay Bayindir"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "92800",
+       "displayName": "Iago Aspas"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "414292",
+       "displayName": "Andrés Antañón"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "414293",
+       "displayName": "Hugo Burcio"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "367430",
+       "displayName": "Álvaro Núñez"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "231838",
+       "displayName": "Javi Galán"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "285756",
+       "displayName": "Sebastián Cáceres"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     }
+    ]
+   },
+   {
+    "team": {
+     "id": "111",
+     "abbreviation": "JUV",
+     "displayName": "Juventus"
+    },
+    "roster": [
+     {
+      "starter": true,
+      "athlete": {
+       "id": "204082",
+       "displayName": "Guglielmo Vicario"
+      },
+      "position": {
+       "abbreviation": "G"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "323147",
+       "displayName": "Federico Gatti"
+      },
+      "position": {
+       "abbreviation": "CD"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "243787",
+       "displayName": "Lloyd Kelly"
+      },
+      "position": {
+       "abbreviation": "CD-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "290129",
+       "displayName": "Pierre Kalulu"
+      },
+      "position": {
+       "abbreviation": "CD-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "258968",
+       "displayName": "Teun Koopmeiners"
+      },
+      "position": {
+       "abbreviation": "CM-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "297337",
+       "displayName": "Pape Matar Sarr"
+      },
+      "position": {
+       "abbreviation": "CM-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "308029",
+       "displayName": "Andrea Cambiaso"
+      },
+      "position": {
+       "abbreviation": "LM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "256715",
+       "displayName": "Weston McKennie"
+      },
+      "position": {
+       "abbreviation": "RM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "298349",
+       "displayName": "Nick Woltemade"
+      },
+      "position": {
+       "abbreviation": "F"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "391034",
+       "displayName": "Kerim Alajbegovic"
+      },
+      "position": {
+       "abbreviation": "CF-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "312659",
+       "displayName": "Francisco Conceição"
+      },
+      "position": {
+       "abbreviation": "CF-R"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "271873",
+       "displayName": "Zeki Çelik"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "76017",
+       "displayName": "Nico González"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "24412",
+       "displayName": "Juan Cabal"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "121036",
+       "displayName": "Carlo Pinsoglio"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "138398",
+       "displayName": "Neto"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "320074",
+       "displayName": "Douglas Luiz"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "227697",
+       "displayName": "Jhon Lucumí"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "258307",
+       "displayName": "Bremer"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "252971",
+       "displayName": "Randal Kolo Muani"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/summary?event=401915576": {
+  "header": {
+   "competitions": [
+    {
+     "id": "401915576",
+     "date": "2026-10-15T16:45Z",
+     "competitors": [
+      {
+       "id": "2990",
+       "homeAway": "home",
+       "team": {
+        "id": "2990",
+        "abbreviation": "LECH",
+        "displayName": "Lech Poznan"
+       }
+      },
+      {
+       "id": "131",
+       "homeAway": "away",
+       "team": {
+        "id": "131",
+        "abbreviation": "B04",
+        "displayName": "Bayer Leverkusen"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  "rosters": [
+   {
+    "team": {
+     "id": "2990",
+     "abbreviation": "LECH",
+     "displayName": "Lech Poznan"
+    },
+    "roster": [
+     {
+      "starter": true,
+      "athlete": {
+       "id": "222728",
+       "displayName": "Mateusz Lis"
+      },
+      "position": {
+       "abbreviation": "G"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "405755",
+       "displayName": "Wojciech Monka"
+      },
+      "position": {
+       "abbreviation": "CD-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "325947",
+       "displayName": "Mateusz Skrzypczak"
+      },
+      "position": {
+       "abbreviation": "CD-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "358299",
+       "displayName": "Michal Gurgul"
+      },
+      "position": {
+       "abbreviation": "LB"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "305503",
+       "displayName": "Joel Pereira"
+      },
+      "position": {
+       "abbreviation": "RB"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "313256",
+       "displayName": "Antoni Kozubal"
+      },
+      "position": {
+       "abbreviation": "CM-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "238420",
+       "displayName": "Gustaf Beggren"
+      },
+      "position": {
+       "abbreviation": "CM-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "245553",
+       "displayName": "Leo Bengtsson"
+      },
+      "position": {
+       "abbreviation": "LM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "301364",
+       "displayName": "Patrick Walemark"
+      },
+      "position": {
+       "abbreviation": "RM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "133852",
+       "displayName": "Luis Palma"
+      },
+      "position": {
+       "abbreviation": "CF-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "169583",
+       "displayName": "Mikael Ishak"
+      },
+      "position": {
+       "abbreviation": "CF-R"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "365888",
+       "displayName": "Mateusz Pruchniewski"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "308472",
+       "displayName": "Pablo Rodriguez"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "239756",
+       "displayName": "Filip Jagiello"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "380023",
+       "displayName": "Terry Yegbe"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "418966",
+       "displayName": "Wojciech Szymczak"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "326624",
+       "displayName": "Daniel Håkans"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "329971",
+       "displayName": "Yannick Agnero"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "3107588",
+       "displayName": "Karol Delikat"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "3144976",
+       "displayName": "Piotr Bartczak"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     }
+    ]
+   },
+   {
+    "team": {
+     "id": "131",
+     "abbreviation": "B04",
+     "displayName": "Bayer Leverkusen"
+    },
+    "roster": [
+     {
+      "starter": true,
+      "athlete": {
+       "id": "177821",
+       "displayName": "Mark Flekken"
+      },
+      "position": {
+       "abbreviation": "G"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "257287",
+       "displayName": "Edmond Tapsoba"
+      },
+      "position": {
+       "abbreviation": "CD-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "300410",
+       "displayName": "Loïc Badé"
+      },
+      "position": {
+       "abbreviation": "CD-R"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "290044",
+       "displayName": "Miguel Gutiérrez"
+      },
+      "position": {
+       "abbreviation": "LB"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "174967",
+       "displayName": "Lucas Vázquez"
+      },
+      "position": {
+       "abbreviation": "RB"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "301416",
+       "displayName": "Malik Tillman"
+      },
+      "position": {
+       "abbreviation": "AM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "219294",
+       "displayName": "Aleix García"
+      },
+      "position": {
+       "abbreviation": "LM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "364080",
+       "displayName": "Ezequiel Fernández"
+      },
+      "position": {
+       "abbreviation": "RM"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "241662",
+       "displayName": "Martin Terrier"
+      },
+      "position": {
+       "abbreviation": "F"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "361212",
+       "displayName": "Ibrahim Maza"
+      },
+      "position": {
+       "abbreviation": "AM-L"
+      }
+     },
+     {
+      "starter": true,
+      "athlete": {
+       "id": "263134",
+       "displayName": "Nathan Tella"
+      },
+      "position": {
+       "abbreviation": "AM-R"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "161825",
+       "displayName": "Janis Blaswich"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "270670",
+       "displayName": "Moussa Diaby"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "249663",
+       "displayName": "Facundo Medina"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "175069",
+       "displayName": "Niklas Lomb"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "298524",
+       "displayName": "Jarell Quansah"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "361258",
+       "displayName": "Afonso Moreira"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "212330",
+       "displayName": "Patrik Schick"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     },
+     {
+      "starter": false,
+      "athlete": {
+       "id": "180998",
+       "displayName": "Robert Andrich"
+      },
+      "position": {
+       "abbreviation": "SUB"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.europa&date=20261015": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401915573",
+      "date": "2026-10-15T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "AZ",
+           "displayName": "AZ Alkmaar",
+           "name": "AZ Alkmaar"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "HBE",
+           "displayName": "Hapoel Be'er",
+           "name": "Hapoel Be'er"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915576",
+      "date": "2026-10-15T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "LECH",
+           "displayName": "Lech Poznan",
+           "name": "Lech Poznan"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "4",
+          "team": {
+           "abbreviation": "B04",
+           "displayName": "Bayer Leverkusen",
+           "name": "Bayer Leverkusen"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915566",
+      "date": "2026-10-15T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "team": {
+           "abbreviation": "LYON",
+           "displayName": "Lyon",
+           "name": "Lyon"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "team": {
+           "abbreviation": "CRY",
+           "displayName": "Crystal Palace",
+           "name": "Crystal Palace"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915577",
+      "date": "2026-10-15T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "NKC",
+           "displayName": "NK Celje",
+           "name": "NK Celje"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "3",
+          "team": {
+           "abbreviation": "OMON",
+           "displayName": "Omonia Nicosia",
+           "name": "Omonia Nicosia"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915568",
+      "date": "2026-10-15T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "SLZ",
+           "displayName": "RB Salzburg",
+           "name": "RB Salzburg"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "4",
+          "team": {
+           "abbreviation": "MIL",
+           "displayName": "AC Milan",
+           "name": "AC Milan"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915567",
+      "date": "2026-10-15T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "SPP",
+           "displayName": "Sparta Prague",
+           "name": "Sparta Prague"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "LSK",
+           "displayName": "Lillestrom",
+           "name": "Lillestrom"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915575",
+      "date": "2026-10-15T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "TOR",
+           "displayName": "Torreense",
+           "name": "Torreense"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "team": {
+           "abbreviation": "SUN",
+           "displayName": "Sunderland",
+           "name": "Sunderland"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915574",
+      "date": "2026-10-15T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "USG",
+           "displayName": "Union St.-Gilloise",
+           "name": "Union St.-Gilloise"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "RSO",
+           "displayName": "Real Sociedad",
+           "name": "Real Sociedad"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915571",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "team": {
+           "abbreviation": "BOU",
+           "displayName": "AFC Bournemouth",
+           "name": "AFC Bournemouth"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "abbreviation": "STG",
+           "displayName": "SK Sturm Graz",
+           "name": "SK Sturm Graz"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915562",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "4",
+          "team": {
+           "abbreviation": "SLB",
+           "displayName": "Benfica",
+           "name": "Benfica"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "CEL",
+           "displayName": "Celtic",
+           "name": "Celtic"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915560",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "CEL",
+           "displayName": "Celta Vigo",
+           "name": "Celta Vigo"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "team": {
+           "abbreviation": "JUV",
+           "displayName": "Juventus",
+           "name": "Juventus"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915549",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "DZG",
+           "displayName": "Dinamo Zagreb",
+           "name": "Dinamo Zagreb"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "abbreviation": "AND",
+           "displayName": "Anderlecht",
+           "name": "Anderlecht"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915564",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "FER",
+           "displayName": "Ferencvaros",
+           "name": "Ferencvaros"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "PLZ",
+           "displayName": "Viktoria Plzen",
+           "name": "Viktoria Plzen"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915561",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "team": {
+           "abbreviation": "JAG",
+           "displayName": "Jagiellonia Bialystok",
+           "name": "Jagiellonia Bialystok"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "ARA",
+           "displayName": "Ararat-Armenia",
+           "name": "Ararat-Armenia"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915550",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "OLM",
+           "displayName": "Marseille",
+           "name": "Marseille"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "OLY",
+           "displayName": "Olympiacos",
+           "name": "Olympiacos"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915565",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "NEC",
+           "displayName": "NEC Nijmegen",
+           "name": "NEC Nijmegen"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "LEV",
+           "displayName": "Levski Sofia",
+           "name": "Levski Sofia"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915572",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "REN",
+           "displayName": "Stade Rennais",
+           "name": "Stade Rennais"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "OFI",
+           "displayName": "OFI Crete",
+           "name": "OFI Crete"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915563",
+      "date": "2026-10-15T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "TSG",
+           "displayName": "TSG Hoffenheim",
+           "name": "TSG Hoffenheim"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "3",
+          "team": {
+           "abbreviation": "BES",
+           "displayName": "Besiktas",
+           "name": "Besiktas"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.europa&date=20261016": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ }
+}

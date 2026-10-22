@@ -3553,7 +3553,7 @@ async function logGamePicks(db, sport, date, entries) {
 // ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
 // Cloudflare (see the nfl-grade probe). Free either way, like every other score
 // read in this file.
-const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', seriea: 'ita.1', ligamx: 'mex.1', mls: 'usa.1', uefanl: 'uefa.nations' };
+const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', uel: 'uefa.europa', seriea: 'ita.1', ligamx: 'mex.1', mls: 'usa.1', uefanl: 'uefa.nations' };
 async function espnScoreboard(path) {
   const r = await fetch(`https://cdn.espn.com/core/${path}`, { headers: { accept: 'application/json' } });
   if (!r.ok) return [];
@@ -9174,6 +9174,7 @@ const PROBE_SPORTS = {
   epl: 'soccer_epl',
   laliga: 'soccer_spain_la_liga',
   ucl: 'soccer_uefa_champs_league',
+  uel: 'soccer_uefa_europa_league',
   // Candidates, probe-only: none of these are ingested. The three above all
   // pause for the FIFA windows together, so "which leagues are playing when
   // ours are not" is a question worth being able to ask without a deploy.
@@ -9218,6 +9219,11 @@ const SOCCER_LEAGUES = {
   epl: { key: 'soccer_epl', label: 'Premier League', country: 'England' },
   laliga: { key: 'soccer_spain_la_liga', label: 'La Liga', country: 'Spain' },
   ucl: { key: 'soccer_uefa_champs_league', label: 'Champions League', country: 'UEFA' },
+  // The Europa League (2026-10-22), on the owner's call: Thursday nights, 18
+  // fixtures a matchday with more mismatches than the Champions League. The
+  // same two-book rule. 2 credits a capture, at most two a day while a fixture
+  // is inside 36 hours: about 8 credits a matchday week.
+  uel: { key: 'soccer_uefa_europa_league', label: 'Europa League', country: 'UEFA' },
   seriea: { key: 'soccer_italy_serie_a', label: 'Serie A', country: 'Italy' },
   ligamx: { key: 'soccer_mexico_ligamx', label: 'Liga MX', country: 'Mexico' },
   // MLS, for the same reason as Liga MX and with the same caveat: both run on a
@@ -10238,10 +10244,14 @@ async function nbaPpBoard(env) {
 // Every input is ESPN and free: lineups and fixtures from the site API, the
 // box scores from sports.core.api.espn.com -- passes and tackles exist only
 // per player, so a match costs ~30 requests and the ingest has its own cron.
-// The Champions League since 2026-10-20 (see socUclCtx). ESPN serves its
-// lineups, rosters and per-player statistics in the same shape as the leagues'.
-const SOC_PROP_LEAGUES = { epl: 'eng.1', laliga: 'esp.1', seriea: 'ita.1', bundesliga: 'ger.1', mls: 'usa.1', ucl: 'uefa.champions' };
-const SOC_PROP_LABEL = { epl: 'Premier League', laliga: 'La Liga', seriea: 'Serie A', bundesliga: 'Bundesliga', mls: 'MLS', ucl: 'Champions League' };
+// The Champions League since 2026-10-20 (see socUclCtx), and the Europa League
+// since 2026-10-22, read the same way. ESPN serves their lineups, rosters and
+// per-player statistics in the same shape as the leagues'.
+const SOC_PROP_LEAGUES = { epl: 'eng.1', laliga: 'esp.1', seriea: 'ita.1', bundesliga: 'ger.1', mls: 'usa.1', ucl: 'uefa.champions', uel: 'uefa.europa' };
+const SOC_PROP_LABEL = { epl: 'Premier League', laliga: 'La Liga', seriea: 'Serie A', bundesliga: 'Bundesliga', mls: 'MLS', ucl: 'Champions League', uel: 'Europa League' };
+// The European cups: their clubs come from every league, so an opponent is
+// read from its own league (socUclCtx) and the cup's own average is 1.
+const SOC_CUPS = new Set(['ucl', 'uel']);
 // The last five (2026-10-15) are more PrizePicks markets read from the same
 // per-player statistics: crosses, shots assisted, a goalkeeper's goals
 // conceded, fouls drawn, and goals + assists. ESPN carries no attempted
@@ -10266,7 +10276,7 @@ const SOC_CTX_W = 0.5;            // the opponent moves a projection half the wa
 const SOC_BOX_CRON = '2-59/5 * * * *';
 const SOC_LINEUP_LEAD_MS = 100 * 60e3;   // lineups post about an hour out; read from 100 minutes
 const SOC_PROPS_AHEAD_MS = 14 * 3600e3;
-const SOC_SEASON_FROM = { epl: '2026-07-01', laliga: '2026-07-01', seriea: '2026-07-01', bundesliga: '2026-07-01', mls: '2026-01-01', ucl: '2026-07-01' };
+const SOC_SEASON_FROM = { epl: '2026-07-01', laliga: '2026-07-01', seriea: '2026-07-01', bundesliga: '2026-07-01', mls: '2026-01-01', ucl: '2026-07-01', uel: '2026-07-01' };
 const ESPN_SOC_SITE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 const ESPN_SOC_CORE = 'https://sports.core.api.espn.com/v2/sports/soccer/leagues';
 let SOC_PRIORS = null;
@@ -10567,7 +10577,7 @@ function socChance(line, mean, phi) {
 function socProjectRows(lg, starters, recent, ctx, pri) {
   const slug = SOC_PROP_LEAGUES[lg];
   const avgOf = (s) => {
-    if (lg === 'ucl') return 1;          // its ctx holds ratios to each club's own league (socUclCtx)
+    if (SOC_CUPS.has(lg)) return 1;      // its ctx holds ratios to each club's own league (socUclCtx)
     const cur = Object.values(ctx || {}).filter((c) => c[s] != null);
     if (cur.length >= 6) return cur.reduce((a, c) => a + c[s], 0) / cur.length;
     return pri && pri.leagueAvg && pri.leagueAvg[slug] ? pri.leagueAvg[slug][s] : null;
@@ -10619,7 +10629,7 @@ function socProjectRows(lg, starters, recent, ctx, pri) {
 function socUclCtx(ctxAll, teams, pri) {
   const out = {};
   for (const t of teams) {
-    if (!t || !t.abbr || !t.lg || t.lg === 'ucl') continue;
+    if (!t || !t.abbr || !t.lg || SOC_CUPS.has(t.lg)) continue;
     const lgCtx = (ctxAll && ctxAll[t.lg]) || {};
     const slug = SOC_PROP_LEAGUES[t.lg];
     const prior = pri && pri.teams && pri.teams[slug] && pri.teams[slug][t.abbr];
@@ -10641,7 +10651,7 @@ function socUclCtx(ctxAll, teams, pri) {
 async function socTeamLeague(db, abbr, id) {
   if (!abbr || !id) return null;
   const r = await db.prepare(
-    "SELECT league FROM soc_box_games WHERE league != 'ucl' AND ((home = ? AND home_cid = ?) OR (away = ? AND away_cid = ?)) ORDER BY date DESC LIMIT 1"
+    "SELECT league FROM soc_box_games WHERE league NOT IN ('ucl', 'uel') AND ((home = ? AND home_cid = ?) OR (away = ? AND away_cid = ?)) ORDER BY date DESC LIMIT 1"
   ).bind(abbr, String(id), abbr, String(id)).first();
   return r ? r.league : null;
 }
@@ -10690,7 +10700,7 @@ async function socLineup(env, f) {
 }
 
 // GET /api/soccer-props: the next fourteen hours of fixtures in the five
-// leagues and the Champions League; for each whose lineup is posted, every starter's projection in each
+// leagues and the two European cups; for each whose lineup is posted, every starter's projection in each
 // stat, the line at the half point above it and the chance either way there.
 // The card lets the user move the line to PrizePicks' number; the phi rides
 // along so the chance can be recomputed in the browser.
@@ -10731,7 +10741,7 @@ async function socPropsBoard(env, url) {
         for (const r of rs) { if (!recent.has(r.player_id)) recent.set(r.player_id, []); recent.get(r.player_id).push(r); }
       }
       let ctx = ctxAll && ctxAll[f.lg];
-      if (f.lg === 'ucl') {
+      if (SOC_CUPS.has(f.lg)) {
         const teams = [];
         for (const [abbr, id] of [[f.home, f.homeId], [f.away, f.awayId]]) teams.push({ abbr, lg: await socTeamLeague(db, abbr, id) });
         ctx = socUclCtx(ctxAll, teams, pri);
