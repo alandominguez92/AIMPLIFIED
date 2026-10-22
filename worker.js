@@ -3578,6 +3578,9 @@ const TEAM_ALIAS = {
   bosniaandherzegovina: 'bosniaherzegovina',
   redbullnewyork: 'newyorkredbulls', lafc: 'losangeles',
   intermilan: 'internazionale', sportinglisbon: 'sportingcp', slaviapraha: 'slaviaprague',
+  // The Europa League's first capture (2026-10-22): four of its eighteen
+  // fixtures did not match ESPN's names, two of them favourites over 65%.
+  unionsaintgilloise: 'unionstgilloise', rennes: 'staderennais', omonoia: 'omonianicosia', olympiakospiraeus: 'olympiacos',
 };
 // Letters NFD leaves whole are spelled out, and "&" is read as "and", so the
 // feed's "Bod\u00f8/Glimt" is ESPN's "Bodo/Glimt" and its "Brighton and Hove

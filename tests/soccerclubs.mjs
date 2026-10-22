@@ -78,6 +78,20 @@ for (const [a, b] of [['Inter Milan', 'Internazionale'], ['Sporting Lisbon', 'Sp
   ['Bodø/Glimt', 'Bodo/Glimt'], ['Brighton and Hove Albion', 'Brighton & Hove Albion']]) {
   ok(C.clubMatch(a, b), `the feed's "${a}" is ESPN's "${b}"`);
 }
+// The Europa League (2026-10-22), as the odds feed and ESPN spelled them on
+// its first capture: the four of eighteen fixtures that did not match.
+for (const [a, b] of [['Union Saint-Gilloise', 'Union St.-Gilloise'], ['Rennes', 'Stade Rennais'], ['Omonoia FC', 'Omonia Nicosia'],
+  ['Olympiakos Piraeus', 'Olympiacos']]) {
+  ok(C.clubMatch(a, b), `the feed's "${a}" is ESPN's "${b}"`);
+}
+// And the fourteen that matched as they were, including the accented ones.
+for (const [a, b] of [['Ferencváros TC', 'Ferencvaros'], ['Lech Poznań', 'Lech Poznan'], ['Jagiellonia Białystok', 'Jagiellonia Bialystok'],
+  ['Viktoria Plzeň', 'Viktoria Plzen'], ['Salzburg', 'RB Salzburg'], ['Besiktas JK', 'Besiktas'], ['PFC Levski Sofia', 'Levski Sofia'],
+  ["Hapoel Be'er Sheva", "Hapoel Be'er"], ['FC Ararat-Armenia', 'Ararat-Armenia']]) {
+  ok(C.clubMatch(a, b), `"${a}" still matches "${b}"`);
+}
+ok(!C.clubMatch('Rennes', 'Stade Reims') && !C.clubMatch('Olympiakos Piraeus', 'Olympique Lyonnais') && !C.clubMatch('Celtic', 'Celta Vigo'),
+  'and the new names join no club they should not');
 ok(C.clubMatch('Bournemouth', 'AFC Bournemouth') && C.clubMatch('Malaga', 'Málaga') && C.clubMatch('Bosnia and Herzegovina', 'Bosnia-Herzegovina'),
   'and the pairs that matched before still do');
 ok(!C.clubMatch('Inter Milan', 'AC Milan') && !C.clubMatch('Sporting Lisbon', 'Sporting Kansas City') && !C.clubMatch('Inter Miami CF', 'Internazionale'),
