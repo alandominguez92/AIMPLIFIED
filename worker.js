@@ -149,7 +149,7 @@ const API_ROUTES = new Set([
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nhl-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
-  '/api/mlb-void-moved',
+  '/api/mlb-void-moved', '/api/hist-backtest',
 ]);
 
 export default {
@@ -207,7 +207,7 @@ export default {
     }
 
     // Both write; caching either would serve a stale body and skip the write.
-    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest' || p === '/api/mlb-void-moved') return handleApi(p, env, ctx, url);
+    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest' || p === '/api/mlb-void-moved' || p === '/api/hist-backtest') return handleApi(p, env, ctx, url);
     // The query string is dropped from the key on purpose — every viewer should
     // share one response — EXCEPT where it changes what the route returns.
     // /api/nfl-compare was keyed by path alone, so ?all=1 (played games included,
@@ -499,6 +499,9 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/mlpicks-export') return mlpicksExport(env, url);
   if (p === '/api/mlb-void-moved') return voidMovedGameRows(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
+  if (p === '/api/hist-backtest') {
+    return cors(new Response(JSON.stringify(await histBacktest(env, url)), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
+  }
   if (p === '/api/sports-list') return sportsList(env, url);
   if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
   if (p === '/api/soccer-props') return cors(json(await socPropsBoard(env, url), 120));
@@ -11207,6 +11210,183 @@ async function sportsList(env, reqUrl) {
   } catch (e) {
     return cors(json({ error: String((e && e.message) || e) }, 30));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Last season's moneylines, read back (2026-10-22, on the owner's call).
+//
+// Picks of the day lists a moneyline favourite only at the bar where its
+// stated chance has held up. Waiting for a live record takes months; the odds
+// feed sells past snapshots instead (10 credits per market per region per
+// snapshot). So each 2025-26 game day gets one snapshot of the sharp books'
+// h2h prices, read the way the live boards read them -- the median Shin
+// de-vig of two or more sharp books, else Pinnacle alone, labelled -- and each
+// game is graded from the free scores (the NHL's own feed, ESPN for the NBA
+// and the Europa League). The question: when the fair line said 65% or more,
+// did the favourite win that often?
+//
+// GET /api/hist-backtest?job=nhl|nba|uel answers from what has been read
+// (D1 only). &run=1 reads the next game days, paid (HIST_CHUNK, HIST_SCAN), and saves where
+// it stopped; each job stops at its credit cap. A day with no games costs
+// nothing (its scores are read first). Never cached: each run moves on.
+const HIST_SHARP = ['pinnacle', 'lowvig', 'betonlineag', 'novig', 'prophetx'];
+// Per run: at most 8 paid snapshots, and 20 days scanned, since every day costs
+// a score request and a run is one invocation with a request budget.
+const HIST_CHUNK = 8;
+const HIST_SCAN = 20;
+const HIST_JOBS = {
+  nhl: { label: 'NHL 2025-26 regular season', sport: 'icehockey_nhl', from: '2025-10-07', to: '2026-04-16', snapUtc: '16:00', cap: 2200, way: 2 },
+  nba: { label: 'NBA 2025-26 regular season', sport: 'basketball_nba', from: '2025-10-21', to: '2026-04-12', snapUtc: '16:00', cap: 2000, way: 2 },
+  // ESPN's 2025-26 Europa League match days (189 matches). Each is read an hour
+  // before its first kickoff.
+  uel: { label: 'Europa League 2025-26', sport: 'soccer_uefa_europa_league', cap: 300, way: 3, espn: 'uefa.europa',
+    dates: ['2025-09-24', '2025-09-25', '2025-10-02', '2025-10-23', '2025-11-06', '2025-11-27', '2025-12-11', '2026-01-22', '2026-01-29',
+      '2026-02-19', '2026-02-26', '2026-03-12', '2026-03-18', '2026-03-19', '2026-04-08', '2026-04-09', '2026-04-16', '2026-04-30', '2026-05-07', '2026-05-20'] },
+};
+const HIST_BANDS = [[50, 55], [55, 60], [60, 65], [65, 70], [70, 75], [75, 80], [80, 101]];
+function histDays(job) {
+  if (job.dates) return job.dates;
+  const out = [];
+  for (let t = Date.parse(job.from + 'T12:00:00Z'); t <= Date.parse(job.to + 'T12:00:00Z'); t += 864e5) out.push(new Date(t).toISOString().slice(0, 10));
+  return out;
+}
+// One day's finals, as the graders read them, with each game's start where
+// the feed gives it (ESPN does; the NHL's score feed does too).
+async function histFinals(job, date) {
+  const ymd = date.replace(/-/g, '');
+  if (job.sport === 'icehockey_nhl') {
+    const r = await fetch(`https://api-web.nhle.com/v1/score/${date}`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return [];
+    const j = await r.json();
+    return nhlFinals(j).map((f, i) => ({ ...f, start: (((j.games || []).filter((g) => g.gameState === 'OFF' || g.gameState === 'FINAL')[i]) || {}).startTimeUTC || null }));
+  }
+  const evs = job.sport === 'basketball_nba'
+    ? await espnScoreboard(`nba/scoreboard?xhr=1&date=${ymd}`)
+    : await espnScoreboard(`soccer/scoreboard?xhr=1&league=${job.espn}&date=${ymd}`);
+  const out = [];
+  for (const ev of evs) {
+    const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
+    if (!/FINAL|FULL_TIME/.test(String(st))) continue;
+    const c = (ev.competitions || [])[0];
+    const h = c && (c.competitors || []).find((t) => t.homeAway === 'home');
+    const a = c && (c.competitors || []).find((t) => t.homeAway === 'away');
+    if (!h || !a) continue;
+    out.push({ home: (h.team && (h.team.displayName || h.team.name)) || '', away: (a.team && (a.team.displayName || a.team.name)) || '',
+      hs: Number(h.score), as: Number(a.score), start: ev.date || null });
+  }
+  return out;
+}
+// Pure: a snapshot's events and a day's finals in, one graded row per game.
+function histRows(job, date, snapIso, events, finals) {
+  const same = job.sport === 'basketball_nba' ? nbaMatch : job.sport === 'icehockey_nhl' ? nhlMatch : clubMatch;
+  const snap = Date.parse(snapIso);
+  const rows = [], unmatched = [];
+  for (const e of (Array.isArray(events) ? events : [])) {
+    const t = Date.parse(e.commence_time);
+    if (!isFinite(t) || t <= snap || t > snap + 864e5) continue;
+    const home = e.home_team, away = e.away_team;
+    const px = {};
+    for (const bm of (e.bookmakers || [])) {
+      const mk = (bm.markets || []).find((m) => m.key === 'h2h');
+      if (!mk) continue;
+      const o = (name) => { const x = (mk.outcomes || []).find((y) => y.name === name); return x && typeof x.price === 'number' ? x.price : null; };
+      px[bm.key] = { home: o(home), away: o(away), draw: o('Draw') };
+    }
+    // The fair chance each side WINS: two-way Shin for hockey and basketball,
+    // the three-way 1X2 for soccer (where a draw is a loss for either side).
+    const fairOf = (q) => {
+      if (!q || q.home == null || q.away == null) return null;
+      if (job.way === 3) { if (q.draw == null) return null; const d = devigThreeWay([q.home, q.draw, q.away]); return d ? { home: d[0], away: d[2] } : null; }
+      const f = shinDevig(q.home, q.away);
+      return f != null && isFinite(f) ? { home: f, away: 1 - f } : null;
+    };
+    const fairs = HIST_SHARP.map((bk) => fairOf(px[bk])).filter(Boolean);
+    let fair = null, src = 'MKT';
+    if (fairs.length >= 2) { fair = { home: median(fairs.map((f) => f.home)), away: median(fairs.map((f) => f.away)) }; src = 'sharp-pool'; }
+    else if (fairOf(px.pinnacle)) { fair = fairOf(px.pinnacle); src = 'pinnacle'; }
+    if (!fair) continue;
+    const favSide = fair.home >= fair.away ? 'home' : 'away';
+    const f = finals.find((x) => same(x.home, home) && same(x.away, away))
+      || (job.way === 3 ? (() => { const x = finals.find((y) => same(y.home, away) && same(y.away, home)); return x ? { ...x, hs: x.as, as: x.hs } : null; })() : null);
+    if (!f || !isFinite(f.hs) || !isFinite(f.as)) { unmatched.push(`${away} @ ${home}`); continue; }
+    const won = favSide === 'home' ? f.hs > f.as : f.as > f.hs;
+    rows.push({ date, event_id: e.id, commence: e.commence_time, home, away, fav_side: favSide,
+      fav_p: round1((favSide === 'home' ? fair.home : fair.away) * 100), sharp_n: src === 'pinnacle' ? 1 : fairs.length, fair_src: src,
+      snap: snapIso, home_score: f.hs, away_score: f.as, won: won ? 1 : 0, lead_min: Math.round((t - snap) / 60e3) });
+  }
+  return { rows, unmatched };
+}
+async function ensureHistSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS histml (
+    job TEXT NOT NULL, date TEXT, event_id TEXT NOT NULL, commence TEXT, home TEXT, away TEXT,
+    fav_side TEXT, fav_p REAL, sharp_n INTEGER, fair_src TEXT, snap TEXT, home_score INTEGER, away_score INTEGER,
+    won INTEGER, lead_min INTEGER, PRIMARY KEY (job, event_id)
+  )`).run();
+}
+// The record by band of the favourite's fair chance, and 65%+ on its own --
+// the bar Picks of the day lists moneyline favourites at.
+function histReport(rows) {
+  const band = (lo, hi) => {
+    const l = rows.filter((r) => r.fav_p >= lo && r.fav_p < hi);
+    const won = l.filter((r) => r.won).length;
+    return { band: hi > 100 ? `${lo}+` : `${lo}-${hi}`, n: l.length, won, winRate: l.length ? round1(won / l.length * 100) : null,
+      stated: l.length ? round1(l.reduce((a, r) => a + r.fav_p, 0) / l.length) : null };
+  };
+  return { games: rows.length, byBand: HIST_BANDS.map(([lo, hi]) => band(lo, hi)), at65: band(65, 101), at70: band(70, 101),
+    bySource: Object.fromEntries(['sharp-pool', 'pinnacle'].map((s) => [s, rows.filter((r) => r.fair_src === s).length])) };
+}
+async function histBacktest(env, url) {
+  const key = String(url.searchParams.get('job') || '');
+  const job = HIST_JOBS[key];
+  if (!job) return { error: `job is one of ${Object.keys(HIST_JOBS).join(', ')}` };
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  const db = env.DB;
+  await ensureHistSchema(db);
+  const stateKey = `hist_job:${key}`;
+  const st = await loadFeedCache(db, stateKey);
+  const state = (st.present && st.data) || { next: 0, credits: 0, unmatched: [], snapshots: 0, done: false };
+  const days = histDays(job);
+  const out = { job: key, label: job.label, cap: job.cap };
+  if (url.searchParams.get('run') === '1' && !state.done) {
+    if (!env.ODDS_API_KEY) return { ...out, error: 'ODDS_API_KEY not configured' };
+    const stmts = [];
+    let read = 0, scanned = 0;
+    while (state.next < days.length && read < HIST_CHUNK && scanned < HIST_SCAN && state.credits < job.cap) {
+      scanned++;
+      const date = days[state.next];
+      let finals = [];
+      try { finals = await histFinals(job, date); } catch (e) { /* treated as no games */ }
+      state.next++;
+      if (!finals.length) continue;
+      // The snapshot: the job's hour, or an hour before the day's first start.
+      const starts = finals.map((f) => Date.parse(f.start)).filter(isFinite);
+      const snapIso = job.snapUtc ? `${date}T${job.snapUtc}:00Z`
+        : new Date(Math.min(...starts) - 3600e3).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const r = await fetch(`https://api.the-odds-api.com/v4/historical/sports/${job.sport}/odds?apiKey=${env.ODDS_API_KEY}`
+        + `&bookmakers=${HIST_SHARP.join(',')}&markets=h2h&oddsFormat=american&dateFormat=iso&date=${encodeURIComponent(snapIso)}`,
+      { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, `hist:${key}`);
+      read++;
+      state.snapshots++;
+      const spent = Number(r.headers.get('x-requests-last'));
+      state.credits += isFinite(spent) ? spent : 10;
+      if (!r.ok) { out.lastError = `HTTP ${r.status} on ${date}`; continue; }
+      const j = await r.json();
+      const { rows, unmatched } = histRows(job, date, snapIso, j && j.data, finals);
+      for (const u of unmatched) if (state.unmatched.length < 60) state.unmatched.push(`${date} ${u}`);
+      for (const x of rows) stmts.push(db.prepare(
+        `INSERT OR REPLACE INTO histml (job, date, event_id, commence, home, away, fav_side, fav_p, sharp_n, fair_src, snap, home_score, away_score, won, lead_min)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(key, x.date, x.event_id, x.commence, x.home, x.away, x.fav_side, x.fav_p, x.sharp_n, x.fair_src, x.snap, x.home_score, x.away_score, x.won, x.lead_min));
+    }
+    if (stmts.length) await db.batch(stmts);
+    if (state.next >= days.length || state.credits >= job.cap) state.done = true;
+    await saveFeedCache(db, stateKey, state);
+    out.ran = { snapshots: read, rowsWritten: stmts.length };
+  }
+  const rows = (await db.prepare('SELECT fav_p, won, fair_src FROM histml WHERE job = ?').bind(key).all()).results || [];
+  return { ...out, done: !!state.done, progress: `${state.next} of ${days.length} days`, creditsSpent: state.credits, snapshots: state.snapshots,
+    unmatched: state.unmatched, report: histReport(rows) };
 }
 
 async function fairProbe(env, reqUrl) {

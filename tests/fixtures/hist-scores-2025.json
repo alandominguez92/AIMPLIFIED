@@ -1,0 +1,1253 @@
+{
+ "_recorded": "Recorded 2026-10-22: the free score feeds the 2025-26 backtest grades from, for the first days of each job. The NHL score feed for 2025-10-07 (opening night) and 2025-10-08, ESPN cdn NBA scoreboards for 2025-10-21 (opening night) and 2025-10-22, and the ESPN cdn Europa League scoreboard for 2025-09-24 and 2025-09-25; trimmed to the fields the grader reads.",
+ "https://api-web.nhle.com/v1/score/2025-10-07": {
+  "games": [
+   {
+    "id": 2025020001,
+    "gameState": "OFF",
+    "startTimeUTC": "2025-10-07T21:00:00Z",
+    "homeTeam": {
+     "abbrev": "FLA",
+     "name": {
+      "default": "Panthers"
+     },
+     "score": 3
+    },
+    "awayTeam": {
+     "abbrev": "CHI",
+     "name": {
+      "default": "Blackhawks"
+     },
+     "score": 2
+    },
+    "periodDescriptor": {
+     "periodType": "REG"
+    }
+   },
+   {
+    "id": 2025020002,
+    "gameState": "OFF",
+    "startTimeUTC": "2025-10-08T00:00:00Z",
+    "homeTeam": {
+     "abbrev": "NYR",
+     "name": {
+      "default": "Rangers"
+     },
+     "score": 0
+    },
+    "awayTeam": {
+     "abbrev": "PIT",
+     "name": {
+      "default": "Penguins"
+     },
+     "score": 3
+    },
+    "periodDescriptor": {
+     "periodType": "REG"
+    }
+   },
+   {
+    "id": 2025020003,
+    "gameState": "OFF",
+    "startTimeUTC": "2025-10-08T02:30:00Z",
+    "homeTeam": {
+     "abbrev": "LAK",
+     "name": {
+      "default": "Kings"
+     },
+     "score": 1
+    },
+    "awayTeam": {
+     "abbrev": "COL",
+     "name": {
+      "default": "Avalanche"
+     },
+     "score": 4
+    },
+    "periodDescriptor": {
+     "periodType": "REG"
+    }
+   }
+  ]
+ },
+ "https://api-web.nhle.com/v1/score/2025-10-08": {
+  "games": [
+   {
+    "id": 2025020004,
+    "gameState": "OFF",
+    "startTimeUTC": "2025-10-08T23:00:00Z",
+    "homeTeam": {
+     "abbrev": "TOR",
+     "name": {
+      "default": "Maple Leafs"
+     },
+     "score": 5
+    },
+    "awayTeam": {
+     "abbrev": "MTL",
+     "name": {
+      "default": "Canadiens"
+     },
+     "score": 2
+    },
+    "periodDescriptor": {
+     "periodType": "REG"
+    }
+   },
+   {
+    "id": 2025020005,
+    "gameState": "OFF",
+    "startTimeUTC": "2025-10-08T23:30:00Z",
+    "homeTeam": {
+     "abbrev": "WSH",
+     "name": {
+      "default": "Capitals"
+     },
+     "score": 1
+    },
+    "awayTeam": {
+     "abbrev": "BOS",
+     "name": {
+      "default": "Bruins"
+     },
+     "score": 3
+    },
+    "periodDescriptor": {
+     "periodType": "REG"
+    }
+   },
+   {
+    "id": 2025020006,
+    "gameState": "OFF",
+    "startTimeUTC": "2025-10-09T02:00:00Z",
+    "homeTeam": {
+     "abbrev": "EDM",
+     "name": {
+      "default": "Oilers"
+     },
+     "score": 3
+    },
+    "awayTeam": {
+     "abbrev": "CGY",
+     "name": {
+      "default": "Flames"
+     },
+     "score": 4
+    },
+    "periodDescriptor": {
+     "periodType": "SO"
+    }
+   },
+   {
+    "id": 2025020007,
+    "gameState": "OFF",
+    "startTimeUTC": "2025-10-09T02:00:00Z",
+    "homeTeam": {
+     "abbrev": "VGK",
+     "name": {
+      "default": "Golden Knights"
+     },
+     "score": 5
+    },
+    "awayTeam": {
+     "abbrev": "LAK",
+     "name": {
+      "default": "Kings"
+     },
+     "score": 6
+    },
+    "periodDescriptor": {
+     "periodType": "SO"
+    }
+   }
+  ]
+ },
+ "https://cdn.espn.com/core/nba/scoreboard?xhr=1&date=20251021": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401809243",
+      "date": "2025-10-21T23:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "125",
+          "team": {
+           "abbreviation": "OKC",
+           "displayName": "Oklahoma City Thunder",
+           "name": "Thunder"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "124",
+          "team": {
+           "abbreviation": "HOU",
+           "displayName": "Houston Rockets",
+           "name": "Rockets"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809244",
+      "date": "2025-10-22T02:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "109",
+          "team": {
+           "abbreviation": "LAL",
+           "displayName": "Los Angeles Lakers",
+           "name": "Lakers"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "119",
+          "team": {
+           "abbreviation": "GS",
+           "displayName": "Golden State Warriors",
+           "name": "Warriors"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/nba/scoreboard?xhr=1&date=20251022": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401809234",
+      "date": "2025-10-22T23:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "119",
+          "team": {
+           "abbreviation": "NY",
+           "displayName": "New York Knicks",
+           "name": "Knicks"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "111",
+          "team": {
+           "abbreviation": "CLE",
+           "displayName": "Cleveland Cavaliers",
+           "name": "Cavaliers"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809933",
+      "date": "2025-10-22T23:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "136",
+          "team": {
+           "abbreviation": "CHA",
+           "displayName": "Charlotte Hornets",
+           "name": "Hornets"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "117",
+          "team": {
+           "abbreviation": "BKN",
+           "displayName": "Brooklyn Nets",
+           "name": "Nets"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809934",
+      "date": "2025-10-22T23:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "125",
+          "team": {
+           "abbreviation": "ORL",
+           "displayName": "Orlando Magic",
+           "name": "Magic"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "121",
+          "team": {
+           "abbreviation": "MIA",
+           "displayName": "Miami Heat",
+           "name": "Heat"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809935",
+      "date": "2025-10-22T23:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "118",
+          "team": {
+           "abbreviation": "ATL",
+           "displayName": "Atlanta Hawks",
+           "name": "Hawks"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "138",
+          "team": {
+           "abbreviation": "TOR",
+           "displayName": "Toronto Raptors",
+           "name": "Raptors"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809936",
+      "date": "2025-10-22T23:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "116",
+          "team": {
+           "abbreviation": "BOS",
+           "displayName": "Boston Celtics",
+           "name": "Celtics"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "117",
+          "team": {
+           "abbreviation": "PHI",
+           "displayName": "Philadelphia 76ers",
+           "name": "76ers"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809937",
+      "date": "2025-10-23T00:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "115",
+          "team": {
+           "abbreviation": "CHI",
+           "displayName": "Chicago Bulls",
+           "name": "Bulls"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "111",
+          "team": {
+           "abbreviation": "DET",
+           "displayName": "Detroit Pistons",
+           "name": "Pistons"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809938",
+      "date": "2025-10-23T00:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "128",
+          "team": {
+           "abbreviation": "MEM",
+           "displayName": "Memphis Grizzlies",
+           "name": "Grizzlies"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "122",
+          "team": {
+           "abbreviation": "NO",
+           "displayName": "New Orleans Pelicans",
+           "name": "Pelicans"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809939",
+      "date": "2025-10-23T00:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "133",
+          "team": {
+           "abbreviation": "MIL",
+           "displayName": "Milwaukee Bucks",
+           "name": "Bucks"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "120",
+          "team": {
+           "abbreviation": "WSH",
+           "displayName": "Washington Wizards",
+           "name": "Wizards"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809940",
+      "date": "2025-10-23T01:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "129",
+          "team": {
+           "abbreviation": "UTAH",
+           "displayName": "Utah Jazz",
+           "name": "Jazz"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "108",
+          "team": {
+           "abbreviation": "LAC",
+           "displayName": "LA Clippers",
+           "name": "Clippers"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809235",
+      "date": "2025-10-23T01:47Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "92",
+          "team": {
+           "abbreviation": "DAL",
+           "displayName": "Dallas Mavericks",
+           "name": "Mavericks"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "125",
+          "team": {
+           "abbreviation": "SA",
+           "displayName": "San Antonio Spurs",
+           "name": "Spurs"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809941",
+      "date": "2025-10-23T02:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "120",
+          "team": {
+           "abbreviation": "PHX",
+           "displayName": "Phoenix Suns",
+           "name": "Suns"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "116",
+          "team": {
+           "abbreviation": "SAC",
+           "displayName": "Sacramento Kings",
+           "name": "Kings"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401809942",
+      "date": "2025-10-23T02:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FINAL"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "114",
+          "team": {
+           "abbreviation": "POR",
+           "displayName": "Portland Trail Blazers",
+           "name": "Trail Blazers"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "118",
+          "team": {
+           "abbreviation": "MIN",
+           "displayName": "Minnesota Timberwolves",
+           "name": "Timberwolves"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.europa&date=20250924": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "757798",
+      "date": "2025-09-24T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "MID",
+           "displayName": "FC Midtjylland",
+           "name": "FC Midtjylland"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "abbreviation": "STG",
+           "displayName": "SK Sturm Graz",
+           "name": "SK Sturm Graz"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757797",
+      "date": "2025-09-24T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "PAOK",
+           "displayName": "PAOK",
+           "name": "PAOK"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "abbreviation": "MTA",
+           "displayName": "Maccabi Tel-Aviv",
+           "name": "Maccabi Tel-Aviv"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757801",
+      "date": "2025-09-24T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "SCB",
+           "displayName": "Braga",
+           "name": "Braga"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "abbreviation": "FEY",
+           "displayName": "Feyenoord Rotterdam",
+           "name": "Feyenoord Rotterdam"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757800",
+      "date": "2025-09-24T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "team": {
+           "abbreviation": "DZG",
+           "displayName": "Dinamo Zagreb",
+           "name": "Dinamo Zagreb"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "FEN",
+           "displayName": "Fenerbahce",
+           "name": "Fenerbahce"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757803",
+      "date": "2025-09-24T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "MAL",
+           "displayName": "Malmö FF",
+           "name": "Malmö FF"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "team": {
+           "abbreviation": "LUD",
+           "displayName": "Ludogorets Razgrad",
+           "name": "Ludogorets Razgrad"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757804",
+      "date": "2025-09-24T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "NICE",
+           "displayName": "Nice",
+           "name": "Nice"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "team": {
+           "abbreviation": "ROMA",
+           "displayName": "AS Roma",
+           "name": "AS Roma"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757805",
+      "date": "2025-09-24T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "BET",
+           "displayName": "Real Betis",
+           "name": "Real Betis"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "team": {
+           "abbreviation": "NFO",
+           "displayName": "Nottingham Forest",
+           "name": "Nottingham Forest"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757799",
+      "date": "2025-09-24T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "RSB",
+           "displayName": "Red Star Belgrade",
+           "name": "Red Star Belgrade"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "CEL",
+           "displayName": "Celtic",
+           "name": "Celtic"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757802",
+      "date": "2025-09-24T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "SCF",
+           "displayName": "SC Freiburg",
+           "name": "SC Freiburg"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "FCB",
+           "displayName": "FC Basel",
+           "name": "FC Basel"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.europa&date=20250925": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "757807",
+      "date": "2025-09-25T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "GAE",
+           "displayName": "Go Ahead Eagles",
+           "name": "Go Ahead Eagles"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "FCSB",
+           "displayName": "FCSB",
+           "name": "FCSB"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757806",
+      "date": "2025-09-25T16:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "LILL",
+           "displayName": "Lille",
+           "name": "Lille"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "SKBR",
+           "displayName": "SK Brann",
+           "name": "SK Brann"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757808",
+      "date": "2025-09-25T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "AVL",
+           "displayName": "Aston Villa",
+           "name": "Aston Villa"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "team": {
+           "abbreviation": "BOL",
+           "displayName": "Bologna",
+           "name": "Bologna"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757813",
+      "date": "2025-09-25T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "UTR",
+           "displayName": "FC Utrecht",
+           "name": "FC Utrecht"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "LYON",
+           "displayName": "Lyon",
+           "name": "Lyon"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757812",
+      "date": "2025-09-25T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "FER",
+           "displayName": "Ferencvaros",
+           "name": "Ferencvaros"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "PLZ",
+           "displayName": "Viktoria Plzen",
+           "name": "Viktoria Plzen"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757810",
+      "date": "2025-09-25T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "RAN",
+           "displayName": "Rangers",
+           "name": "Rangers"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "GENK",
+           "displayName": "Racing Genk",
+           "name": "Racing Genk"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757811",
+      "date": "2025-09-25T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "team": {
+           "abbreviation": "SLZ",
+           "displayName": "RB Salzburg",
+           "name": "RB Salzburg"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "FCP",
+           "displayName": "FC Porto",
+           "name": "FC Porto"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757809",
+      "date": "2025-09-25T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "team": {
+           "abbreviation": "VFB",
+           "displayName": "VfB Stuttgart",
+           "name": "VfB Stuttgart"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "team": {
+           "abbreviation": "CEL",
+           "displayName": "Celta Vigo",
+           "name": "Celta Vigo"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "757814",
+      "date": "2025-09-25T19:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME"
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "team": {
+           "abbreviation": "YB",
+           "displayName": "Young Boys",
+           "name": "Young Boys"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "4",
+          "team": {
+           "abbreviation": "PAO",
+           "displayName": "Panathinaikos",
+           "name": "Panathinaikos"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ }
+}
