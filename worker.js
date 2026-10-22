@@ -7856,6 +7856,11 @@ const PICK_KINDS = {
   nba_ml: { sport: 'nba', label: 'NBA moneyline favourite', min: 65 },
   nba_pp: { sport: 'nba', label: 'NBA PrizePicks under (3PM, AST, REB)', min: 70 },
   nfl_ml: { sport: 'nfl', label: 'NFL moneyline favourite', min: 65 },
+  // NHL since 2026-10-22, on the owner's call after last season's backtest:
+  // 2025-26 favourites the sharp books made 65%+ won 114 of 171 (66.7%,
+  // stated 69.1%), from /api/hist-backtest?job=nhl. Overtime and the shootout
+  // count, as in the price.
+  nhl_ml: { sport: 'nhl', label: 'NHL moneyline favourite', min: 65 },
   soccer_fav: { sport: 'soccer', label: 'Soccer favourite to win', min: 65 },
 };
 // Per leg, the PrizePicks break-even for an entry of that many legs (2-pick
@@ -7864,6 +7869,19 @@ const PICKS_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 
 const PICKS_MLB_MK = { tb: 'TB', hrr: 'H+R+RBI' };
 const PICKS_NBA_MK = { threes: '3PM', ast: 'AST', reb: 'REB', blk: 'BLK', stl: 'STL' };
 const lastWord = (s) => String(s || '').trim().split(/\s+/).pop();
+// The game-line log's row as a Picks kind: the regular season's moneylines (an
+// NBA preseason favourite is not an NBA favourite), soccer's favourite.
+const gmPickKind = (r) => (r.sport === 'nba' && r.market === 'h2h' && r.league === 'reg' ? 'nba_ml'
+  : r.sport === 'nhl' && r.market === 'h2h' && r.league === 'reg' ? 'nhl_ml'
+    : r.sport === 'nfl' && r.market === 'h2h' ? 'nfl_ml'
+      : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null);
+// An NHL club by nickname, two words for the Blue Jackets, Golden Knights,
+// Maple Leafs and Red Wings: the NHL board's nhlNick, so a Picks leg and the
+// board's own leg read the same.
+const nhlNick = (name) => {
+  const w = String(name || '').trim().split(/\s+/);
+  return w.length >= 3 && /^(blue|golden|maple|red)$/i.test(w[w.length - 2]) ? w.slice(-2).join(' ') : w[w.length - 1];
+};
 const gamePkNum = (id) => { const m = /(\d{5,})/.exec(String(id || '')); return m ? Number(m[1]) : null; };
 
 // ---- Club logos on the Picks list (2026-10-14) ---------------------------------
@@ -8025,15 +8043,13 @@ async function picksCandidates(env, now) {
         market: r.market, side: 'Under', book: { line: null, price: null, under: null }, pp: { line: point, under: round1(p) } } });
   }
 
-  // NBA, NFL and soccer game lines: the side the sharp books favour, from the
-  // game-line log (each board refreshes its row's win chance and price).
+  // NBA, NHL, NFL and soccer game lines: the side the sharp books favour, from
+  // the game-line log (each board refreshes its row's win chance and price).
   await ensureGamePickSchema(db);
-  const gm = (await db.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nfl','soccer') AND date IN (?, ?) AND result IS NULL").bind(...days).all()).results || [];
+  const gm = (await db.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','soccer') AND date IN (?, ?) AND result IS NULL").bind(...days).all()).results || [];
   for (const r of gm) {
     if (!soon(r.commence) || r.win_prob == null) continue;
-    const kind = r.sport === 'nba' && r.market === 'h2h' && r.league === 'reg' ? 'nba_ml'
-      : r.sport === 'nfl' && r.market === 'h2h' ? 'nfl_ml'
-        : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null;
+    const kind = gmPickKind(r);
     if (!kind || r.win_prob < PICK_KINDS[kind].min) continue;
     const day = ptDateOf(Date.parse(r.commence));
     const price = r.close_price != null ? r.close_price : r.entry_price;
@@ -8045,6 +8061,12 @@ async function picksCandidates(env, now) {
         title: `${lastWord(r.pick)} ML`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
         spec: { sport: 'nba', date: day, gamePk: r.game_id, player: r.pick, team: lastWord(r.pick), market: 'ml', side: r.side,
           logo: moneylineLogo('nba', r.pick), book, pp: null } });
+    } else if (kind === 'nhl_ml') {
+      // The NHL board's own leg id and nicknames, so a star here is its star.
+      legs.push({ ...base, gameKey: 'nhl:' + r.game_id, legId: `nhl:ml:${r.game_id}:${r.side}`,
+        title: `${nhlNick(r.pick)} ML`, sub: `${nhlNick(r.away)} @ ${nhlNick(r.home)}`,
+        spec: { sport: 'nhl', date: day, gamePk: r.game_id, player: r.pick, team: nhlNick(r.pick), market: 'ml', side: r.side,
+          logo: moneylineLogo('nhl', r.pick), book, pp: null } });
     } else if (kind === 'nfl_ml') {
       legs.push({ ...base, gameKey: 'nfl:' + r.game_id, legId: `nfl:ml:${r.game_id}:${r.pick}`,
         title: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`,
@@ -8138,7 +8160,7 @@ async function dayPickResult(db, r) {
     const res = m && m.result;
     return res === 'under' ? 'hit' : res === 'over' ? 'miss' : res === 'push' ? 'push' : res === 'void' ? 'void' : null;
   }
-  const sport = { nba_ml: 'nba', nfl_ml: 'nfl', soccer_fav: 'soccer' }[r.kind];
+  const sport = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', soccer_fav: 'soccer' }[r.kind];
   if (!sport) return null;
   const m = await one('SELECT result FROM gmpicks WHERE sport = ? AND date = ? AND game_id = ? AND market = ?', sport, r.src_date, r.game_id, r.market);
   const res = m && m.result;
@@ -8171,10 +8193,8 @@ async function pickKindRecords(db) {
     const p = r.close_model_under != null ? r.close_model_under : r.model_under;
     if (p != null && p >= PICK_KINDS.mlb_pp.min) add('mlb_pp', r.result === 'under');
   }
-  for (const r of ((await db.prepare("SELECT sport, market, league, win_prob, result FROM gmpicks WHERE sport IN ('nba','nfl','soccer') AND result IN ('win','loss')").all()).results || [])) {
-    const kind = r.sport === 'nba' && r.market === 'h2h' && r.league === 'reg' ? 'nba_ml'
-      : r.sport === 'nfl' && r.market === 'h2h' ? 'nfl_ml'
-        : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null;
+  for (const r of ((await db.prepare("SELECT sport, market, league, win_prob, result FROM gmpicks WHERE sport IN ('nba','nhl','nfl','soccer') AND result IN ('win','loss')").all()).results || [])) {
+    const kind = gmPickKind(r);
     if (kind && r.win_prob != null && r.win_prob >= PICK_KINDS[kind].min) add(kind, r.result === 'win');
   }
   // The kind's record is the markets the list carries, so a blocks or steals
@@ -9775,9 +9795,9 @@ const NHL_ML = { sport: 'nhl', leagues: NHL_LEAGUES, sharp: NBA_SHARP, exec: NBA
 function nhlMaybeIngest(env) { return h2hMaybeIngest(env, NHL_ML); }
 
 // GET /api/nhl-board: the NBA board's read for hockey, plus the log's record --
-// above all its 65%+ favourites, the bar Picks of the day lists the other
-// sports' favourites at. NHL is not on that list; this is the number to judge
-// it by.
+// above all its 65%+ favourites, the bar Picks of the day lists favourites at.
+// NHL joined that list on 2026-10-22 (PICK_KINDS.nhl_ml), after last season's
+// backtest; this is the number that keeps it there.
 async function nhlBoardData(env) {
   const out = withLogos(await h2hBoardData(env, NHL_ML), 'nhl');
   if (!env || !env.DB) return out;

@@ -5842,8 +5842,8 @@
   // question. /api/picks builds the list from the logs, admits only kinds of leg
   // whose stated chance has held up, and logs what it shows so the list earns a
   // record of its own. Each star takes the leg under the id its own board uses.
-  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
-  const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nfl: 'NFL', soccer: 'Soccer' };
+  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nhl_ml: 'NHL ML', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
+  const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL', nfl: 'NFL', soccer: 'Soccer' };
   // Placeholder legs while the list loads (2026-10-12): the section was a
   // blank area for the seconds /api/picks takes on first open.
   const PICKS_SKELETON = `<div class="nba-pp pk-card pk-skel" aria-busy="true" aria-label="Loading picks of the day">`
@@ -5918,6 +5918,8 @@
     if (x.kind === 'mlb_pp') notes.push(x.lineup === 'in' ? 'lineup in' : 'lineup not posted');
     if (typeof x.vsBook === 'number' && x.vsBook !== 0) notes.push(`PP ${x.vsBook > 0 ? '+' : '−'}${Math.abs(x.vsBook)} vs book`);
     if ((x.sport || s.sport) === 'nba') notes.push('check injuries');
+    // No goalie data here, and the starter moves an NHL line more than anything.
+    if ((x.sport || s.sport) === 'nhl') notes.push('check the goalie');
     const mv = pickMoved(x);
     if (mv) notes.push(mv.text);
     // By the leg's own Pacific day (2026-10-21): the list looks a day ahead,
@@ -6065,6 +6067,7 @@
       if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
       if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
       if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
+      if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
       const mv = pickMoved(x);
       if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
       const r = x.record || {};
@@ -6329,7 +6332,8 @@
   // The NBA table on hockey: the sharp fair against the best price, captured
   // twice a day, overtime and the shootout in the price. Above it, the log's
   // record -- the 65%+ favourites first, the bar Picks of the day lists other
-  // sports' favourites at. NHL is not on that list until that number holds.
+  // sports' favourites at. NHL joined that list on 2026-10-22, after last season's
+  // backtest (65%+ favourites won 114 of 171, stated 69.1%).
   async function refreshNhl() {
     if (!LIVE_MODE) return;
     const d = await fetchJson('/api/nhl-board').catch(() => null);
