@@ -6157,6 +6157,21 @@
         book: { line: x.book_line != null ? x.book_line : null, price: typeof x.book_under === 'number' ? x.book_under : null, under: null },
         pp: { line: x.point, under: x.model_under } } };
   }
+  // The over side of the same log (2026-10-22): the legs where the model
+  // leaned over, graded at PrizePicks' line -- all of them, the 65%+ ones, and
+  // those where PrizePicks' number sat below the books' (the easier over). Early
+  // in a season most over leans are last season's numbers on a player in a new
+  // role, which is what this record will show or not.
+  function nbaOversLineHtml(ov) {
+    if (!ov || !ov.graded) return '';
+    const hi = ['65-70', '70+'].map((k) => (ov.byBand && ov.byBand[k]) || { n: 0, hit: 0 })
+      .reduce((a, c) => ({ n: a.n + c.n, hit: a.hit + c.hit }), { n: 0, hit: 0 });
+    const low = (ov.byLineGap && ov.byLineGap.ppLower) || { n: 0, hit: 0 };
+    const parts = [`leaned over <b>${ov.hit} of ${ov.graded}</b>`,
+      hi.n ? `65%+ <b>${hi.hit} of ${hi.n}</b>` : null,
+      low.n ? `PP line below book <b>${low.hit} of ${low.n}</b>` : null].filter(Boolean);
+    return `<div class="tc-sub tc-rec-line">Overs: ${parts.join(' · ')}</div>`;
+  }
   function nbaPpCardHtml() {
     const d = state.nbaPp;
     if (!d) return '';
@@ -6181,7 +6196,8 @@
     ].filter(Boolean).join(' · ');
     const head = `<div class="tc-head"><span class="tc-title">Tonight's PrizePicks unders</span>${rec}</div>`
       + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Logged, not posted.</div>`
-      + (recLine ? `<div class="tc-sub tc-rec-line">${recLine}</div>` : '');
+      + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
+      + nbaOversLineHtml(r.overs);
     if (!top.length) {
       return `<div class="nba-pp">${head}<div class="tc-wait-note">${all.length
         ? 'No rotation players among tonight’s logged lines yet.'
@@ -6521,6 +6537,15 @@
   // says so. Ranked by the chance at the default line: a line being stepped
   // would otherwise move its row, or swap it for another stat, under the
   // finger. A row shows the chance at the line set.
+  // Unders and overs apart (2026-10-22): the card shows whichever side its
+  // chance favours, so each side's record, at the app's line and at the
+  // PrizePicks lines saved here.
+  function socSideLineHtml(rec, ppr) {
+    const side = (r, sd) => (r && r.bySide && r.bySide[sd] && r.bySide[sd].n ? `${sd}s ${socRecB(r.bySide[sd].hit, r.bySide[sd].n)}` : '');
+    const one = (r, label) => { const s = [side(r, 'under'), side(r, 'over')].filter(Boolean).join(', '); return s ? `${label} ${s}` : ''; };
+    const parts = [one(rec, 'At the app’s line:'), one(ppr, 'At your PP lines:')].filter(Boolean);
+    return parts.length ? `<div class="tc-sub tc-rec-line">${parts.join(' · ')}</div>` : '';
+  }
   const SOC_BEST_N = 8;
   const socRankP = (r) => socLean(r, r.line).p;
   function socPropsCardHtml() {
@@ -6548,6 +6573,7 @@
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks player props</span>${rec}</div>`
       + `<div class="tc-sub">At the app’s line until you set PrizePicks’: tap a player to set it, and the chance follows. Each line you set is saved and graded at that number. Starters only, once lineups post (about an hour before kickoff).`
       + `${posted.some((m) => m.rows.some((r) => r.nRecent < 3)) ? ' Early season: most projections are still last season’s numbers.' : ''}</div>`
+      + socSideLineHtml(d.record, d.ppRecord)
       + (posted.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">`
         + `<div class="sp-chips">${['best', ...stats].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="socp-stat" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : SOC_STAT[s])}</button>`).join('')}</div>`
         + `<div class="sp-hint">${esc(hint)}</div>` : '');

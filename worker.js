@@ -9674,6 +9674,7 @@ async function h2hBoardData(env, cfg) {
   const out = { games: [], asOf: null, note: 'Sharp-book fair line against the best DK/FD/BetMGM/BetRivers/Caesars price. Not modelled and not posted; the side the sharp books favour is logged and graded.' };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   const now = Date.now();
+  let latest = null;
   for (const lg of Object.keys(cfg.leagues)) {
     const key = `${cfg.sport}_board:${lg}`;
     let snap = await loadFeedCache(env.DB, key);
@@ -9682,9 +9683,16 @@ async function h2hBoardData(env, cfg) {
     }
     const d = snap.present && snap.data ? snap.data : null;
     if (!d) continue;
-    if (d.asOf && (!out.asOf || d.asOf < out.asOf)) out.asOf = d.asOf;
-    for (const g of (d.games || [])) if (Date.parse(g.commence) > now) out.games.push(g);
+    // How old the prices shown are: only a league with a game still to come
+    // counts (2026-10-22). The finished preseason's last read, Oct 16, was
+    // the NBA tab's "prices as of" all through opening week.
+    const ups = (d.games || []).filter((g) => Date.parse(g.commence) > now);
+    if (ups.length && d.asOf && (!out.asOf || d.asOf < out.asOf)) out.asOf = d.asOf;
+    if (d.asOf && (!latest || d.asOf > latest)) latest = d.asOf;
+    out.games.push(...ups);
   }
+  // Nothing to come: the last read anywhere, for "lines last read".
+  if (!out.asOf) out.asOf = latest;
   out.games.sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
   out.empty = out.games.length === 0;
   return out;
@@ -10324,6 +10332,22 @@ async function nbaPpBoard(env) {
     // projected past last season and nothing grades.
     const ig = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM nba_box_games').first();
     out.ingest = { games: Number((ig && ig.n) || 0), read: Number((ig && ig.d) || 0), lastDay: (ig && ig.last) || null };
+    // The over side of the same legs (2026-10-22). The model's chance of the
+    // over is 100 minus the under's and the log grades both sides, so overs are
+    // judged on the legs where the model leaned over: by band of that chance,
+    // by market, and by where PrizePicks' number sat against the books' -- for
+    // an over, ppLower (PrizePicks below the books) is the easier side.
+    const lean = graded.filter((g) => g.model_under != null && g.model_under < 50);
+    const ov = ppSplitRecord(lean.map((g) => ({
+      p: 100 - g.model_under, won: g.result === 'over' ? 1 : (g.result === 'under' ? 0 : null),
+      gap: g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null,
+    })));
+    const ovBy = {};
+    for (const g of lean) {
+      if (g.result === 'push') continue;
+      ovBy[g.market] = ovBy[g.market] || { n: 0, hit: 0 };
+      ovBy[g.market].n++; if (g.result === 'over') ovBy[g.market].hit++;
+    }
     out.record = {
       scope: `rotation players (${NBA_ROTATION_MIN}+ projected minutes), as on the card`,
       graded: decided.length,
@@ -10331,6 +10355,9 @@ async function nbaPpBoard(env) {
       top3: { n: t3n, hit: t3h, hitRate: t3n ? round1(t3h / t3n * 100) : null },
       byBand: split.byBand,
       byLineGap: split.byLineGap,
+      overs: { scope: 'the legs where the model leaned over, at PrizePicks’ line', graded: ov.n, hit: ov.hit, hitRate: ov.hitRate,
+        byBand: ov.byBand, byLineGap: ov.byLineGap,
+        byMarket: Object.fromEntries(Object.entries(ovBy).map(([k, v]) => [k, { n: v.n, hit: v.hit, hitRate: v.n ? round1(v.hit / v.n * 100) : null }])) },
     };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
@@ -10878,23 +10905,31 @@ async function socPropsBoard(env, url) {
     const graded = (await db.prepare("SELECT market, p_under, p_over, result FROM socprops WHERE result IN ('under','over','push')").all()).results || [];
     const items = graded.map((g) => {
       const under = g.p_under >= g.p_over;
-      return { market: g.market, p: under ? g.p_under : g.p_over, won: g.result === 'push' ? null : ((g.result === 'under') === under ? 1 : 0), gap: null };
+      return { market: g.market, side: under ? 'under' : 'over', p: under ? g.p_under : g.p_over, won: g.result === 'push' ? null : ((g.result === 'under') === under ? 1 : 0), gap: null };
     });
     const split = ppSplitRecord(items);
     const byStat = (list) => Object.fromEntries(SOC_PROP_STATS.map((s) => { const c = ppSplitRecord(list.filter((x) => x.market === s)); return [s, { n: c.n, hit: c.hit, hitRate: c.hitRate }]; }));
+    // Unders and overs apart (2026-10-22): the card shows whichever side the
+    // chance favours, and a low line leans over (tackles and fouls at 0.5), so
+    // each side keeps its own record, by stat and by band.
+    const bySide = (list) => Object.fromEntries(['under', 'over'].map((sd) => {
+      const l = list.filter((x) => x.side === sd);
+      const c = ppSplitRecord(l);
+      return [sd, { n: c.n, hit: c.hit, hitRate: c.hitRate, byBand: c.byBand, byMarket: byStat(l) }];
+    }));
     out.record = { scope: 'the side each row leans at the line it showed, before kickoff', graded: split.n, hit: split.hit, hitRate: split.hitRate,
-      byBand: split.byBand, byMarket: byStat(items) };
+      byBand: split.byBand, byMarket: byStat(items), bySide: bySide(items) };
     // The record at PrizePicks' own numbers: each line set on the card, the
     // side the card showed there, graded from the same box scores. This, not
     // the default-line record above, is what decides whether soccer props
     // join Picks of the day -- once 100 to 150 of them have graded.
     const ppRows = (await db.prepare('SELECT market, side, p, result FROM soc_pp_lines').all()).results || [];
-    const ppItems = ppRows.filter((g) => ['under', 'over', 'push'].includes(g.result)).map((g) => ({ market: g.market, p: g.p,
+    const ppItems = ppRows.filter((g) => ['under', 'over', 'push'].includes(g.result)).map((g) => ({ market: g.market, side: g.side === 'Under' ? 'under' : 'over', p: g.p,
       won: g.result === 'push' ? null : (g.result === (g.side === 'Under' ? 'under' : 'over') ? 1 : 0), gap: null }));
     const pps = ppSplitRecord(ppItems), exF = ppSplitRecord(ppItems.filter((x) => x.market !== 'fouls'));
     out.ppRecord = { scope: 'the side the card showed at the PrizePicks line you set, before kickoff',
       saved: ppRows.length, open: ppRows.filter((g) => g.result == null).length, void: ppRows.filter((g) => g.result === 'void').length,
-      graded: pps.n, hit: pps.hit, hitRate: pps.hitRate, byBand: pps.byBand, byMarket: byStat(ppItems),
+      graded: pps.n, hit: pps.hit, hitRate: pps.hitRate, byBand: pps.byBand, byMarket: byStat(ppItems), bySide: bySide(ppItems),
       exFouls: { n: exF.n, hit: exF.hit, hitRate: exF.hitRate },
       // Fouls on their own: the one stat whose leaning side landed under half
       // the time at the default line (7 of 15 by 2026-10-15), so it is shown
