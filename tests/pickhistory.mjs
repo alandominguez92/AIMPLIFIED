@@ -103,7 +103,7 @@ function lift(name) {
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 let card;
 try {
-  card = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
+  card = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'movedLineHtml', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
 } catch (err) { console.log(`  FAIL  the card lifts out of app.js (${err.message})`); process.exit(1); }
 const html = card(h);
 const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');

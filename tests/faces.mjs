@@ -43,7 +43,7 @@ function lift(name, from = src) {
   throw new Error(`could not close ${name}`);
 }
 const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
-  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickFace', 'ptDayOf', 'heroLegHtml'];
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickFace', 'ptDayOf', 'pickMoved', 'heroLegHtml'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const state = { slip: {} };
 const F = new Function('state', 'esc', names.map((n) => lift(n)).join('\n')

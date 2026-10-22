@@ -47,7 +47,8 @@ const AT_BOS = RealDate.parse('2026-10-20T15:01:05Z');   // when production capt
 const AT_OKC = RealDate.parse('2026-10-20T21:30:37Z');
 let paid = 0;
 globalThis.fetch = async (u) => {
-  const m = /^https:\/\/api\.the-odds-api\.com\/v4\/sports\/basketball_nba\/events\/(\w+)\/odds\?apiKey=k&markets=player_threes,player_assists,player_rebounds,player_blocks,player_steals&oddsFormat=american&dateFormat=iso&bookmakers=prizepicks,draftkings,fanduel$/.exec(String(u));
+  // (Underdog and Pick6 are asked for since 2026-10-22; the payloads were recorded before, with neither.)
+  const m = /^https:\/\/api\.the-odds-api\.com\/v4\/sports\/basketball_nba\/events\/(\w+)\/odds\?apiKey=k&markets=player_threes,player_assists,player_rebounds,player_blocks,player_steals&oddsFormat=american&dateFormat=iso&bookmakers=prizepicks,underdog,pick6,draftkings,fanduel$/.exec(String(u));
   if (m && PAY[m[1]]) {
     paid++;
     return new Response(PAY[m[1]], { status: 200, headers: { 'content-type': 'application/json', 'x-requests-last': '5' } });

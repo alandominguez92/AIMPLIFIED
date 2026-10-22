@@ -82,7 +82,8 @@ const EV = ODDS.id;
 const finalOn = new Set();                     // the days ESPN has the recorded game final on
 const ODDS_URL = `https://api.the-odds-api.com/v4/sports/basketball_nba/events/${EV}/odds?apiKey=k`
   + '&markets=player_threes,player_assists,player_rebounds,player_blocks,player_steals&oddsFormat=american&dateFormat=iso'
-  + '&bookmakers=prizepicks,draftkings,fanduel';
+  + '&bookmakers=prizepicks,underdog,pick6,draftkings,fanduel';
+// (Underdog and Pick6 are asked for since 2026-10-22; this payload was recorded before, with neither.)
 // The recorded payload with one point added: an over-only 1.5 for Cunningham's
 // blocks, ahead of his 0.5 -- how a PrizePicks demon comes (the NFL passing-
 // yards capture, 2026-10-15). It must change nothing.

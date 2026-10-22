@@ -168,7 +168,8 @@ ok(nhlOdds().length === 2, `inside 3h of puck drop, the close is captured (${nhl
 const mtlClose = rowsOf('nhl').find((r) => r.game_id === 'e1');
 ok(mtlClose && mtlClose.entry_price === -150 && mtlClose.close_price === -165,
   `the entry stands and the close moves (${mtlClose && mtlClose.entry_price} -> ${mtlClose && mtlClose.close_price})`);
-NOW = RealDate.parse('2026-10-20T22:30:00Z');
+// Before the 75-minute pre-start read (tests/prestart.mjs, 2026-10-22).
+NOW = RealDate.parse('2026-10-20T21:30:00Z');
 await tick();
 ok(nhlOdds().length === 2, `and two a day is the cap (${nhlOdds().length} total)`);
 

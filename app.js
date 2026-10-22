@@ -5888,6 +5888,16 @@
       name: team ? (s.team || String(x.title || '').replace(/ ML$/, '')) : (s.player || x.title), isTeam: team, size });
   }
 
+  // How far a leg's chance has moved since it joined the list (2026-10-22).
+  // The prices are now read again before each start, so a line that moved on
+  // news says so. Under a point is noise and says nothing.
+  function pickMoved(x) {
+    if (!x || typeof x.firstP !== 'number' || typeof x.p !== 'number') return null;
+    const d = Math.round(x.p - x.firstP);
+    if (Math.abs(d) < 1) return null;
+    return { d, text: `${d > 0 ? '▲' : '▼'} ${Math.abs(d)} since ${soccerKick(x.firstAt)}`.replace(/ since $/, '') };
+  }
+
   // The night's best leg, large (2026-10-14): the top of the Picks list, drawn
   // first on the Picks tab and above Today's card on the MLB board, so the
   // page opens on it. Gold is the bet (the pick and the add button); the
@@ -5908,6 +5918,8 @@
     if (x.kind === 'mlb_pp') notes.push(x.lineup === 'in' ? 'lineup in' : 'lineup not posted');
     if (typeof x.vsBook === 'number' && x.vsBook !== 0) notes.push(`PP ${x.vsBook > 0 ? '+' : '−'}${Math.abs(x.vsBook)} vs book`);
     if ((x.sport || s.sport) === 'nba') notes.push('check injuries');
+    const mv = pickMoved(x);
+    if (mv) notes.push(mv.text);
     // By the leg's own Pacific day (2026-10-21): the list looks a day ahead,
     // so its first leg is often tomorrow's -- Inter at noon read "Today's".
     const legDay = ptDayOf(Date.parse(x.commence));
@@ -5989,7 +6001,9 @@
       const playing = d.pending ? `${d.pending} still to play` : '';
       const legs = d.legs.map((x) => {
         const m = mark[x.result] || ['·', 'pk-open'];
-        return `<li><span class="pk-lr ${m[1]}">${m[0]}</span><span class="pk-ll">${esc(x.label)}</span><span class="pk-lp">${pct0(x.p)}</span></li>`;
+        const mv = typeof x.first === 'number' ? Math.round(x.p - x.first) : 0;
+        const mvTxt = Math.abs(mv) >= 1 ? ` <span class="pk-lm${tone(mv)}" title="It joined the list at ${esc(pct0(x.first))}">${mv > 0 ? '▲' : '▼'}${Math.abs(mv)}</span>` : '';
+        return `<li><span class="pk-lr ${m[1]}">${m[0]}</span><span class="pk-ll">${esc(x.label)}</span><span class="pk-lp">${pct0(x.p)}${mvTxt}</span></li>`;
       }).join('');
       return `<details class="pk-day"><summary><span class="pk-dd"><b>${esc(shortDay(d.date))}</b> ${[count, playing].filter(Boolean).join(' · ')}</span>`
         + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}</ul></details>`;
@@ -5998,7 +6012,18 @@
       + `<div class="tc-head"><span class="tc-title">How the list did</span>${h.since ? `<span class="tc-rec">since ${esc(shortDay(h.since))}</span>` : ''}</div>`
       + `<div class="tc-sub">What the list's legs would have paid: 1 unit an entry at PrizePicks' standard payouts, ranked by the chance each showed when its game started. Goblins, demons and boosts pay differently. Your own entries are on the Entries tab.</div>`
       + (sum ? `<ul class="pk-entries pk-hist-sum"><li class="pk-eh"><span>Entry</span><span>days</span><span>units</span><span>return</span></li>${sum}</ul>` : '')
+      + movedLineHtml(h.moved)
       + `<div class="pk-days">${days}</div></div>`;
+  }
+  // Which way the market moved while the legs sat on the list, and how the
+  // ones that firmed and drifted landed. A leg whose chance rose before its
+  // start beat the closing line.
+  function movedLineHtml(mv) {
+    if (!mv || !mv.n) return '';
+    const part = (b, what) => (b && b.n ? `${what} landed ${b.hit} of ${b.n}` : '');
+    const landed = [part(mv.rose, 'those that rose'), part(mv.fell, 'those that fell')].filter(Boolean).join(', ');
+    return `<div class="tc-sub pk-moved">Before their start: ${mv.rose.n} of ${mv.n} legs' chances rose and ${mv.fell.n} fell`
+      + ` (average ${mv.avg > 0 ? '+' : mv.avg < 0 ? '−' : ''}${Math.abs(mv.avg)} points)${landed ? `; ${landed}` : ''}.</div>`;
   }
 
   function renderPicks() {
@@ -6040,6 +6065,8 @@
       if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
       if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
       if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
+      const mv = pickMoved(x);
+      if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
       const r = x.record || {};
       const recTxt = r.n ? `Legs like this: ${r.hit} of ${r.n} (${pct0(r.hitRate)})${r.proven ? '' : ' · new'}` : 'Legs like this: none graded yet';
       // The sport rides on the game line, not beside the title: on a phone the

@@ -7957,6 +7957,10 @@ async function ensureDayPickSchema(db) {
     seen_at TEXT, result TEXT,
     PRIMARY KEY (date, leg_id)
   )`).run();
+  // The chance a leg first showed, beside p, the one it showed last before its
+  // start (2026-10-22). With the pre-start reads p is the close, so the two say
+  // which way the market moved while the leg sat on the list.
+  await addColumns(db, 'daypicks', [['first_p', 'REAL'], ['first_at', 'TEXT']]);
 }
 
 // Every leg that clears its kind's bar, for games starting in the next day.
@@ -8089,22 +8093,26 @@ function pickList(legs) {
 // What the list showed is what it is judged on. Each leg on it is written with
 // its rank; a leg that drops off before its game starts is marked off; once a
 // game starts its rows are left alone, so the row says whether that leg was on
-// the list at first pitch or tip.
+// the list at first pitch or tip. Times are compared as times (2026-10-22):
+// as text the feed's '...T23:00:00Z' sorts after '...T23:00:00.123Z', so a
+// read in the first second of a start minute -- when the cron fires -- took a
+// game that had just started for one still to come, and marked its leg off.
 async function logDayPicks(db, list, unavailable, now) {
   await ensureDayPickSchema(db);
   const nowIso = new Date(now).toISOString();
   const stmts = list.map((l, i) => db.prepare(
-    `INSERT INTO daypicks (date, leg_id, kind, src_date, game_id, player_key, market, team, label, p, commence, rank, on_list, seen_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?)
+    `INSERT INTO daypicks (date, leg_id, kind, src_date, game_id, player_key, market, team, label, p, commence, rank, on_list, seen_at, first_p, first_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)
      ON CONFLICT(date, leg_id) DO UPDATE SET p = excluded.p, rank = excluded.rank, on_list = 1,
-       seen_at = excluded.seen_at, label = excluded.label
-     WHERE daypicks.commence > ?`
+       seen_at = excluded.seen_at, label = excluded.label,
+       first_p = COALESCE(daypicks.first_p, excluded.first_p), first_at = COALESCE(daypicks.first_at, excluded.first_at)
+     WHERE julianday(daypicks.commence) > julianday(?)`
   ).bind(ptDateOf(Date.parse(l.commence)), l.legId, l.kind, l.src.date, String(l.src.game_id), l.src.player_key || null,
-    l.src.market || null, l.src.team || null, l.title, l.p, l.commence, i + 1, nowIso, nowIso));
+    l.src.market || null, l.src.team || null, l.title, l.p, l.commence, i + 1, nowIso, l.p, nowIso, nowIso));
   const ids = list.map((l) => l.legId);
   const keep = [...unavailable];
   stmts.push(db.prepare(
-    `UPDATE daypicks SET on_list = 0, rank = NULL WHERE date IN (?, ?) AND commence > ?`
+    `UPDATE daypicks SET on_list = 0, rank = NULL WHERE date IN (?, ?) AND julianday(commence) > julianday(?)`
       + (ids.length ? ` AND leg_id NOT IN (${ids.map(() => '?').join(',')})` : '')
       + (keep.length ? ` AND kind NOT IN (${keep.map(() => '?').join(',')})` : '')
   ).bind(ptDateOf(now), ptDateOf(now + 86400e3), nowIso, ...ids, ...keep));
@@ -8208,11 +8216,23 @@ function pickHistory(rows) {
     }
     const dec = l.filter((x) => x.result === 'hit' || x.result === 'miss');
     days.push({ date, hit: dec.filter((x) => x.result === 'hit').length, decided: dec.length, pending: l.filter((x) => x.result == null).length,
-      legs: l.map((x) => ({ label: x.label, kind: x.kind, p: round1(x.p), result: x.result || null })), entries });
+      legs: l.map((x) => ({ label: x.label, kind: x.kind, p: round1(x.p), first: x.first_p == null ? null : round1(x.first_p), result: x.result || null })), entries });
+  }
+  // Which way the market moved while each leg sat on the list (2026-10-22):
+  // its first chance against its last before the start -- the close, with the
+  // pre-start reads -- and how the legs that firmed and drifted then landed.
+  // A move under a point is noise. Only legs logged since first_p was kept.
+  const mv = { n: 0, sum: 0, rose: { n: 0, hit: 0 }, fell: { n: 0, hit: 0 }, flat: { n: 0, hit: 0 } };
+  for (const r of rows) {
+    if (r.first_p == null || r.p == null || (r.result !== 'hit' && r.result !== 'miss')) continue;
+    const d = r.p - r.first_p;
+    const b = d >= 1 ? mv.rose : d <= -1 ? mv.fell : mv.flat;
+    mv.n++; mv.sum += d; b.n++; if (r.result === 'hit') b.hit++;
   }
   return {
     since: days.length ? days[0].date : null,
     payouts: { power: PP_POWER, flex: PP_FLEX },
+    moved: mv.n ? { n: mv.n, avg: round1(mv.sum / mv.n), rose: mv.rose, fell: mv.fell, flat: mv.flat } : null,
     entries: Object.values(tot).map((t) => ({ ...t, units: Math.round(t.units * 100) / 100, roi: t.days ? round1(t.units / t.days * 100) : null })),
     days: days.reverse().slice(0, PICK_HIST_DAYS),
   };
@@ -8223,7 +8243,7 @@ function pickHistory(rows) {
 // disagree (a day counts once both its top legs have graded).
 async function dayPickRecord(db) {
   await ensureDayPickSchema(db);
-  const all = (await db.prepare('SELECT date, kind, label, p, result FROM daypicks WHERE on_list = 1').all()).results || [];
+  const all = (await db.prepare('SELECT date, kind, label, p, first_p, result FROM daypicks WHERE on_list = 1').all()).results || [];
   const rows = all.filter((r) => r.result != null);
   const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
   const hit = dec.filter((r) => r.result === 'hit').length;
@@ -8273,10 +8293,21 @@ async function picksBoard(env) {
     out.kinds = Object.fromEntries(Object.entries(PICK_KINDS).map(([k, v]) => [k, { ...v, record: kinds[k] }]));
     out.qualifyingGames = new Set(legs.map((l) => l.gameKey)).size;
     if (unavailable.size) out.unavailable = [...unavailable];
+    // Each leg's first chance on the list, for how far it has moved since.
+    const firsts = new Map();
+    try {
+      const ids = list.map((l) => l.legId);
+      if (ids.length) {
+        const fr = (await env.DB.prepare(`SELECT leg_id, first_p, first_at FROM daypicks WHERE date IN (?, ?) AND leg_id IN (${ids.map(() => '?').join(',')})`)
+          .bind(ptDateOf(now), ptDateOf(now + 86400e3), ...ids).all()).results || [];
+        for (const r of fr) if (r.first_p != null) firsts.set(r.leg_id, r);
+      }
+    } catch (e) { /* the list stands without it */ }
     out.legs = list.map((l, i) => ({
       rank: i + 1, kind: l.kind, sport: PICK_KINDS[l.kind].sport, kindLabel: PICK_KINDS[l.kind].label,
       p: round1(l.p), title: l.title, sub: l.sub, commence: l.commence, odds: l.odds == null ? null : l.odds,
       lineup: l.lineup || null, vsBook: l.vsBook == null ? null : l.vsBook, league: l.league || null,
+      firstP: firsts.has(l.legId) ? round1(firsts.get(l.legId).first_p) : null, firstAt: firsts.has(l.legId) ? firsts.get(l.legId).first_at : null,
       record: kinds[l.kind], legId: l.legId, spec: l.spec,
     }));
     // The entry read: the top two as a 2-pick power (both have to land), and
@@ -9382,6 +9413,22 @@ async function soccerIngest(env, url) {
 // scheduled invocation that captures closing lines. A fixture entering the 36h
 // window is still seen within the hour.
 const EVENTS_RECHECK_MS = 60 * 60 * 1000;
+// Pre-start reads (2026-10-22): a leg is played at the price just before its
+// game, so each start time gets a read about 75 minutes out and another about
+// 25 minutes out -- the close, read before the last Picks refresh ahead of it
+// (dayPicksTick runs every 15). The two daily captures read an evening game
+// at lunchtime: a scratch at 3 PM moved the line, and the board did not know.
+// Each is one ordinary capture (1 credit for a moneyline league, 2 for a
+// soccer league, 3 for the NFL's game lines), and the start times come from
+// what the last read already holds, so finding them costs nothing. Counted
+// apart from the two daily captures, and capped per league per day.
+const PRESTART_MS = [75 * 60e3, 25 * 60e3];
+const PRESTART_MAX_PER_DAY = 16;
+function prestartDue(starts, last, now) {
+  return (starts || []).some((t) => PRESTART_MS.some((w) => now >= t - w && now < t && !(last >= t - w)));
+}
+const upcomingStarts = (list, now) => (list || []).map((t) => (typeof t === 'number' ? t : Date.parse(t)))
+  .filter((t) => isFinite(t) && t > now && t - now <= 36 * 3600e3);
 const NFL_MAX_PER_DAY = 2;
 const NFL_MIN_GAP_MS = 5 * 3600 * 1000;
 const NFL_HORIZON_MS = 36 * 3600 * 1000;
@@ -9392,9 +9439,18 @@ async function nflMaybeIngest(env, ctx) {
     const cacheKey = `nfl_cap:${today}`;
     const hit = await loadFeedCache(env.DB, cacheKey);
     const state = (hit.present && hit.data) || { n: 0, last: 0 };
-    if (state.n >= NFL_MAX_PER_DAY) return null;
-    if (state.last && Date.now() - state.last < NFL_MIN_GAP_MS) return null;
-    if (state.checked && Date.now() - state.checked < EVENTS_RECHECK_MS) return null;
+    // Before each kickoff: the game lines only (3 credits), and the board's
+    // log after them -- not the props, which are priced per game.
+    const now = Date.now();
+    if ((state.pre || 0) < PRESTART_MAX_PER_DAY && prestartDue(upcomingStarts(state.starts, now), state.last, now)) {
+      const res = await nflIngest(env, new URL('https://x/api/nfl-ingest'));
+      try { await nflBoardData(env, null); } catch (e) { /* logged next capture */ }
+      await saveFeedCache(env.DB, cacheKey, { ...state, pre: (state.pre || 0) + 1, last: now });
+      return { ran: true, prestart: true, res: res && res.status };
+    }
+    const regular = state.n < NFL_MAX_PER_DAY && !(state.last && now - state.last < NFL_MIN_GAP_MS);
+    if (!regular && state.starts) return null;
+    if (state.checked && now - state.checked < EVENTS_RECHECK_MS) return null;
     // Is anything coming? The events list is free, so this question costs nothing
     // on the many days the answer is no.
     const evR = await fetch(`https://api.the-odds-api.com/v4/sports/americanfootball_nfl/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`,
@@ -9402,11 +9458,9 @@ async function nflMaybeIngest(env, ctx) {
     await recordOddsUsage(env, evR, 'nfl:cron-events');
     if (!evR.ok) return null;
     const evs = await evR.json();
-    const soon = (Array.isArray(evs) ? evs : []).some((e) => {
-      const t = Date.parse(e.commence_time);
-      return isFinite(t) && t > Date.now() && t - Date.now() <= NFL_HORIZON_MS;
-    });
-    if (!soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: Date.now() }); return null; }
+    const starts = upcomingStarts((Array.isArray(evs) ? evs : []).map((e) => e.commence_time), now);
+    const soon = starts.length > 0;
+    if (!regular || !soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: now, starts }); return null; }
     const res = await nflIngest(env, new URL('https://x/api/nfl-ingest'));
     // Player props on the same tick. They are a separate purchase — per event
     // rather than per slate — and the game-line ingest does not touch them, so
@@ -9427,7 +9481,7 @@ async function nflMaybeIngest(env, ctx) {
     // kickoff left no moneyline record, and Picks of the day nothing to list.
     // Reading it here costs D1 reads only.
     try { await nflBoardData(env, null); } catch (e) { /* logged next capture */ }
-    await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
+    await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now(), pre: state.pre || 0, starts });
     return { ran: true, n: state.n + 1, res: res && res.status, props: props && props.wrote };
   } catch (e) { return null; }   // next tick
 }
@@ -9441,21 +9495,29 @@ async function soccerMaybeIngest(env, ctx) {
       const cacheKey = `soccer_cap:${lg}:${today}`;
       const hit = await loadFeedCache(env.DB, cacheKey);
       const state = (hit.present && hit.data) || { n: 0, last: 0 };
-      if (state.n >= SOCCER_MAX_PER_DAY) continue;
-      if (state.last && Date.now() - state.last < SOCCER_MIN_GAP_MS) continue;
-      if (state.checked && Date.now() - state.checked < EVENTS_RECHECK_MS) continue;
+      // Before each kickoff, from the kickoff times the last events read kept.
+      const now = Date.now();
+      if ((state.pre || 0) < PRESTART_MAX_PER_DAY && prestartDue(upcomingStarts(state.starts, now), state.last, now)) {
+        const res = await soccerIngest(env, new URL(`https://x/api/soccer-ingest?league=${lg}`));
+        await saveFeedCache(env.DB, cacheKey, { ...state, pre: (state.pre || 0) + 1, last: now });
+        out.push({ league: lg, prestart: true, ...(res.leagues[0] || {}), credits: res.credits });
+        continue;
+      }
+      // Past its two daily captures a league still needs its kickoff times
+      // once (a day whose captures predate this): one free events read.
+      const regular = state.n < SOCCER_MAX_PER_DAY && !(state.last && now - state.last < SOCCER_MIN_GAP_MS);
+      if (!regular && state.starts) continue;
+      if (state.checked && now - state.checked < EVENTS_RECHECK_MS) continue;
       // Is anything coming? The events list is free.
       const evR = await fetch(`https://api.the-odds-api.com/v4/sports/${SOCCER_LEAGUES[lg].key}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`, { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, evR, `soccer:${lg}:events`);
       if (!evR.ok) continue;
       const evs = await evR.json();
-      const soon = (Array.isArray(evs) ? evs : []).some((e) => {
-        const t = Date.parse(e.commence_time);
-        return isFinite(t) && t > Date.now() && t - Date.now() <= SOCCER_HORIZON_MS;
-      });
-      if (!soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: Date.now() }); continue; }
+      const starts = upcomingStarts((Array.isArray(evs) ? evs : []).map((e) => e.commence_time), now);
+      const soon = starts.length > 0;
+      if (!regular || !soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: now, starts }); continue; }
       const res = await soccerIngest(env, new URL(`https://x/api/soccer-ingest?league=${lg}`));
-      await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
+      await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now(), pre: state.pre || 0, starts });
       out.push({ league: lg, ...(res.leagues[0] || {}), credits: res.credits });
     } catch (e) { /* next tick */ }
   }
@@ -9646,6 +9708,16 @@ async function h2hMaybeIngest(env, cfg) {
       const cacheKey = `${cfg.sport}_cap:${lg}:${today}`;
       const hit = await loadFeedCache(env.DB, cacheKey);
       const state = (hit.present && hit.data) || { n: 0, last: 0 };
+      // Before each start: its tip-off times are in the board's own snapshot.
+      const now = Date.now();
+      const snap = await loadFeedCache(env.DB, `${cfg.sport}_board:${lg}`);
+      const starts = upcomingStarts(snap.present && snap.data ? (snap.data.games || []).map((g) => g.commence) : [], now);
+      if ((state.pre || 0) < PRESTART_MAX_PER_DAY && prestartDue(starts, state.last, now)) {
+        const res = await h2hCapture(env, cfg, lg);
+        await saveFeedCache(env.DB, cacheKey, { ...state, pre: (state.pre || 0) + 1, last: now });
+        out.push({ ...res, prestart: true });
+        continue;
+      }
       if (state.n >= cfg.maxPerDay) continue;
       if (state.last && Date.now() - state.last < cfg.minGap) continue;
       if (state.checked && Date.now() - state.checked < EVENTS_RECHECK_MS) continue;
@@ -9662,7 +9734,7 @@ async function h2hMaybeIngest(env, cfg) {
       });
       if (!soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: Date.now() }); continue; }
       const res = await h2hCapture(env, cfg, lg);
-      await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now() });
+      await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now(), pre: state.pre || 0 });
       out.push(res);
     } catch (e) { /* next tick */ }
   }
@@ -9782,7 +9854,10 @@ function nhlMatch(a, b) {
 // Nothing here is posted. It is logged and graded, so the card has a record
 // before anyone trusts it.
 const NBA_PP_MARKETS = { player_threes: 'threes', player_assists: 'ast', player_rebounds: 'reb', player_blocks: 'blk', player_steals: 'stl' };
-const NBA_PP_BOOKS = ['prizepicks', 'draftkings', 'fanduel'];
+// Underdog and DraftKings Pick6 ride along (2026-10-22): the feed bills ten
+// named books as one region, so the same read now says where each pick'em
+// app sets its line. Only PrizePicks' lines are logged and graded.
+const NBA_PP_BOOKS = ['prizepicks', 'underdog', 'pick6', 'draftkings', 'fanduel'];
 const NBA_PRIOR_K = 5;
 const NBA_DISP = { threes: 1.15, ast: 1.25, reb: 1.2, blk: 1.15, stl: 1.1 };
 // The markets Picks of the day may carry: the ones whose under it was built on.

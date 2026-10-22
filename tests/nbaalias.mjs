@@ -43,7 +43,8 @@ const ODDS = fs.readFileSync(path.join(FIX, 'odds-nba-pp-26b036ff-20261020.json'
 const ev = JSON.parse(ODDS);
 const ODDS_URL = `https://api.the-odds-api.com/v4/sports/basketball_nba/events/${ev.id}/odds?apiKey=k`
   + '&markets=player_threes,player_assists,player_rebounds,player_blocks,player_steals&oddsFormat=american&dateFormat=iso'
-  + '&bookmakers=prizepicks,draftkings,fanduel';
+  + '&bookmakers=prizepicks,underdog,pick6,draftkings,fanduel';
+// (Underdog and Pick6 are asked for since 2026-10-22; this payload was recorded before, with neither.)
 let paid = 0;
 globalThis.fetch = async (u) => {
   if (String(u) === ODDS_URL) {
