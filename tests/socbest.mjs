@@ -217,7 +217,10 @@ state.socProps = board;
 
 console.log('\n-- wired in --');
 const body = lift('renderPicks');
-ok((body.match(/\+ soc;/g) || []).length === 3 &&/Picks unavailable \(\$\{esc\(d\.error\)\}\)\.<\/div>` \+ soc;/.test(body),
+// (Since 2026-10-22 "How the list did" follows it in the same tail:
+// tests/pickhistory.mjs.)
+ok(/const after = socBestStripHtml\(\) \+ /.test(body) && (body.match(/\+ after;/g) || []).length === 3
+  && /Picks unavailable \(\$\{esc\(d\.error\)\}\)\.<\/div>` \+ after;/.test(body),
   'Picks draws the strip after the list, an empty list and an error alike');
 const rp = lift('refreshPicks');
 ok(/state\.sport === 'picks' && \(!state\.socProps \|\| Date\.now\(\) - \(state\.socPropsAt \|\| 0\) > 120e3\)/.test(rp) && /fetchJson\('\/api\/soccer-props'\)/.test(rp),

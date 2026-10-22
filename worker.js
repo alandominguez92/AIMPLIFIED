@@ -8179,25 +8179,62 @@ async function pickKindRecords(db) {
   return rec;
 }
 
-// The list's own record: legs it showed at first pitch or tip, graded.
+// What the list would have paid (2026-10-22): one unit an entry at PrizePicks'
+// standard payouts (PP_POWER, PP_FLEX), each day's top two by chance as a
+// 2-pick Power and its top three to six as a Flex. An entry waits until every
+// leg in it has graded. A void or tie in it counts as a refund, neither won
+// nor lost: PrizePicks drops that leg and pays the smaller entry, or refunds a
+// two-pick, and the smaller entry is not one the list showed.
+const PICK_HIST_ENTRIES = [['p2', 'Top 2 Power', 2, 'power'], ['f3', 'Top 3 Flex', 3, 'flex'], ['f4', 'Top 4 Flex', 4, 'flex'],
+  ['f5', 'Top 5 Flex', 5, 'flex'], ['f6', 'Top 6 Flex', 6, 'flex']];
+const PICK_HIST_DAYS = 14;
+function pickHistory(rows) {
+  const byDay = new Map();
+  for (const r of rows) { if (!byDay.has(r.date)) byDay.set(r.date, []); byDay.get(r.date).push(r); }
+  const tot = Object.fromEntries(PICK_HIST_ENTRIES.map(([key, label, n, type]) => [key, { key, label, n, type, days: 0, won: 0, refunds: 0, units: 0 }]));
+  const days = [];
+  for (const [date, l] of [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    l.sort((a, b) => b.p - a.p);
+    const entries = {};
+    for (const [key, , n, type] of PICK_HIST_ENTRIES) {
+      const top = l.slice(0, n);
+      if (top.length < n || top.some((x) => x.result == null)) continue;
+      const t = tot[key];
+      if (top.some((x) => x.result !== 'hit' && x.result !== 'miss')) { t.refunds++; entries[key] = { refund: true, net: 0 }; continue; }
+      const wins = top.filter((x) => x.result === 'hit').length;
+      const pay = type === 'power' ? (wins === n ? PP_POWER[n] : 0) : ((PP_FLEX[n] || {})[wins] || 0);
+      t.days++; t.units += pay - 1; if (pay > 1) t.won++;
+      entries[key] = { wins, pay, net: Math.round((pay - 1) * 100) / 100 };
+    }
+    const dec = l.filter((x) => x.result === 'hit' || x.result === 'miss');
+    days.push({ date, hit: dec.filter((x) => x.result === 'hit').length, decided: dec.length, pending: l.filter((x) => x.result == null).length,
+      legs: l.map((x) => ({ label: x.label, kind: x.kind, p: round1(x.p), result: x.result || null })), entries });
+  }
+  return {
+    since: days.length ? days[0].date : null,
+    payouts: { power: PP_POWER, flex: PP_FLEX },
+    entries: Object.values(tot).map((t) => ({ ...t, units: Math.round(t.units * 100) / 100, roi: t.days ? round1(t.units / t.days * 100) : null })),
+    days: days.reverse().slice(0, PICK_HIST_DAYS),
+  };
+}
+
+// The list's own record: legs it showed at first pitch or tip, graded. The
+// top two "both landed" count is the Top 2 Power entry's, so the two never
+// disagree (a day counts once both its top legs have graded).
 async function dayPickRecord(db) {
   await ensureDayPickSchema(db);
-  const rows = (await db.prepare('SELECT date, kind, p, result FROM daypicks WHERE on_list = 1 AND result IS NOT NULL').all()).results || [];
+  const all = (await db.prepare('SELECT date, kind, label, p, result FROM daypicks WHERE on_list = 1').all()).results || [];
+  const rows = all.filter((r) => r.result != null);
   const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
   const hit = dec.filter((r) => r.result === 'hit').length;
-  const byDay = new Map();
-  for (const r of dec) { if (!byDay.has(r.date)) byDay.set(r.date, []); byDay.get(r.date).push(r); }
-  let days2 = 0, both = 0;
-  for (const l of byDay.values()) {
-    if (l.length < 2) continue;
-    l.sort((a, b) => b.p - a.p);
-    days2++; if (l[0].result === 'hit' && l[1].result === 'hit') both++;
-  }
+  const history = pickHistory(all);
+  const p2 = history.entries.find((e) => e.key === 'p2');
   return {
     since: rows.length ? rows.map((r) => r.date).sort()[0] : null,
     legs: { n: dec.length, hit, hitRate: dec.length ? round1(hit / dec.length * 100) : null },
     voided: rows.filter((r) => r.result === 'void').length,
-    top2: { days: days2, bothHit: both },
+    top2: { days: p2.days, bothHit: p2.won },
+    history,
   };
 }
 

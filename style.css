@@ -2877,6 +2877,28 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-rules summary { cursor:pointer; color:var(--model, var(--accent)); padding:4px 0; }
 .pk-rules ul { margin:6px 0 0; padding-left:18px; display:grid; gap:3px; }
 .pk-rules p { margin:6px 0 0; line-height:1.45; }
+/* How the list did (2026-10-22): each entry type's units over every graded
+   day, then a line a day that opens to its legs. Teal is up, amber is down. */
+.pk-hist { margin-top:16px; }
+.pk-hist-sum li { grid-template-columns:minmax(0, 1fr) auto auto auto; }
+.pk-hist-sum .pk-u, .pk-hist-sum .pk-roi { font-family:var(--mono); color:var(--text); font-weight:600; }
+.pk-hist .pk-up { color:var(--positive); }
+.pk-hist .pk-down { color:var(--caution); }
+.pk-days { margin-top:10px; display:grid; gap:6px; }
+.pk-day { border:1px solid var(--border); border-radius:10px; background:var(--card); }
+.pk-day summary { list-style:none; cursor:pointer; padding:10px 12px; display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 10px;
+  font-size:13px; color:var(--textDim); }
+.pk-day summary::-webkit-details-marker { display:none; }
+.pk-day summary b { color:var(--text); font-weight:700; margin-right:4px; }
+.pk-des { display:flex; flex-wrap:wrap; gap:4px 10px; }
+.pk-de { font-family:var(--mono); font-size:12px; white-space:nowrap; color:var(--textDim); }
+.pk-legs { list-style:none; margin:0; padding:0 12px 10px; display:grid; gap:4px; }
+.pk-legs li { display:grid; grid-template-columns:34px minmax(0, 1fr) auto; gap:8px; align-items:baseline; font-size:13px; color:var(--text); }
+.pk-lr { font-family:var(--mono); font-size:12px; font-weight:700; }
+.pk-lr.pk-hit { color:var(--positive); }
+.pk-lr.pk-miss { color:var(--caution); }
+.pk-lr.pk-void, .pk-lr.pk-open { color:var(--textFaint); font-weight:400; }
+.pk-lp { font-family:var(--mono); font-size:12px; color:var(--textDim); }
 
 /* Moneyline by price: the pick count rides under the range, quietly. */
 .ml-band-n { display:block; font-style:normal; font-family:var(--mono); font-size:var(--fsXs); font-weight:400; color:var(--textFaint); letter-spacing:0; text-transform:none; }

@@ -5965,6 +5965,42 @@
     box.hidden = false;
   }
 
+  // How the list did (2026-10-22): what its legs would have paid, one unit an
+  // entry at PrizePicks' standard payouts, each entry type over every graded
+  // day, then day by day with the legs. The worker works it out (pickHistory)
+  // from the list as it stood when each game started. Not the user's own
+  // entries: those are on the Entries tab.
+  const HIST_DAY_KEYS = [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']];
+  function pickHistoryHtml(h) {
+    if (!h || !Array.isArray(h.days) || !h.days.length) return '';
+    const units = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
+    const tone = (v) => (v > 0 ? ' pk-up' : v < 0 ? ' pk-down' : '');
+    const sum = (h.entries || []).filter((e) => e.days).map((e) => `<li><span>${esc(e.label)}</span>`
+      + `<span>won ${e.won} of ${e.days}</span><span class="pk-u${tone(e.units)}">${units(e.units)}</span>`
+      + `<span class="pk-roi${tone(e.units)}">${e.roi > 0 ? '+' : e.roi < 0 ? '−' : ''}${Math.abs(e.roi)}%</span></li>`).join('');
+    const mark = { hit: ['✓', 'pk-hit'], miss: ['✗', 'pk-miss'], void: ['void', 'pk-void'], push: ['tie', 'pk-void'] };
+    const days = h.days.map((d) => {
+      const ents = HIST_DAY_KEYS.map(([k, label]) => {
+        const e = d.entries && d.entries[k];
+        if (!e) return '';
+        return `<span class="pk-de${tone(e.net)}">${esc(label)} ${e.refund ? 'refund' : units(e.net)}</span>`;
+      }).filter(Boolean).join('');
+      const count = d.decided ? `${d.hit} of ${d.decided} landed` : '';
+      const playing = d.pending ? `${d.pending} still to play` : '';
+      const legs = d.legs.map((x) => {
+        const m = mark[x.result] || ['·', 'pk-open'];
+        return `<li><span class="pk-lr ${m[1]}">${m[0]}</span><span class="pk-ll">${esc(x.label)}</span><span class="pk-lp">${pct0(x.p)}</span></li>`;
+      }).join('');
+      return `<details class="pk-day"><summary><span class="pk-dd"><b>${esc(shortDay(d.date))}</b> ${[count, playing].filter(Boolean).join(' · ')}</span>`
+        + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}</ul></details>`;
+    }).join('');
+    return `<div class="nba-pp pk-card pk-hist">`
+      + `<div class="tc-head"><span class="tc-title">How the list did</span>${h.since ? `<span class="tc-rec">since ${esc(shortDay(h.since))}</span>` : ''}</div>`
+      + `<div class="tc-sub">What the list's legs would have paid: 1 unit an entry at PrizePicks' standard payouts, ranked by the chance each showed when its game started. Goblins, demons and boosts pay differently. Your own entries are on the Entries tab.</div>`
+      + (sum ? `<ul class="pk-entries pk-hist-sum"><li class="pk-eh"><span>Entry</span><span>days</span><span>units</span><span>return</span></li>${sum}</ul>` : '')
+      + `<div class="pk-days">${days}</div></div>`;
+  }
+
   function renderPicks() {
     const grid = document.getElementById('picksGrid');
     if (!grid) return;
@@ -5972,9 +6008,10 @@
     const count = document.getElementById('picksCount');
     if (!d) { grid.innerHTML = PICKS_SKELETON; return; }
     // The soccer props strip follows the list in every state: its own feed,
-    // and not on the list until it has a record at PrizePicks' lines.
-    const soc = socBestStripHtml();
-    if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + soc; return; }
+    // and not on the list until it has a record at PrizePicks' lines. Then how
+    // the list did, once a day has graded.
+    const after = socBestStripHtml() + pickHistoryHtml(d.record && d.record.history);
+    if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + after; return; }
     const legs = (d.legs || []).filter((x) => Date.parse(x.commence) > Date.now());
     if (count) count.textContent = legs.length ? `${legs.length} leg${legs.length === 1 ? '' : 's'}` : '';
     const kinds = d.kinds || {};
@@ -5990,7 +6027,7 @@
       : 'This list keeps its own record from today: each leg on it when its game starts is graded.';
     if (!legs.length) {
       grid.innerHTML = `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines about four hours before tip.</div>`
-        + `<div class="tc-sub">${recLine}</div>${rules}</div>` + soc;
+        + `<div class="tc-sub">${recLine}</div>${rules}</div>` + after;
       return;
     }
     // The first leg is the night's best, drawn large; the rest follow.
@@ -6039,7 +6076,7 @@
       + hero
       + (items ? `<ol class="tc-legs">${items}</ol>` : '')
       + (ent.length ? `<ul class="pk-entries"><li class="pk-eh"><span>As an entry</span><span>chance</span><span>to pay</span></li>${ent.join('')}</ul>` : '')
-      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>` + soc;
+      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>` + after;
   }
 
   function applySportChrome(sport) {
