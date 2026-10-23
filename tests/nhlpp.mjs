@@ -21,16 +21,21 @@
 //
 // Real NHL data (tests/fixtures/nhl-pp-20261021.json): the score feed and the
 // Flyers at Sabres box score for Oct 21, and the stats API's 2025-26 and
-// 2026-27 skater summaries for the players in it. The odds payload is the v4
-// event shape the NBA capture parses in production (the key exists only as a
-// Worker secret) with those players' names, until a real NHL capture is
-// recorded. Real SQLite, the real worker, through its own cron.
+// 2026-27 skater summaries for the players in it. That game's odds payload is
+// the v4 event shape with those players' names (the key exists only as a Worker
+// secret); the first real NHL capture, Mammoth @ Kraken on Oct 22, is then
+// replayed as production received it (odds-nhl-pp-ec5f71ec-20261022.json) and
+// must log what production logged. Real SQLite, the real worker, its own cron.
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 const BOARD = path.join(import.meta.dirname, '..');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
 const REC = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'nhl-pp-20261021.json'), 'utf8'));
+// And the first real capture (tests/fixtures/odds-nhl-pp-ec5f71ec-20261022.json):
+// Mammoth @ Kraken as the odds feed sent it, with its players' NHL stats.
+const REAL = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'odds-nhl-pp-ec5f71ec-20261022.json'), 'utf8'));
+let STATS = {};
 const RealDate = Date;
 let NOW = RealDate.parse('2026-10-21T22:30:00Z');        // an hour before Flyers @ Sabres
 globalThis.Date = class extends RealDate {
@@ -66,8 +71,10 @@ globalThis.fetch = async (u) => {
   if (url.includes('api.the-odds-api.com')) {
     calls.push(url);
     if (url.includes('/events/e-phi-buf/odds')) return J(PAYLOAD, { 'x-requests-last': '2', 'x-requests-remaining': '92000' });
+    if (url.includes(`/events/${REAL.payload.id}/odds`)) return J(REAL.payload, { 'x-requests-last': '2', 'x-requests-remaining': '92000' });
     return J([], { 'x-requests-last': '0' });
   }
+  if (STATS[url]) return J(STATS[url]);
   if (REC[url]) return J(REC[url]);
   if (url.startsWith('https://api-web.nhle.com/') || url.startsWith('https://api.nhle.com/')) return J({ games: [], data: [] });
   return new Response('{}', { status: 404 });
@@ -146,6 +153,23 @@ b = await hit('/api/nhl-pp');
 ok(b.record.graded === 5 && b.record.hit === 4 && b.record.byMarket.pts.n === 3 && b.record.byMarket.ast.hit === 2,
   `the record: unders 4 of 5, by market (${JSON.stringify(b.record.byMarket)})`);
 ok(b.record.overs && b.record.overs.graded >= 1, 'and the over side kept as the NBA log keeps it');
+
+console.log('\n-- the first real capture, replayed --');
+// Mammoth @ Kraken, Oct 22: production logged these six from this payload.
+STATS = Object.fromEntries(Object.entries(REAL).filter(([u]) => u.startsWith('https://api.nhle.com/')));
+sq.prepare("DELETE FROM feed_cache WHERE key LIKE 'nhl_sk:%' OR key LIKE 'nhl_pp_done:%'").run();
+NOW = RealDate.parse('2026-10-23T01:10:00Z');                 // an hour before its 7:10 PM puck drop
+sq.prepare('INSERT OR REPLACE INTO feed_cache (key, data, updated_at, claimed_until) VALUES (?,?,?,0)')
+  .run('nhl_board:reg', JSON.stringify({ asOf: '2026-10-23T00:00:00Z', games: [{ id: REAL.payload.id, commence: REAL.payload.commence_time,
+    home: REAL.payload.home_team, away: REAL.payload.away_team }] }), NOW);
+await tick();
+const real = sq.prepare('SELECT player, market, point, model_under, book_line FROM nhlpp WHERE game_id = ? ORDER BY model_under DESC').all(REAL.payload.id);
+console.log('  ' + real.map((x) => `${x.player} ${x.market} ${x.model_under}%`).join(' | '));
+const want = { 'Vincent Trocheck': ['pts', 58.8], 'Vince Dunn': ['pts', 52.3], 'Jordan Eberle': ['pts', 49.9], 'Jared McCann': ['pts', 45.4],
+  'Chandler Stephenson': ['pts', 44.7], 'Mikhail Sergachev': ['ast', 47.6] };
+ok(real.length === 6 && real.every((x) => want[x.player] && want[x.player][0] === x.market && Math.abs(want[x.player][1] - x.model_under) < 0.15),
+  'PrizePicks\' five points lines and one assists line, at the chances production logged');
+ok(real.every((x) => x.point === 0.5 && x.book_line === 0.5), 'every one at 0.5, on DraftKings\' number');
 
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');

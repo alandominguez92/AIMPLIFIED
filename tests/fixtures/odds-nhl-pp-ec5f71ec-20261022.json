@@ -1,0 +1,2795 @@
+{
+ "_recorded": "Recorded 2026-10-22 from production /api/nhl-pp?raw=1: the first real NHL PrizePicks capture to keep its payload, Utah Mammoth at Seattle Kraken (ec5f71ec810aef5fc417a879c49750f1, read 2026-10-23T01:35:44.423Z, 2 credits), as the odds feed sent it; and the NHL stats API 2025-26 and 2026-27 skater summaries for the players named in it, read the same evening.",
+ "payload": {
+  "id": "ec5f71ec810aef5fc417a879c49750f1",
+  "sport_key": "icehockey_nhl",
+  "sport_title": "NHL",
+  "commence_time": "2026-10-23T02:10:00Z",
+  "home_team": "Seattle Kraken",
+  "away_team": "Utah Mammoth",
+  "bookmakers": [
+   {
+    "key": "draftkings",
+    "title": "DraftKings",
+    "markets": [
+     {
+      "key": "player_assists",
+      "last_update": "2026-10-23T01:35:16Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": -150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Clayton Keller",
+        "price": 110,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -110,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": -120,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": 120,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Logan Cooley",
+        "price": -160,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": 120,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": -165,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": 135,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -185,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": 140,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Dylan Guenther",
+        "price": -190,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": 145,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -195,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "MacKenzie Weegar",
+        "price": 160,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "MacKenzie Weegar",
+        "price": -215,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": 165,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -230,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": 175,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -240,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": 185,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -255,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Brandon Montour",
+        "price": 190,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Brandon Montour",
+        "price": -255,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 195,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Matty Beniers",
+        "price": -270,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kailer Yamamoto",
+        "price": 235,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Kailer Yamamoto",
+        "price": -330,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nate Schmidt",
+        "price": 240,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nate Schmidt",
+        "price": -330,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Bobby McMann",
+        "price": 255,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Bobby McMann",
+        "price": -360,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Lawson Crouse",
+        "price": 280,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Lawson Crouse",
+        "price": -400,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Anders Lee",
+        "price": 285,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Anders Lee",
+        "price": -400,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Barrett Hayton",
+        "price": 285,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Barrett Hayton",
+        "price": -400,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mackie Samoskevich",
+        "price": 360,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mackie Samoskevich",
+        "price": -525,
+        "point": 0.5
+       }
+      ]
+     },
+     {
+      "key": "player_points",
+      "last_update": "2026-10-23T01:35:16Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": 155,
+        "point": 1.5
+       },
+       {
+        "name": "Under",
+        "description": "Clayton Keller",
+        "price": -210,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": -180,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Dylan Guenther",
+        "price": 130,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": -180,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": 135,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": -160,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Logan Cooley",
+        "price": 120,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -155,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": 115,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": -110,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -120,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": -110,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -120,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": -105,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -130,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": -105,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -125,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": 100,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -135,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 105,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Matty Beniers",
+        "price": -145,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Bobby McMann",
+        "price": 110,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Bobby McMann",
+        "price": -145,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kailer Yamamoto",
+        "price": 125,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Kailer Yamamoto",
+        "price": -170,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "MacKenzie Weegar",
+        "price": 125,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "MacKenzie Weegar",
+        "price": -170,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Anders Lee",
+        "price": 130,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Anders Lee",
+        "price": -180,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Brandon Montour",
+        "price": 130,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Brandon Montour",
+        "price": -175,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Lawson Crouse",
+        "price": 140,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Lawson Crouse",
+        "price": -190,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Barrett Hayton",
+        "price": 145,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Barrett Hayton",
+        "price": -200,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kaapo Kakko",
+        "price": 145,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Kaapo Kakko",
+        "price": -200,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Berkly Catton",
+        "price": 150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Berkly Catton",
+        "price": -200,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mackie Samoskevich",
+        "price": 180,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mackie Samoskevich",
+        "price": -250,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Shane Wright",
+        "price": 195,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Shane Wright",
+        "price": -270,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nate Schmidt",
+        "price": 200,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nate Schmidt",
+        "price": -275,
+        "point": 0.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "novig",
+    "title": "Novig",
+    "markets": [
+     {
+      "key": "player_assists",
+      "last_update": "2026-10-23T01:35:06Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Anders Lee",
+        "price": 300,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Anders Lee",
+        "price": -441,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kailer Yamamoto",
+        "price": 245,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": 182,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -257,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "MacKenzie Weegar",
+        "price": 186,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "MacKenzie Weegar",
+        "price": -270,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Lawson Crouse",
+        "price": 292,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Lawson Crouse",
+        "price": -413,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": 144,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Dylan Guenther",
+        "price": -203,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Barrett Hayton",
+        "price": 285,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Barrett Hayton",
+        "price": -388,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nate Schmidt",
+        "price": 277,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nate Schmidt",
+        "price": -365,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mackie Samoskevich",
+        "price": 365,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mackie Samoskevich",
+        "price": -2532,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Bobby McMann",
+        "price": 264,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Bobby McMann",
+        "price": -317,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": 190,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -251,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Brandon Montour",
+        "price": 199,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Brandon Montour",
+        "price": -245,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": 125,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": -163,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": 138,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -170,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": 125,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Logan Cooley",
+        "price": -147,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": 186,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -239,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": 150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -186,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 199,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Matty Beniers",
+        "price": -264,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": -144,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Clayton Keller",
+        "price": 127,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -111,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": -113,
+        "point": 0.5
+       }
+      ]
+     },
+     {
+      "key": "player_points",
+      "last_update": "2026-10-23T01:35:06Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": 100,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -122,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Anders Lee",
+        "price": 130,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kailer Yamamoto",
+        "price": 135,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": -167,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Dylan Guenther",
+        "price": 130,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": 100,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -141,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nate Schmidt",
+        "price": 217,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nate Schmidt",
+        "price": -285,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "MacKenzie Weegar",
+        "price": 141,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "MacKenzie Weegar",
+        "price": -178,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Lawson Crouse",
+        "price": 141,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Lawson Crouse",
+        "price": -178,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": -153,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Logan Cooley",
+        "price": 120,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": -167,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": 138,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": 163,
+        "point": 1.5
+       },
+       {
+        "name": "Under",
+        "description": "Clayton Keller",
+        "price": -194,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": -108,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -115,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": -104,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -127,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 108,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Matty Beniers",
+        "price": -144,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": 100,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -120,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Brandon Montour",
+        "price": 135,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Brandon Montour",
+        "price": -182,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Bobby McMann",
+        "price": 115,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Bobby McMann",
+        "price": -156,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mackie Samoskevich",
+        "price": 178,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mackie Samoskevich",
+        "price": -212,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Barrett Hayton",
+        "price": 150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Barrett Hayton",
+        "price": -163,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": 251,
+        "point": 1.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": -506,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": 113,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": 308,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Shane Wright",
+        "price": 190,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Shane Wright",
+        "price": -245,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Berkly Catton",
+        "price": 153,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Berkly Catton",
+        "price": -212,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kaapo Kakko",
+        "price": 147,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Kaapo Kakko",
+        "price": -199,
+        "point": 0.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "markets": [
+     {
+      "key": "player_assists",
+      "last_update": "2026-10-23T01:35:33Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Brandon Montour",
+        "price": 180,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Brandon Montour",
+        "price": -248,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": 145,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -196,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": -143,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Clayton Keller",
+        "price": 108,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": 185,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -256,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": 120,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Logan Cooley",
+        "price": -160,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 190,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Matty Beniers",
+        "price": -264,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -115,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": -115,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": 150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Dylan Guenther",
+        "price": -203,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": 188,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -261,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "MacKenzie Weegar",
+        "price": 202,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "MacKenzie Weegar",
+        "price": -283,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": 123,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": -164,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": 135,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -181,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": 159,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -217,
+        "point": 0.5
+       }
+      ]
+     },
+     {
+      "key": "player_points",
+      "last_update": "2026-10-23T01:35:33Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": -105,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -126,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": -105,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -126,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Lawson Crouse",
+        "price": 129,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Lawson Crouse",
+        "price": -172,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": -152,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Logan Cooley",
+        "price": 114,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -155,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": 115,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nate Schmidt",
+        "price": 209,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nate Schmidt",
+        "price": -294,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Barrett Hayton",
+        "price": 146,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Barrett Hayton",
+        "price": -197,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": -110,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -120,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Bobby McMann",
+        "price": 110,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Bobby McMann",
+        "price": -150,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": 157,
+        "point": 1.5
+       },
+       {
+        "name": "Under",
+        "description": "Clayton Keller",
+        "price": -213,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": -175,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Dylan Guenther",
+        "price": 130,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": -175,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": 131,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": -105,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -130,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": -117,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -113,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 105,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Matty Beniers",
+        "price": -145,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Brandon Montour",
+        "price": 135,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Brandon Montour",
+        "price": -180,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "MacKenzie Weegar",
+        "price": 136,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "MacKenzie Weegar",
+        "price": -183,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mackie Samoskevich",
+        "price": 162,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mackie Samoskevich",
+        "price": -221,
+        "point": 0.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "prizepicks",
+    "title": "PrizePicks",
+    "markets": [
+     {
+      "key": "player_assists",
+      "last_update": "2026-10-23T01:34:37Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": -137,
+        "point": 0.5
+       }
+      ]
+     },
+     {
+      "key": "player_points",
+      "last_update": "2026-10-23T01:34:37Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -137,
+        "point": 0.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "prophetx",
+    "title": "ProphetX",
+    "markets": [
+     {
+      "key": "player_assists",
+      "last_update": "2026-10-23T01:35:26Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": 128,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Logan Cooley",
+        "price": -146,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": 150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Dylan Guenther",
+        "price": -176,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": 125,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": -138,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": -136,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Clayton Keller",
+        "price": 115,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": 178,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -210,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -106,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": -109,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": 180,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -215,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 194,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Matty Beniers",
+        "price": -225,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": 180,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -215,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Bobby McMann",
+        "price": 240,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Bobby McMann",
+        "price": -295,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": 150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -174,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Brandon Montour",
+        "price": 184,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Brandon Montour",
+        "price": -215,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": 138,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -164,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "MacKenzie Weegar",
+        "price": 174,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "MacKenzie Weegar",
+        "price": -210,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Anders Lee",
+        "price": 275,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Anders Lee",
+        "price": -345,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nate Schmidt",
+        "price": 240,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nate Schmidt",
+        "price": -280,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Lawson Crouse",
+        "price": 265,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Lawson Crouse",
+        "price": -320,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Barrett Hayton",
+        "price": 250,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Barrett Hayton",
+        "price": -315,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mackie Samoskevich",
+        "price": 345,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mackie Samoskevich",
+        "price": -425,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kailer Yamamoto",
+        "price": 225,
+        "point": 0.5
+       }
+      ]
+     },
+     {
+      "key": "player_points",
+      "last_update": "2026-10-23T01:35:26Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": -162,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Dylan Guenther",
+        "price": 136,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Dylan Guenther",
+        "price": 215,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": -345,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Clayton Keller",
+        "price": 158,
+        "point": 1.5
+       },
+       {
+        "name": "Under",
+        "description": "Clayton Keller",
+        "price": -188,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": -146,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Logan Cooley",
+        "price": 123,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Logan Cooley",
+        "price": 245,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": -162,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nick Schmaltz",
+        "price": 138,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nick Schmaltz",
+        "price": 205,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": -108,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -108,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": 300,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 112,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Matty Beniers",
+        "price": -132,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": 380,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": 103,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vincent Trocheck",
+        "price": -119,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -140,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": 119,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": 235,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": 104,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Chandler Stephenson",
+        "price": -122,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": 335,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": 101,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -117,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": 335,
+        "point": 1.5
+       },
+       {
+        "name": "Over",
+        "description": "Brandon Montour",
+        "price": 132,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Brandon Montour",
+        "price": -154,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": 101,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -116,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Bobby McMann",
+        "price": 111,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Bobby McMann",
+        "price": -132,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "MacKenzie Weegar",
+        "price": 130,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "MacKenzie Weegar",
+        "price": -152,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Anders Lee",
+        "price": 130,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Anders Lee",
+        "price": -154,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Nate Schmidt",
+        "price": 198,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Nate Schmidt",
+        "price": -230,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kaapo Kakko",
+        "price": 146,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Kaapo Kakko",
+        "price": -168,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Berkly Catton",
+        "price": 152,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Berkly Catton",
+        "price": -178,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Shane Wright",
+        "price": 176,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Shane Wright",
+        "price": -220,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Barrett Hayton",
+        "price": 150,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Barrett Hayton",
+        "price": -174,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Lawson Crouse",
+        "price": 136,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Lawson Crouse",
+        "price": -160,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Mackie Samoskevich",
+        "price": 172,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mackie Samoskevich",
+        "price": -190,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Kailer Yamamoto",
+        "price": 134,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Kailer Yamamoto",
+        "price": -265,
+        "point": 0.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "underdog",
+    "title": "Underdog",
+    "markets": [
+     {
+      "key": "player_assists",
+      "last_update": "2026-10-23T01:35:02Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": -137,
+        "point": 0.5
+       }
+      ]
+     },
+     {
+      "key": "player_points",
+      "last_update": "2026-10-23T01:35:02Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Vince Dunn",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -137,
+        "point": 0.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "pick6",
+    "title": "DraftKings Pick6",
+    "markets": [
+     {
+      "key": "player_assists",
+      "last_update": "2026-10-23T01:34:32Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Mikhail Sergachev",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Mikhail Sergachev",
+        "price": -137,
+        "point": 0.5
+       }
+      ]
+     },
+     {
+      "key": "player_points",
+      "last_update": "2026-10-23T01:34:32Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "description": "Vince Dunn",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Matty Beniers",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jared McCann",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jared McCann",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Jordan Eberle",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Under",
+        "description": "Jordan Eberle",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Vincent Trocheck",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Bobby McMann",
+        "price": -137,
+        "point": 0.5
+       },
+       {
+        "name": "Over",
+        "description": "Chandler Stephenson",
+        "price": -137,
+        "point": 0.5
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "https://api.nhle.com/stats/rest/en/skater/summary?isAggregate=false&isGame=false&start=0&limit=-1&cayenneExp=gameTypeId=2%20and%20seasonId=20252026": {
+  "data": [
+   {
+    "playerId": 8475314,
+    "skaterFullName": "Anders Lee",
+    "teamAbbrevs": "NYI",
+    "positionCode": "L",
+    "gamesPlayed": 82,
+    "goals": 19,
+    "assists": 23,
+    "points": 42,
+    "timeOnIcePerGame": 938.2682
+   },
+   {
+    "playerId": 8478474,
+    "skaterFullName": "Lawson Crouse",
+    "teamAbbrevs": "UTA",
+    "positionCode": "L",
+    "gamesPlayed": 81,
+    "goals": 24,
+    "assists": 20,
+    "points": 44,
+    "timeOnIcePerGame": 995.8148
+   },
+   {
+    "playerId": 8479977,
+    "skaterFullName": "Kailer Yamamoto",
+    "teamAbbrevs": "UTA",
+    "positionCode": "R",
+    "gamesPlayed": 59,
+    "goals": 13,
+    "assists": 10,
+    "points": 23,
+    "timeOnIcePerGame": 707.7796
+   },
+   {
+    "playerId": 8483524,
+    "skaterFullName": "Shane Wright",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 74,
+    "goals": 12,
+    "assists": 15,
+    "points": 27,
+    "timeOnIcePerGame": 828.0945
+   },
+   {
+    "playerId": 8477986,
+    "skaterFullName": "Brandon Montour",
+    "teamAbbrevs": "SEA",
+    "positionCode": "D",
+    "gamesPlayed": 64,
+    "goals": 11,
+    "assists": 21,
+    "points": 32,
+    "timeOnIcePerGame": 1353.5781
+   },
+   {
+    "playerId": 8477220,
+    "skaterFullName": "Nate Schmidt",
+    "teamAbbrevs": "UTA",
+    "positionCode": "D",
+    "gamesPlayed": 82,
+    "goals": 5,
+    "assists": 17,
+    "points": 22,
+    "timeOnIcePerGame": 1181.9024
+   },
+   {
+    "playerId": 8476389,
+    "skaterFullName": "Vincent Trocheck",
+    "teamAbbrevs": "NYR",
+    "positionCode": "C",
+    "gamesPlayed": 67,
+    "goals": 16,
+    "assists": 37,
+    "points": 53,
+    "timeOnIcePerGame": 1233.0746
+   },
+   {
+    "playerId": 8481554,
+    "skaterFullName": "Kaapo Kakko",
+    "teamAbbrevs": "SEA",
+    "positionCode": "R",
+    "gamesPlayed": 65,
+    "goals": 13,
+    "assists": 27,
+    "points": 40,
+    "timeOnIcePerGame": 855.4461
+   },
+   {
+    "playerId": 8477951,
+    "skaterFullName": "Nick Schmaltz",
+    "teamAbbrevs": "UTA",
+    "positionCode": "C",
+    "gamesPlayed": 82,
+    "goals": 33,
+    "assists": 41,
+    "points": 74,
+    "timeOnIcePerGame": 1183.4024
+   },
+   {
+    "playerId": 8482665,
+    "skaterFullName": "Matty Beniers",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 82,
+    "goals": 20,
+    "assists": 30,
+    "points": 50,
+    "timeOnIcePerGame": 1156.5975
+   },
+   {
+    "playerId": 8482259,
+    "skaterFullName": "Bobby McMann",
+    "teamAbbrevs": "TOR,SEA",
+    "positionCode": "C",
+    "gamesPlayed": 78,
+    "goals": 29,
+    "assists": 17,
+    "points": 46,
+    "timeOnIcePerGame": 955.8846
+   },
+   {
+    "playerId": 8479343,
+    "skaterFullName": "Clayton Keller",
+    "teamAbbrevs": "UTA",
+    "positionCode": "R",
+    "gamesPlayed": 82,
+    "goals": 26,
+    "assists": 62,
+    "points": 88,
+    "timeOnIcePerGame": 1145.1463
+   },
+   {
+    "playerId": 8476905,
+    "skaterFullName": "Chandler Stephenson",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 80,
+    "goals": 16,
+    "assists": 33,
+    "points": 49,
+    "timeOnIcePerGame": 1162.9
+   },
+   {
+    "playerId": 8484800,
+    "skaterFullName": "Berkly Catton",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 66,
+    "goals": 7,
+    "assists": 10,
+    "points": 17,
+    "timeOnIcePerGame": 776.1363
+   },
+   {
+    "playerId": 8477955,
+    "skaterFullName": "Jared McCann",
+    "teamAbbrevs": "SEA",
+    "positionCode": "L",
+    "gamesPlayed": 52,
+    "goals": 20,
+    "assists": 20,
+    "points": 40,
+    "timeOnIcePerGame": 986.0384
+   },
+   {
+    "playerId": 8477346,
+    "skaterFullName": "MacKenzie Weegar",
+    "teamAbbrevs": "CGY,UTA",
+    "positionCode": "D",
+    "gamesPlayed": 79,
+    "goals": 4,
+    "assists": 24,
+    "points": 28,
+    "timeOnIcePerGame": 1347.7341
+   },
+   {
+    "playerId": 8482699,
+    "skaterFullName": "Dylan Guenther",
+    "teamAbbrevs": "UTA",
+    "positionCode": "R",
+    "gamesPlayed": 79,
+    "goals": 40,
+    "assists": 33,
+    "points": 73,
+    "timeOnIcePerGame": 1043.7848
+   },
+   {
+    "playerId": 8474586,
+    "skaterFullName": "Jordan Eberle",
+    "teamAbbrevs": "SEA",
+    "positionCode": "R",
+    "gamesPlayed": 80,
+    "goals": 26,
+    "assists": 29,
+    "points": 55,
+    "timeOnIcePerGame": 1108.5875
+   },
+   {
+    "playerId": 8479410,
+    "skaterFullName": "Mikhail Sergachev",
+    "teamAbbrevs": "UTA",
+    "positionCode": "D",
+    "gamesPlayed": 78,
+    "goals": 10,
+    "assists": 49,
+    "points": 59,
+    "timeOnIcePerGame": 1457.7435
+   },
+   {
+    "playerId": 8480849,
+    "skaterFullName": "Barrett Hayton",
+    "teamAbbrevs": "UTA",
+    "positionCode": "C",
+    "gamesPlayed": 67,
+    "goals": 10,
+    "assists": 15,
+    "points": 25,
+    "timeOnIcePerGame": 907.3731
+   },
+   {
+    "playerId": 8482713,
+    "skaterFullName": "Mackie Samoskevich",
+    "teamAbbrevs": "FLA",
+    "positionCode": "R",
+    "gamesPlayed": 77,
+    "goals": 12,
+    "assists": 20,
+    "points": 32,
+    "timeOnIcePerGame": 868.1688
+   },
+   {
+    "playerId": 8478407,
+    "skaterFullName": "Vince Dunn",
+    "teamAbbrevs": "SEA",
+    "positionCode": "D",
+    "gamesPlayed": 81,
+    "goals": 11,
+    "assists": 33,
+    "points": 44,
+    "timeOnIcePerGame": 1299.7407
+   },
+   {
+    "playerId": 8483431,
+    "skaterFullName": "Logan Cooley",
+    "teamAbbrevs": "UTA",
+    "positionCode": "C",
+    "gamesPlayed": 54,
+    "goals": 24,
+    "assists": 19,
+    "points": 43,
+    "timeOnIcePerGame": 1039.6666
+   }
+  ]
+ },
+ "https://api.nhle.com/stats/rest/en/skater/summary?isAggregate=false&isGame=false&start=0&limit=-1&cayenneExp=gameTypeId=2%20and%20seasonId=20262027": {
+  "data": [
+   {
+    "playerId": 8478474,
+    "skaterFullName": "Lawson Crouse",
+    "teamAbbrevs": "UTA",
+    "positionCode": "L",
+    "gamesPlayed": 10,
+    "goals": 1,
+    "assists": 3,
+    "points": 4,
+    "timeOnIcePerGame": 898.1
+   },
+   {
+    "playerId": 8479977,
+    "skaterFullName": "Kailer Yamamoto",
+    "teamAbbrevs": "UTA",
+    "positionCode": "R",
+    "gamesPlayed": 5,
+    "goals": 2,
+    "assists": 3,
+    "points": 5,
+    "timeOnIcePerGame": 879.6
+   },
+   {
+    "playerId": 8483524,
+    "skaterFullName": "Shane Wright",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 3,
+    "assists": 1,
+    "points": 4,
+    "timeOnIcePerGame": 828.3
+   },
+   {
+    "playerId": 8477986,
+    "skaterFullName": "Brandon Montour",
+    "teamAbbrevs": "SEA",
+    "positionCode": "D",
+    "gamesPlayed": 9,
+    "goals": 1,
+    "assists": 5,
+    "points": 6,
+    "timeOnIcePerGame": 1403.1111
+   },
+   {
+    "playerId": 8477220,
+    "skaterFullName": "Nate Schmidt",
+    "teamAbbrevs": "UTA",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 1,
+    "assists": 2,
+    "points": 3,
+    "timeOnIcePerGame": 1220.3
+   },
+   {
+    "playerId": 8481554,
+    "skaterFullName": "Kaapo Kakko",
+    "teamAbbrevs": "SEA",
+    "positionCode": "R",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 6,
+    "points": 8,
+    "timeOnIcePerGame": 834.3
+   },
+   {
+    "playerId": 8477951,
+    "skaterFullName": "Nick Schmaltz",
+    "teamAbbrevs": "UTA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 7,
+    "assists": 6,
+    "points": 13,
+    "timeOnIcePerGame": 1096.9
+   },
+   {
+    "playerId": 8482665,
+    "skaterFullName": "Matty Beniers",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 2,
+    "points": 4,
+    "timeOnIcePerGame": 1039
+   },
+   {
+    "playerId": 8482713,
+    "skaterFullName": "Mackie Samoskevich",
+    "teamAbbrevs": "SEA",
+    "positionCode": "R",
+    "gamesPlayed": 9,
+    "goals": 4,
+    "assists": 1,
+    "points": 5,
+    "timeOnIcePerGame": 925.1111
+   },
+   {
+    "playerId": 8479343,
+    "skaterFullName": "Clayton Keller",
+    "teamAbbrevs": "UTA",
+    "positionCode": "R",
+    "gamesPlayed": 10,
+    "goals": 4,
+    "assists": 9,
+    "points": 13,
+    "timeOnIcePerGame": 1062.2
+   },
+   {
+    "playerId": 8477346,
+    "skaterFullName": "MacKenzie Weegar",
+    "teamAbbrevs": "UTA",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 0,
+    "points": 2,
+    "timeOnIcePerGame": 1278.1
+   },
+   {
+    "playerId": 8475314,
+    "skaterFullName": "Anders Lee",
+    "teamAbbrevs": "UTA",
+    "positionCode": "L",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 3,
+    "points": 5,
+    "timeOnIcePerGame": 802.3
+   },
+   {
+    "playerId": 8476905,
+    "skaterFullName": "Chandler Stephenson",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 1,
+    "assists": 8,
+    "points": 9,
+    "timeOnIcePerGame": 1049.6
+   },
+   {
+    "playerId": 8484800,
+    "skaterFullName": "Berkly Catton",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 5,
+    "points": 7,
+    "timeOnIcePerGame": 895.1
+   },
+   {
+    "playerId": 8477955,
+    "skaterFullName": "Jared McCann",
+    "teamAbbrevs": "SEA",
+    "positionCode": "L",
+    "gamesPlayed": 10,
+    "goals": 3,
+    "assists": 5,
+    "points": 8,
+    "timeOnIcePerGame": 964.4
+   },
+   {
+    "playerId": 8474586,
+    "skaterFullName": "Jordan Eberle",
+    "teamAbbrevs": "SEA",
+    "positionCode": "R",
+    "gamesPlayed": 10,
+    "goals": 3,
+    "assists": 4,
+    "points": 7,
+    "timeOnIcePerGame": 975.6
+   },
+   {
+    "playerId": 8482699,
+    "skaterFullName": "Dylan Guenther",
+    "teamAbbrevs": "UTA",
+    "positionCode": "R",
+    "gamesPlayed": 10,
+    "goals": 4,
+    "assists": 5,
+    "points": 9,
+    "timeOnIcePerGame": 984.8
+   },
+   {
+    "playerId": 8479410,
+    "skaterFullName": "Mikhail Sergachev",
+    "teamAbbrevs": "UTA",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 3,
+    "assists": 8,
+    "points": 11,
+    "timeOnIcePerGame": 1360.8
+   },
+   {
+    "playerId": 8476389,
+    "skaterFullName": "Vincent Trocheck",
+    "teamAbbrevs": "UTA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 2,
+    "points": 4,
+    "timeOnIcePerGame": 978.9
+   },
+   {
+    "playerId": 8482259,
+    "skaterFullName": "Bobby McMann",
+    "teamAbbrevs": "SEA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 3,
+    "assists": 1,
+    "points": 4,
+    "timeOnIcePerGame": 993.1
+   },
+   {
+    "playerId": 8480849,
+    "skaterFullName": "Barrett Hayton",
+    "teamAbbrevs": "UTA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 1,
+    "assists": 6,
+    "points": 7,
+    "timeOnIcePerGame": 834.8
+   },
+   {
+    "playerId": 8478407,
+    "skaterFullName": "Vince Dunn",
+    "teamAbbrevs": "SEA",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 5,
+    "points": 7,
+    "timeOnIcePerGame": 1408.4
+   },
+   {
+    "playerId": 8483431,
+    "skaterFullName": "Logan Cooley",
+    "teamAbbrevs": "UTA",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 1,
+    "assists": 8,
+    "points": 9,
+    "timeOnIcePerGame": 1079.8
+   }
+  ]
+ }
+}
