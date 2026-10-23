@@ -73,6 +73,11 @@ globalThis.fetch = async (u) => {
     calls.push(url);
     if (url.includes('/events/e-phi-buf/odds')) return J(PAYLOAD, { 'x-requests-last': '2', 'x-requests-remaining': '92000' });
     if (url.includes(`/events/${REAL.payload.id}/odds`)) return J(REAL.payload, { 'x-requests-last': '2', 'x-requests-remaining': '92000' });
+    // The events list (free), which the PrizePicks watch reads: both games,
+    // as it lists them, until they start.
+    if (/\/sports\/icehockey_nhl\/events\?/.test(url)) {
+      return J([PAYLOAD, REAL.payload].filter((e) => RealDate.parse(e.commence_time) > NOW).map(({ bookmakers, ...e }) => e), { 'x-requests-last': '0' });
+    }
     return J([], { 'x-requests-last': '0' });
   }
   if (STATS[url]) return J(STATS[url]);
@@ -139,7 +144,10 @@ let b = await hit('/api/nhl-pp');
 ok(b.legs.length === 5 && b.legs[0].model_under >= b.legs[4].model_under && b.legs.find((x) => x.player === 'Tage Thompson').vsBook === 0,
   'tonight\'s legs, best under first');
 const raw = await hit('/api/nhl-pp?raw=1');
-ok(raw.game === 'e-phi-buf' && raw.body && raw.body.bookmakers.some((x) => x.key === 'prizepicks'), 'and ?raw=1 keeps the payload, for a test to replay');
+// The last read with PrizePicks on it: Mammoth @ Kraken, the next night's game,
+// which the watch reads as soon as PrizePicks has it up.
+ok([ 'e-phi-buf', REAL.payload.id ].includes(raw.game) && raw.body && raw.body.id === raw.game && raw.body.bookmakers.some((x) => x.key === 'prizepicks'),
+  `and ?raw=1 keeps the last payload with PrizePicks on it, for a test to replay (${raw.game})`);
 
 console.log('\n-- graded from the box score --');
 sq.prepare("INSERT INTO nhlpp (date, game_id, player, market, commence, player_id, point, model_under, result) VALUES ('2026-10-21', 'e-phi-buf', 'Scratched Skater', 'pts', ?, '99999', 0.5, 70, NULL)").run(PUCK);

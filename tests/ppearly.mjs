@@ -85,6 +85,7 @@ const ppOnly = (b, market) => ({ ...b, bookmakers: b.bookmakers.filter((x) => x.
 const feed = { [NBA.id]: { posted: false, body: NBA }, [NHL.id]: { posted: false, body: NHL } };
 const calls = [];
 const finalOn = new Set();
+const listed = new Set([NBA.id]);                       // the games the events list has; the NHL one joins in its section
 globalThis.fetch = async (u) => {
   const url = String(u);
   const J = (x, h) => new Response(typeof x === 'string' ? x : JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json', ...(h || {}) } });
@@ -96,6 +97,9 @@ globalThis.fetch = async (u) => {
     if (check) return J(ppOnly(g.body, new URL(url).searchParams.get('markets')), { 'x-requests-last': '1' });
     return J(g.body, { 'x-requests-last': ev === NBA.id ? '5' : '2' });
   }
+  // The events list (free), which the watch reads: each game, as it lists them.
+  const evl = url.startsWith(ODDS) && (url.match(/\/sports\/(\w+)\/events\?/) || [])[1];
+  if (evl) return J([NBA, NHL].filter((x) => x.sport_key === evl && listed.has(x.id)).map(({ bookmakers, ...e }) => e), { 'x-requests-last': '0' });
   if (url.startsWith(ODDS)) return J([], { 'x-requests-last': '0' });
   for (const d of finalOn) if (url === `https://cdn.espn.com/core/nba/scoreboard?xhr=1&date=${d}`) return J(SCORE);
   if (finalOn.size && url === 'https://cdn.espn.com/core/nba/boxscore?xhr=1&gameId=401810437') return J(BOX);
@@ -304,6 +308,10 @@ ok(C.ppCloseLineHtml({}) === '' && C.ppCloseLineHtml({ atClose: { n: 0 } }) === 
 console.log('\n-- Mammoth @ Kraken --');
 const PUCK = RealDate.parse(NHL.commence_time);             // 7:10 PM Pacific, Oct 22
 NOW = PUCK - 20 * H;
+listed.add(NHL.id);
+// The clock goes back from the NBA grading above: the events lists it kept
+// would look fresh for hours, so they go.
+sq.prepare("DELETE FROM feed_cache WHERE key LIKE '%_pp_events:%'").run();
 board('nhl_board:reg', NHL);
 n = calls.length;
 await tick();

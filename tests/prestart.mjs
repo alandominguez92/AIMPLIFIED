@@ -115,7 +115,9 @@ const inWin = (list, start, w) => list.some((x) => { const at = Z(`${x > '12' ? 
 ok(nhl.length === 6, `six paid reads, a credit each: the two daily ones and four before the two starts (${nhl.length})`);
 ok(inWin(nhl, NHL_4, 75) && inWin(nhl, NHL_4, 25) && inWin(nhl, NHL_7, 75) && inWin(nhl, NHL_7, 25),
   `inside 75 and inside 25 minutes of the ${pt(NHL_4)} and ${pt(NHL_7)} starts`);
-ok(!calls.some((c) => c.url.includes('icehockey_nhl') && c.at >= Z(NHL_7)), 'and nothing after the last start');
+// (The PrizePicks watch reads the free events list every two hours whatever
+// the hour: that is how it finds tomorrow's games.)
+ok(!calls.some((c) => c.url.includes('icehockey_nhl') && !/\/events\?/.test(c.url) && c.at >= Z(NHL_7)), 'and nothing but the free events list after the last start');
 
 console.log('\n-- NBA: the same, and the close is the last read --');
 const nba = paid('basketball_nba');

@@ -254,11 +254,11 @@ export default {
     // The NHL moneyline the same way, on its own counter (2026-10-20).
     ctx.waitUntil(nhlMaybeIngest(env).catch(() => null));
     // NBA PrizePicks unders: the night's box scores in, each game's PrizePicks
-    // lines captured once inside four hours of tip, the log graded.
+    // lines read when posted and again before tip (ppReadDue), the log graded.
     ctx.waitUntil(nbaBoxIngest(env).catch(() => null));
     ctx.waitUntil(nbaPpMaybeCapture(env).catch(() => null));
-    // NHL PrizePicks points and assists unders: each game once inside 100
-    // minutes of puck drop, graded hourly from the NHL's box scores.
+    // NHL PrizePicks points and assists unders: read the same way, graded
+    // hourly from the NHL's box scores.
     ctx.waitUntil(nhlPpMaybeCapture(env).catch(() => null));
     ctx.waitUntil(gradeNhlPp(env).catch(() => null));
     // Grading is free (ESPN only) and idempotent, so it can ride the cron rather
@@ -513,7 +513,10 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/soccer-props') return cors(json(await socPropsBoard(env, url), 120));
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
   if (p === '/api/nhl-pp') return cors(json(await nhlPpBoard(env, url), 120));
-  if (p === '/api/nba-pp') return cors(json(url && url.searchParams.get('raw') === '1' ? await nbaPpRaw(env) : await nbaPpBoard(env), 120));
+  if (p === '/api/nba-pp') {
+    const raw = url && url.searchParams.get('raw');
+    return cors(json(raw === '1' ? await nbaPpRaw(env) : raw === 'events' ? await ppEventsRaw(env, 'nba', 'reg') : await nbaPpBoard(env), 120));
+  }
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
@@ -10053,14 +10056,13 @@ async function logNhlPp(db, legs, close) {
   return legs.length;
 }
 // Cron: each game watched from 36 hours out, read when PrizePicks posts it and
-// again before puck drop (ppReadDue, as the NBA log), found in the NHL
-// board's snapshot so finding them costs nothing.
+// again before puck drop (ppReadDue, as the NBA log), the games taken from the
+// free events list and the NHL board's snapshot (ppWatchGames).
 async function nhlPpMaybeCapture(env) {
   if (!env || !env.DB || !env.ODDS_API_KEY) return null;
   const now = Date.now();
   const states = await ppReadStates(env.DB, 'nhl_pp_games', now);
-  const snap = await loadFeedCache(env.DB, 'nhl_board:reg');
-  const due = ((snap.present && snap.data && snap.data.games) || [])
+  const due = (await ppWatchGames(env, 'nhl', 'reg', NHL_LEAGUES.reg, now))
     .map((g) => ({ g, what: ppReadDue(g.commence, states[g.id], now) })).filter((x) => x.what)
     .sort((a, b) => ((a.what === 'close' ? 0 : 1) - (b.what === 'close' ? 0 : 1)) || Date.parse(a.g.commence) - Date.parse(b.g.commence));
   if (!due.length) return null;
@@ -10161,6 +10163,7 @@ async function nhlPpBoard(env, url) {
     const hit = await loadFeedCache(env.DB, NHL_PP_RAW_KEY);
     return hit.present ? hit.data : { none: 'no capture with PrizePicks on it yet' };
   }
+  if (url && url.searchParams && url.searchParams.get('raw') === 'events') return ppEventsRaw(env, 'nhl', 'reg');
   const out = { note: 'LOGGED, not posted. The chance the under lands at PrizePicks’ line: Poisson at the skater’s scoring rate, this season blended with last. Points and assists, regulars (15+ minutes).', legs: [], record: null };
   try {
     await ensureNhlPpSchema(env.DB);
@@ -10307,6 +10310,38 @@ async function ppReadStates(db, key, now) {
   const all = (hit.present && hit.data) || {};
   for (const [id, s] of Object.entries(all)) if (!s || !(Date.parse(s.commence) > now - 864e5)) delete all[id];
   return all;
+}
+// The games to watch (2026-10-23): the feed's events list, which costs
+// nothing, read every two hours and kept as it came in feed_cache
+// `${sport}_pp_events:${lg}` (?raw=events), with the moneyline board's
+// snapshot beside it. The snapshot alone holds only games the books have
+// priced: on Friday afternoon it had none of Saturday's, so nothing for
+// Saturday was checked while PrizePicks may already have posted it.
+const PP_EVENTS_EVERY_MS = 2 * 3600e3;
+async function ppWatchGames(env, sport, lg, sportKey, now) {
+  const key = `${sport}_pp_events:${lg}`;
+  const hit = await loadFeedCache(env.DB, key);
+  let ev = hit.present ? hit.data : null;
+  if (!(ev && now - Date.parse(ev.at) < PP_EVENTS_EVERY_MS)) {
+    let list = null;
+    try {
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${sportKey}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`,
+        { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, `${sport}:${lg}:pp-events`);
+      const body = r.ok ? await r.json() : null;
+      if (Array.isArray(body)) list = body;
+    } catch (e) { /* the last list, or the snapshot, stands in */ }
+    // A failed read keeps the last list and waits the two hours, not a tick.
+    ev = { at: new Date(now).toISOString(), events: list || (ev && ev.events) || [], ...(list ? {} : { failed: true }) };
+    await saveFeedCache(env.DB, key, ev);
+  }
+  const snap = await loadFeedCache(env.DB, `${sport}_board:${lg}`);
+  const games = new Map();
+  for (const g of ((snap.present && snap.data && snap.data.games) || [])) games.set(g.id, { id: g.id, commence: g.commence, home: g.home, away: g.away });
+  for (const e of (ev.events || [])) {
+    if (e && e.id && e.commence_time) games.set(e.id, { id: e.id, commence: e.commence_time, home: e.home_team, away: e.away_team });
+  }
+  return [...games.values()];
 }
 const NBA_PP_RAW_KEY = 'nba_pp_raw';         // feed_cache: the last capture's payload
 const NBA_PP_UNMATCHED_DAYS = 30;            // a name with no prior stays on the raw payload's log this long after last seen
@@ -10565,16 +10600,15 @@ async function logNbaPp(db, lg, legs, close) {
 }
 
 // Cron: each game watched from 36 hours out, read when PrizePicks posts it and
-// again before tip (ppReadDue), the games taken from the board's snapshot so
-// finding them costs nothing. A few calls a tick, pre-tip reads first.
+// again before tip (ppReadDue), the games taken from the free events list and
+// the board's snapshot (ppWatchGames). A few calls a tick, pre-tip reads first.
 async function nbaPpMaybeCapture(env) {
   if (!env || !env.DB || !env.ODDS_API_KEY) return null;
   const now = Date.now();
   const states = await ppReadStates(env.DB, 'nba_pp_games', now);
   const due = [];
   for (const lg of Object.keys(NBA_LEAGUES)) {
-    const snap = await loadFeedCache(env.DB, `nba_board:${lg}`);
-    for (const g of ((snap.present && snap.data && snap.data.games) || [])) {
+    for (const g of await ppWatchGames(env, 'nba', lg, NBA_LEAGUES[lg], now)) {
       const what = ppReadDue(g.commence, states[g.id], now);
       if (what) due.push({ lg, g, what });
     }
@@ -10755,6 +10789,12 @@ async function nbaPpRaw(env) {
   if (!env || !env.DB) return { error: 'no DB binding' };
   const hit = await loadFeedCache(env.DB, NBA_PP_RAW_KEY);
   return hit.present ? hit.data : { none: 'no capture with PrizePicks on it yet' };
+}
+// ?raw=events: the events list the watch last read, as it came. Free.
+async function ppEventsRaw(env, sport, lg) {
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  const hit = await loadFeedCache(env.DB, `${sport}_pp_events:${lg}`);
+  return hit.present ? hit.data : { none: 'no events list read yet' };
 }
 
 // GET /api/nba-pp: tonight's logged legs, best under first, and the record.
