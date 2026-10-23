@@ -3520,6 +3520,10 @@ async function ensureGamePickSchema(db) {
   // The grader reads only ungraded rows from days already played; a partial
   // index keeps that read off the rest of the table.
   await db.prepare('CREATE INDEX IF NOT EXISTS gmpicks_ungraded ON gmpicks (sport, date) WHERE result IS NULL').run();
+  // The entry-leg grader looks rows up by game_id alone, every five minutes
+  // while a moneyline leg is open; date sits between sport and game_id in the
+  // key, so it read every row of three sports.
+  await db.prepare('CREATE INDEX IF NOT EXISTS gmpicks_game ON gmpicks (game_id)').run();
   // The first read kept beside the latest (2026-10-11), as mlpicks now does:
   // win_prob and edge are overwritten by every read, entry_price is not.
   await addColumns(db, 'gmpicks', [['entry_win_prob', 'REAL'], ['entry_edge', 'REAL'], ['entry_at', 'TEXT'], ['close_at', 'TEXT']]);
@@ -4338,6 +4342,8 @@ async function ensureEntrySchema(db) {
     PRIMARY KEY (entry_id, idx)
   )`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS entry_legs_open ON entry_legs (game_id) WHERE result IS NULL').run();
+  // settleEntries asks for the open entries every five minutes.
+  await db.prepare("CREATE INDEX IF NOT EXISTS entries_open ON entries (status) WHERE status = 'open'").run();
 }
 
 async function sha256hex(str) {
@@ -4488,8 +4494,13 @@ async function gradeEntryLegsOther(db) {
   let soc = [];
   if (socIds.length) {
     await ensureGamePickSchema(db);
+    // Through gmpicks_game: the + keeps SQLite off the key's sport column,
+    // which it would otherwise take and read three sports whole. The ORDER BY
+    // is the key's order, the one these rows came in before: a moved fixture
+    // has a row on each date, and the first match below is the one used.
     soc = ((await db.prepare(
-      `SELECT sport, game_id, result, home_score, away_score FROM gmpicks WHERE sport IN ('soccer','nba','nhl') AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})`
+      `SELECT sport, game_id, result, home_score, away_score FROM gmpicks WHERE +sport IN ('soccer','nba','nhl') AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})
+        ORDER BY sport, date, game_id, market`
     ).bind(...socIds).all()).results || []);
   }
   const keys = open.filter((l) => l.sport === 'nfl').map((l) => entryNflKey(l.game_id)).filter(Boolean);
@@ -4506,8 +4517,10 @@ async function gradeEntryLegsOther(db) {
     ).bind(lo, hi).all()).results || []);
     if (open.some((l) => ENTRY_NFL_YDS[l.market])) {
       try {
+        // Through nfl_proj_graded; in rowid order, as the scan it replaced
+        // gave them, since the first match below is the one used.
         nflYds = ((await db.prepare(
-          'SELECT player, market, game, commence, actual, graded_at FROM nfl_proj WHERE graded_at IS NOT NULL AND commence >= ? AND commence < ?'
+          'SELECT player, market, game, commence, actual, graded_at FROM nfl_proj WHERE graded_at IS NOT NULL AND commence >= ? AND commence < ? ORDER BY rowid'
         ).bind(lo, hi).all()).results || []);
       } catch (e) { /* no NFL projections table yet */ }
     }
@@ -5106,6 +5119,12 @@ async function ensureNflSchema(db) {
   // capture on 2026-09-13 added 4,827 rows — so without it every NFL page cost
   // more than the last. With it, played games drop out of the read entirely.
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_type_commence ON nfl_lines (season_type, commence)').run();
+  // The passing-TD log reads one market's upcoming quotes after every props
+  // capture (`market = 'player_pass_tds' AND commence > ?`). No index led with
+  // either column, so it read every price snapshot ever captured to find a few
+  // hundred (2026-10-23). A partial index over that market holds only its rows,
+  // and the query's own market term is what lets SQLite choose it.
+  await db.prepare("CREATE INDEX IF NOT EXISTS nfl_lines_ptd ON nfl_lines (commence) WHERE market = 'player_pass_tds'").run();
 
   // npicks carries the lifecycle. The state column is the reason this is not
   // modelled as a boolean `posted`: an NFL play exists for four days and can be
@@ -5161,6 +5180,13 @@ async function ensureNflSchema(db) {
     actual REAL, captured_at TEXT, graded_at TEXT,
     PRIMARY KEY (season, event_id, player, market)
   )`).run();
+  // Season leads the key, and none of these name it: the grader's pending read
+  // and its per-row UPDATE (graded_at IS NULL), and the entry-leg grader's
+  // kickoff window over graded rows (every five minutes while an NFL leg is
+  // open). Each was a scan of every projection ever frozen -- the UPDATE once
+  // per row graded. Two partial indexes split the table between them.
+  await db.prepare('CREATE INDEX IF NOT EXISTS nfl_proj_open ON nfl_proj (commence) WHERE graded_at IS NULL').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nfl_proj_graded ON nfl_proj (commence) WHERE graded_at IS NOT NULL').run();
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS npick_corrections (
     pick_id TEXT, was REAL, now_val REAL, was_result TEXT, now_result TEXT,
@@ -5327,6 +5353,9 @@ async function ingestNflProps(env, opts, reqUrl) {
   const cur = new Map();
   const lineKey = (ev, mkt, who, pt, bk) =>
     ev + '|' + mkt + '|' + (who == null ? '' : who) + '|' + (pt == null ? '' : pt) + '|' + bk;
+  // Only the markets this capture can buy: `same` is only ever asked about
+  // them, and the game lines stored beside them were read for nothing.
+  const propMkts = [...NFL_PROP_MARKETS.split(','), NFL_PASS_YDS_MARKET];
   try {
     const ids = upcoming.map((e) => e.id);
     for (let i = 0; i < ids.length; i += 40) {
@@ -5334,7 +5363,8 @@ async function ingestNflProps(env, opts, reqUrl) {
       const q = await env.DB.prepare(
         'SELECT event_id, market, player, point, book, over, under, captured_at FROM nfl_lines'
         + ' WHERE event_id IN (' + chunk.map(() => '?').join(',') + ')'
-      ).bind(...chunk).all();
+        + ' AND market IN (' + propMkts.map(() => '?').join(',') + ')'
+      ).bind(...chunk, ...propMkts).all();
       for (const r of (q.results || [])) {
         const k = lineKey(r.event_id, r.market, r.player, r.point, r.book);
         const prev = cur.get(k);
@@ -5449,10 +5479,14 @@ async function ingestNflProps(env, opts, reqUrl) {
   // so the current price for a player is whatever survived, not necessarily a
   // row written on this pass. Nothing is posted from these — see passTdEntries.
   try {
+    // Through nfl_lines_ptd. Rows of one capture share captured_at, and the
+    // last one per player and book wins below (a second point at one book can
+    // hide the 1.5), so ties keep the order they had when this read was a
+    // scan: rowid.
     const ptdRows = (await env.DB.prepare(
       `SELECT event_id, commence, home, away, market, player, point, book, over, under, week, season_type
          FROM nfl_lines WHERE market = 'player_pass_tds' AND commence > ?
-        ORDER BY captured_at ASC`
+        ORDER BY captured_at ASC, rowid ASC`
     ).bind(new Date().toISOString()).all()).results || [];
     const latest = new Map();
     for (const r of ptdRows) latest.set(`${r.event_id}|${r.player}|${r.book}`, r);
@@ -5532,6 +5566,10 @@ async function ingestNflLines(env, opts) {
     const cur = new Map();
     const lineKey = (ev, mkt, who, pt, bk) =>
       ev + '|' + mkt + '|' + (who == null ? '' : who) + '|' + (pt == null ? '' : pt) + '|' + bk;
+    // Game markets only. These events' player props sit in the same table, every
+    // snapshot of them, and `same` is never asked about one: the read was mostly
+    // props, on every capture (2026-10-23).
+    const gameMkts = NFL_GAME_MARKETS.split(',');
     try {
       const ids = events.map((e) => e.id);
       for (let i = 0; i < ids.length; i += 40) {
@@ -5540,7 +5578,8 @@ async function ingestNflLines(env, opts) {
         const q = await env.DB.prepare(
           'SELECT event_id, market, player, point, book, over, under, captured_at'
           + ' FROM nfl_lines WHERE event_id IN (' + marks + ')'
-        ).bind(...chunk).all();
+          + ' AND market IN (' + gameMkts.map(() => '?').join(',') + ')'
+        ).bind(...chunk, ...gameMkts).all();
         for (const r of (q.results || [])) {
           const k = lineKey(r.event_id, r.market, r.player, r.point, r.book);
           const prev = cur.get(k);
@@ -7989,6 +8028,11 @@ async function ensureDayPickSchema(db) {
   // start (2026-10-22). With the pre-start reads p is the close, so the two say
   // which way the market moved while the leg sat on the list.
   await addColumns(db, 'daypicks', [['first_p', 'REAL'], ['first_at', 'TEXT']]);
+  // The grader asks every fifteen minutes, and on every Picks read, for listed
+  // legs still ungraded -- a scan of the whole log until now. Keyed on on_list,
+  // one value throughout, so the legs come out in rowid order as the scan gave
+  // them (the grader takes the first forty).
+  await db.prepare('CREATE INDEX IF NOT EXISTS daypicks_open ON daypicks (on_list) WHERE on_list = 1 AND result IS NULL').run();
 }
 
 // Every leg that clears its kind's bar, for games starting in the next day.
@@ -9481,11 +9525,17 @@ async function nflMaybeIngest(env, ctx) {
     // Before each kickoff: the game lines only (3 credits), and the board's
     // log after them -- not the props, which are priced per game.
     const now = Date.now();
+    // The capture itself, not the /api/nfl-ingest handler around it: the handler
+    // follows a capture with a readback for whoever called it -- three reads
+    // of the whole of nfl_lines (a count, a count by week, the rows with no
+    // week) -- and the cron threw the answer away. With the pre-start reads
+    // that was up to ten whole-table passes, three reads each, on a Sunday
+    // (2026-10-23).
     if ((state.pre || 0) < PRESTART_MAX_PER_DAY && prestartDue(upcomingStarts(state.starts, now), state.last, now)) {
-      const res = await nflIngest(env, new URL('https://x/api/nfl-ingest'));
+      const res = await ingestNflLines(env, { sport: 'nfl' });
       try { await nflBoardData(env, null); } catch (e) { /* logged next capture */ }
       await saveFeedCache(env.DB, cacheKey, { ...state, pre: (state.pre || 0) + 1, last: now });
-      return { ran: true, prestart: true, res: res && res.status };
+      return { ran: true, prestart: true, wrote: res && res.wrote };
     }
     const regular = state.n < NFL_MAX_PER_DAY && !(state.last && now - state.last < NFL_MIN_GAP_MS);
     if (!regular && state.starts) return null;
@@ -9500,7 +9550,7 @@ async function nflMaybeIngest(env, ctx) {
     const starts = upcomingStarts((Array.isArray(evs) ? evs : []).map((e) => e.commence_time), now);
     const soon = starts.length > 0;
     if (!regular || !soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: now, starts }); return null; }
-    const res = await nflIngest(env, new URL('https://x/api/nfl-ingest'));
+    const res = await ingestNflLines(env, { sport: 'nfl' });
     // Player props on the same tick. They are a separate purchase — per event
     // rather than per slate — and the game-line ingest does not touch them, so
     // without this the passing-TD log never fills and the projections have no
@@ -9521,7 +9571,7 @@ async function nflMaybeIngest(env, ctx) {
     // Reading it here costs D1 reads only.
     try { await nflBoardData(env, null); } catch (e) { /* logged next capture */ }
     await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now(), pre: state.pre || 0, starts });
-    return { ran: true, n: state.n + 1, res: res && res.status, props: props && props.wrote };
+    return { ran: true, n: state.n + 1, wrote: res && res.wrote, props: props && props.wrote };
   } catch (e) { return null; }   // next tick
 }
 
@@ -9904,6 +9954,10 @@ async function ensureNhlPpSchema(db) {
     PRIMARY KEY (date, game_id, player, market)
   )`).run();
   await addColumns(db, 'nhlpp', PP_CLOSE_COLS);   // the pre-tip read, as the NBA log keeps it
+  // The hourly grader's `result IS NULL AND date < today` went through the key,
+  // which is every day before today: the whole log, to find last night's
+  // legs. Only the open rows, as nbapp_ungraded does for the NBA.
+  await db.prepare('CREATE INDEX IF NOT EXISTS nhlpp_ungraded ON nhlpp (date) WHERE result IS NULL').run();
 }
 // A season's skaters by name, from the NHL's stats API (one request, free):
 // games, goals, assists, points and time on ice a game. Last season's is
@@ -10309,6 +10363,9 @@ async function ensureNbaSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS nba_box_games (
     game_id TEXT PRIMARY KEY, date TEXT, season_type INTEGER, done INTEGER DEFAULT 0
   )`).run();
+  // "Which games are left to read" every tick, and a day's read and unread
+  // counts for each day with open legs: each scanned every game of the season.
+  await db.prepare('CREATE INDEX IF NOT EXISTS nba_box_games_todo ON nba_box_games (done, date)').run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS nbapp (
     date TEXT NOT NULL, game_id TEXT NOT NULL, player TEXT NOT NULL, market TEXT NOT NULL,
     league TEXT, commence TEXT, home TEXT, away TEXT, team TEXT, player_id TEXT,
@@ -10625,7 +10682,8 @@ async function nbaBoxIngest(env) {
     }
     await saveFeedCache(env.DB, 'nba_box_scan', { checked: Date.now() });
   }
-  const todo = ((await env.DB.prepare('SELECT game_id, date, season_type FROM nba_box_games WHERE done = 0 LIMIT ?')
+  // Oldest found first, the order the scan this replaced returned them in.
+  const todo = ((await env.DB.prepare('SELECT game_id, date, season_type FROM nba_box_games WHERE done = 0 ORDER BY rowid LIMIT ?')
     .bind(NBA_BOX_PER_TICK).all()).results || []);
   let read = 0;
   for (const g of todo) {
@@ -10839,6 +10897,9 @@ async function ensureSocPropSchema(db) {
   )`).run();
   await addColumns(db, 'soc_box', SOC_BOX_ADDED);
   await db.prepare('CREATE INDEX IF NOT EXISTS soc_box_player ON soc_box (player_id, date)').run();
+  // socContext reads one league's season at a time, seven leagues each
+  // refresh, and each read scanned every box score of every league.
+  await db.prepare('CREATE INDEX IF NOT EXISTS soc_box_league ON soc_box (league, date)').run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS soc_box_games (
     game_id TEXT PRIMARY KEY, league TEXT, date TEXT, home TEXT, away TEXT, home_cid TEXT, away_cid TEXT,
     done INTEGER, tries INTEGER
@@ -10862,6 +10923,11 @@ async function ensureSocPropSchema(db) {
     actual REAL, result TEXT,
     PRIMARY KEY (game_id, player_id, market)
   )`).run();
+  // The grader runs every five minutes and wants only the ungraded rows. Keyed
+  // on result itself, so the rows come out in rowid order, as they did when
+  // the grader scanned the table for them.
+  await db.prepare('CREATE INDEX IF NOT EXISTS socprops_open ON socprops (result) WHERE result IS NULL').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS soc_pp_lines_open ON soc_pp_lines (result) WHERE result IS NULL').run();
 }
 
 async function socPriors(env) {
@@ -11008,8 +11074,11 @@ async function socBoxTick(env, opts = {}) {
 // lines the user set, the same way at their own number, in their own table.
 async function gradeSocProps(db) {
   for (const table of ['socprops', 'soc_pp_lines']) {
+    // CROSS JOIN keeps the open rows the outer loop. As a JOIN, SQLite started
+    // from soc_box_games' done = 1 index -- every match ever read, each tick --
+    // or scanned socprops whole.
     const open = (await db.prepare(
-      `SELECT s.date, s.game_id, s.player_id, s.market, s.line FROM ${table} s JOIN soc_box_games g ON g.game_id = s.game_id
+      `SELECT s.date, s.game_id, s.player_id, s.market, s.line FROM ${table} s CROSS JOIN soc_box_games g ON g.game_id = s.game_id
         WHERE s.result IS NULL AND g.done = 1 LIMIT 200`).all()).results || [];
     if (!open.length) continue;
     const ids = [...new Set(open.map((r) => r.game_id))];
@@ -11400,9 +11469,18 @@ async function soccerBoardData(env, url, opts = {}) {
   const want = (url && url.searchParams && url.searchParams.get('league')) || null;
   try {
     await ensureSoccerSchema(env.DB);
+    // The only index leads with league, and `commence > ?` alone could not use
+    // it, so every read scanned every price ever stored -- after each capture,
+    // and with the pre-start reads that is many a day (2026-10-23). The
+    // leagues present are walked off the index one step each (`lg`) and each
+    // is searched by kickoff. Ties on captured_at keep the order they had as a
+    // scan, rowid, since the last row per key wins below.
     const rows = (await env.DB.prepare(
-      `SELECT league, event_id, commence, home, away, market, selection, point, book, price, captured_at
-         FROM soccer_lines WHERE commence > ? ORDER BY captured_at ASC`
+      `WITH RECURSIVE lg(l) AS (
+         SELECT MIN(league) FROM soccer_lines
+         UNION ALL SELECT (SELECT MIN(league) FROM soccer_lines WHERE league > lg.l) FROM lg WHERE lg.l IS NOT NULL)
+       SELECT league, event_id, commence, home, away, market, selection, point, book, price, captured_at
+         FROM soccer_lines WHERE league IN (SELECT l FROM lg) AND commence > ? ORDER BY captured_at ASC, rowid ASC`
     ).bind(new Date(Date.now() - 3 * 3600e3).toISOString()).all()).results || [];
     const latest = new Map();
     for (const r of rows) {
@@ -13129,10 +13207,12 @@ async function nflBoardData(env, url) {
     // board is never blank just because Week 1 has not been ingested yet.
     let type = want;
     if (!type) {
+      // Whether one exists, not how many: a COUNT read every upcoming quote,
+      // props and all, to answer a yes or no (2026-10-23).
       const reg = await env.DB.prepare(
-        "SELECT COUNT(*) AS n FROM nfl_lines WHERE season_type='REG' AND commence > ?"
+        "SELECT 1 AS n FROM nfl_lines WHERE season_type='REG' AND commence > ? LIMIT 1"
       ).bind(new Date().toISOString()).first();
-      type = (reg && reg.n > 0) ? 'REG' : 'PRE';
+      type = reg ? 'REG' : 'PRE';
     }
     out.seasonType = type;
 
