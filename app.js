@@ -5860,11 +5860,14 @@
     // and the D1 projections, no odds credits), at most every two minutes.
     const soc = state.sport === 'picks' && (!state.socProps || Date.now() - (state.socPropsAt || 0) > 120e3)
       ? fetchJson('/api/soccer-props').catch(() => null) : null;
+    // A refresh that fails keeps the list already on the page (2026-10-22):
+    // one refused database read replaced it with "Picks unavailable".
+    const prev = state.picks && !state.picks.error && (state.picks.legs || []).length ? state.picks : null;
     try {
       const d = await fetchJson('/api/picks');
-      state.picks = d && Array.isArray(d.legs) ? d : { legs: [], error: 'unreadable' };
+      state.picks = d && Array.isArray(d.legs) && !d.error ? d : (prev || { legs: [], error: (d && d.error) || 'unreadable' });
     } catch (e) {
-      state.picks = { legs: [], error: 'unreachable' };
+      state.picks = prev || { legs: [], error: 'unreachable' };
     }
     state.picksAt = Date.now();
     renderPicks();

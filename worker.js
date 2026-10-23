@@ -499,7 +499,9 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/pppicks-export') return ppExport(env, url);
   if (p === '/api/gmpicks-export') return gmExport(env, url);
   if (p === '/api/top-legs') return topLegs(env, url);
-  if (p === '/api/picks') return cors(json(await picksBoard(env), 120));
+  // A failed read is kept at the edge for seconds, not two minutes: every
+  // viewer was served "Picks unavailable" until it expired.
+  if (p === '/api/picks') { const d = await picksBoard(env); return cors(json(d, d.error || d.recordError ? 5 : 120)); }
   if (p === '/api/mlpicks-export') return mlpicksExport(env, url);
   if (p === '/api/mlb-void-moved') return voidMovedGameRows(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
@@ -8314,7 +8316,11 @@ async function picksBoard(env) {
     const logos = soccerPickLogos(list).catch(() => {});
     try { await logDayPicks(env.DB, list, unavailable, now); } catch (e) { out.logError = String((e && e.message) || e); }
     try { await gradeDayPicks(env.DB, now); } catch (e) { /* next read */ }
-    const kinds = await pickKindRecords(env.DB);
+    // The records are read apart from the list (2026-10-22): a database refusal
+    // there (D1 answered one read "out of memory: SQLITE_NOMEM" at 23:56 Pacific)
+    // took the whole list down with it. Now the legs stand without them.
+    let kinds = {};
+    try { kinds = await pickKindRecords(env.DB); } catch (e) { out.recordError = String((e && e.message) || e); }
     let timer;
     await Promise.race([logos, new Promise((r) => { timer = setTimeout(r, SOC_LOGO_WAIT_MS); })]);
     clearTimeout(timer);
@@ -8347,7 +8353,7 @@ async function picksBoard(env) {
         avgLeg: round1(top.reduce((a, x) => a + x.p, 0) / n),
         allLand: round1(top.reduce((a, x) => a * x.p / 100, 1) * 100) });
     }
-    out.record = await dayPickRecord(env.DB);
+    try { out.record = await dayPickRecord(env.DB); } catch (e) { out.recordError = String((e && e.message) || e); }
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }
