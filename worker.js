@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nhl-board', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest',
 ]);
 
@@ -219,7 +219,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -257,6 +257,10 @@ export default {
     // lines captured once inside four hours of tip, the log graded.
     ctx.waitUntil(nbaBoxIngest(env).catch(() => null));
     ctx.waitUntil(nbaPpMaybeCapture(env).catch(() => null));
+    // NHL PrizePicks points and assists unders: each game once inside 100
+    // minutes of puck drop, graded hourly from the NHL's box scores.
+    ctx.waitUntil(nhlPpMaybeCapture(env).catch(() => null));
+    ctx.waitUntil(gradeNhlPp(env).catch(() => null));
     // Grading is free (ESPN only) and idempotent, so it can ride the cron rather
     // than waiting for someone to open the track record.
     ctx.waitUntil(gradeGamePicks(env).catch(() => null));
@@ -506,6 +510,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/soccer-board') return cors(json(await soccerBoardData(env, url), 120));
   if (p === '/api/soccer-props') return cors(json(await socPropsBoard(env, url), 120));
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
+  if (p === '/api/nhl-pp') return cors(json(await nhlPpBoard(env, url), 120));
   if (p === '/api/nba-pp') return cors(json(url && url.searchParams.get('raw') === '1' ? await nbaPpRaw(env) : await nbaPpBoard(env), 120));
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
@@ -4608,7 +4613,7 @@ function entryTypeLabel(e) {
   return e.kind === 'parlay' ? `DraftKings ${e.legs_n}-leg parlay` : 'DraftKings straight';
 }
 const ENTRY_MARKET_LABEL = { tb: 'Total bases', hrr: 'H+R+RBI', hr: 'Home runs', K: 'Strikeouts', ml: 'Moneyline',
-  rec_yds: 'Receiving yards', rush_yds: 'Rushing yards', threes: 'Threes', ast: 'Assists', reb: 'Rebounds',
+  rec_yds: 'Receiving yards', rush_yds: 'Rushing yards', threes: 'Threes', ast: 'Assists', reb: 'Rebounds', pts: 'Points',
   shots: 'Shots', sot: 'Shots on target', passes: 'Passes attempted', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Goalie saves',
   crosses: 'Crosses', shot_ast: 'Shots assisted', conceded: 'Goals allowed', fouls_drawn: 'Fouls drawn', goal_ast: 'Goal + assist' };
 
@@ -9848,6 +9853,254 @@ async function nhlScoreDay(date) {
 function nhlMatch(a, b) {
   const x = clubKey(a), y = clubKey(b);
   return !!x && !!y && (x === y || x.endsWith(y) || y.endsWith(x));
+}
+
+// ---------------------------------------------------------------------------
+// NHL — PrizePicks points and assists unders, logged (2026-10-22).
+//
+// Two seasons of box scores (tools/nhl-market-backtest.md) found the under at
+// a regular skater's typical line landing 59.5% for points and 67.4% for
+// assists, and that on these 0.5 lines the under is "held off the sheet": a
+// player's scoring rate decides it (a 0.5 points-a-game skater was scoreless
+// 60.9% of the time; Poisson says 60.7%). The Oct 22 check found PrizePicks
+// offering Less on both at its standard -137, on the same number as
+// DraftKings; it posted no goals, and blocked shots for two players.
+//
+// So: each game's PrizePicks points and assists lines, read once inside 100
+// minutes of puck drop (it posts late), at about 2 credits a game. The chance
+// is Poisson at the player's rate this season blended with last season's
+// (NHL_PRIOR_K games of it), both from the NHL's free stats API by name, which
+// also gives the NHL player id the box scores grade by. Regulars only: 15+
+// minutes a night. Logged, not posted: off Picks of the day until it has a
+// graded record.
+const NHL_PP_MARKETS = { player_points: 'pts', player_assists: 'ast' };
+// Ten books or fewer bill as one region: PrizePicks, the other pick'em apps,
+// the books whose number it is compared with, and the sharp books.
+const NHL_PP_BOOKS = ['prizepicks', 'underdog', 'pick6', 'draftkings', 'fanduel', 'pinnacle', 'novig', 'prophetx'];
+const NHL_PP_WINDOW_MS = 100 * 60e3;
+const NHL_PP_PER_TICK = 4;
+const NHL_PP_RAW_KEY = 'nhl_pp_raw';
+const NHL_PRIOR_K = 5;
+const NHL_TOI_MIN = 15;
+const NHL_SEASONS = { prior: '20252026', current: '20262027' };
+const NHL_STATS = 'https://api.nhle.com/stats/rest/en/skater/summary';
+const nhlName = (s) => nbaBaseName(s);
+async function ensureNhlPpSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nhlpp (
+    date TEXT NOT NULL, game_id TEXT NOT NULL, player TEXT NOT NULL, market TEXT NOT NULL,
+    commence TEXT, home TEXT, away TEXT, team TEXT, player_id TEXT,
+    point REAL, proj REAL, model_under REAL, gp_cur INTEGER, prior_gp INTEGER, toi_proj REAL,
+    book_line REAL, book_under INTEGER, actual REAL, result TEXT, captured_at TEXT,
+    PRIMARY KEY (date, game_id, player, market)
+  )`).run();
+}
+// A season's skaters by name, from the NHL's stats API (one request, free):
+// games, goals, assists, points and time on ice a game. Last season's is
+// kept for good; this season's for three hours. A name two skaters share
+// matches neither.
+async function nhlSkaters(env, season, ttlMs) {
+  const key = `nhl_sk:${season}`;
+  const hit = await loadFeedCache(env.DB, key);
+  if (hit.present && hit.data && (ttlMs == null || hit.ageMs < ttlMs)) return nhlSkaterMap(hit.data);
+  try {
+    const r = await fetch(`${NHL_STATS}?isAggregate=false&isGame=false&start=0&limit=-1&cayenneExp=gameTypeId=2%20and%20seasonId=${season}`,
+      { headers: { accept: 'application/json' } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    const rows = ((j && j.data) || []).map((x) => ({ id: String(x.playerId), name: x.skaterFullName, team: String(x.teamAbbrevs || '').split(',').pop() || null,
+      pos: x.positionCode, gp: x.gamesPlayed, g: x.goals, a: x.assists, p: x.points, toi: x.timeOnIcePerGame != null ? x.timeOnIcePerGame / 60 : null }));
+    await saveFeedCache(env.DB, key, rows);
+    return nhlSkaterMap(rows);
+  } catch (e) {
+    return hit.present && hit.data ? nhlSkaterMap(hit.data) : new Map();
+  }
+}
+function nhlSkaterMap(rows) {
+  const m = new Map();
+  for (const x of rows || []) {
+    const k = nhlName(x.name);
+    if (!k) continue;
+    m.set(k, m.has(k) ? null : x);
+  }
+  return m;
+}
+// Pure: one event's odds in, one leg per PrizePicks under on a regular skater.
+function nhlPpLegs(ev, pri, cur) {
+  const out = [];
+  const pp = ev && (ev.bookmakers || []).find((b) => b.key === 'prizepicks');
+  if (!pp) return out;
+  const bookLine = (mk, name) => {
+    for (const bk of ['draftkings', 'fanduel']) {
+      const b = (ev.bookmakers || []).find((x) => x.key === bk);
+      const m = b && (b.markets || []).find((x) => x.key === mk);
+      const u = m && (m.outcomes || []).find((o) => o.name === 'Under' && nhlName(o.description) === name);
+      if (u && u.point != null) return { line: u.point, price: typeof u.price === 'number' ? u.price : null };
+    }
+    return { line: null, price: null };
+  };
+  for (const m of (pp.markets || [])) {
+    const market = NHL_PP_MARKETS[m.key];
+    if (!market) continue;
+    const stat = market === 'pts' ? 'p' : 'a';
+    const seen = new Set();
+    for (const o of (m.outcomes || [])) {
+      if (o.name !== 'Under' || o.point == null) continue;
+      const name = nhlName(o.description);
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      const p = pri.get(name) || null, c = cur.get(name) || null;
+      const who = c || p;
+      if (!who) continue;
+      const blend = (k) => {
+        const prior = p && p.gp >= 10 && p[k] != null ? (k === 'toi' ? p.toi : p[k] / p.gp) : null;
+        const n = c && c.gp ? c.gp : 0;
+        const sum = c && c[k] != null ? (k === 'toi' ? c.toi * n : c[k]) : 0;
+        if (prior != null) return (sum + NHL_PRIOR_K * prior) / (n + NHL_PRIOR_K);
+        return n >= 3 ? sum / n : null;
+      };
+      const proj = blend(stat), toi = blend('toi');
+      if (proj == null || toi == null || toi < NHL_TOI_MIN) continue;
+      const bl = bookLine(m.key, name);
+      out.push({ game_id: ev.id, commence: ev.commence_time, home: ev.home_team, away: ev.away_team,
+        player: o.description, player_id: who.id, team: (c && c.team) || (p && p.team) || null, market, point: o.point,
+        proj: Math.round(proj * 100) / 100, model_under: round1(negBinomCdf(Math.ceil(o.point) - 1, proj, 1) * 100),
+        gp_cur: c ? c.gp : 0, prior_gp: p ? p.gp : 0, toi_proj: round1(toi), book_line: bl.line, book_under: bl.price });
+    }
+  }
+  return out;
+}
+async function logNhlPp(db, legs) {
+  if (!legs.length) return 0;
+  const stamp = new Date().toISOString();
+  const stmts = legs.map((l) => db.prepare(
+    `INSERT OR IGNORE INTO nhlpp (date, game_id, player, market, commence, home, away, team, player_id, point, proj, model_under, gp_cur, prior_gp, toi_proj, book_line, book_under, captured_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market, l.commence, l.home, l.away, l.team, l.player_id,
+    l.point, l.proj, l.model_under, l.gp_cur, l.prior_gp, l.toi_proj, l.book_line, l.book_under, stamp));
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return stmts.length;
+}
+// Cron: each game once, inside 100 minutes of puck drop, found in the NHL
+// board's snapshot so finding them costs nothing.
+async function nhlPpMaybeCapture(env) {
+  if (!env || !env.DB || !env.ODDS_API_KEY) return null;
+  const now = Date.now();
+  const doneKey = `nhl_pp_done:${slateDate()}`;
+  const doneHit = await loadFeedCache(env.DB, doneKey);
+  const done = new Set(((doneHit.present && doneHit.data) || {}).ids || []);
+  const snap = await loadFeedCache(env.DB, 'nhl_board:reg');
+  const due = ((snap.present && snap.data && snap.data.games) || []).filter((g) => {
+    const t = Date.parse(g.commence);
+    return isFinite(t) && t > now && t - now <= NHL_PP_WINDOW_MS && !done.has(g.id);
+  });
+  if (!due.length) return null;
+  await ensureNhlPpSchema(env.DB);
+  const pri = await nhlSkaters(env, NHL_SEASONS.prior, null);
+  const cur = await nhlSkaters(env, NHL_SEASONS.current, 3 * 3600e3);
+  let logged = 0;
+  for (const g of due.slice(0, NHL_PP_PER_TICK)) {
+    try {
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/icehockey_nhl/events/${g.id}/odds?apiKey=${env.ODDS_API_KEY}`
+        + `&markets=${Object.keys(NHL_PP_MARKETS).join(',')}&oddsFormat=american&dateFormat=iso&bookmakers=${NHL_PP_BOOKS.join(',')}`,
+      { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, 'nhl:reg:pp');
+      if (!r.ok) continue;
+      const body = await r.json();
+      logged += await logNhlPp(env.DB, nhlPpLegs(body, pri, cur));
+      // The last payload with PrizePicks on it, as it came (/api/nhl-pp?raw=1).
+      if (body && (body.bookmakers || []).some((b) => b.key === 'prizepicks')) {
+        await saveFeedCache(env.DB, NHL_PP_RAW_KEY, { at: new Date().toISOString(), game: g.id, credits: Number(r.headers.get('x-requests-last')) || null, body });
+      }
+      done.add(g.id);
+    } catch (e) { /* this game waits for the next tick */ }
+  }
+  await saveFeedCache(env.DB, doneKey, { ids: [...done] });
+  return { logged, due: due.length };
+}
+// Pure: one NHL box score in, each skater's goals, assists and points by NHL id.
+function nhlBoxLines(box) {
+  const out = new Map();
+  for (const side of ['awayTeam', 'homeTeam']) {
+    const t = (box && box.playerByGameStats && box.playerByGameStats[side]) || {};
+    for (const x of [...(t.forwards || []), ...(t.defense || [])]) {
+      if (x && x.playerId != null) out.set(String(x.playerId), { g: x.goals, a: x.assists, p: x.points, toi: x.toi });
+    }
+  }
+  return out;
+}
+// Grade from the NHL's own box scores (free), once an hour: a day's finished
+// games, each player by NHL id. A logged player missing from a day whose
+// games are all final did not play: void, never a free under.
+async function gradeNhlPp(env) {
+  if (!env || !env.DB) return 0;
+  await ensureNhlPpSchema(env.DB);
+  const gate = await loadFeedCache(env.DB, 'nhl_pp_grade');
+  if (gate.present && gate.data && Date.now() - gate.data.at < 3600e3) return 0;
+  await saveFeedCache(env.DB, 'nhl_pp_grade', { at: Date.now() });
+  const open = ((await env.DB.prepare('SELECT * FROM nhlpp WHERE result IS NULL AND date < ?').bind(slateDate()).all()).results || []);
+  const stmts = [];
+  for (const day of [...new Set(open.map((r) => r.date))].slice(0, 3)) {
+    let games = [];
+    try { const r = await fetch(`https://api-web.nhle.com/v1/score/${day}`, { headers: { accept: 'application/json' } }); games = r.ok ? ((await r.json()).games || []) : []; } catch (e) { continue; }
+    if (!games.length) continue;
+    const settled = games.every((g) => g.gameState === 'OFF' || g.gameState === 'FINAL');
+    const lines = new Map();
+    for (const g of games.filter((x) => x.gameState === 'OFF' || x.gameState === 'FINAL')) {
+      try {
+        const r = await fetch(`https://api-web.nhle.com/v1/gamecenter/${g.id}/boxscore`, { headers: { accept: 'application/json' } });
+        if (r.ok) for (const [id, v] of nhlBoxLines(await r.json())) lines.set(id, v);
+      } catch (e) { /* that game grades next hour */ }
+    }
+    for (const r of open.filter((x) => x.date === day)) {
+      const b = r.player_id && lines.get(String(r.player_id));
+      let result = null, actual = null;
+      if (b) {
+        const v = r.market === 'pts' ? b.p : b.a;
+        if (v == null) continue;
+        actual = v; result = v < r.point ? 'under' : v > r.point ? 'over' : 'push';
+      } else if (settled) result = 'void';
+      if (!result) continue;
+      stmts.push(env.DB.prepare('UPDATE nhlpp SET result=?, actual=? WHERE date=? AND game_id=? AND player=? AND market=?')
+        .bind(result, actual, r.date, r.game_id, r.player, r.market));
+    }
+  }
+  for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+  return stmts.length;
+}
+// GET /api/nhl-pp: tonight's logged legs, best under first, and the record --
+// the unders by band, market and line gap, and the overs the same way, as the
+// NBA log keeps them. ?raw=1: the last capture's payload. Free (D1 only).
+async function nhlPpBoard(env, url) {
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  if (url && url.searchParams && url.searchParams.get('raw') === '1') {
+    const hit = await loadFeedCache(env.DB, NHL_PP_RAW_KEY);
+    return hit.present ? hit.data : { none: 'no capture with PrizePicks on it yet' };
+  }
+  const out = { note: 'LOGGED, not posted. The chance the under lands at PrizePicks’ line: Poisson at the skater’s scoring rate, this season blended with last. Points and assists, regulars (15+ minutes).', legs: [], record: null };
+  try {
+    await ensureNhlPpSchema(env.DB);
+    const now = Date.now();
+    const rows = (await env.DB.prepare('SELECT * FROM nhlpp WHERE date >= ? ORDER BY model_under DESC').bind(slateDateOffset(-1)).all()).results || [];
+    out.legs = rows.filter((r) => Date.parse(r.commence) > now).map((r) => ({
+      player: r.player, team: r.team, market: r.market, point: r.point, model_under: r.model_under, proj: r.proj, gp_cur: r.gp_cur,
+      toi_proj: r.toi_proj, game: `${r.away} @ ${r.home}`, game_id: r.game_id, commence: r.commence, player_id: r.player_id,
+      book_line: r.book_line, book_under: r.book_under, vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
+    }));
+    const graded = (await env.DB.prepare("SELECT market, model_under, point, book_line, result FROM nhlpp WHERE result IN ('under','over','push')").all()).results || [];
+    const gap = (g) => (g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null);
+    const un = ppSplitRecord(graded.map((g) => ({ p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null), gap: gap(g) })));
+    const lean = graded.filter((g) => g.model_under != null && g.model_under < 50);
+    const ov = ppSplitRecord(lean.map((g) => ({ p: 100 - g.model_under, won: g.result === 'over' ? 1 : (g.result === 'under' ? 0 : null), gap: gap(g) })));
+    const byMarket = (list, side) => Object.fromEntries(Object.values(NHL_PP_MARKETS).map((mk) => {
+      const l = list.filter((g) => g.market === mk && g.result !== 'push');
+      const hit = l.filter((g) => g.result === side).length;
+      return [mk, { n: l.length, hit, hitRate: l.length ? round1(hit / l.length * 100) : null }];
+    }));
+    out.record = { scope: `regular skaters (${NHL_TOI_MIN}+ minutes), at PrizePicks’ line`, graded: un.n, hit: un.hit, hitRate: un.hitRate,
+      byBand: un.byBand, byLineGap: un.byLineGap, byMarket: byMarket(graded, 'under'),
+      overs: { graded: ov.n, hit: ov.hit, hitRate: ov.hitRate, byBand: ov.byBand, byLineGap: ov.byLineGap, byMarket: byMarket(lean, 'over') } };
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

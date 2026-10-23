@@ -6336,9 +6336,55 @@
   // backtest (65%+ favourites won 114 of 171, stated 69.1%).
   async function refreshNhl() {
     if (!LIVE_MODE) return;
-    const d = await fetchJson('/api/nhl-board').catch(() => null);
+    const [d, pp] = await Promise.all([
+      fetchJson('/api/nhl-board').catch(() => null),
+      fetchJson('/api/nhl-pp').catch(() => null),
+    ]);
     state.nhl = d && Array.isArray(d.games) ? d : { games: [], empty: true, error: d ? undefined : 'unreachable' };
+    state.nhlPp = pp && Array.isArray(pp.legs) ? pp : null;
     renderNhl();
+  }
+  // NHL PrizePicks points and assists unders (2026-10-22), the NBA card's
+  // shape: tonight's best five by the model's chance, regulars only, a star
+  // each, the record under the title. Logged, not posted.
+  const NHL_MK = { pts: 'points', ast: 'assists' };
+  function nhlPpLeg(x) {
+    return { id: `nhlpp:${x.game_id}:${x.player}:${x.market}`, board: 'PrizePicks',
+      title: `${x.player} Under ${x.point} ${NHL_MK[x.market] || x.market}`, sub: x.game, odds: null, tier: null, edge: null,
+      // gamePk is the odds feed's event id, the one the NHL moneyline leg carries.
+      spec: { sport: 'nhl', date: ptDayOf(Date.parse(x.commence)), gamePk: x.game_id, playerId: x.player_id || null,
+        player: x.player, team: x.team || null, market: x.market, side: 'Under',
+        book: { line: x.book_line != null ? x.book_line : null, price: typeof x.book_under === 'number' ? x.book_under : null, under: null },
+        pp: { line: x.point, under: x.model_under } } };
+  }
+  function nhlPpCardHtml() {
+    const d = state.nhlPp;
+    if (!d) return '';
+    const now = Date.now();
+    const top = (d.legs || []).filter((x) => Date.parse(x.commence) > now).slice(0, 5);
+    const r = d.record || {};
+    const hi = ['65-70', '70+'].map((k) => (r.byBand && r.byBand[k]) || { n: 0, hit: 0 })
+      .reduce((a, c) => ({ n: a.n + c.n, hit: a.hit + c.hit }), { n: 0, hit: 0 });
+    const recLine = r.graded ? `<div class="tc-sub tc-rec-line">Unders: <b>${r.hit} of ${r.graded}</b> landed${hi.n ? ` · 65%+ <b>${hi.hit} of ${hi.n}</b>` : ''}</div>` : '';
+    const head = `<div class="tc-head"><span class="tc-title">Tonight's PrizePicks unders</span></div>`
+      + `<div class="tc-sub">The chance the under lands at PrizePicks' line, from the skater's scoring rate this season and last. Points and assists; regulars (15+ minutes). Logged, not posted.</div>`
+      + recLine + nbaOversLineHtml(r.overs);
+    if (!top.length) {
+      return `<div class="nba-pp">${head}<div class="tc-wait-note">PrizePicks' NHL lines are read about 100 minutes before each puck drop; none are logged for the games still to come.</div></div>`;
+    }
+    const perGame = {};
+    for (const x of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
+    return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map((x) => {
+      const leg = nhlPpLeg(x);
+      const on = !!state.slip[offerLeg(leg)];
+      const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
+      const same = perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
+      return `<li>${star}<div class="tc-leg">`
+        + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NHL_MK[x.market] || x.market)} · ${esc(String(x.proj))} a game · ${esc(soccerKick(x.commence))}${same}</span>`
+        + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
+        + `</div></li>`;
+    }).join('')}</ol></div>`;
   }
   function nhlRecordHtml(r) {
     if (!r || !r.n) return '<p class="soc-note">Record: logged from Oct 20, graded from the NHL’s finals each morning.</p>';
@@ -6359,7 +6405,7 @@
     const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
     if (count) count.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}` : '';
     if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '');
-    const rec = nhlRecordHtml(d.record);
+    const rec = nhlRecordHtml(d.record) + nhlPpCardHtml();
     if (!games.length) {
       grid.innerHTML = rec + `<div class="nfl-empty">No NHL games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;

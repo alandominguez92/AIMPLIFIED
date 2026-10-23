@@ -1,0 +1,1260 @@
+{
+ "_recorded": "Recorded 2026-10-22 from the NHL's free APIs: the score feed for 2026-10-21 (trimmed to id, state, teams), the Flyers at Sabres box score (2026020152, trimmed to skaters), and the stats API's 2025-26 and 2026-27 skater summaries trimmed to the players in that game.",
+ "https://api-web.nhle.com/v1/score/2026-10-21": {
+  "games": [
+   {
+    "id": 2026020152,
+    "gameState": "OFF",
+    "startTimeUTC": "2026-10-21T23:30:00Z",
+    "awayTeam": {
+     "abbrev": "PHI",
+     "name": {
+      "default": "Flyers"
+     },
+     "score": 3
+    },
+    "homeTeam": {
+     "abbrev": "BUF",
+     "name": {
+      "default": "Sabres"
+     },
+     "score": 1
+    }
+   },
+   {
+    "id": 2026020153,
+    "gameState": "OFF",
+    "startTimeUTC": "2026-10-21T23:30:00Z",
+    "awayTeam": {
+     "abbrev": "FLA",
+     "name": {
+      "default": "Panthers"
+     },
+     "score": 1
+    },
+    "homeTeam": {
+     "abbrev": "OTT",
+     "name": {
+      "default": "Senators",
+      "fr": "Sénateurs"
+     },
+     "score": 5
+    }
+   }
+  ]
+ },
+ "https://api-web.nhle.com/v1/gamecenter/2026020152/boxscore": {
+  "id": 2026020152,
+  "gameState": "OFF",
+  "awayTeam": {
+   "abbrev": "PHI"
+  },
+  "homeTeam": {
+   "abbrev": "BUF"
+  },
+  "playerByGameStats": {
+   "awayTeam": {
+    "forwards": [
+     {
+      "playerId": 8476461,
+      "name": {
+       "default": "S. Couturier"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "17:34"
+     },
+     {
+      "playerId": 8483731,
+      "name": {
+       "default": "A. Bump"
+      },
+      "position": "L",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "15:45"
+     },
+     {
+      "playerId": 8477989,
+      "name": {
+       "default": "C. Dvorak"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "18:39"
+     },
+     {
+      "playerId": 8480220,
+      "name": {
+       "default": "N. Cates"
+      },
+      "position": "L",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "13:53"
+     },
+     {
+      "playerId": 8484387,
+      "name": {
+       "default": "M. Michkov",
+       "cs": "M. Mičkov",
+       "fi": "M. Mitshkov",
+       "sk": "M. Mičkov"
+      },
+      "position": "R",
+      "goals": 0,
+      "assists": 1,
+      "points": 1,
+      "toi": "18:02"
+     },
+     {
+      "playerId": 8481533,
+      "name": {
+       "default": "T. Zegras"
+      },
+      "position": "C",
+      "goals": 1,
+      "assists": 0,
+      "points": 1,
+      "toi": "16:36"
+     },
+     {
+      "playerId": 8478569,
+      "name": {
+       "default": "N. Acciari"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "14:04"
+     },
+     {
+      "playerId": 8483787,
+      "name": {
+       "default": "C. Knuble"
+      },
+      "position": "R",
+      "goals": 2,
+      "assists": 0,
+      "points": 2,
+      "toi": "10:24"
+     },
+     {
+      "playerId": 8482159,
+      "name": {
+       "default": "T. Foerster"
+      },
+      "position": "R",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "16:47"
+     },
+     {
+      "playerId": 8481848,
+      "name": {
+       "default": "J. Gaucher"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "08:55"
+     },
+     {
+      "playerId": 8484142,
+      "name": {
+       "default": "D. Barkey"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 1,
+      "points": 1,
+      "toi": "12:19"
+     },
+     {
+      "playerId": 8485406,
+      "name": {
+       "default": "P. Martone"
+      },
+      "position": "R",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "15:50"
+     }
+    ],
+    "defense": [
+     {
+      "playerId": 8477948,
+      "name": {
+       "default": "T. Sanheim"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "26:20"
+     },
+     {
+      "playerId": 8482142,
+      "name": {
+       "default": "J. Drysdale"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 1,
+      "points": 1,
+      "toi": "24:37"
+     },
+     {
+      "playerId": 8483760,
+      "name": {
+       "default": "H. McDonald"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "13:18"
+     },
+     {
+      "playerId": 8476372,
+      "name": {
+       "default": "N. Seeler"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "17:59"
+     },
+     {
+      "playerId": 8481122,
+      "name": {
+       "default": "S. Benoit"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "13:37"
+     },
+     {
+      "playerId": 8484148,
+      "name": {
+       "default": "O. Bonk"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 2,
+      "points": 2,
+      "toi": "19:34"
+     }
+    ]
+   },
+   "homeTeam": {
+    "forwards": [
+     {
+      "playerId": 8484145,
+      "name": {
+       "default": "Z. Benson"
+      },
+      "position": "L",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "21:21"
+     },
+     {
+      "playerId": 8480064,
+      "name": {
+       "default": "J. Norris"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "13:43"
+     },
+     {
+      "playerId": 8475722,
+      "name": {
+       "default": "J. Zucker"
+      },
+      "position": "L",
+      "goals": 1,
+      "assists": 0,
+      "points": 1,
+      "toi": "12:16"
+     },
+     {
+      "playerId": 8481522,
+      "name": {
+       "default": "P. Krebs"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "08:49"
+     },
+     {
+      "playerId": 8483468,
+      "name": {
+       "default": "J.Kulich"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "13:42"
+     },
+     {
+      "playerId": 8482097,
+      "name": {
+       "default": "J. Quinn"
+      },
+      "position": "R",
+      "goals": 0,
+      "assists": 1,
+      "points": 1,
+      "toi": "20:45"
+     },
+     {
+      "playerId": 8479359,
+      "name": {
+       "default": "B. Malenstyn"
+      },
+      "position": "L",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "10:07"
+     },
+     {
+      "playerId": 8480802,
+      "name": {
+       "default": "R. McLeod"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "13:06"
+     },
+     {
+      "playerId": 8479420,
+      "name": {
+       "default": "T. Thompson"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "20:06"
+     },
+     {
+      "playerId": 8483500,
+      "name": {
+       "default": "N. Ostlund"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 1,
+      "points": 1,
+      "toi": "21:40"
+     },
+     {
+      "playerId": 8482659,
+      "name": {
+       "default": "J. Doan"
+      },
+      "position": "R",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "13:32"
+     },
+     {
+      "playerId": 8484797,
+      "name": {
+       "default": "K. Helenius"
+      },
+      "position": "C",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "09:07"
+     }
+    ],
+    "defense": [
+     {
+      "playerId": 8482803,
+      "name": {
+       "default": "O. Zellweger"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "18:11"
+     },
+     {
+      "playerId": 8480807,
+      "name": {
+       "default": "M. Samuelsson"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "22:51"
+     },
+     {
+      "playerId": 8482671,
+      "name": {
+       "default": "O. Power"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "26:12"
+     },
+     {
+      "playerId": 8480839,
+      "name": {
+       "default": "R. Dahlin"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "26:27"
+     },
+     {
+      "playerId": 8481806,
+      "name": {
+       "default": "L. Crevier"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "10:30"
+     },
+     {
+      "playerId": 8484305,
+      "name": {
+       "default": "Z. Metsa"
+      },
+      "position": "D",
+      "goals": 0,
+      "assists": 0,
+      "points": 0,
+      "toi": "10:43"
+     }
+    ]
+   }
+  }
+ },
+ "https://api.nhle.com/stats/rest/en/skater/summary?isAggregate=false&isGame=false&start=0&limit=-1&cayenneExp=gameTypeId=2%20and%20seasonId=20252026": {
+  "data": [
+   {
+    "playerId": 8481848,
+    "skaterFullName": "Jacob Gaucher",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 4,
+    "goals": 0,
+    "assists": 0,
+    "points": 0,
+    "timeOnIcePerGame": 528.5
+   },
+   {
+    "playerId": 8484142,
+    "skaterFullName": "Denver Barkey",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 43,
+    "goals": 5,
+    "assists": 12,
+    "points": 17,
+    "timeOnIcePerGame": 804.4418
+   },
+   {
+    "playerId": 8481522,
+    "skaterFullName": "Peyton Krebs",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 82,
+    "goals": 12,
+    "assists": 27,
+    "points": 39,
+    "timeOnIcePerGame": 825.817
+   },
+   {
+    "playerId": 8475722,
+    "skaterFullName": "Jason Zucker",
+    "teamAbbrevs": "BUF",
+    "positionCode": "L",
+    "gamesPlayed": 62,
+    "goals": 24,
+    "assists": 21,
+    "points": 45,
+    "timeOnIcePerGame": 937.3225
+   },
+   {
+    "playerId": 8484145,
+    "skaterFullName": "Zach Benson",
+    "teamAbbrevs": "BUF",
+    "positionCode": "L",
+    "gamesPlayed": 65,
+    "goals": 13,
+    "assists": 30,
+    "points": 43,
+    "timeOnIcePerGame": 953.2923
+   },
+   {
+    "playerId": 8478569,
+    "skaterFullName": "Noel Acciari",
+    "teamAbbrevs": "PIT",
+    "positionCode": "C",
+    "gamesPlayed": 67,
+    "goals": 13,
+    "assists": 12,
+    "points": 25,
+    "timeOnIcePerGame": 822.4626
+   },
+   {
+    "playerId": 8480064,
+    "skaterFullName": "Josh Norris",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 44,
+    "goals": 13,
+    "assists": 21,
+    "points": 34,
+    "timeOnIcePerGame": 949.9318
+   },
+   {
+    "playerId": 8479359,
+    "skaterFullName": "Beck Malenstyn",
+    "teamAbbrevs": "BUF",
+    "positionCode": "L",
+    "gamesPlayed": 81,
+    "goals": 7,
+    "assists": 7,
+    "points": 14,
+    "timeOnIcePerGame": 674.6172
+   },
+   {
+    "playerId": 8484148,
+    "skaterFullName": "Oliver Bonk",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 1,
+    "goals": 1,
+    "assists": 1,
+    "points": 2,
+    "timeOnIcePerGame": 988
+   },
+   {
+    "playerId": 8483500,
+    "skaterFullName": "Noah Ostlund",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 60,
+    "goals": 11,
+    "assists": 16,
+    "points": 27,
+    "timeOnIcePerGame": 838.1666
+   },
+   {
+    "playerId": 8482803,
+    "skaterFullName": "Olen Zellweger",
+    "teamAbbrevs": "ANA",
+    "positionCode": "D",
+    "gamesPlayed": 76,
+    "goals": 7,
+    "assists": 15,
+    "points": 22,
+    "timeOnIcePerGame": 1018.5657
+   },
+   {
+    "playerId": 8481533,
+    "skaterFullName": "Trevor Zegras",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 81,
+    "goals": 26,
+    "assists": 41,
+    "points": 67,
+    "timeOnIcePerGame": 1123.1358
+   },
+   {
+    "playerId": 8481806,
+    "skaterFullName": "Louis Crevier",
+    "teamAbbrevs": "CHI",
+    "positionCode": "D",
+    "gamesPlayed": 78,
+    "goals": 7,
+    "assists": 18,
+    "points": 25,
+    "timeOnIcePerGame": 1028.2435
+   },
+   {
+    "playerId": 8484305,
+    "skaterFullName": "Zach Metsa",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 43,
+    "goals": 2,
+    "assists": 4,
+    "points": 6,
+    "timeOnIcePerGame": 658.0697
+   },
+   {
+    "playerId": 8480220,
+    "skaterFullName": "Noah Cates",
+    "teamAbbrevs": "PHI",
+    "positionCode": "L",
+    "gamesPlayed": 82,
+    "goals": 18,
+    "assists": 29,
+    "points": 47,
+    "timeOnIcePerGame": 974.5975
+   },
+   {
+    "playerId": 8483760,
+    "skaterFullName": "Hunter McDonald",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 1,
+    "goals": 0,
+    "assists": 1,
+    "points": 1,
+    "timeOnIcePerGame": 911
+   },
+   {
+    "playerId": 8480839,
+    "skaterFullName": "Rasmus Dahlin",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 77,
+    "goals": 19,
+    "assists": 55,
+    "points": 74,
+    "timeOnIcePerGame": 1451.1428
+   },
+   {
+    "playerId": 8479420,
+    "skaterFullName": "Tage Thompson",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 81,
+    "goals": 40,
+    "assists": 41,
+    "points": 81,
+    "timeOnIcePerGame": 1154.6172
+   },
+   {
+    "playerId": 8482142,
+    "skaterFullName": "Jamie Drysdale",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 78,
+    "goals": 8,
+    "assists": 24,
+    "points": 32,
+    "timeOnIcePerGame": 1293.2307
+   },
+   {
+    "playerId": 8477948,
+    "skaterFullName": "Travis Sanheim",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 81,
+    "goals": 11,
+    "assists": 26,
+    "points": 37,
+    "timeOnIcePerGame": 1453.358
+   },
+   {
+    "playerId": 8476461,
+    "skaterFullName": "Sean Couturier",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 78,
+    "goals": 12,
+    "assists": 24,
+    "points": 36,
+    "timeOnIcePerGame": 999.0897
+   },
+   {
+    "playerId": 8480807,
+    "skaterFullName": "Mattias Samuelsson",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 78,
+    "goals": 13,
+    "assists": 28,
+    "points": 41,
+    "timeOnIcePerGame": 1369.7179
+   },
+   {
+    "playerId": 8485406,
+    "skaterFullName": "Porter Martone",
+    "teamAbbrevs": "PHI",
+    "positionCode": "R",
+    "gamesPlayed": 9,
+    "goals": 4,
+    "assists": 6,
+    "points": 10,
+    "timeOnIcePerGame": 1022.4444
+   },
+   {
+    "playerId": 8482659,
+    "skaterFullName": "Josh Doan",
+    "teamAbbrevs": "BUF",
+    "positionCode": "R",
+    "gamesPlayed": 82,
+    "goals": 25,
+    "assists": 27,
+    "points": 52,
+    "timeOnIcePerGame": 951.9878
+   },
+   {
+    "playerId": 8484797,
+    "skaterFullName": "Konsta Helenius",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 9,
+    "goals": 1,
+    "assists": 3,
+    "points": 4,
+    "timeOnIcePerGame": 714.5555
+   },
+   {
+    "playerId": 8482159,
+    "skaterFullName": "Tyson Foerster",
+    "teamAbbrevs": "PHI",
+    "positionCode": "R",
+    "gamesPlayed": 29,
+    "goals": 13,
+    "assists": 4,
+    "points": 17,
+    "timeOnIcePerGame": 1037.862
+   },
+   {
+    "playerId": 8483731,
+    "skaterFullName": "Alex Bump",
+    "teamAbbrevs": "PHI",
+    "positionCode": "L",
+    "gamesPlayed": 17,
+    "goals": 5,
+    "assists": 4,
+    "points": 9,
+    "timeOnIcePerGame": 758.4705
+   },
+   {
+    "playerId": 8482671,
+    "skaterFullName": "Owen Power",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 81,
+    "goals": 8,
+    "assists": 21,
+    "points": 29,
+    "timeOnIcePerGame": 1299.1604
+   },
+   {
+    "playerId": 8476372,
+    "skaterFullName": "Nick Seeler",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 80,
+    "goals": 4,
+    "assists": 6,
+    "points": 10,
+    "timeOnIcePerGame": 1061.1625
+   },
+   {
+    "playerId": 8482097,
+    "skaterFullName": "Jack Quinn",
+    "teamAbbrevs": "BUF",
+    "positionCode": "R",
+    "gamesPlayed": 82,
+    "goals": 20,
+    "assists": 31,
+    "points": 51,
+    "timeOnIcePerGame": 939.3902
+   },
+   {
+    "playerId": 8484387,
+    "skaterFullName": "Matvei Michkov",
+    "teamAbbrevs": "PHI",
+    "positionCode": "R",
+    "gamesPlayed": 81,
+    "goals": 20,
+    "assists": 31,
+    "points": 51,
+    "timeOnIcePerGame": 890.4197
+   },
+   {
+    "playerId": 8483468,
+    "skaterFullName": "Jiri Kulich",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 12,
+    "goals": 3,
+    "assists": 2,
+    "points": 5,
+    "timeOnIcePerGame": 981.8333
+   },
+   {
+    "playerId": 8480802,
+    "skaterFullName": "Ryan McLeod",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 81,
+    "goals": 14,
+    "assists": 40,
+    "points": 54,
+    "timeOnIcePerGame": 1056.6913
+   },
+   {
+    "playerId": 8477989,
+    "skaterFullName": "Christian Dvorak",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 80,
+    "goals": 18,
+    "assists": 33,
+    "points": 51,
+    "timeOnIcePerGame": 1107.5625
+   },
+   {
+    "playerId": 8481122,
+    "skaterFullName": "Simon Benoit",
+    "teamAbbrevs": "TOR",
+    "positionCode": "D",
+    "gamesPlayed": 73,
+    "goals": 0,
+    "assists": 6,
+    "points": 6,
+    "timeOnIcePerGame": 1037.7671
+   }
+  ],
+  "total": 0
+ },
+ "https://api.nhle.com/stats/rest/en/skater/summary?isAggregate=false&isGame=false&start=0&limit=-1&cayenneExp=gameTypeId=2%20and%20seasonId=20262027": {
+  "data": [
+   {
+    "playerId": 8481848,
+    "skaterFullName": "Jacob Gaucher",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 2,
+    "goals": 0,
+    "assists": 0,
+    "points": 0,
+    "timeOnIcePerGame": 650
+   },
+   {
+    "playerId": 8484142,
+    "skaterFullName": "Denver Barkey",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 9,
+    "goals": 0,
+    "assists": 4,
+    "points": 4,
+    "timeOnIcePerGame": 865
+   },
+   {
+    "playerId": 8481522,
+    "skaterFullName": "Peyton Krebs",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 0,
+    "assists": 4,
+    "points": 4,
+    "timeOnIcePerGame": 814.1
+   },
+   {
+    "playerId": 8475722,
+    "skaterFullName": "Jason Zucker",
+    "teamAbbrevs": "BUF",
+    "positionCode": "L",
+    "gamesPlayed": 1,
+    "goals": 1,
+    "assists": 0,
+    "points": 1,
+    "timeOnIcePerGame": 736
+   },
+   {
+    "playerId": 8484145,
+    "skaterFullName": "Zach Benson",
+    "teamAbbrevs": "BUF",
+    "positionCode": "L",
+    "gamesPlayed": 10,
+    "goals": 0,
+    "assists": 6,
+    "points": 6,
+    "timeOnIcePerGame": 1201.2
+   },
+   {
+    "playerId": 8480064,
+    "skaterFullName": "Josh Norris",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 1,
+    "points": 3,
+    "timeOnIcePerGame": 880.5
+   },
+   {
+    "playerId": 8479359,
+    "skaterFullName": "Beck Malenstyn",
+    "teamAbbrevs": "BUF",
+    "positionCode": "L",
+    "gamesPlayed": 10,
+    "goals": 0,
+    "assists": 2,
+    "points": 2,
+    "timeOnIcePerGame": 596.9
+   },
+   {
+    "playerId": 8484148,
+    "skaterFullName": "Oliver Bonk",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 6,
+    "goals": 0,
+    "assists": 4,
+    "points": 4,
+    "timeOnIcePerGame": 1196
+   },
+   {
+    "playerId": 8483500,
+    "skaterFullName": "Noah Ostlund",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 5,
+    "points": 7,
+    "timeOnIcePerGame": 1149.4
+   },
+   {
+    "playerId": 8482803,
+    "skaterFullName": "Olen Zellweger",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 9,
+    "goals": 2,
+    "assists": 1,
+    "points": 3,
+    "timeOnIcePerGame": 1172.6666
+   },
+   {
+    "playerId": 8481533,
+    "skaterFullName": "Trevor Zegras",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 12,
+    "goals": 3,
+    "assists": 5,
+    "points": 8,
+    "timeOnIcePerGame": 1097.4166
+   },
+   {
+    "playerId": 8484305,
+    "skaterFullName": "Zach Metsa",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 0,
+    "assists": 2,
+    "points": 2,
+    "timeOnIcePerGame": 762.9
+   },
+   {
+    "playerId": 8480220,
+    "skaterFullName": "Noah Cates",
+    "teamAbbrevs": "PHI",
+    "positionCode": "L",
+    "gamesPlayed": 12,
+    "goals": 0,
+    "assists": 1,
+    "points": 1,
+    "timeOnIcePerGame": 778.5833
+   },
+   {
+    "playerId": 8480839,
+    "skaterFullName": "Rasmus Dahlin",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 7,
+    "goals": 2,
+    "assists": 2,
+    "points": 4,
+    "timeOnIcePerGame": 1442.1428
+   },
+   {
+    "playerId": 8483760,
+    "skaterFullName": "Hunter McDonald",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 2,
+    "goals": 0,
+    "assists": 0,
+    "points": 0,
+    "timeOnIcePerGame": 699
+   },
+   {
+    "playerId": 8478569,
+    "skaterFullName": "Noel Acciari",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 12,
+    "goals": 1,
+    "assists": 0,
+    "points": 1,
+    "timeOnIcePerGame": 857.6666
+   },
+   {
+    "playerId": 8479420,
+    "skaterFullName": "Tage Thompson",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 5,
+    "assists": 4,
+    "points": 9,
+    "timeOnIcePerGame": 1199.4
+   },
+   {
+    "playerId": 8482142,
+    "skaterFullName": "Jamie Drysdale",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 12,
+    "goals": 0,
+    "assists": 1,
+    "points": 1,
+    "timeOnIcePerGame": 1340.6666
+   },
+   {
+    "playerId": 8477948,
+    "skaterFullName": "Travis Sanheim",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 12,
+    "goals": 1,
+    "assists": 2,
+    "points": 3,
+    "timeOnIcePerGame": 1543.75
+   },
+   {
+    "playerId": 8476461,
+    "skaterFullName": "Sean Couturier",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 12,
+    "goals": 0,
+    "assists": 3,
+    "points": 3,
+    "timeOnIcePerGame": 1023.6666
+   },
+   {
+    "playerId": 8480807,
+    "skaterFullName": "Mattias Samuelsson",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 5,
+    "points": 7,
+    "timeOnIcePerGame": 1397.2
+   },
+   {
+    "playerId": 8485406,
+    "skaterFullName": "Porter Martone",
+    "teamAbbrevs": "PHI",
+    "positionCode": "R",
+    "gamesPlayed": 12,
+    "goals": 2,
+    "assists": 1,
+    "points": 3,
+    "timeOnIcePerGame": 812
+   },
+   {
+    "playerId": 8482659,
+    "skaterFullName": "Josh Doan",
+    "teamAbbrevs": "BUF",
+    "positionCode": "R",
+    "gamesPlayed": 10,
+    "goals": 1,
+    "assists": 1,
+    "points": 2,
+    "timeOnIcePerGame": 958.5
+   },
+   {
+    "playerId": 8484797,
+    "skaterFullName": "Konsta Helenius",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 9,
+    "goals": 1,
+    "assists": 1,
+    "points": 2,
+    "timeOnIcePerGame": 793.6666
+   },
+   {
+    "playerId": 8483787,
+    "skaterFullName": "Cole Knuble",
+    "teamAbbrevs": "PHI",
+    "positionCode": "R",
+    "gamesPlayed": 2,
+    "goals": 2,
+    "assists": 0,
+    "points": 2,
+    "timeOnIcePerGame": 724
+   },
+   {
+    "playerId": 8482159,
+    "skaterFullName": "Tyson Foerster",
+    "teamAbbrevs": "PHI",
+    "positionCode": "R",
+    "gamesPlayed": 11,
+    "goals": 1,
+    "assists": 0,
+    "points": 1,
+    "timeOnIcePerGame": 1051.0909
+   },
+   {
+    "playerId": 8483731,
+    "skaterFullName": "Alex Bump",
+    "teamAbbrevs": "PHI",
+    "positionCode": "L",
+    "gamesPlayed": 5,
+    "goals": 0,
+    "assists": 0,
+    "points": 0,
+    "timeOnIcePerGame": 756.8
+   },
+   {
+    "playerId": 8481806,
+    "skaterFullName": "Louis Crevier",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 0,
+    "assists": 1,
+    "points": 1,
+    "timeOnIcePerGame": 870.4
+   },
+   {
+    "playerId": 8482671,
+    "skaterFullName": "Owen Power",
+    "teamAbbrevs": "BUF",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 2,
+    "assists": 6,
+    "points": 8,
+    "timeOnIcePerGame": 1601.5
+   },
+   {
+    "playerId": 8476372,
+    "skaterFullName": "Nick Seeler",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 12,
+    "goals": 0,
+    "assists": 2,
+    "points": 2,
+    "timeOnIcePerGame": 1186.9166
+   },
+   {
+    "playerId": 8482097,
+    "skaterFullName": "Jack Quinn",
+    "teamAbbrevs": "BUF",
+    "positionCode": "R",
+    "gamesPlayed": 10,
+    "goals": 5,
+    "assists": 5,
+    "points": 10,
+    "timeOnIcePerGame": 1181.4
+   },
+   {
+    "playerId": 8481122,
+    "skaterFullName": "Simon Benoit",
+    "teamAbbrevs": "PHI",
+    "positionCode": "D",
+    "gamesPlayed": 10,
+    "goals": 0,
+    "assists": 0,
+    "points": 0,
+    "timeOnIcePerGame": 861.2
+   },
+   {
+    "playerId": 8484387,
+    "skaterFullName": "Matvei Michkov",
+    "teamAbbrevs": "PHI",
+    "positionCode": "R",
+    "gamesPlayed": 12,
+    "goals": 6,
+    "assists": 2,
+    "points": 8,
+    "timeOnIcePerGame": 906.8333
+   },
+   {
+    "playerId": 8483468,
+    "skaterFullName": "Jiri Kulich",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 8,
+    "goals": 1,
+    "assists": 2,
+    "points": 3,
+    "timeOnIcePerGame": 789.875
+   },
+   {
+    "playerId": 8480802,
+    "skaterFullName": "Ryan McLeod",
+    "teamAbbrevs": "BUF",
+    "positionCode": "C",
+    "gamesPlayed": 10,
+    "goals": 1,
+    "assists": 1,
+    "points": 2,
+    "timeOnIcePerGame": 912.7
+   },
+   {
+    "playerId": 8477989,
+    "skaterFullName": "Christian Dvorak",
+    "teamAbbrevs": "PHI",
+    "positionCode": "C",
+    "gamesPlayed": 12,
+    "goals": 2,
+    "assists": 2,
+    "points": 4,
+    "timeOnIcePerGame": 1052.0833
+   }
+  ],
+  "total": 0
+ }
+}
