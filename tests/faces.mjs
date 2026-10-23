@@ -42,7 +42,7 @@ function lift(name, from = src) {
   }
   throw new Error(`could not close ${name}`);
 }
-const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickFace', 'ptDayOf', 'pickMoved', 'heroLegHtml'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const state = { slip: {} };
@@ -57,6 +57,9 @@ ok(/img\.mlbstatic\.com\/.*\/people\/592450\/headshot/.test(F.headshotUrl('mlb',
 ok(/espncdn\.com\/combiner\/i\?img=\/i\/headshots\/nba\/players\/full\/3934672\.png/.test(F.headshotUrl('nba', '3934672')), 'an NBA player by ESPN id');
 ok(F.headshotUrl('nfl', 1) === null && F.headshotUrl('mlb', null) === null && F.headshotUrl('nba', '') === null, 'nothing where there is no id or no source');
 ok(/\/people\/123\/headshot/.test(F.headshotUrl('mlb', '123"><script>')), 'only the id\'s digits ever reach the URL');
+// NHL (2026-10-22): the NHL's own photos, filed by season and club.
+ok(F.headshotUrl('nhl', '8479420', 'BUF') === 'https://assets.nhle.com/mugs/nhl/20262027/BUF/8479420.png', 'an NHL skater by NHL id and club');
+ok(F.headshotUrl('nhl', '8479420') === null && F.headshotUrl('nhl', '8479420', 'B"F') === null, 'with no club, or a club that is not a club code, no photo');
 ok(/team-logos\/119\.svg$/.test(F.teamMarkUrl('mlb', 'LAD')) && F.teamMarkUrl('mlb', 'XYZ') === null && F.teamMarkUrl('soccer', 'LIV') === null,
   'a club\'s mark for MLB teams, by team id; none for another club the worker found no logo for');
 ok(F.teamMarkUrl('nba', 'Warriors', 'nba/500/gs.png') === 'https://a.espncdn.com/combiner/i?img=/i/teamlogos/nba/500/gs.png&w=128&h=128'

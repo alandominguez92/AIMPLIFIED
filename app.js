@@ -1903,11 +1903,16 @@
     NYM: 121, NYY: 147, ATH: 133, OAK: 133, PHI: 143, PIT: 134, SD: 135, SDP: 135, SF: 137, SFG: 137,
     SEA: 136, STL: 138, TB: 139, TBR: 139, TEX: 140, TOR: 141, WSH: 120, WSN: 120,
   };
-  function headshotUrl(sport, id) {
+  const NHL_PHOTO_SEASON = '20262027';
+  function headshotUrl(sport, id, team) {
     const n = String(id == null ? '' : id).replace(/\D/g, '');
     if (!n) return null;
     if (sport === 'mlb') return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_120,q_auto:best/v1/people/${n}/headshot/67/current`;
     if (sport === 'nba' || sport === 'soccer') return `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${n}.png&w=96&h=70`;
+    // The NHL's own photos (2026-10-22), filed by season and club: the NHL id
+    // and the club the stats API gives the leg.
+    const club = String(team || '').toUpperCase();
+    if (sport === 'nhl' && /^[A-Z]{2,3}$/.test(club)) return `https://assets.nhle.com/mugs/nhl/${NHL_PHOTO_SEASON}/${club}/${n}.png`;
     return null;
   }
   // Other clubs' marks are ESPN's: the worker sends the path under
@@ -1937,7 +1942,7 @@
   }
   // opts: { sport, playerId, team, logo, name, isTeam, size }
   function avatarHtml(o) {
-    const src = o.isTeam ? teamMarkUrl(o.sport, o.team, o.logo) : headshotUrl(o.sport, o.playerId);
+    const src = o.isTeam ? teamMarkUrl(o.sport, o.team, o.logo) : headshotUrl(o.sport, o.playerId, o.team);
     const c = o.sport === 'mlb' ? TEAM_COLORS[String(o.team || '').toUpperCase()] : null;
     const style = [c ? `--hs-bg:${c[0]};--hs-fg:${c[1]}` : '', o.size ? `--hs-size:${o.size}px` : ''].filter(Boolean).join(';');
     return `<span class="hs${o.isTeam ? ' hs-team' : ''}${src ? '' : ' hs-none'}"${style ? ` style="${style}"` : ''} aria-hidden="true">`
@@ -6374,12 +6379,17 @@
     }
     const perGame = {};
     for (const x of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
+    // The same-game warning only when the card spans three games or more: on a
+    // two-game night every leg shares a game with another, and a tag on all
+    // five said nothing.
+    const spread = Object.keys(perGame).length >= 3;
     return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map((x) => {
       const leg = nhlPpLeg(x);
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
-      const same = perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
-      return `<li>${star}<div class="tc-leg">`
+      const same = spread && perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
+      const face = avatarHtml({ sport: 'nhl', playerId: x.player_id, team: x.team, name: x.player });
+      return `<li>${star}<div class="tc-leg has-hs">${face}`
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
         + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NHL_MK[x.market] || x.market)} · ${esc(String(x.proj))} a game · ${esc(soccerKick(x.commence))}${same}</span>`
         + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`

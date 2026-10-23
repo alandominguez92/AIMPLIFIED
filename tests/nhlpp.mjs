@@ -173,6 +173,38 @@ ok(real.every((x) => x.point === 0.5 && x.book_line === 0.5), 'every one at 0.5,
 
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
+// The card, drawn from the replayed capture's /api/nhl-pp answer.
+function liftApp(name) {
+  let at = app.indexOf(`function ${name}(`);
+  const isConst = at < 0;
+  if (isConst) at = app.indexOf(`const ${name} =`);
+  if (at < 0) throw new Error(`app.js has no ${name}`);
+  let depth = 0;
+  for (let i = at; i < app.length; i++) {
+    const c = app[i];
+    if (c === '{' || c === '(' || c === '[') depth++;
+    else if (c === '}' || c === ')' || c === ']') { depth--; if (!isConst && c === '}' && depth === 0) return app.slice(at, i + 1); }
+    else if (isConst && c === ';' && depth === 0 && app[i + 1] === '\n') return app.slice(at, i + 1);
+  }
+  throw new Error(`could not close ${name}`);
+}
+const ui = { nhlPp: await hit('/api/nhl-pp'), slip: {} };
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+let card;
+try {
+  card = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
+    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NHL_MK', 'nhlPpLeg', 'nbaOversLineHtml', 'nhlPpCardHtml'].map(liftApp).join('\n')
+    + '\nreturn nhlPpCardHtml;')(ui, esc);
+} catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
+let html = card();
+const trocheck = REAL[Object.keys(REAL).find((u) => u.includes('20262027'))].data.find((x) => x.skaterFullName === 'Vincent Trocheck');
+ok((html.match(/<li>/g) || []).length === 5 && html.includes(`https://assets.nhle.com/mugs/nhl/20262027/UTA/${trocheck.playerId}.png`),
+  'five legs, each with the NHL\'s own photo of the skater (Trocheck: Utah\'s)');
+ok(!/same game/.test(html), 'one game\'s legs on a quiet night carry no "same game" tag on every row');
+// Legs from three games: the warning comes back for the game with two.
+ui.nhlPp = { ...ui.nhlPp, legs: ui.nhlPp.legs.map((x, i) => ({ ...x, game_id: ['ga', 'ga', 'gb', 'gc', 'gc', 'gc'][i] })) };
+html = card();
+ok((html.match(/same game/g) || []).length === 4, 'with three games on the card, the legs that share one are marked');
 ok(/const rec = nhlRecordHtml\(d\.record\) \+ nhlPpCardHtml\(\);/.test(app) && /fetchJson\('\/api\/nhl-pp'\)/.test(app),
   'the NHL tab reads /api/nhl-pp and draws the card under the moneyline record');
 ok(/id: `nhlpp:\$\{x\.game_id\}:\$\{x\.player\}:\$\{x\.market\}`/.test(app) && /sport: 'nhl'[^}]*market: x\.market, side: 'Under'/.test(app),
