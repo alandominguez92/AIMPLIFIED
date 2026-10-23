@@ -171,5 +171,34 @@ ok(nl === 6, `the six legs production logged from it (${nl})`);
 const nraw = await hit('/api/nhl-pp?raw=events');
 ok(JSON.stringify(nraw.events) === JSON.stringify(feed.events.icehockey_nhl), 'its list kept too (/api/nhl-pp?raw=events)');
 
+// ---- the real lists ---------------------------------------------------------------------------
+// As production first read them, at 2:55 PM Pacific on Friday Oct 23
+// (tests/fixtures/odds-{nba,nhl}-events-20261023.json, from ?raw=events): the
+// NBA's has Friday's twelve games, the one under way included, and then the
+// Christmas Day games -- no Saturday yet; the NHL's has Friday's two and
+// Saturday's twelve. Nothing PrizePicks has posted, both boards empty.
+console.log('\n-- the real lists, Friday afternoon --');
+const NBA_EV = read('odds-nba-events-20261023.json'), NHL_EV = read('odds-nhl-events-20261023.json');
+feed.events = { basketball_nba: NBA_EV.events, basketball_nba_preseason: [], icehockey_nhl: NHL_EV.events };
+feed.posted = {};
+NOW = RealDate.parse(NHL_EV.at);
+sq.prepare("DELETE FROM feed_cache WHERE key LIKE '%_pp_events:%' OR key IN ('nba_pp_games', 'nhl_pp_games')").run();
+snapshot('nba_board:reg', []); snapshot('nhl_board:reg', []);
+n = calls.length;
+for (let i = 0; i < 6; i++) { await tick(); NOW += 5 * 60e3; }
+const checked = new Set(since(n, (c) => c.kind === 'check').map((c) => c.ev));
+const reads = since(n, (c) => c.kind === 'read');
+const startOf = (id) => RealDate.parse([...NBA_EV.events, ...NHL_EV.events].find((e) => e.id === id).commence_time);
+const within = (list) => list.filter((e) => { const t = RealDate.parse(e.commence_time); return t > RealDate.parse(NHL_EV.at) && t - RealDate.parse(NHL_EV.at) <= 36 * H; });
+const nbaWant = within(NBA_EV.events), nhlWant = within(NHL_EV.events);
+const seen = (id) => checked.has(id) || reads.some((c) => c.ev === id);
+ok(nbaWant.length === 11 && nbaWant.every((e) => seen(e.id)), `half an hour of ticks: every NBA game still to come tonight is checked, or read if it tips inside 90 minutes (${nbaWant.filter((e) => seen(e.id)).length} of ${nbaWant.length})`);
+ok(nhlWant.length === 14 && nhlWant.every((e) => checked.has(e.id)),
+  `and every NHL game in the next 36 hours, Saturday's twelve with tonight's two (${nhlWant.filter((e) => checked.has(e.id)).length} of ${nhlWant.length})`);
+ok(!NBA_EV.events.some((e) => /^2026-12-2[56]/.test(e.commence_time) && checked.has(e.id)) && !checked.has(NBA_EV.events[0].id),
+  'never the Christmas games, two months out, nor the game under way');
+ok(reads.length === 5 && reads.every((c) => startOf(c.ev) - c.at <= 90 * 60e3),
+  `the only full reads are the pre-tip ones, the five 4:10 PM tips; everything else is a free check (${reads.length})`);
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
