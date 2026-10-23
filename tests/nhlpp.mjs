@@ -4,12 +4,13 @@
 // its standard -137, on DraftKings' number; two seasons of box scores put the
 // under at 59.5% (points) and 67.4% (assists) for regular skaters, and showed
 // that on 0.5 lines the scoring rate decides it. So each game's PrizePicks
-// points and assists lines are read once inside 100 minutes of puck drop
-// (about 2 credits a game), priced by Poisson at the skater's rate this season
-// blended with last season's, and graded from the NHL's own box scores by
-// player id. What has to hold:
-//   - the capture is the cron's, from the NHL board's snapshot, inside 100
-//     minutes, once a game, from ten or fewer books (one region)
+// points and assists lines are read (about 2 credits a read), priced by
+// Poisson at the skater's rate this season blended with last season's, and
+// graded from the NHL's own box scores by player id. Since 2026-10-23 a game
+// is read when PrizePicks posts it and again inside 90 minutes of puck drop
+// (tests/ppearly.mjs); here each capture is that pre-tip read. What has to hold:
+//   - the capture is the cron's, from the NHL board's snapshot, once a game
+//     inside 90 minutes, from ten or fewer books (one region)
 //   - the line is the one PrizePicks takes an Under on, never an over-only one
 //   - the rate is this season's blended with last season's, NHL_PRIOR_K games
 //     of it; a skater under 15 minutes a night, or not in the NHL's stats, is
@@ -193,7 +194,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 let card;
 try {
   card = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NHL_MK', 'nhlPpLeg', 'nbaOversLineHtml', 'nhlPpCardHtml'].map(liftApp).join('\n')
+    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NHL_MK', 'nhlPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'nhlPpCardHtml'].map(liftApp).join('\n')
     + '\nreturn nhlPpCardHtml;')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 let html = card();

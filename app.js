@@ -6061,7 +6061,7 @@
         + (rec.voided ? ` · ${rec.voided} void` : '')
       : 'This list keeps its own record from today: each leg on it when its game starts is graded.';
     if (!legs.length) {
-      grid.innerHTML = `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines about four hours before tip.</div>`
+      grid.innerHTML = `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + after;
       return;
     }
@@ -6183,6 +6183,22 @@
       low.n ? `PP line below book <b>${low.hit} of ${low.n}</b>` : null].filter(Boolean);
     return `<div class="tc-sub tc-rec-line">Overs: ${parts.join(' · ')}</div>`;
   }
+  // A line PrizePicks moved between the first read and the pre-tip one
+  // (2026-10-23): raised, the under got easier (teal); lowered, harder.
+  function ppMovedTag(x) {
+    if (x == null || x.first_point == null || x.first_point === x.point) return '';
+    const up = x.point > x.first_point;
+    return ` <span class="${up ? 'tc-gap' : 'tc-gap lower'}" title="PrizePicks ${up ? 'raised' : 'lowered'} its line since it first posted it (${esc(String(x.first_point))}); the chance shown is at the new one">PP ${esc(String(x.first_point))} → ${esc(String(x.point))}</span>`;
+  }
+  // The record the pre-tip read adds: how legs graded at the line read before
+  // the start, and how the first line's under landed where PrizePicks then
+  // raised its number -- the case for building the entry early.
+  function ppCloseLineHtml(r) {
+    const c = r && r.atClose, m = r && r.moved;
+    if (!c || !c.n) return '';
+    const raised = m && m.raised && m.raised.n ? ` · first line, where PP then raised it: <b>${m.raised.hit} of ${m.raised.n}</b>` : '';
+    return `<div class="tc-sub tc-rec-line">At the pre-tip line: <b>${c.hit} of ${c.n}</b>${raised}</div>`;
+  }
   function nbaPpCardHtml() {
     const d = state.nbaPp;
     if (!d) return '';
@@ -6205,14 +6221,14 @@
       hiBand.n ? `65%+ legs <b>${hiBand.hit} of ${hiBand.n}</b>` : null,
       ppHi.n ? `PP line above book <b>${ppHi.hit} of ${ppHi.n}</b>` : null,
     ].filter(Boolean).join(' · ');
-    const head = `<div class="tc-head"><span class="tc-title">Tonight's PrizePicks unders</span>${rec}</div>`
-      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Logged, not posted.</div>`
+    const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span>${rec}</div>`
+      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
-      + nbaOversLineHtml(r.overs);
+      + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r);
     if (!top.length) {
       return `<div class="nba-pp">${head}<div class="tc-wait-note">${all.length
-        ? 'No rotation players among tonight’s logged lines yet.'
-        : 'PrizePicks lines are read about four hours before each tip; none are logged for tonight yet.'}</div></div>`;
+        ? 'No rotation players among the logged lines yet.'
+        : 'PrizePicks has not posted lines for the next games yet: they are read as soon as it does.'}</div></div>`;
     }
     return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map((x) => {
       const leg = nbaPpLeg(x);
@@ -6228,7 +6244,7 @@
         // The team code leads line two: beside the face on line one it cut
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}</span>`
         + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
         + `</div></li>`;
     }).join('')}</ol></div>`;
@@ -6374,11 +6390,11 @@
     const hi = ['65-70', '70+'].map((k) => (r.byBand && r.byBand[k]) || { n: 0, hit: 0 })
       .reduce((a, c) => ({ n: a.n + c.n, hit: a.hit + c.hit }), { n: 0, hit: 0 });
     const recLine = r.graded ? `<div class="tc-sub tc-rec-line">Unders: <b>${r.hit} of ${r.graded}</b> landed${hi.n ? ` · 65%+ <b>${hi.hit} of ${hi.n}</b>` : ''}</div>` : '';
-    const head = `<div class="tc-head"><span class="tc-title">Tonight's PrizePicks unders</span></div>`
-      + `<div class="tc-sub">The chance the under lands at PrizePicks' line, from the skater's scoring rate this season and last. Points and assists; regulars (15+ minutes). Logged, not posted.</div>`
-      + recLine + nbaOversLineHtml(r.overs);
+    const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span></div>`
+      + `<div class="tc-sub">The chance the under lands at PrizePicks' line, from the skater's scoring rate this season and last. Points and assists; regulars (15+ minutes). Read when PrizePicks posts and again before puck drop. Logged, not posted.</div>`
+      + recLine + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r);
     if (!top.length) {
-      return `<div class="nba-pp">${head}<div class="tc-wait-note">PrizePicks' NHL lines are read about 100 minutes before each puck drop; none are logged for the games still to come.</div></div>`;
+      return `<div class="nba-pp">${head}<div class="tc-wait-note">PrizePicks has not posted NHL lines for the next games yet: they are read as soon as it does, and again about 90 minutes before puck drop.</div></div>`;
     }
     const perGame = {};
     for (const x of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
@@ -6394,7 +6410,7 @@
       const face = avatarHtml({ sport: 'nhl', playerId: x.player_id, team: x.team, name: x.player });
       return `<li>${star}<div class="tc-leg has-hs">${face}`
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NHL_MK[x.market] || x.market)} · ${esc(String(x.proj))} a game · ${esc(soccerKick(x.commence))}${same}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NHL_MK[x.market] || x.market)} · ${esc(String(x.proj))} a game · ${esc(soccerKick(x.commence))}${same}${ppMovedTag(x)}</span>`
         + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
         + `</div></li>`;
     }).join('')}</ol></div>`;

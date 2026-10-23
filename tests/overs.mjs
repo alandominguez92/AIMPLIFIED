@@ -136,7 +136,7 @@ ok(t(C.nbaOversLineHtml(ov)) === 'Overs: leaned over 3 of 6 · 65%+ 2 of 5 · PP
 ok(C.nbaOversLineHtml(null) === '' && C.nbaOversLineHtml({ graded: 0 }) === '', 'nothing before an over lean has graded');
 ok(t(C.socSideLineHtml(s.record, s.ppRecord)) === 'At the app’s line: unders 2 of 2, overs 1 of 2 · At your PP lines: unders 0 of 1, overs 1 of 1',
   `the soccer card: "${t(C.socSideLineHtml(s.record, s.ppRecord))}"`);
-ok(/Unders: \$\{recLine\}<\/div>` : ''\)\s*\+ nbaOversLineHtml\(r\.overs\);/.test(app)
+ok(/Unders: \$\{recLine\}<\/div>` : ''\)\s*\+ nbaOversLineHtml\(r\.overs\)[ +\w().]*;/.test(app)
   && /\+ socSideLineHtml\(d\.record, d\.ppRecord\)/.test(app), 'both cards draw them');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');

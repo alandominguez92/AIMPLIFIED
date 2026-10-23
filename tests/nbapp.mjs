@@ -16,7 +16,9 @@
 //   - a box score reads minutes, threes, rebounds and assists, and a DNP is a DNP
 //   - preseason games never feed a projection; regular-season ones do, blended
 //     with last season as NBA_PRIOR_K games' worth
-//   - each game's PrizePicks lines are captured ONCE, inside four hours of tip
+//   - each game is watched from 36 hours out with a PrizePicks-only check
+//     (free while PrizePicks has posted nothing), and its lines are read in
+//     full once when PrizePicks posts them -- not again on the next tick
 //   - a leg grades under/over from the box score; a player who did not play,
 //     or is missing from a fully-read day, is void, never a free under
 import fs from 'node:fs';
@@ -66,7 +68,7 @@ const BOX = fs.readFileSync(path.join(FIX, 'espn-nba-box-401812483.json'), 'utf8
 // not collide on one game id.
 const dayOf = {};
 const slateFor = (ymd) => ({ content: { sbData: { events: (SCORE.content.sbData.events).map((e) => ({ ...e, id: e.id + '-' + ymd })) } } });
-let ppCalls = 0;
+let ppCalls = 0, ppChecks = 0;
 let ppPayload = null;
 globalThis.fetch = async (u) => {
   const url = String(u);
@@ -78,7 +80,15 @@ globalThis.fetch = async (u) => {
   }
   if (url.includes('cdn.espn.com/core/nba/boxscore')) return J(BOX);
   if (url.includes('api.the-odds-api.com')) {
-    if (/\/events\/[^/]+\/odds/.test(url)) { ppCalls++; return J(ppPayload); }
+    const ev = (url.match(/\/events\/([^/]+)\/odds/) || [])[1];
+    if (ev) {
+      // Only the early game is posted; the late one answers as an unposted
+      // event does, with no bookmakers. A PrizePicks-only, one-market call is
+      // the watch's check; anything else is the full read.
+      const posted = ppPayload && ev === ppPayload.id;
+      if (/&bookmakers=prizepicks$/.test(url)) ppChecks++; else ppCalls++;
+      return J(posted ? ppPayload : { id: ev, bookmakers: [] });
+    }
     return J([]);
   }
   return new Response('{}', { status: 404 });
@@ -114,7 +124,7 @@ console.log('\n-- PrizePicks lines captured, projected and logged --');
 const [anId, anPrior] = priorOf('OG Anunoby');
 sq.prepare(`INSERT INTO nba_box (game_id, date, season_type, player_id, player, team, min, threes, ast, reb, starter, dnp)
   VALUES ('r1', '2026-10-19', 2, ?, 'OG Anunoby', 'NY', 34, 5, 2, 6, 1, 0), ('r2', '2026-10-20', 2, ?, 'OG Anunoby', 'NY', 30, 1, 1, 4, 1, 0)`).run(anId, anId);
-// Tonight's game, from the board's snapshot: it tips inside the four-hour window.
+// Tonight's games, from the board's snapshot: PrizePicks has posted the early one.
 const TIP = iso(NOW + 3 * 3600e3);
 sq.prepare("INSERT OR REPLACE INTO feed_cache (key, data, updated_at) VALUES (?, ?, ?)").run('nba_board:reg',
   JSON.stringify({ asOf: iso(NOW), games: [{ id: 'evNYK', league: 'reg', commence: TIP, home: 'Philadelphia 76ers', away: 'New York Knicks' },
@@ -135,7 +145,7 @@ await tick();
 const legs = sq.prepare('SELECT * FROM nbapp ORDER BY model_under DESC').all();
 const leg = (p, m) => legs.find((l) => l.player === p && l.market === m) || {};
 console.log('  logged: ' + legs.map((l) => `${l.player} ${l.market} u${l.point} proj ${l.proj} (${l.n_recent} recent) ${l.model_under}%`).join(' | '));
-ok(ppCalls === 1, `one paid call, for the game inside the window and not the late one (${ppCalls})`);
+ok(ppChecks === 2 && ppCalls === 1, `a PrizePicks-only check of each game, then one full read, for the game PrizePicks has posted and not the late one (${ppChecks} checks, ${ppCalls} reads)`);
 const an = leg('OG Anunoby', 'threes');
 const wantProj = Math.round(((5 + 1) + 5 * anPrior.threes) / (2 + 5) * 10) / 10;
 ok(an.proj === wantProj && an.n_recent === 2,
@@ -153,7 +163,7 @@ const anMinWant = Math.round(((34 + 30) + 5 * anPrior.min) / 7 * 10) / 10;
 ok(an.min_proj === anMinWant && lo.min_proj != null && lo.min_proj < 20,
   `projected minutes are logged, blended like the stat (Anunoby ${an.min_proj}, want ${anMinWant}; Lowry ${lo.min_proj})`);
 await tick();
-ok(ppCalls === 1, 'the next tick does not buy the same game again');
+ok(ppCalls === 1 && ppChecks === 2, `the next tick neither buys the same game again nor re-checks the late one inside two hours (${ppChecks} checks, ${ppCalls} reads)`);
 
 // ---- the board -------------------------------------------------------------------------
 const board = await hit('/api/nba-pp');

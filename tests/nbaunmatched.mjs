@@ -43,8 +43,10 @@ const PAY = Object.fromEntries(['odds-nba-pp-26b036ff-20261020.json', 'odds-nba-
   return [JSON.parse(text).id, text];
 }));
 const [BOS_DET, OKC_SA] = Object.keys(PAY).map((id) => JSON.parse(PAY[id]));
-const AT_BOS = RealDate.parse('2026-10-20T15:01:05Z');   // when production captured each
-const AT_OKC = RealDate.parse('2026-10-20T21:30:37Z');
+// Production read each four to five hours before tip; replayed here as the
+// pre-tip read, an hour before, so each capture is one full read (2026-10-23).
+const AT_BOS = RealDate.parse('2026-10-20T18:00:00Z');
+const AT_OKC = RealDate.parse('2026-10-21T00:30:00Z');
 let paid = 0;
 globalThis.fetch = async (u) => {
   // (Underdog and Pick6 are asked for since 2026-10-22; the payloads were recorded before, with neither.)
@@ -66,7 +68,7 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
 ok(BEFORE !== SRC, 'worker.js has the Ron Holland alias to take out for "before the alias"');
 
 // One database; each capture by the worker.js given, at the time given, with
-// the game on the board's snapshot (tipping two hours on, if it says so).
+// the game on the board's snapshot (tipping an hour on, if it says so).
 let worlds = 0;
 async function world() {
   const sq = new DatabaseSync(':memory:');
@@ -93,7 +95,7 @@ async function world() {
     const tick = async () => { const held = []; await mod.default.scheduled({}, env, { waitUntil: (p) => held.push(p) }); await Promise.allSettled(held); };
     await tick();                                        // tables made
     sq.prepare('INSERT OR REPLACE INTO feed_cache (key, data, updated_at) VALUES (?, ?, ?)').run('nba_board:reg',
-      JSON.stringify({ asOf: iso(NOW), games: [{ id: ev.id, league: 'reg', commence: tipsLater ? iso(NOW + 2 * 3600e3) : ev.commence_time,
+      JSON.stringify({ asOf: iso(NOW), games: [{ id: ev.id, league: 'reg', commence: tipsLater ? iso(NOW + 3600e3) : ev.commence_time,
         home: ev.home_team, away: ev.away_team }] }), NOW);
     await tick();
     return (await mod.default.fetch(new Request('https://x/api/nba-pp?raw=1'), env, { waitUntil: () => {} })).json();

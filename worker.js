@@ -8095,7 +8095,9 @@ async function picksCandidates(env, now) {
   await ensureNbaSchema(db);
   const np = (await db.prepare(`SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
     .bind(...days, ...NBA_PICK_MARKETS).all()).results || [];
-  for (const r of np) {
+  for (const row of ppStanding(np)) {
+    // At its latest line: the one that can be played now (ppCurrent).
+    const r = ppCurrent(row);
     if (!soon(r.commence) || r.model_under == null || r.model_under < PICK_KINDS.nba_pp.min) continue;
     if (!(r.min_proj >= NBA_ROTATION_MIN)) continue;
     legs.push({ kind: 'nba_pp', gameKey: 'nba:' + r.game_id, p: r.model_under, commence: r.commence, odds: null,
@@ -8163,8 +8165,11 @@ async function dayPickResult(db, r) {
   if (r.kind === 'mlb_pp' || r.kind === 'nba_pp') {
     const m = r.kind === 'mlb_pp'
       ? await one('SELECT result FROM pppicks WHERE date = ? AND game_id = ? AND player_id = ? AND market = ?', r.src_date, r.game_id, Number(r.player_key), r.market)
-      : await one('SELECT result FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', r.src_date, r.game_id, r.player_key, r.market);
-    const res = m && m.result;
+      : await one('SELECT result, point, close_point, close_result FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', r.src_date, r.game_id, r.player_key, r.market);
+    // A leg the list showed at the pre-tip line grades at that line: the
+    // label carries the number it showed ("... Under 6.5 REB").
+    const shown = Number((String(r.label || '').match(/ Under (\d+(?:\.\d+)?) /) || [])[1]);
+    const res = m && (m.close_point != null && m.close_point !== m.point && shown === m.close_point ? m.close_result : m.result);
     return res === 'under' ? 'hit' : res === 'over' ? 'miss' : res === 'push' ? 'push' : res === 'void' ? 'void' : null;
   }
   const sport = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', soccer_fav: 'soccer' }[r.kind];
@@ -9872,8 +9877,8 @@ function nhlMatch(a, b) {
 // offering Less on both at its standard -137, on the same number as
 // DraftKings; it posted no goals, and blocked shots for two players.
 //
-// So: each game's PrizePicks points and assists lines, read once inside 100
-// minutes of puck drop (it posts late), at about 2 credits a game. The chance
+// So: each game's PrizePicks points and assists lines, read when PrizePicks
+// posts them and again before puck drop (ppReadDue, since 2026-10-23), about 2 credits a read. The chance
 // is Poisson at the player's rate this season blended with last season's
 // (NHL_PRIOR_K games of it), both from the NHL's free stats API by name, which
 // also gives the NHL player id the box scores grade by. Regulars only: 15+
@@ -9883,7 +9888,6 @@ const NHL_PP_MARKETS = { player_points: 'pts', player_assists: 'ast' };
 // Ten books or fewer bill as one region: PrizePicks, the other pick'em apps,
 // the books whose number it is compared with, and the sharp books.
 const NHL_PP_BOOKS = ['prizepicks', 'underdog', 'pick6', 'draftkings', 'fanduel', 'pinnacle', 'novig', 'prophetx'];
-const NHL_PP_WINDOW_MS = 100 * 60e3;
 const NHL_PP_PER_TICK = 4;
 const NHL_PP_RAW_KEY = 'nhl_pp_raw';
 const NHL_PRIOR_K = 5;
@@ -9899,6 +9903,7 @@ async function ensureNhlPpSchema(db) {
     book_line REAL, book_under INTEGER, actual REAL, result TEXT, captured_at TEXT,
     PRIMARY KEY (date, game_id, player, market)
   )`).run();
+  await addColumns(db, 'nhlpp', PP_CLOSE_COLS);   // the pre-tip read, as the NBA log keeps it
 }
 // A season's skaters by name, from the NHL's stats API (one request, free):
 // games, goals, assists, points and time on ice a game. Last season's is
@@ -9975,7 +9980,7 @@ function nhlPpLegs(ev, pri, cur) {
   }
   return out;
 }
-async function logNhlPp(db, legs) {
+async function logNhlPp(db, legs, close) {
   if (!legs.length) return 0;
   const stamp = new Date().toISOString();
   const stmts = legs.map((l) => db.prepare(
@@ -9983,45 +9988,61 @@ async function logNhlPp(db, legs) {
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market, l.commence, l.home, l.away, l.team, l.player_id,
     l.point, l.proj, l.model_under, l.gp_cur, l.prior_gp, l.toi_proj, l.book_line, l.book_under, stamp));
+  // The pre-tip read fills each leg's close_ columns (logNbaPp's rule).
+  if (close) for (const l of legs) stmts.push(db.prepare(
+    'UPDATE nhlpp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=? WHERE date=? AND game_id=? AND player=? AND market=?'
+  ).bind(l.point, l.model_under, l.book_line, l.book_under, stamp, ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market));
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
-  return stmts.length;
+  return legs.length;
 }
-// Cron: each game once, inside 100 minutes of puck drop, found in the NHL
+// Cron: each game watched from 36 hours out, read when PrizePicks posts it and
+// again before puck drop (ppReadDue, as the NBA log), found in the NHL
 // board's snapshot so finding them costs nothing.
 async function nhlPpMaybeCapture(env) {
   if (!env || !env.DB || !env.ODDS_API_KEY) return null;
   const now = Date.now();
-  const doneKey = `nhl_pp_done:${slateDate()}`;
-  const doneHit = await loadFeedCache(env.DB, doneKey);
-  const done = new Set(((doneHit.present && doneHit.data) || {}).ids || []);
+  const states = await ppReadStates(env.DB, 'nhl_pp_games', now);
   const snap = await loadFeedCache(env.DB, 'nhl_board:reg');
-  const due = ((snap.present && snap.data && snap.data.games) || []).filter((g) => {
-    const t = Date.parse(g.commence);
-    return isFinite(t) && t > now && t - now <= NHL_PP_WINDOW_MS && !done.has(g.id);
-  });
+  const due = ((snap.present && snap.data && snap.data.games) || [])
+    .map((g) => ({ g, what: ppReadDue(g.commence, states[g.id], now) })).filter((x) => x.what)
+    .sort((a, b) => ((a.what === 'close' ? 0 : 1) - (b.what === 'close' ? 0 : 1)) || Date.parse(a.g.commence) - Date.parse(b.g.commence));
   if (!due.length) return null;
   await ensureNhlPpSchema(env.DB);
-  const pri = await nhlSkaters(env, NHL_SEASONS.prior, null);
-  const cur = await nhlSkaters(env, NHL_SEASONS.current, 3 * 3600e3);
-  let logged = 0;
-  for (const g of due.slice(0, NHL_PP_PER_TICK)) {
+  let pri = null, cur = null;
+  let calls = 0, logged = 0;
+  const url = (id, markets, books) => `https://api.the-odds-api.com/v4/sports/icehockey_nhl/events/${id}/odds?apiKey=${env.ODDS_API_KEY}`
+    + `&markets=${markets}&oddsFormat=american&dateFormat=iso&bookmakers=${books}`;
+  for (const { g, what } of due) {
+    if (calls >= NHL_PP_PER_TICK) break;
+    const st = states[g.id] = { ...(states[g.id] || {}), commence: g.commence };
     try {
-      const r = await fetch(`https://api.the-odds-api.com/v4/sports/icehockey_nhl/events/${g.id}/odds?apiKey=${env.ODDS_API_KEY}`
-        + `&markets=${Object.keys(NHL_PP_MARKETS).join(',')}&oddsFormat=american&dateFormat=iso&bookmakers=${NHL_PP_BOOKS.join(',')}`,
-      { headers: { accept: 'application/json' } });
+      if (what === 'check') {
+        calls++;
+        const c = await fetch(url(g.id, 'player_points', 'prizepicks'), { headers: { accept: 'application/json' } });
+        await recordOddsUsage(env, c, 'nhl:reg:pp-check');
+        st.checked = now;
+        const cb = c.ok ? await c.json() : null;
+        if (!(cb && (cb.bookmakers || []).some((b) => b.key === 'prizepicks'))) continue;
+        st.posted = now;
+        if (calls >= NHL_PP_PER_TICK) continue;
+      }
+      calls++;
+      const r = await fetch(url(g.id, Object.keys(NHL_PP_MARKETS).join(','), NHL_PP_BOOKS.join(',')),
+        { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, 'nhl:reg:pp');
       if (!r.ok) continue;
       const body = await r.json();
-      logged += await logNhlPp(env.DB, nhlPpLegs(body, pri, cur));
+      if (!pri) { pri = await nhlSkaters(env, NHL_SEASONS.prior, null); cur = await nhlSkaters(env, NHL_SEASONS.current, 3 * 3600e3); }
+      const hasPP = !!(body && (body.bookmakers || []).some((b) => b.key === 'prizepicks'));
+      logged += await logNhlPp(env.DB, nhlPpLegs(body, pri, cur), what === 'close');
+      if (what === 'close') st.close = now;
+      if (hasPP) st.first = st.first || now; else { st.posted = null; st.checked = now; }
       // The last payload with PrizePicks on it, as it came (/api/nhl-pp?raw=1).
-      if (body && (body.bookmakers || []).some((b) => b.key === 'prizepicks')) {
-        await saveFeedCache(env.DB, NHL_PP_RAW_KEY, { at: new Date().toISOString(), game: g.id, credits: Number(r.headers.get('x-requests-last')) || null, body });
-      }
-      done.add(g.id);
+      if (hasPP) await saveFeedCache(env.DB, NHL_PP_RAW_KEY, { at: new Date().toISOString(), game: g.id, credits: Number(r.headers.get('x-requests-last')) || null, body });
     } catch (e) { /* this game waits for the next tick */ }
   }
-  await saveFeedCache(env.DB, doneKey, { ids: [...done] });
-  return { logged, due: due.length };
+  await saveFeedCache(env.DB, 'nhl_pp_games', states);
+  return { logged, calls, due: due.length };
 }
 // Pure: one NHL box score in, each skater's goals, assists and points by NHL id.
 function nhlBoxLines(box) {
@@ -10066,8 +10087,9 @@ async function gradeNhlPp(env) {
         actual = v; result = v < r.point ? 'under' : v > r.point ? 'over' : 'push';
       } else if (settled) result = 'void';
       if (!result) continue;
-      stmts.push(env.DB.prepare('UPDATE nhlpp SET result=?, actual=? WHERE date=? AND game_id=? AND player=? AND market=?')
-        .bind(result, actual, r.date, r.game_id, r.player, r.market));
+      const close = r.close_point == null ? null : result === 'void' ? 'void' : ppSide(actual, r.close_point);
+      stmts.push(env.DB.prepare('UPDATE nhlpp SET result=?, actual=?, close_result=? WHERE date=? AND game_id=? AND player=? AND market=?')
+        .bind(result, actual, close, r.date, r.game_id, r.player, r.market));
     }
   }
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
@@ -10087,12 +10109,13 @@ async function nhlPpBoard(env, url) {
     await ensureNhlPpSchema(env.DB);
     const now = Date.now();
     const rows = (await env.DB.prepare('SELECT * FROM nhlpp WHERE date >= ? ORDER BY model_under DESC').bind(slateDateOffset(-1)).all()).results || [];
-    out.legs = rows.filter((r) => Date.parse(r.commence) > now).map((r) => ({
+    out.legs = ppStanding(rows.filter((r) => Date.parse(r.commence) > now)).map((r) => ppCurrent(r)).map((r) => ({
       player: r.player, team: r.team, market: r.market, point: r.point, model_under: r.model_under, proj: r.proj, gp_cur: r.gp_cur,
       toi_proj: r.toi_proj, game: `${r.away} @ ${r.home}`, game_id: r.game_id, commence: r.commence, player_id: r.player_id,
       book_line: r.book_line, book_under: r.book_under, vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
-    }));
-    const graded = (await env.DB.prepare("SELECT market, model_under, point, book_line, result FROM nhlpp WHERE result IN ('under','over','push')").all()).results || [];
+      first_point: r.first_point, first_under: r.first_under, first_at: r.captured_at, close_at: r.close_at,
+    })).sort((a, b) => b.model_under - a.model_under);
+    const graded = (await env.DB.prepare("SELECT market, model_under, point, book_line, result, close_point, close_result FROM nhlpp WHERE result IN ('under','over','push')").all()).results || [];
     const gap = (g) => (g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null);
     const un = ppSplitRecord(graded.map((g) => ({ p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null), gap: gap(g) })));
     const lean = graded.filter((g) => g.model_under != null && g.model_under < 50);
@@ -10104,7 +10127,8 @@ async function nhlPpBoard(env, url) {
     }));
     out.record = { scope: `regular skaters (${NHL_TOI_MIN}+ minutes), at PrizePicks’ line`, graded: un.n, hit: un.hit, hitRate: un.hitRate,
       byBand: un.byBand, byLineGap: un.byLineGap, byMarket: byMarket(graded, 'under'),
-      overs: { graded: ov.n, hit: ov.hit, hitRate: ov.hitRate, byBand: ov.byBand, byLineGap: ov.byLineGap, byMarket: byMarket(lean, 'over') } };
+      overs: { graded: ov.n, hit: ov.hit, hitRate: ov.hitRate, byBand: ov.byBand, byLineGap: ov.byLineGap, byMarket: byMarket(lean, 'over') },
+      ...ppCloseRecord(graded) };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }
@@ -10154,8 +10178,72 @@ const NBA_DISP = { threes: 1.15, ast: 1.25, reb: 1.2, blk: 1.15, stl: 1.1 };
 // Blocks and steals join once their own graded record says their chance holds.
 const NBA_PICK_MARKETS = ['threes', 'ast', 'reb'];
 const NBA_PP_VER = 'nbapp-v1';
-const NBA_PP_WINDOW_MS = 4 * 3600 * 1000;   // capture a game once, inside 4h of tip
 const NBA_PP_PER_TICK = 5;                   // per-event calls a tick may make
+// When PrizePicks' props are read (2026-10-23), for the NBA and NHL logs alike.
+// They were read once, 4 hours before tip, but PrizePicks posts a game's lines
+// as early as the night before, and that is when the user often builds an
+// entry. So each game is watched from 36 hours out: every two hours a
+// PrizePicks-only check of one market, which costs nothing while PrizePicks
+// has posted nothing (an empty answer is not billed) and about 1 credit once
+// it has. The first time it answers, the full read follows at once -- every
+// market, with the books beside it -- and its lines are each leg's first
+// line, the one the record grades. Then one more read inside 90 minutes of
+// the start: the close, which updates each leg (the card shows what moved)
+// and adds any leg posted since.
+const PP_WATCH_MS = 36 * 3600e3;
+const PP_WATCH_EVERY_MS = 2 * 3600e3;
+const PP_CLOSE_MS = 90 * 60e3;
+// Pure: what one game needs now -- 'check', 'first', 'close' or nothing.
+// st is the game's read state: { checked, first, close } (times).
+function ppReadDue(commence, st, now) {
+  const t = Date.parse(commence);
+  if (!isFinite(t) || t <= now || t - now > PP_WATCH_MS) return null;
+  if (t - now <= PP_CLOSE_MS) return st && st.close ? null : 'close';
+  if (st && st.first) return null;
+  if (st && st.posted) return 'first';           // seen up, its full read not yet taken
+  if (st && st.checked && now - st.checked < PP_WATCH_EVERY_MS) return null;
+  return 'check';
+}
+// A logged leg as it stands now: the pre-tip read's line, chance and book
+// line where one was read, the first read's otherwise, with the first kept.
+const ppCurrent = (r) => (r.close_point == null
+  ? { ...r, first_point: r.point, first_under: r.model_under }
+  : { ...r, first_point: r.point, first_under: r.model_under, point: r.close_point, model_under: r.close_under,
+    book_line: r.close_book_line, book_under: r.close_book_under });
+// Which side a count landed on against a line.
+const ppSide = (actual, line) => (actual < line ? 'under' : actual > line ? 'over' : 'push');
+// The legs PrizePicks still has up. One whose game had the pre-tip read and
+// that was not on it was taken down after the first read -- most often a
+// player ruled out -- so it leaves the card and the list. It still grades at
+// its first line, as every leg does.
+function ppStanding(rows) {
+  const reread = new Set(rows.filter((r) => r.close_at).map((r) => r.game_id));
+  return rows.filter((r) => r.close_point != null || !reread.has(r.game_id));
+}
+// The record a pre-tip read adds (2026-10-23): how the legs graded at the
+// line read before tip, and where PrizePicks moved its number after the first
+// read -- raised (the first line's under was the easier one), lowered, or
+// kept -- with how the first line's under landed in each.
+function ppCloseRecord(rows) {
+  const cell = (l, key) => { const d = l.filter((g) => g[key] === 'under' || g[key] === 'over'); const hit = d.filter((g) => g[key] === 'under').length;
+    return { n: d.length, hit, hitRate: d.length ? round1(hit / d.length * 100) : null }; };
+  const read = rows.filter((g) => g.close_point != null);
+  return {
+    atClose: cell(read, 'close_result'),
+    moved: {
+      raised: cell(read.filter((g) => g.close_point > g.point), 'result'),
+      lowered: cell(read.filter((g) => g.close_point < g.point), 'result'),
+      kept: cell(read.filter((g) => g.close_point === g.point), 'result'),
+    },
+  };
+}
+// Each game's read state, kept a day past its start.
+async function ppReadStates(db, key, now) {
+  const hit = await loadFeedCache(db, key);
+  const all = (hit.present && hit.data) || {};
+  for (const [id, s] of Object.entries(all)) if (!s || !(Date.parse(s.commence) > now - 864e5)) delete all[id];
+  return all;
+}
 const NBA_PP_RAW_KEY = 'nba_pp_raw';         // feed_cache: the last capture's payload
 const NBA_PP_UNMATCHED_DAYS = 30;            // a name with no prior stays on the raw payload's log this long after last seen
 const NBA_BOX_PER_TICK = 4;                  // box scores a tick may read
@@ -10229,7 +10317,13 @@ async function ensureNbaSchema(db) {
     PRIMARY KEY (date, game_id, player, market)
   )`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nbapp_ungraded ON nbapp (date) WHERE result IS NULL').run();
+  // The pre-tip read beside the first (2026-10-23): point and model_under are
+  // the first line's, graded as result; the close_ columns are the last read
+  // before tip, graded as close_result.
+  await addColumns(db, 'nbapp', PP_CLOSE_COLS);
 }
+const PP_CLOSE_COLS = [['close_point', 'REAL'], ['close_under', 'REAL'], ['close_book_line', 'REAL'], ['close_book_under', 'INTEGER'],
+  ['close_at', 'TEXT'], ['close_result', 'TEXT']];
 
 // Accents are stripped as well as case and suffixes: "Nikola Jokić" in one feed
 // is "Nikola Jokic" in the other.
@@ -10382,49 +10476,75 @@ function nbaPpUnmatchedLog(prev, cur, pri, at, ev) {
   return [...out.values()].sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : 0));
 }
 
-async function logNbaPp(db, lg, legs) {
+// A leg is written once, at its first line; a later read (close: true) also
+// fills its close_ columns, and a leg first seen then is written with both.
+async function logNbaPp(db, lg, legs, close) {
   if (!legs.length) return 0;
   const stamp = new Date().toISOString();
-  const stmts = legs.map((l) => db.prepare(
-    `INSERT OR IGNORE INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, prior_gp, min_proj, book_line, book_under, model_ver, captured_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market, lg, l.commence, l.home, l.away, l.team, l.player_id,
-    l.point, l.proj, l.model_under, l.n_recent, l.prior_gp, l.min_proj, l.book_line, l.book_under, NBA_PP_VER, stamp));
+  const stmts = [];
+  for (const l of legs) {
+    const day = ptDateOf(Date.parse(l.commence));
+    stmts.push(db.prepare(
+      `INSERT OR IGNORE INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, prior_gp, min_proj, book_line, book_under, model_ver, captured_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(day, l.game_id, l.player, l.market, lg, l.commence, l.home, l.away, l.team, l.player_id,
+      l.point, l.proj, l.model_under, l.n_recent, l.prior_gp, l.min_proj, l.book_line, l.book_under, NBA_PP_VER, stamp));
+    if (close) stmts.push(db.prepare(
+      'UPDATE nbapp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=? WHERE date=? AND game_id=? AND player=? AND market=?'
+    ).bind(l.point, l.model_under, l.book_line, l.book_under, stamp, day, l.game_id, l.player, l.market));
+  }
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
-  return stmts.length;
+  return legs.length;
 }
 
-// Cron: each game once, inside four hours of its tip, taken from the board's
-// snapshot so finding the games costs nothing. A few events a tick, so a
-// fifteen-game night spreads over several ticks instead of one.
+// Cron: each game watched from 36 hours out, read when PrizePicks posts it and
+// again before tip (ppReadDue), the games taken from the board's snapshot so
+// finding them costs nothing. A few calls a tick, pre-tip reads first.
 async function nbaPpMaybeCapture(env) {
   if (!env || !env.DB || !env.ODDS_API_KEY) return null;
   const now = Date.now();
-  const doneKey = `nba_pp_done:${slateDate()}`;
-  const doneHit = await loadFeedCache(env.DB, doneKey);
-  const done = new Set(((doneHit.present && doneHit.data) || {}).ids || []);
+  const states = await ppReadStates(env.DB, 'nba_pp_games', now);
   const due = [];
   for (const lg of Object.keys(NBA_LEAGUES)) {
     const snap = await loadFeedCache(env.DB, `nba_board:${lg}`);
     for (const g of ((snap.present && snap.data && snap.data.games) || [])) {
-      const t = Date.parse(g.commence);
-      if (isFinite(t) && t > now && t - now <= NBA_PP_WINDOW_MS && !done.has(g.id)) due.push({ lg, g });
+      const what = ppReadDue(g.commence, states[g.id], now);
+      if (what) due.push({ lg, g, what });
     }
   }
   if (!due.length) return null;
+  due.sort((a, b) => ((a.what === 'close' ? 0 : 1) - (b.what === 'close' ? 0 : 1)) || Date.parse(a.g.commence) - Date.parse(b.g.commence));
   await ensureNbaSchema(env.DB);
-  const pri = await nbaPriors(env);
-  const recent = await nbaRecentMap(env.DB);
-  let logged = 0;
-  for (const { lg, g } of due.slice(0, NBA_PP_PER_TICK)) {
+  let pri = null, recent = null;
+  let calls = 0, logged = 0;
+  const url = (lg, id, markets, books) => `https://api.the-odds-api.com/v4/sports/${NBA_LEAGUES[lg]}/events/${id}/odds?apiKey=${env.ODDS_API_KEY}`
+    + `&markets=${markets}&oddsFormat=american&dateFormat=iso&bookmakers=${books}`;
+  for (const { lg, g, what } of due) {
+    if (calls >= NBA_PP_PER_TICK) break;
+    const st = states[g.id] = { ...(states[g.id] || {}), commence: g.commence };
     try {
-      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${NBA_LEAGUES[lg]}/events/${g.id}/odds?apiKey=${env.ODDS_API_KEY}`
-        + `&markets=${Object.keys(NBA_PP_MARKETS).join(',')}&oddsFormat=american&dateFormat=iso&bookmakers=${NBA_PP_BOOKS.join(',')}`,
-      { headers: { accept: 'application/json' } });
+      if (what === 'check') {
+        // PrizePicks alone, one market: free until it has posted.
+        calls++;
+        const c = await fetch(url(lg, g.id, 'player_rebounds', 'prizepicks'), { headers: { accept: 'application/json' } });
+        await recordOddsUsage(env, c, `nba:${lg}:pp-check`);
+        st.checked = now;
+        const cb = c.ok ? await c.json() : null;
+        if (!(cb && (cb.bookmakers || []).some((b) => b.key === 'prizepicks'))) continue;
+        st.posted = now;
+        if (calls >= NBA_PP_PER_TICK) continue;      // the full read takes the next tick
+      }
+      calls++;
+      const r = await fetch(url(lg, g.id, Object.keys(NBA_PP_MARKETS).join(','), NBA_PP_BOOKS.join(',')),
+        { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, `nba:${lg}:pp`);
       if (!r.ok) continue;
       const body = await r.json();
-      logged += await logNbaPp(env.DB, lg, nbaPpLegs(body, pri, recent));
+      if (!pri) { pri = await nbaPriors(env); recent = await nbaRecentMap(env.DB); }
+      const hasPP = !!(body && (body.bookmakers || []).some((b) => b.key === 'prizepicks'));
+      logged += await logNbaPp(env.DB, lg, nbaPpLegs(body, pri, recent), what === 'close');
+      if (what === 'close') st.close = now;
+      if (hasPP) st.first = st.first || now; else { st.posted = null; st.checked = now; }
       // The last payload with PrizePicks on it, kept as it came so a test can
       // replay a real one (/api/nba-pp?raw=1). No extra call, no extra credit.
       // With it, the PrizePicks names that found no prior: this game's, and
@@ -10436,11 +10556,10 @@ async function nbaPpMaybeCapture(env) {
           credits: Number(r.headers.get('x-requests-last')) || null, unmatched,
           unmatchedLog: nbaPpUnmatchedLog(prev.present && prev.data && prev.data.unmatchedLog, unmatched, pri, Date.now(), body), body });
       }
-      done.add(g.id);
     } catch (e) { /* this game waits for the next tick */ }
   }
-  await saveFeedCache(env.DB, doneKey, { ids: [...done] });
-  return { logged, captured: Math.min(due.length, NBA_PP_PER_TICK), due: due.length };
+  await saveFeedCache(env.DB, 'nba_pp_games', states);
+  return { logged, calls, due: due.length };
 }
 
 // Pure: one ESPN box score in, one row per player out.
@@ -10551,8 +10670,10 @@ async function gradeNbaPp(db) {
         else { actual = v; result = actual < r.point ? 'under' : actual > r.point ? 'over' : 'push'; }
       } else if (settled) result = 'void';
       if (!result) continue;
-      stmts.push(db.prepare('UPDATE nbapp SET result=?, actual=? WHERE date=? AND game_id=? AND player=? AND market=?')
-        .bind(result, actual, r.date, r.game_id, r.player, r.market));
+      // And at the pre-tip line, where one was read (ppSide: the same rule).
+      const close = r.close_point == null ? null : result === 'void' ? 'void' : ppSide(actual, r.close_point);
+      stmts.push(db.prepare('UPDATE nbapp SET result=?, actual=?, close_result=? WHERE date=? AND game_id=? AND player=? AND market=?')
+        .bind(result, actual, close, r.date, r.game_id, r.player, r.market));
     }
   }
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
@@ -10579,16 +10700,19 @@ async function nbaPpBoard(env) {
     await ensureNbaSchema(env.DB);
     const rows = ((await env.DB.prepare('SELECT * FROM nbapp WHERE date >= ? ORDER BY model_under DESC').bind(slateDateOffset(-1)).all()).results || []);
     const now = Date.now();
-    out.legs = rows.filter((r) => Date.parse(r.commence) > now).map((r) => ({
+    // Each leg at its latest line (the pre-tip read's, once taken: the one that
+    // can be played now), with the first line and chance beside it.
+    out.legs = ppStanding(rows.filter((r) => Date.parse(r.commence) > now)).map((r) => ppCurrent(r)).map((r) => ({
       player: r.player, team: r.team, market: r.market, point: r.point, model_under: r.model_under, proj: r.proj,
       n_recent: r.n_recent, min_proj: r.min_proj, game: `${r.away} @ ${r.home}`, game_id: r.game_id, commence: r.commence, league: r.league,
       book_line: r.book_line, book_under: r.book_under, player_id: r.player_id,
       // PrizePicks' number minus the books': above 0, its under is easier.
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
-    }));
+      first_point: r.first_point, first_under: r.first_under, first_at: r.captured_at, close_at: r.close_at,
+    })).sort((a, b) => b.model_under - a.model_under);
     // The record is kept over the players the card shows. A bench player's 0.5
     // line tops any ranking by the model's chance, and he is the one who sits.
-    const graded = ((await env.DB.prepare("SELECT date, market, model_under, point, book_line, min_proj, result FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
+    const graded = ((await env.DB.prepare("SELECT date, market, model_under, point, book_line, min_proj, result, close_point, close_result FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
       .filter((g) => g.min_proj != null && g.min_proj >= NBA_ROTATION_MIN);
     const split = ppSplitRecord(graded.map((g) => ({
       p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null),
@@ -10637,6 +10761,7 @@ async function nbaPpBoard(env) {
       overs: { scope: 'the legs where the model leaned over, at PrizePicks’ line', graded: ov.n, hit: ov.hit, hitRate: ov.hitRate,
         byBand: ov.byBand, byLineGap: ov.byLineGap,
         byMarket: Object.fromEntries(Object.entries(ovBy).map(([k, v]) => [k, { n: v.n, hit: v.hit, hitRate: v.n ? round1(v.hit / v.n * 100) : null }])) },
+      ...ppCloseRecord(graded),
     };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;

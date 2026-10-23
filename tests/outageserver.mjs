@@ -393,6 +393,18 @@ if (NBADEMO) {
   // the day -- the steals leg tops this game, and the list still shows Brunson.
   await leg(today, tip, 'OG Anunoby', 'NY', 'stl', 1.5, 74.5, 1.4, 1.5, 34, null);
   await leg(today, tip, 'Joel Embiid', 'PHI', 'blk', 1.5, 68.0, 1.1, null, 31, null);
+  // The pre-tip read (2026-10-23): PrizePicks raised Brunson's assists from
+  // 6.5 and lowered Maxey's from 7.5 since the first read; Hart's stayed.
+  const reread = (player, market, first, firstUnder) => sqliteDb.prepare(`UPDATE nbapp SET close_point = point, close_under = model_under,
+    close_book_line = book_line, close_book_under = book_under, close_at = ?, point = ?, model_under = ? WHERE player = ? AND market = ? AND result IS NULL`)
+    .bind(new Date().toISOString(), first, firstUnder, player, market).run();
+  await reread('Jalen Brunson', 'ast', 6.5, 63.0);
+  await reread('Tyrese Maxey', 'ast', 7.5, 69.4);
+  await reread('Josh Hart', 'reb', 8.5, 66.4);
+  await reread('OG Anunoby', 'threes', 2.5, 64.1);
+  await reread('Joel Embiid', 'reb', 10.5, 60.3);
+  await reread('OG Anunoby', 'stl', 1.5, 74.5);
+  await reread('Joel Embiid', 'blk', 1.5, 68.0);
   // Game-line favourites for Picks of the day: an NBA regular-season game, an
   // NFL game tomorrow, a Premier League match, and one under the bar.
   const gm = (sport, gid, market, league, hrs, side, pick, home, away, wp, price) => sqliteDb
@@ -411,6 +423,11 @@ if (NBADEMO) {
   for (const [p, mu, pt, bk, res] of [['A One', 72, 9.5, 8.5, 'under'], ['A Two', 74, 3.5, 2.5, 'under'], ['A Three', 67, 5.5, 5.5, 'over'],
     ['A Four', 68, 6.5, 6.5, 'under'], ['A Five', 58, 4.5, 5.5, 'over'], ['A Six', 61, 2.5, 2.5, 'under']]) {
     await leg(pastDay, past.toISOString(), p, 'NY', 'reb', pt, mu, pt - 1, bk, 30, res);
+  }
+  // Four of them re-read before tip: two raised, graded there too.
+  for (const [p, close, res] of [['A One', 10.5, 'under'], ['A Two', 4.5, 'under'], ['A Three', 5.5, 'over'], ['A Four', 5.5, 'over']]) {
+    await sqliteDb.prepare("UPDATE nbapp SET close_point = ?, close_result = ?, close_at = ? WHERE player = ? AND date = ?")
+      .bind(close, res, past.toISOString(), p, pastDay).run();
   }
 }
 

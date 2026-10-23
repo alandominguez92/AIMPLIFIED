@@ -32,7 +32,10 @@ const FIX = path.join(BOARD, 'tests', 'fixtures');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
 
 const RealDate = Date;
-let NOW = RealDate.parse('2026-10-20T15:01:05Z');        // when production captured it: 8:01 AM Pacific
+// Production read this payload at 8:01 AM Pacific; replayed here as the
+// pre-tip read, an hour before the noon Pacific tip: one full read, with no
+// PrizePicks-only check ahead of it (since 2026-10-23).
+let NOW = RealDate.parse('2026-10-20T18:00:00Z');
 globalThis.Date = class extends RealDate {
   constructor(...a) { super(...(a.length ? a : [NOW])); }
   static now() { return NOW; }
