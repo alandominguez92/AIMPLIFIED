@@ -213,7 +213,7 @@ const pl = picks.legs || [];
 console.log('  ' + pl.map((x) => `${x.rank}. ${x.title} ${x.p}% [${x.kind}]`).join(' | '));
 ok(pl.some((x) => x.title === 'Other Shooter Under 0.5 3PM') && !pl.some((x) => / (BLK|STL|blk|stl)$/.test(x.title)),
   "that game's leg is the threes under, not the higher blocks or steals one; no blocks or steals leg is on the list");
-ok(/3PM, AST, REB/.test((picks.kinds.nba_pp || {}).label || ''), `the kind says what it carries (${(picks.kinds.nba_pp || {}).label})`);
+ok(/3PM, AST/.test((picks.kinds.nba_pp || {}).label || '') && !/BLK|STL/.test((picks.kinds.nba_pp || {}).label || ''), `the kind says what it carries (${(picks.kinds.nba_pp || {}).label})`);
 const kr = (picks.kinds.nba_pp || {}).record || {};
 ok(kr.n === 1 && kr.hit === 1, `its NBA record is the threes under alone, not the steals one that missed (${kr.hit} of ${kr.n})`);
 

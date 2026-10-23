@@ -7888,7 +7888,9 @@ async function topLegs(env, url) {
 //     none has PICKS_PROVEN_N graded legs at its bar yet. NBA preseason is out:
 //     its favourites sat their starters (11 of 23 against 63% claimed).
 //   NBA blocks and steals unders (logged from 2026-10-20): out until they have
-//     a graded record of their own (NBA_PICK_MARKETS).
+//     a graded record of their own (NBA_PICK_MARKETS). NBA rebounds unders, and
+//     any NBA leg under a PrizePicks line below the books': out from 2026-10-23
+//     on their first three nights at PrizePicks' lines (50% and 45%).
 // Every leg comes from a log the site already keeps and grades, so the list
 // reads no odds and spends no credit. It keeps a record of its own: a leg on
 // the list when its game starts is logged in daypicks and graded from the log
@@ -7900,7 +7902,7 @@ const PICK_KINDS = {
   mlb_ml: { sport: 'mlb', label: 'MLB moneyline favourite', min: 65 },
   mlb_pp: { sport: 'mlb', label: 'MLB PrizePicks under (TB, H+R+RBI)', min: 70 },
   nba_ml: { sport: 'nba', label: 'NBA moneyline favourite', min: 65 },
-  nba_pp: { sport: 'nba', label: 'NBA PrizePicks under (3PM, AST, REB)', min: 70 },
+  nba_pp: { sport: 'nba', label: 'NBA PrizePicks under (3PM, AST; PP line not below the book)', min: 70 },
   nfl_ml: { sport: 'nfl', label: 'NFL moneyline favourite', min: 65 },
   // NHL since 2026-10-22, on the owner's call after last season's backtest:
   // 2025-26 favourites the sharp books made 65%+ won 114 of 171 (66.7%,
@@ -8143,7 +8145,7 @@ async function picksCandidates(env, now) {
     // At its latest line: the one that can be played now (ppCurrent).
     const r = ppCurrent(row);
     if (!soon(r.commence) || r.model_under == null || r.model_under < PICK_KINDS.nba_pp.min) continue;
-    if (!(r.min_proj >= NBA_ROTATION_MIN)) continue;
+    if (!(r.min_proj >= NBA_ROTATION_MIN) || ppBelowBook(r)) continue;
     legs.push({ kind: 'nba_pp', gameKey: 'nba:' + r.game_id, p: r.model_under, commence: r.commence, odds: null,
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
@@ -8253,11 +8255,12 @@ async function pickKindRecords(db) {
     const kind = gmPickKind(r);
     if (kind && r.win_prob != null && r.win_prob >= PICK_KINDS[kind].min) add(kind, r.result === 'win');
   }
-  // The kind's record is the markets the list carries, so a blocks or steals
-  // leg cannot vouch for a threes leg beside it.
-  for (const r of ((await db.prepare(`SELECT model_under, min_proj, result FROM nbapp WHERE result IN ('under','over') AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
+  // The kind's record is the legs the list carries, so a blocks or steals leg,
+  // or one under a PrizePicks line below the books', cannot vouch for a threes
+  // leg beside it.
+  for (const r of ((await db.prepare(`SELECT model_under, min_proj, point, book_line, result FROM nbapp WHERE result IN ('under','over') AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
     .bind(...NBA_PICK_MARKETS).all()).results || [])) {
-    if (r.min_proj >= NBA_ROTATION_MIN && r.model_under >= PICK_KINDS.nba_pp.min) add('nba_pp', r.result === 'under');
+    if (r.min_proj >= NBA_ROTATION_MIN && r.model_under >= PICK_KINDS.nba_pp.min && !ppBelowBook(r)) add('nba_pp', r.result === 'under');
   }
   for (const v of Object.values(rec)) {
     v.hitRate = v.n ? round1(v.hit / v.n * 100) : null;
@@ -10230,7 +10233,14 @@ const NBA_PRIOR_K = 5;
 const NBA_DISP = { threes: 1.15, ast: 1.25, reb: 1.2, blk: 1.15, stl: 1.1 };
 // The markets Picks of the day may carry: the ones whose under it was built on.
 // Blocks and steals join once their own graded record says their chance holds.
-const NBA_PICK_MARKETS = ['threes', 'ast', 'reb'];
+// Rebounds came off on 2026-10-23: 67 of 133 unders (50.4%) at PrizePicks'
+// own lines in the first three nights, against 63% for assists and threes,
+// and about 51% in the Oct 19 backtest. Still logged and graded on the card.
+const NBA_PICK_MARKETS = ['threes', 'ast'];
+// And no leg whose PrizePicks line sits below the books' (2026-10-23): that
+// under is harder than the market's, and those legs landed 32 of 71 (45%)
+// against 58-60% at or above the books' number.
+const ppBelowBook = (r) => r.book_line != null && r.point != null && r.point < r.book_line;
 const NBA_PP_VER = 'nbapp-v1';
 const NBA_PP_PER_TICK = 5;                   // per-event calls a tick may make
 // When PrizePicks' props are read (2026-10-23), for the NBA and NHL logs alike.
