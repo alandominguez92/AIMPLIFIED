@@ -468,8 +468,10 @@ http.createServer(async (req, res) => {
   }
   // LIVEPICKS=1 shows the real Picks of the day and the real top-legs record
   // (the Today's card's levels): read-only from production, like the record
-  // above. Both read the logs and at most one StatsAPI call -- no odds.
-  if (process.env.LIVEPICKS === '1' && (url.pathname === '/api/picks' || url.pathname === '/api/top-legs')) {
+  // above. Both read the logs and at most one StatsAPI call -- no odds. The
+  // NBA and NHL PrizePicks cards too (2026-10-22): both are D1 reads of what
+  // the cron already captured.
+  if (process.env.LIVEPICKS === '1' && ['/api/picks', '/api/top-legs', '/api/nba-pp', '/api/nhl-pp'].includes(url.pathname)) {
     const r = await realFetch(`https://aimplified.delexe.workers.dev${url.pathname}${url.search || '?'}${url.search ? '&' : ''}cb=${Math.random()}`);
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
     return res.end(await r.text());
