@@ -2827,17 +2827,17 @@ const MARKET_SHORT = { hr: 'HR', tb: 'TB', hrr: 'H+R+RBI' };
 const EXP_IP = 6;   // expected innings for a start (pace denominator)
 const EXP_AB = 4;   // expected at-bats for a hitter
 
-async function liveNow(env) {
+async function mlbLiveCards(env) {
   const date = slateDate();
-  if (!env || !env.DB) return cors(json([], 30));
+  if (!env || !env.DB) return [];
 
   // 1) Which of tonight's games are in progress (+ score / inning).
   let games = [];
   try {
     const r = await fetch(`${STATS}/schedule?sportId=1&date=${date}&hydrate=linescore,team`, { headers: { accept: 'application/json' } });
-    if (!r.ok) return cors(json([], 30));
+    if (!r.ok) return [];
     games = (((await r.json()).dates || [])[0] || {}).games || [];
-  } catch (e) { return cors(json([], 30)); }
+  } catch (e) { return []; }
 
   const meta = {};
   for (const g of games) {
@@ -2850,7 +2850,7 @@ async function liveNow(env) {
       inning: ls.currentInningOrdinal ? `${(ls.inningHalf || '').replace('Bottom', 'Bot')} ${ls.currentInningOrdinal}`.trim() : 'Live',
     };
   }
-  if (!Object.keys(meta).length) return cors(json([], 30));
+  if (!Object.keys(meta).length) return [];
 
   // 2) Tonight's logged picks (lines/sides) from D1.
   let picks = [], bpicks = [];
@@ -2858,11 +2858,11 @@ async function liveNow(env) {
     await ensureSchema(env.DB); await ensureBatterSchema(env.DB);
     picks = (await env.DB.prepare('SELECT * FROM picks WHERE date=?').bind(date).all()).results || [];
     bpicks = (await env.DB.prepare('SELECT * FROM bpicks WHERE date=?').bind(date).all()).results || [];
-  } catch (e) { return cors(json([], 30)); }
+  } catch (e) { return []; }
 
   // 3) One boxscore per live game that carries a pick.
   const need = [...new Set([...picks, ...bpicks].map((p) => p.game_id).filter((id) => meta[id]))];
-  if (!need.length) return cors(json([], 30));
+  if (!need.length) return [];
   const box = {};
   await Promise.all(need.map(async (gid) => {
     try {
@@ -2900,8 +2900,207 @@ async function liveNow(env) {
     }));
   }
 
-  // One card per player — a batter carries multiple markets, so keep the one
-  // where they're doing best (highest fill), breaking ties by model edge.
+  return rankLive(cards, LIVE_PER_SPORT).map((c) => ({ sport: 'mlb', ...c }));
+}
+
+// /api/live-now across every sport followed (2026-10-23). MLB's cards as
+// before, and beside them the NBA and NHL PrizePicks unders and Picks of the
+// day's NBA and NHL moneylines whose games are under way, each scored against
+// the league's own live feed: ESPN's box scores for the NBA, the NHL's own for
+// the NHL. No odds are read, so no credit is spent, and a feed is asked only
+// when one of its legs has started. Each card names its sport; the page shows
+// a tab's own, and all of them on Picks.
+const LIVE_LOOKBACK_MS = 4 * 3600e3;       // a started leg is looked for this long
+const LIVE_PER_SPORT = 9;
+async function liveNow(env) {
+  if (!env || !env.DB) return cors(json([], 30));
+  const now = Date.now();
+  const feeds = liveFeeds(now);
+  const parts = await Promise.all([mlbLiveCards(env), nbaLiveCards(env, now, feeds), nhlLiveCards(env, now, feeds), mlLiveCards(env, now, feeds)]
+    .map((p) => p.catch(() => [])));
+  return cors(json(parts.flat(), 30)); // 30s — live data
+}
+
+// Each feed read at most once a request, shared by the prop and moneyline cards.
+function liveFeeds(now) {
+  const memo = new Map();
+  const once = (k, f) => { if (!memo.has(k)) memo.set(k, f().catch(() => null)); return memo.get(k); };
+  const get = async (url) => { const r = await fetch(url, { headers: { accept: 'application/json' } }); return r.ok ? r.json() : null; };
+  const day = ptDateOf(now);
+  return {
+    nba: () => once('nba', async () => espnLiveGames(await espnScoreboard(`nba/scoreboard?xhr=1&date=${day.replace(/-/g, '')}`), 'nba')),
+    nhl: () => once('nhl', async () => nhlLiveGames(await get(`https://api-web.nhle.com/v1/score/${day}`))),
+    nbaBox: (id) => once('nbabox:' + id, async () => { const j = await get(`${ESPN_CDN_NBA}/boxscore?xhr=1&gameId=${id}`); return j ? nbaBoxRows(j, id, day, 2) : []; }),
+    nhlBox: (id) => once('nhlbox:' + id, async () => { const j = await get(`https://api-web.nhle.com/v1/gamecenter/${id}/boxscore`); return j ? nhlBoxLines(j) : new Map(); }),
+  };
+}
+
+// "7:12" -> 7.2 minutes; under a minute ESPN shows seconds alone ("34.5").
+function clockMin(s) {
+  const t = String(s == null ? '' : s).trim();
+  if (!t) return null;
+  if (t.includes(':')) { const [m, sec] = t.split(':').map(Number); return isFinite(m) && isFinite(sec) ? m + sec / 60 : null; }
+  const sec = Number(t);
+  return isFinite(sec) ? sec / 60 : null;
+}
+// Pure: an ESPN NBA scoreboard's games under way -- the score, the clock, and
+// how much of regulation is gone (0 to 1).
+function espnLiveGames(events) {
+  const out = [];
+  for (const ev of (events || [])) {
+    const st = (ev && ev.status) || {}, ty = st.type || {};
+    if (ty.state !== 'in') continue;
+    const c = (ev.competitions || [])[0] || {};
+    const h = (c.competitors || []).find((t) => t.homeAway === 'home'), a = (c.competitors || []).find((t) => t.homeAway === 'away');
+    if (!h || !a) continue;
+    const per = Number(st.period) || 1, rem = clockMin(st.displayClock);
+    let gone = per > 4 ? 1 : ((per - 1) * 12 + (12 - (rem == null ? 12 : rem))) / 48;
+    let label = `${per > 4 ? 'OT' : 'Q' + per} ${st.displayClock || ''}`.trim();
+    if (/HALFTIME/.test(ty.name || '')) { gone = 0.5; label = 'Half'; }
+    else if (/END_PERIOD/.test(ty.name || '')) { gone = Math.min(1, per / 4); label = `End ${per > 4 ? 'OT' : 'Q' + per}`; }
+    const nm = (t) => (t.team && (t.team.displayName || t.team.name)) || '';
+    out.push({ id: String(ev.id), home: nm(h), away: nm(a), homeAb: (h.team && h.team.abbreviation) || '', awayAb: (a.team && a.team.abbreviation) || '',
+      hs: Number(h.score) || 0, as: Number(a.score) || 0, gone: Math.max(0, Math.min(1, gone)), label });
+  }
+  return out;
+}
+// Pure: the NHL's score feed, its games under way, the same shape.
+function nhlLiveGames(j) {
+  const out = [];
+  for (const g of ((j && j.games) || [])) {
+    if (g.gameState !== 'LIVE' && g.gameState !== 'CRIT') continue;
+    const h = g.homeTeam || {}, a = g.awayTeam || {}, ck = g.clock || {};
+    const per = Number((g.periodDescriptor && g.periodDescriptor.number) || g.period) || 1;
+    const rem = clockMin(ck.timeRemaining), inter = !!ck.inIntermission;
+    const gone = per > 3 ? 1 : inter ? per / 3 : ((per - 1) * 20 + (20 - (rem == null ? 20 : rem))) / 60;
+    const label = inter ? `${['1st', '2nd', '3rd'][per - 1] || 'OT'} int` : `${per > 3 ? 'OT' : 'P' + per} ${ck.timeRemaining || ''}`.trim();
+    out.push({ id: String(g.id), home: (h.name && h.name.default) || '', away: (a.name && a.name.default) || '', homeAb: h.abbrev || '', awayAb: a.abbrev || '',
+      hs: Number(h.score) || 0, as: Number(a.score) || 0, gone: Math.max(0, Math.min(1, gone)), label });
+  }
+  return out;
+}
+// Our game in a live list: the odds feed's names against the league's.
+function liveGameOf(games, home, away, same) {
+  return (games || []).find((g) => (same(g.home, home) && same(g.away, away)) || (same(g.home, away) && same(g.away, home))) || null;
+}
+// An under as it stands. Over the line: lost. Held under it with a quarter of
+// the game left: nearly there. Otherwise on pace to stay under, or not.
+function liveUnderState(stat, line, gone) {
+  if (stat > line) return 'cooling';
+  if (gone >= 0.75 && stat < line) return 'cashing';
+  return stat / Math.max(gone, 0.25) > line ? 'cooling' : 'live';
+}
+// The legs on today's Picks of the day, by leg id.
+async function livePickIds(db, days, kinds) {
+  await ensureDayPickSchema(db);
+  const rows = (await db.prepare(`SELECT leg_id FROM daypicks WHERE date IN (${days.map(() => '?').join(',')}) AND on_list = 1 AND kind IN (${kinds.map(() => '?').join(',')})`)
+    .bind(...days, ...kinds).all()).results || [];
+  return new Set(rows.map((r) => r.leg_id));
+}
+// Logged PrizePicks legs whose games have started, at their current lines:
+// the list's own, and each game's best three by the model's chance.
+function liveFollowed(rows, now, picked, idOf, ok) {
+  const started = ppStanding(rows).map(ppCurrent).filter((r) => { const t = Date.parse(r.commence); return t <= now && t > now - LIVE_LOOKBACK_MS; });
+  // One leg a player: the list's, else his best.
+  const out = new Map();
+  for (const r of started) if (picked.has(idOf(r))) out.set(r.player, { ...r, onPicks: true });
+  const byGame = new Map();
+  for (const r of started.filter(ok).sort((a, b) => b.model_under - a.model_under)) {
+    const n = byGame.get(r.game_id) || 0;
+    if (n >= 3 || out.has(r.player)) continue;
+    byGame.set(r.game_id, n + 1);
+    out.set(r.player, r);
+  }
+  return [...out.values()];
+}
+function livePropCard(sport, r, g, stat, label, played, note, m) {
+  const c = liveCard({ id: `${sport}:${r.game_id}:${r.player}:${r.market}`, pid: `${sport}${r.player}${r.market}`, name: r.player, team: r.team || '', pos: '',
+    stat, label, line: r.point, side: 'Under', m, note, progress: g.gone, edge: r.model_under, started: played });
+  return { sport, ...c, state: liveUnderState(stat, r.point, g.gone), ...(r.onPicks ? { onPicks: true } : {}) };
+}
+const liveMeta = (g) => ({ away: g.awayAb, awayR: g.as, home: g.homeAb, homeR: g.hs, inning: g.label });
+
+async function nbaLiveCards(env, now, feeds) {
+  const days = [ptDateOf(now), ptDateOf(now - 864e5)];
+  await ensureNbaSchema(env.DB);
+  const rows = (await env.DB.prepare('SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
+  const picked = await livePickIds(env.DB, days, ['nba_pp']);
+  const legs = liveFollowed(rows, now, picked, (r) => `nbapp:${r.game_id}:${r.player}:${r.market}`, (r) => r.min_proj >= NBA_ROTATION_MIN);
+  if (!legs.length) return [];
+  const games = await feeds.nba();
+  const cards = [];
+  for (const r of legs) {
+    const g = liveGameOf(games, r.home, r.away, nbaMatch);
+    if (!g) continue;
+    const box = (await feeds.nbaBox(g.id)) || [];
+    const b = box.find((x) => r.player_id && x.player_id === String(r.player_id)) || box.find((x) => nbaName(x.player) === nbaName(r.player));
+    if (!b) continue;
+    const stat = b.dnp ? 0 : (nbaStat(b, r.market) || 0);
+    const min = b.dnp ? 0 : (b.min || 0);
+    cards.push(livePropCard('nba', r, g, stat, PICKS_NBA_MK[r.market] || r.market, min > 0,
+      b.dnp ? 'has not played' : `${min} of ${Math.round(r.min_proj)} min`, liveMeta(g)));
+  }
+  return rankLive(cards, LIVE_PER_SPORT);
+}
+
+async function nhlLiveCards(env, now, feeds) {
+  const days = [ptDateOf(now), ptDateOf(now - 864e5)];
+  await ensureNhlPpSchema(env.DB);
+  const rows = (await env.DB.prepare('SELECT * FROM nhlpp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
+  const legs = liveFollowed(rows, now, new Set(), (r) => `nhlpp:${r.game_id}:${r.player}:${r.market}`, () => true);
+  if (!legs.length) return [];
+  const games = await feeds.nhl();
+  const cards = [];
+  for (const r of legs) {
+    const g = liveGameOf(games, r.home, r.away, nhlMatch);
+    if (!g || !r.player_id) continue;
+    const box = await feeds.nhlBox(g.id);
+    const b = box && box.get(String(r.player_id));
+    if (!b) continue;
+    const stat = Number(r.market === 'ast' ? b.a : b.p) || 0;
+    cards.push(livePropCard('nhl', r, g, stat, r.market === 'ast' ? 'AST' : 'PTS', !!b.toi && b.toi !== '00:00',
+      b.toi ? `${b.toi} on ice` : '', liveMeta(g)));
+  }
+  return rankLive(cards, LIVE_PER_SPORT);
+}
+
+// Picks of the day's NBA and NHL moneylines in progress: the score, and
+// whether the side is ahead.
+async function mlLiveCards(env, now, feeds) {
+  const days = [ptDateOf(now), ptDateOf(now - 864e5)];
+  await ensureDayPickSchema(env.DB);
+  const legs = ((await env.DB.prepare("SELECT * FROM daypicks WHERE date IN (?, ?) AND on_list = 1 AND kind IN ('nba_ml', 'nhl_ml')").bind(...days).all()).results || [])
+    .filter((r) => { const t = Date.parse(r.commence); return t <= now && t > now - LIVE_LOOKBACK_MS; });
+  const cards = [];
+  for (const r of legs) {
+    const sport = r.kind === 'nba_ml' ? 'nba' : 'nhl';
+    const gm = await env.DB.prepare('SELECT home, away, pick, side FROM gmpicks WHERE sport = ? AND date = ? AND game_id = ? AND market = ?')
+      .bind(sport, r.src_date, r.game_id, r.market || 'h2h').first();
+    if (!gm) continue;
+    const same = sport === 'nba' ? nbaMatch : nhlMatch;
+    const g = liveGameOf(await (sport === 'nba' ? feeds.nba() : feeds.nhl()), gm.home, gm.away, same);
+    if (!g) continue;
+    // The feeds may list the two sides the other way round from ours.
+    const ourHomeIsTheirs = same(g.home, gm.home);
+    const mine = (gm.side === 'home') === ourHomeIsTheirs ? g.hs : g.as, theirs = (gm.side === 'home') === ourHomeIsTheirs ? g.as : g.hs;
+    const lead = mine - theirs;
+    cards.push({
+      sport, kind: 'ml', id: `ml:${r.leg_id}`, name: r.label || `${gm.pick} ML`, team: '', pos: '', onPicks: true,
+      stat: `${mine}–${theirs}`, statLabel: '', line: null, side: 'ML',
+      vs: lead > 0 ? `up ${lead}` : lead < 0 ? `down ${-lead}` : 'level',
+      matchup: `${g.awayAb} ${g.as} – ${g.homeAb} ${g.hs}`, inning: g.label,
+      note: r.p != null ? `${Math.round(r.p)}% before the start` : '',
+      state: lead > 0 ? (g.gone >= 0.75 ? 'cashing' : 'live') : lead < 0 ? 'cooling' : 'live',
+      fill: Math.round(g.gone * 100), tick: null,
+    });
+  }
+  return cards;
+}
+
+// The top n cards. One card per player -- an MLB batter carries multiple
+// markets, so keep the one where he's doing best (highest fill), breaking ties
+// by model edge.
+function rankLive(cards, n) {
   const byPid = new Map();
   for (const c of cards) {
     const ex = byPid.get(c._pid);
@@ -2917,16 +3116,17 @@ async function liveNow(env) {
   // compared on the same scale instead of in raw units.
   const order = { cashing: 0, live: 1, cooling: 2 };
   const cushion = (c) => (c.side === 'Under' ? c.line - c.stat : c.stat - c.line) / Math.max(c.line, 0.5);
-  const ranked = [...byPid.values()].sort((a, b) =>
+  return [...byPid.values()].sort((a, b) =>
     (order[a.state] - order[b.state])
     // Someone who has not come to the plate or thrown a pitch has nothing to
     // show yet. He keeps his card, but he should not hold a slot above a player
     // who does -- with nine slots and a full slate those are the ones that get cut.
     || (b._started - a._started)
+    // A leg on Picks of the day before one that is only on its sport's card.
+    || ((b.onPicks ? 1 : 0) - (a.onPicks ? 1 : 0))
     || (cushion(b) - cushion(a))
-    || (b._edge - a._edge));
-  const out = ranked.slice(0, 9).map(({ _pid, _edge, _started, ...c }) => c);
-  return cors(json(out, 30)); // 30s — live data
+    || (b._edge - a._edge))
+    .slice(0, n).map(({ _pid, _edge, _started, ...c }) => c);
 }
 
 function liveCard(o) {

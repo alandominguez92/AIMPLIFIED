@@ -488,7 +488,7 @@ http.createServer(async (req, res) => {
   // above. Both read the logs and at most one StatsAPI call -- no odds. The
   // NBA and NHL PrizePicks cards too (2026-10-22): both are D1 reads of what
   // the cron already captured.
-  if (process.env.LIVEPICKS === '1' && ['/api/picks', '/api/top-legs', '/api/nba-pp', '/api/nhl-pp'].includes(url.pathname)) {
+  if (process.env.LIVEPICKS === '1' && ['/api/picks', '/api/top-legs', '/api/nba-pp', '/api/nhl-pp', '/api/live-now'].includes(url.pathname)) {
     const r = await realFetch(`https://aimplified.delexe.workers.dev${url.pathname}${url.search || '?'}${url.search ? '&' : ''}cb=${Math.random()}`);
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
     return res.end(await r.text());

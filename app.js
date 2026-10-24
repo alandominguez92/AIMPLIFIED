@@ -988,40 +988,53 @@
     if (s === 'HR') return (c.side === 'Over' && c.line === 0.5) ? 'To Hit a HR' : `${c.side} ${c.line} HR`;
     return `${c.side} ${c.line} ${s}`; // H+R+RBI
   }
+  // Every sport's legs in progress (2026-10-23): a tab shows its own, and
+  // Picks shows them all, the list's own legs first.
+  const LIVE_SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL' };
+  function liveCardsFor(sport) {
+    const all = Array.isArray(state.liveNow) ? state.liveNow : [];
+    if (sport !== 'picks') return all.filter((c) => (c.sport || 'mlb') === sport);
+    const order = { cashing: 0, live: 1, cooling: 2 };
+    return all.slice().sort((a, b) => ((b.onPicks ? 1 : 0) - (a.onPicks ? 1 : 0)) || (order[a.state] - order[b.state])).slice(0, 12);
+  }
+  // Where the strip sits: above the MLB hero, or at the top of the tab's board.
+  const LIVE_ANCHOR = { mlb: 'main .hero', picks: '#picksBoard', nba: '#nbaBoard', nhl: '#nhlBoard' };
   function renderLiveNow() {
-    const cards = state.liveNow;
-    const has = Array.isArray(cards) && cards.length > 0;
+    const cards = liveCardsFor(state.sport);
+    const has = cards.length > 0;
     if (el.liveNowSection) el.liveNowSection.hidden = !has;
     if (el.navLive) el.navLive.hidden = !has;
-    // While games are live, urgency leads: Live Now moves above the hero.
-    // (Pre-game the hero leads; the section is hidden so no move happens.)
+    // While games are live, urgency leads: Live Now moves above the hero, or
+    // above the tab's own board. (Pre-game the section is hidden, so no move.)
     if (has && el.liveNowSection) {
-      const hero = document.querySelector('main .hero');
-      if (hero && hero.parentNode && hero.previousElementSibling !== el.liveNowSection) {
-        hero.parentNode.insertBefore(el.liveNowSection, hero);
+      const anchor = document.querySelector(LIVE_ANCHOR[state.sport] || 'main .hero');
+      if (anchor && anchor.parentNode && anchor.previousElementSibling !== el.liveNowSection) {
+        anchor.parentNode.insertBefore(el.liveNowSection, anchor);
       }
     }
-    if (!has) { if (el.liveNowGrid) el.liveNowGrid.innerHTML = ''; return; }
-    if (el.liveNowNote) el.liveNowNote.textContent = `${cards.length} in-progress · updating every pitch`;
+    if (!has) { if (el.liveNowGrid) el.liveNowGrid.innerHTML = ''; renderLiveNowDots(0); return; }
+    if (el.liveNowNote) el.liveNowNote.textContent = `${cards.length} in-progress · updating ${state.sport === 'mlb' ? 'every pitch' : 'live'}`;
     el.liveNowGrid.innerHTML = cards.map((c) => {
-      const unit = c.statLabel === 'H+R+RBI' ? '' : c.statLabel;
+      const unit = c.kind === 'ml' || c.statLabel === 'H+R+RBI' ? '' : c.statLabel;
+      const meta = [state.sport === 'picks' ? LIVE_SPORT_LABEL[c.sport || 'mlb'] : '', c.team, c.pos === 'P' ? 'P' : '', c.onPicks && state.sport !== 'picks' ? 'on Picks' : '']
+        .filter(Boolean).join(' · ');
       return `
         <div class="livecard ${esc(c.state)}">
           <div class="livecard-top">
             <div>
               <div class="livecard-name">${esc(c.name)}</div>
-              <div class="livecard-meta">${esc(c.team)}${c.pos === 'P' ? ' · P' : ''}</div>
+              <div class="livecard-meta">${esc(meta)}</div>
             </div>
             <span class="livecard-pill ${esc(c.state)}">${esc(c.state.toUpperCase())}</span>
           </div>
           <div class="livecard-stat">
             <span class="livecard-num ${esc(c.state)}">${esc(String(c.stat))}</span>
             ${unit ? `<span class="livecard-unit">${esc(unit)}</span>` : ''}
-            <span class="livecard-vs">${esc(liveVs(c))}</span>
+            <span class="livecard-vs">${esc(c.vs || liveVs(c))}</span>
           </div>
           <div class="livecard-bar">
             <div class="livecard-fill ${esc(c.state)}" style="width:${c.fill}%"></div>
-            <div class="livecard-tick" style="left:${c.tick}%"></div>
+            ${c.tick != null ? `<div class="livecard-tick" style="left:${c.tick}%"></div>` : ''}
           </div>
           <div class="livecard-foot">
             <span class="livecard-dot ${esc(c.state)}"></span>
@@ -5043,7 +5056,9 @@
   // section that had the same problem was removed on 2026-09-27.)
   // The slip is not on it: since 2026-10-04 every sport's board can add to it,
   // and a PrizePicks entry or a DraftKings parlay can mix sports.
-  const MLB_ONLY = ['.hero', '#liveNow', '#slate', '#record',
+  // (#liveNow left it on 2026-10-23: every sport's legs are scored live now,
+  // and renderLiveNow shows or hides it for the tab.)
+  const MLB_ONLY = ['.hero', '#slate', '#record',
     '#yesterdayCard', '#rail'];
 
   function setSport(s) {
@@ -5059,6 +5074,7 @@
       if (n) n.hidden = s !== 'mlb';
     }
     applySportChrome(s);
+    renderLiveNow();
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
     if (el.soccerBoard) el.soccerBoard.hidden = s !== 'soccer';
     if (s === 'soccer' && !state.soccer) refreshSoccer();   // lazy first load
@@ -6127,10 +6143,8 @@
       const href = a.getAttribute('href');
       if (MLB_ONLY_NAV.includes(href)) a.hidden = away;
     });
-    // The live-now link is an MLB feed too; it manages its own hidden flag, so
-    // only force it off rather than on.
-    const live = document.getElementById('navLive');
-    if (live && away) live.hidden = true;
+    // The live-now link manages its own hidden flag (renderLiveNow), for every
+    // sport since 2026-10-23.
   }
 
   // -------------------------------------------------------------------------
