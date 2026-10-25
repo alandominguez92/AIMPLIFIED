@@ -2928,13 +2928,38 @@ function liveFeeds(now) {
   const get = async (url) => { const r = await fetch(url, { headers: { accept: 'application/json' } }); return r.ok ? r.json() : null; };
   const day = ptDateOf(now);
   return {
-    nba: () => once('nba', async () => espnLiveGames(await espnScoreboard(`nba/scoreboard?xhr=1&date=${day.replace(/-/g, '')}`), 'nba')),
+    nba: () => once('nba', async () => espnLiveGames(freshestEvents(
+      await espnScoreboard(`nba/scoreboard?xhr=1&date=${day.replace(/-/g, '')}`),
+      await espnScoreboard('nba/scoreboard?xhr=1').catch(() => [])))),
     nhl: () => once('nhl', async () => nhlLiveGames(await get(`https://api-web.nhle.com/v1/score/${day}`))),
     nbaBox: (id) => once('nbabox:' + id, async () => { const j = await get(`${ESPN_CDN_NBA}/boxscore?xhr=1&gameId=${id}`); return j ? nbaBoxRows(j, id, day, 2) : []; }),
     nhlBox: (id) => once('nhlbox:' + id, async () => { const j = await get(`https://api-web.nhle.com/v1/gamecenter/${id}/boxscore`); return j ? nhlBoxLines(j) : new Map(); }),
   };
 }
 
+// ESPN's cdn answers the dated scoreboard from a lagging copy at times. On
+// Oct 25 it had Lakers @ Jazz not yet started 55 minutes after tip, then held
+// it at 9:54 of the 2nd while the undated scoreboard -- today's -- was at
+// 8:11. Live reads both and takes each game from whichever is further on:
+// finished over under way over not started, then the later period, then the
+// higher combined score.
+function freshestEvents(...lists) {
+  const key = (e) => {
+    const st = (e && e.status) || {};
+    const cs = (((e && e.competitions) || [])[0] || {}).competitors || [];
+    return [{ pre: 0, in: 1, post: 2 }[(st.type || {}).state] || 0, Number(st.period) || 0, cs.reduce((a, c) => a + (Number(c.score) || 0), 0)];
+  };
+  const later = (a, b) => { const x = key(a), y = key(b); for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] > y[i] ? a : b; return a; };
+  const by = new Map();
+  for (const list of lists) {
+    for (const e of (list || [])) {
+      if (!e || e.id == null) continue;
+      const id = String(e.id);
+      by.set(id, by.has(id) ? later(by.get(id), e) : e);
+    }
+  }
+  return [...by.values()];
+}
 // "7:12" -> 7.2 minutes; under a minute ESPN shows seconds alone ("34.5").
 function clockMin(s) {
   const t = String(s == null ? '' : s).trim();
