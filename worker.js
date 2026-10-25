@@ -2932,6 +2932,9 @@ function liveFeeds(now) {
       await espnScoreboard(`nba/scoreboard?xhr=1&date=${day.replace(/-/g, '')}`),
       await espnScoreboard('nba/scoreboard?xhr=1').catch(() => [])))),
     nhl: () => once('nhl', async () => nhlLiveGames(await get(`https://api-web.nhle.com/v1/score/${day}`))),
+    // The NFL scoreboard is the current week's whatever date is asked (see
+    // gradeGamePicks), so it is asked without one.
+    nfl: () => once('nfl', async () => espnLiveGames(await espnScoreboard('nfl/scoreboard?xhr=1'), 'nfl')),
     nbaBox: (id) => once('nbabox:' + id, async () => { const j = await get(`${ESPN_CDN_NBA}/boxscore?xhr=1&gameId=${id}`); return j ? nbaBoxRows(j, id, day, 2) : []; }),
     nhlBox: (id) => once('nhlbox:' + id, async () => { const j = await get(`https://api-web.nhle.com/v1/gamecenter/${id}/boxscore`); return j ? nhlBoxLines(j) : new Map(); }),
   };
@@ -2968,9 +2971,11 @@ function clockMin(s) {
   const sec = Number(t);
   return isFinite(sec) ? sec / 60 : null;
 }
-// Pure: an ESPN NBA scoreboard's games under way -- the score, the clock, and
-// how much of regulation is gone (0 to 1).
-function espnLiveGames(events) {
+// Pure: an ESPN scoreboard's games under way -- the score, the clock, and how
+// much of regulation is gone (0 to 1). Four quarters: twelve minutes in the
+// NBA, fifteen in the NFL (since 2026-10-25).
+function espnLiveGames(events, sport) {
+  const q = sport === 'nfl' ? 15 : 12;
   const out = [];
   for (const ev of (events || [])) {
     const st = (ev && ev.status) || {}, ty = st.type || {};
@@ -2979,7 +2984,7 @@ function espnLiveGames(events) {
     const h = (c.competitors || []).find((t) => t.homeAway === 'home'), a = (c.competitors || []).find((t) => t.homeAway === 'away');
     if (!h || !a) continue;
     const per = Number(st.period) || 1, rem = clockMin(st.displayClock);
-    let gone = per > 4 ? 1 : ((per - 1) * 12 + (12 - (rem == null ? 12 : rem))) / 48;
+    let gone = per > 4 ? 1 : ((per - 1) * q + (q - (rem == null ? q : rem))) / (4 * q);
     let label = `${per > 4 ? 'OT' : 'Q' + per} ${st.displayClock || ''}`.trim();
     if (/HALFTIME/.test(ty.name || '')) { gone = 0.5; label = 'Half'; }
     else if (/END_PERIOD/.test(ty.name || '')) { gone = Math.min(1, per / 4); label = `End ${per > 4 ? 'OT' : 'Q' + per}`; }
@@ -3089,21 +3094,26 @@ async function nhlLiveCards(env, now, feeds) {
   return rankLive(cards, LIVE_PER_SPORT);
 }
 
-// Picks of the day's NBA and NHL moneylines in progress: the score, and
-// whether the side is ahead.
+// Picks of the day's NBA, NHL and NFL moneylines in progress: the score, and
+// whether the side is ahead. The NFL log names clubs by the site's codes, which
+// are ESPN's but for two (NFL_LOGO: WAS is WSH, LA is LAR).
+const nflLiveSame = (espnAb, ours) => String(espnAb || '').toLowerCase() === (NFL_LOGO[ours] || String(ours || '').toLowerCase());
 async function mlLiveCards(env, now, feeds) {
   const days = [ptDateOf(now), ptDateOf(now - 864e5)];
   await ensureDayPickSchema(env.DB);
-  const legs = ((await env.DB.prepare("SELECT * FROM daypicks WHERE date IN (?, ?) AND on_list = 1 AND kind IN ('nba_ml', 'nhl_ml')").bind(...days).all()).results || [])
+  const legs = ((await env.DB.prepare("SELECT * FROM daypicks WHERE date IN (?, ?) AND on_list = 1 AND kind IN ('nba_ml', 'nhl_ml', 'nfl_ml')").bind(...days).all()).results || [])
     .filter((r) => { const t = Date.parse(r.commence); return t <= now && t > now - LIVE_LOOKBACK_MS; });
   const cards = [];
   for (const r of legs) {
-    const sport = r.kind === 'nba_ml' ? 'nba' : 'nhl';
+    const sport = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl' }[r.kind];
     const gm = await env.DB.prepare('SELECT home, away, pick, side FROM gmpicks WHERE sport = ? AND date = ? AND game_id = ? AND market = ?')
       .bind(sport, r.src_date, r.game_id, r.market || 'h2h').first();
     if (!gm) continue;
-    const same = sport === 'nba' ? nbaMatch : nhlMatch;
-    const g = liveGameOf(await (sport === 'nba' ? feeds.nba() : feeds.nhl()), gm.home, gm.away, same);
+    const same = sport === 'nba' ? nbaMatch : sport === 'nhl' ? nhlMatch : nflLiveSame;
+    // NFL rows carry codes, so its games are matched on ESPN's codes.
+    const games = sport === 'nfl' ? ((await feeds.nfl()) || []).map((x) => ({ ...x, home: x.homeAb, away: x.awayAb }))
+      : await (sport === 'nba' ? feeds.nba() : feeds.nhl());
+    const g = liveGameOf(games, gm.home, gm.away, same);
     if (!g) continue;
     // The feeds may list the two sides the other way round from ours.
     const ourHomeIsTheirs = same(g.home, gm.home);
@@ -4524,7 +4534,8 @@ function buildGmRecord(rows, sport) {
     // The NHL log is judged band by band, 65%+ first: that is the bar Picks of
     // the day lists every other sport's favourites at (PICK_KINDS), and NHL is
     // not on that list until its own 65%+ favourites have held up (2026-10-20).
-    ...(sport === 'nhl' ? { byBand: { '65+': gmBand(graded, 65, 101), '60-65': gmBand(graded, 60, 65),
+    // The NFL board shows the same line since 2026-10-25.
+    ...(sport === 'nhl' || sport === 'nfl' ? { byBand: { '65+': gmBand(graded, 65, 101), '60-65': gmBand(graded, 60, 65),
       '55-60': gmBand(graded, 55, 60), 'under 55': gmBand(graded, 0, 55) } } : {}),
     clvBeatRate: clvN ? round1(beat / clvN * 100) : null, clvN,
   };
@@ -13641,6 +13652,17 @@ async function nflBoardData(env, url) {
         })));
       }
     } catch (e) { /* logging never breaks the board */ }
+    // The board in the NBA and NHL tabs' shape (2026-10-25): each club's mark,
+    // and, for the page, the log's record with its 65%+ favourites first --
+    // the bar NFL moneylines are listed on Picks of the day at. The cron's own
+    // reads (no url) skip the record.
+    for (const g of out.games) { g.homeLogo = moneylineLogo('nfl', g.home); g.awayLogo = moneylineLogo('nfl', g.away); }
+    if (url) {
+      try {
+        const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'nfl'").all()).results) || [], 'nfl');
+        out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand };
+      } catch (e) { /* no log yet */ }
+    }
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }

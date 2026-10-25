@@ -2877,6 +2877,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-rules summary { cursor:pointer; color:var(--model, var(--accent)); padding:4px 0; }
 .pk-rules ul { margin:6px 0 0; padding-left:18px; display:grid; gap:3px; }
 .pk-rules p { margin:6px 0 0; line-height:1.45; }
+/* The NFL tab's yardage projections, folded under its moneyline board (2026-10-25):
+   no price and no record yet, so one tap away rather than the tab's first screen. */
+.nfl-proj { margin-top:22px; border-top:1px solid var(--border); padding-top:10px; }
+.nfl-proj > summary { cursor:pointer; padding:6px 0; font-weight:700; color:var(--text); }
+.nfl-proj > summary .nfl-proj-sub { margin-left:6px; font-weight:400; font-size:12.5px; color:var(--textDim); }
+.nfl-proj[open] > summary { margin-bottom:10px; }
 /* How the list did (2026-10-22): each entry type's units over every graded
    day, then a line a day that opens to its legs. Teal is up, amber is down. */
 .pk-hist { margin-top:16px; }
