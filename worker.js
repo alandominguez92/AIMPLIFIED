@@ -3091,7 +3091,7 @@ async function mlLiveCards(env, now, feeds) {
       matchup: `${g.awayAb} ${g.as} – ${g.homeAb} ${g.hs}`, inning: g.label,
       note: r.p != null ? `${Math.round(r.p)}% before the start` : '',
       state: lead > 0 ? (g.gone >= 0.75 ? 'cashing' : 'live') : lead < 0 ? 'cooling' : 'live',
-      fill: Math.round(g.gone * 100), tick: null,
+      fill: Math.round(g.gone * 100), tick: null, started: true,
     });
   }
   return cards;
@@ -3126,7 +3126,9 @@ function rankLive(cards, n) {
     || ((b.onPicks ? 1 : 0) - (a.onPicks ? 1 : 0))
     || (cushion(b) - cushion(a))
     || (b._edge - a._edge))
-    .slice(0, n).map(({ _pid, _edge, _started, ...c }) => c);
+    // `started` goes to the page, which merges every sport's cards on the
+    // Picks tab and puts those under way before those yet to bat or skate.
+    .slice(0, n).map(({ _pid, _edge, _started, ...c }) => ({ ...c, started: !!_started }));
 }
 
 function liveCard(o) {

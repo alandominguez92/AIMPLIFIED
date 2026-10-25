@@ -204,6 +204,22 @@ ok(forTab('nba').every((c) => c.sport === 'nba') && forTab('nba').length === nba
 ok(forTab('nhl').length === nhl.length && forTab('mlb').map((c) => c.name).join() === 'An MLB Arm', 'the NHL tab its own; the MLB tab its own');
 const pk = forTab('picks');
 ok(pk.length <= 12 && pk.slice(0, 3).every((c) => c.onPicks) && pk.some((c) => c.sport === 'nhl'), `Picks shows every sport, the list's three first (${pk.slice(0, 3).map((c) => c.name).join(', ')})`);
+ok(cards.every((c) => typeof c.started === 'boolean') && cards.filter((c) => c.kind !== 'ml').some((c) => c.started),
+  'each card says whether its player is in action yet (started), for the Picks tab to order by');
+// Production's answer at 5:04 PM Pacific on Oct 24 (live-now-20261024.json),
+// before cards carried `started`: the World Series' nine, none yet at bat or
+// on the mound (0-for-0, 0 pitches), filled the Picks strip ahead of the NBA
+// and NHL legs in play. Flagged the way the worker now flags them:
+const PROD = read('live-now-20261024.json').cards;
+const flagged = PROD.map((c) => ({ ...c, started: c.kind === 'ml' ? true : c.sport === 'mlb' ? !/^(0 pitches|0-for-0)/.test(c.note || '') : !/^0 of /.test(c.note || '') }));
+state.liveNow = flagged;
+const pk2 = forTab('picks');
+console.log('  Oct 24 Picks strip: ' + pk2.map((c) => `${c.sport}:${c.name}`).join(', '));
+ok(PROD.filter((c) => c.sport === 'mlb').length === 9 && flagged.filter((c) => c.sport === 'mlb').every((c) => !c.started),
+  'the recorded answer: nine MLB cards, not one of them yet in action');
+ok(pk2.slice(0, 2).every((c) => c.kind === 'ml' && c.onPicks) && !pk2.some((c) => c.sport === 'mlb')
+  && pk2.filter((c) => c.sport === 'nba' && c.kind !== 'ml').length >= 4 && pk2.filter((c) => c.sport === 'nhl').length >= 4,
+  `the list's two moneylines, then NBA and NHL legs in play taking turns; the World Series waits for its first pitch`);
 ok(!/'#liveNow'/.test(app.slice(app.indexOf('const MLB_ONLY'), app.indexOf('const MLB_ONLY') + 200)) && /applySportChrome\(s\);\n\s*renderLiveNow\(\);/.test(app),
   'the strip is no longer MLB-only, and every tab change redraws it for the tab');
 

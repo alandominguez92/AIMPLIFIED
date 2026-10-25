@@ -989,13 +989,20 @@
     return `${c.side} ${c.line} ${s}`; // H+R+RBI
   }
   // Every sport's legs in progress (2026-10-23): a tab shows its own, and
-  // Picks shows them all, the list's own legs first.
+  // Picks shows them all: the list's own legs first, then those already under
+  // way, by state, each sport's best taking turns -- on Oct 24 the World
+  // Series' nine cards, none yet at bat, filled the Picks strip ahead of the
+  // NBA and NHL legs in play.
   const LIVE_SPORT_LABEL = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL' };
   function liveCardsFor(sport) {
     const all = Array.isArray(state.liveNow) ? state.liveNow : [];
     if (sport !== 'picks') return all.filter((c) => (c.sport || 'mlb') === sport);
     const order = { cashing: 0, live: 1, cooling: 2 };
-    return all.slice().sort((a, b) => ((b.onPicks ? 1 : 0) - (a.onPicks ? 1 : 0)) || (order[a.state] - order[b.state])).slice(0, 12);
+    const turn = new Map(), seen = {};
+    for (const c of all) { const k = c.sport || 'mlb'; seen[k] = (seen[k] || 0) + 1; turn.set(c, seen[k]); }
+    const on = (c, f) => (c[f] ? 1 : 0);
+    return all.slice().sort((a, b) => (on(b, 'onPicks') - on(a, 'onPicks')) || ((b.started !== false ? 1 : 0) - (a.started !== false ? 1 : 0))
+      || (order[a.state] - order[b.state]) || (turn.get(a) - turn.get(b))).slice(0, 12);
   }
   // Where the strip sits: above the MLB hero, or at the top of the tab's board.
   const LIVE_ANCHOR = { mlb: 'main .hero', picks: '#picksBoard', nba: '#nbaBoard', nhl: '#nhlBoard' };
