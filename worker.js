@@ -2935,7 +2935,24 @@ function liveFeeds(now) {
     // The NFL scoreboard is the current week's whatever date is asked (see
     // gradeGamePicks), so it is asked without one.
     nfl: () => once('nfl', async () => espnLiveGames(await espnScoreboard('nfl/scoreboard?xhr=1'), 'nfl')),
-    nbaBox: (id) => once('nbabox:' + id, async () => { const j = await get(`${ESPN_CDN_NBA}/boxscore?xhr=1&gameId=${id}`); return j ? nbaBoxRows(j, id, day, 2) : []; }),
+    // ESPN's cdn serves box scores from a lagging copy at times too: at 4:30
+    // PM Pacific on Oct 25 boxscore still had Magic @ Knicks before tip, no
+    // players, in the 1st quarter, while playbyplay -- the same box inside it
+    // -- was current. When the box is behind the scoreboard's period, or not
+    // under way, playbyplay's is read as well and the one with more minutes
+    // played is kept.
+    nbaBox: (id, period) => once('nbabox:' + id, async () => {
+      const read = async (kind) => {
+        const j = await get(`${ESPN_CDN_NBA}/${kind}?xhr=1&gameId=${id}`);
+        const st = ((((j && j.gamepackageJSON && j.gamepackageJSON.header) || {}).competitions || [])[0] || {}).status || {};
+        return { rows: j ? nbaBoxRows(j, id, day, 2) : [], state: (st.type || {}).state, period: Number(st.period) || 0 };
+      };
+      const box = await read('boxscore');
+      if (box.rows.length && box.state === 'in' && box.period >= (period || 0)) return box.rows;
+      const pbp = await read('playbyplay').catch(() => ({ rows: [] }));
+      const mins = (x) => x.rows.reduce((a, r) => a + (Number(r.min) || 0), 0);
+      return mins(pbp) > mins(box) ? pbp.rows : box.rows;
+    }),
     nhlBox: (id) => once('nhlbox:' + id, async () => { const j = await get(`https://api-web.nhle.com/v1/gamecenter/${id}/boxscore`); return j ? nhlBoxLines(j) : new Map(); }),
   };
 }
@@ -2990,7 +3007,7 @@ function espnLiveGames(events, sport) {
     else if (/END_PERIOD/.test(ty.name || '')) { gone = Math.min(1, per / 4); label = `End ${per > 4 ? 'OT' : 'Q' + per}`; }
     const nm = (t) => (t.team && (t.team.displayName || t.team.name)) || '';
     out.push({ id: String(ev.id), home: nm(h), away: nm(a), homeAb: (h.team && h.team.abbreviation) || '', awayAb: (a.team && a.team.abbreviation) || '',
-      hs: Number(h.score) || 0, as: Number(a.score) || 0, gone: Math.max(0, Math.min(1, gone)), label });
+      hs: Number(h.score) || 0, as: Number(a.score) || 0, gone: Math.max(0, Math.min(1, gone)), label, period: per });
   }
   return out;
 }
@@ -3014,11 +3031,14 @@ function liveGameOf(games, home, away, same) {
   return (games || []).find((g) => (same(g.home, home) && same(g.away, away)) || (same(g.home, away) && same(g.away, home))) || null;
 }
 // An under as it stands. Over the line: lost. Held under it with a quarter of
-// the game left: nearly there. Otherwise on pace to stay under, or not.
+// the game left: nearly there. Otherwise on pace to stay under, or not -- the
+// pace read as if at least 40% of the game were gone, so one early assist does
+// not call an under lost: Towns' first, six minutes into Oct 25, read
+// "cooling" against under 3.5 at the old 25%.
 function liveUnderState(stat, line, gone) {
   if (stat > line) return 'cooling';
   if (gone >= 0.75 && stat < line) return 'cashing';
-  return stat / Math.max(gone, 0.25) > line ? 'cooling' : 'live';
+  return stat / Math.max(gone, 0.4) > line ? 'cooling' : 'live';
 }
 // The legs on today's Picks of the day, by leg id.
 async function livePickIds(db, days, kinds) {
@@ -3062,7 +3082,7 @@ async function nbaLiveCards(env, now, feeds) {
   for (const r of legs) {
     const g = liveGameOf(games, r.home, r.away, nbaMatch);
     if (!g) continue;
-    const box = (await feeds.nbaBox(g.id)) || [];
+    const box = (await feeds.nbaBox(g.id, g.period)) || [];
     const b = box.find((x) => r.player_id && x.player_id === String(r.player_id)) || box.find((x) => nbaName(x.player) === nbaName(r.player));
     if (!b) continue;
     const stat = b.dnp ? 0 : (nbaStat(b, r.market) || 0);
