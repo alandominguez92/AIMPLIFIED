@@ -2937,18 +2937,19 @@ function liveFeeds(now) {
     nfl: () => once('nfl', async () => espnLiveGames(await espnScoreboard('nfl/scoreboard?xhr=1'), 'nfl')),
     // ESPN's cdn serves box scores from a lagging copy at times too: at 4:30
     // PM Pacific on Oct 25 boxscore still had Magic @ Knicks before tip, no
-    // players, in the 1st quarter, while playbyplay -- the same box inside it
-    // -- was current. When the box is behind the scoreboard's period, or not
-    // under way, playbyplay's is read as well and the one with more minutes
-    // played is kept.
-    nbaBox: (id, period) => once('nbabox:' + id, async () => {
+    // players, in the 1st quarter, and at 6:11 it was at 10:28 of the 4th
+    // with the scoreboard at 6:12 -- while playbyplay, the same box inside it,
+    // was at 5:45. When the box is not under way, or behind the scoreboard by
+    // more than a minute and a half of play, playbyplay's is read as well and
+    // the one with more minutes played is kept.
+    nbaBox: (id, gone) => once('nbabox:' + id, async () => {
       const read = async (kind) => {
         const j = await get(`${ESPN_CDN_NBA}/${kind}?xhr=1&gameId=${id}`);
         const st = ((((j && j.gamepackageJSON && j.gamepackageJSON.header) || {}).competitions || [])[0] || {}).status || {};
-        return { rows: j ? nbaBoxRows(j, id, day, 2) : [], state: (st.type || {}).state, period: Number(st.period) || 0 };
+        return { rows: j ? nbaBoxRows(j, id, day, 2) : [], state: (st.type || {}).state, gone: espnGone(st, 12).gone };
       };
       const box = await read('boxscore');
-      if (box.rows.length && box.state === 'in' && box.period >= (period || 0)) return box.rows;
+      if (box.rows.length && box.state === 'in' && box.gone >= (gone || 0) - 1.5 / 48) return box.rows;
       const pbp = await read('playbyplay').catch(() => ({ rows: [] }));
       const mins = (x) => x.rows.reduce((a, r) => a + (Number(r.min) || 0), 0);
       return mins(pbp) > mins(box) ? pbp.rows : box.rows;
@@ -2991,6 +2992,15 @@ function clockMin(s) {
 // Pure: an ESPN scoreboard's games under way -- the score, the clock, and how
 // much of regulation is gone (0 to 1). Four quarters: twelve minutes in the
 // NBA, fifteen in the NFL (since 2026-10-25).
+// How much of regulation an ESPN status says is gone (0 to 1), and its clock.
+function espnGone(st, q) {
+  const ty = (st && st.type) || {};
+  const per = Number(st && st.period) || 1, rem = clockMin(st && st.displayClock);
+  if (/HALFTIME/.test(ty.name || '')) return { gone: 0.5, per, label: 'Half' };
+  if (/END_PERIOD/.test(ty.name || '')) return { gone: Math.min(1, per / 4), per, label: `End ${per > 4 ? 'OT' : 'Q' + per}` };
+  const gone = per > 4 ? 1 : ((per - 1) * q + (q - (rem == null ? q : rem))) / (4 * q);
+  return { gone: Math.max(0, Math.min(1, gone)), per, label: `${per > 4 ? 'OT' : 'Q' + per} ${(st && st.displayClock) || ''}`.trim() };
+}
 function espnLiveGames(events, sport) {
   const q = sport === 'nfl' ? 15 : 12;
   const out = [];
@@ -3000,14 +3010,10 @@ function espnLiveGames(events, sport) {
     const c = (ev.competitions || [])[0] || {};
     const h = (c.competitors || []).find((t) => t.homeAway === 'home'), a = (c.competitors || []).find((t) => t.homeAway === 'away');
     if (!h || !a) continue;
-    const per = Number(st.period) || 1, rem = clockMin(st.displayClock);
-    let gone = per > 4 ? 1 : ((per - 1) * q + (q - (rem == null ? q : rem))) / (4 * q);
-    let label = `${per > 4 ? 'OT' : 'Q' + per} ${st.displayClock || ''}`.trim();
-    if (/HALFTIME/.test(ty.name || '')) { gone = 0.5; label = 'Half'; }
-    else if (/END_PERIOD/.test(ty.name || '')) { gone = Math.min(1, per / 4); label = `End ${per > 4 ? 'OT' : 'Q' + per}`; }
+    const { gone, per, label } = espnGone(st, q);
     const nm = (t) => (t.team && (t.team.displayName || t.team.name)) || '';
     out.push({ id: String(ev.id), home: nm(h), away: nm(a), homeAb: (h.team && h.team.abbreviation) || '', awayAb: (a.team && a.team.abbreviation) || '',
-      hs: Number(h.score) || 0, as: Number(a.score) || 0, gone: Math.max(0, Math.min(1, gone)), label, period: per });
+      hs: Number(h.score) || 0, as: Number(a.score) || 0, gone, label, period: per });
   }
   return out;
 }
@@ -3030,15 +3036,28 @@ function nhlLiveGames(j) {
 function liveGameOf(games, home, away, same) {
   return (games || []).find((g) => (same(g.home, home) && same(g.away, away)) || (same(g.home, away) && same(g.away, home))) || null;
 }
-// An under as it stands. Over the line: lost. Held under it with a quarter of
-// the game left: nearly there. Otherwise on pace to stay under, or not -- the
-// pace read as if at least 40% of the game were gone, so one early assist does
-// not call an under lost: Towns' first, six minutes into Oct 25, read
-// "cooling" against under 3.5 at the old 25%.
-function liveUnderState(stat, line, gone) {
+// An under as it stands, by the chance it stays under: the player's own
+// projection for the stat (proj, a game's worth) over the part of the game
+// left, Poisson. Over the line already, or level with a whole-number line
+// (a push at best): lost. 80%+ to stay under in the last quarter of the game:
+// nearly there (cashing); under 40%: going the wrong way (cooling). On Oct 25 the clock alone called Towns
+// "cashing" at 3 assists against under 3.5 with 8:40 left -- half an assist
+// from the line, about a 37% chance of another -- and he had his 4th by 5:56.
+// Without a projection, the clock: held under with a quarter left, and the
+// pace read as if at least 40% of the game were gone, so one early assist
+// does not call an under lost.
+function liveUnderState(stat, line, gone, proj) {
   if (stat > line) return 'cooling';
-  if (gone >= 0.75 && stat < line) return 'cashing';
-  return stat / Math.max(gone, 0.4) > line ? 'cooling' : 'live';
+  if (!(proj > 0)) {
+    if (gone >= 0.75 && stat < line) return 'cashing';
+    return stat / Math.max(gone, 0.4) > line ? 'cooling' : 'live';
+  }
+  const room = Math.ceil(line - stat) - 1;              // how many more he can add and stay under
+  if (room < 0) return 'cooling';
+  const m = proj * Math.max(0, 1 - gone);
+  let t = Math.exp(-m), p = t;
+  for (let k = 1; k <= room; k++) { t *= m / k; p += t; }
+  return p >= 0.8 && gone >= 0.75 ? 'cashing' : p >= 0.4 ? 'live' : 'cooling';
 }
 // The legs on today's Picks of the day, by leg id.
 async function livePickIds(db, days, kinds) {
@@ -3066,7 +3085,7 @@ function liveFollowed(rows, now, picked, idOf, ok) {
 function livePropCard(sport, r, g, stat, label, played, note, m) {
   const c = liveCard({ id: `${sport}:${r.game_id}:${r.player}:${r.market}`, pid: `${sport}${r.player}${r.market}`, name: r.player, team: r.team || '', pos: '',
     stat, label, line: r.point, side: 'Under', m, note, progress: g.gone, edge: r.model_under, started: played });
-  return { sport, ...c, state: liveUnderState(stat, r.point, g.gone), ...(r.onPicks ? { onPicks: true } : {}) };
+  return { sport, ...c, state: liveUnderState(stat, r.point, g.gone, r.proj), ...(r.onPicks ? { onPicks: true } : {}) };
 }
 const liveMeta = (g) => ({ away: g.awayAb, awayR: g.as, home: g.homeAb, homeR: g.hs, inning: g.label });
 
@@ -3082,7 +3101,7 @@ async function nbaLiveCards(env, now, feeds) {
   for (const r of legs) {
     const g = liveGameOf(games, r.home, r.away, nbaMatch);
     if (!g) continue;
-    const box = (await feeds.nbaBox(g.id, g.period)) || [];
+    const box = (await feeds.nbaBox(g.id, g.gone)) || [];
     const b = box.find((x) => r.player_id && x.player_id === String(r.player_id)) || box.find((x) => nbaName(x.player) === nbaName(r.player));
     if (!b) continue;
     const stat = b.dnp ? 0 : (nbaStat(b, r.market) || 0);

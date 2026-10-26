@@ -115,5 +115,36 @@ ok(asked.includes('https://cdn.espn.com/core/nba/playbyplay?xhr=1&gameId=4019098
 pbp = false;
 ok(!kat(await get('/api/live-now')), 'without it, the stale box has no line for him and there is no card -- what Live showed at 4:28');
 
+// ---- late in the 4th: a box behind within the quarter, and when an under is "cashing" --------
+// At 6:11 PM Pacific the boxscore was at 10:28 of the 4th (Towns 3 assists in
+// 26 minutes), playbyplay at 5:45 (4 in 28), the scoreboard at 6:12. Live had
+// read the box and called him "cashing" at 3 against under 3.5 -- the clock
+// alone, with half an assist to spare and eight minutes left. The site's other
+// ESPN host had his 4th by 5:56 (tests/fixtures/espn-nba-late-20261025.json).
+console.log('\n-- late in the 4th --');
+const LATE = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'espn-nba-late-20261025.json'), 'utf8'));
+NOW = RealDate.parse(LATE.at);
+let latePbp = true;
+globalThis.fetch = async (u) => {
+  const url = String(u);
+  const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json' } });
+  if (url === 'https://cdn.espn.com/core/nba/scoreboard?xhr=1&date=20261025') return J(LATE.scoreboardDated);
+  if (url === 'https://cdn.espn.com/core/nba/scoreboard?xhr=1') return J(LATE.scoreboard);
+  if (url === 'https://cdn.espn.com/core/nba/boxscore?xhr=1&gameId=401909863') return J(LATE.boxscore);
+  if (url === 'https://cdn.espn.com/core/nba/playbyplay?xhr=1&gameId=401909863') return latePbp ? J(LATE.playbyplay) : new Response('{}', { status: 503 });
+  if (url.includes('statsapi.mlb.com')) return J({ dates: [] });
+  return new Response('{}', { status: 404 });
+};
+ok(LATE.boxscore.gamepackageJSON.header.competitions[0].status.displayClock === '10:28' && LATE.playbyplay.gamepackageJSON.header.competitions[0].status.displayClock === '5:45',
+  'the recording: the box at 10:28 of the 4th, playbyplay at 5:45, the same quarter');
+let late = kat(await get('/api/live-now'));
+console.log('  ' + (late ? `${late.name} ${late.stat}/${late.line} [${late.inning}] ${late.note} ${late.state}` : 'no card'));
+ok(late && late.stat === 4 && late.note === '28 of 30 min' && late.state === 'cooling',
+  'four minutes of play behind within the quarter, the box gives way to playbyplay: 4 assists, over 3.5, lost');
+latePbp = false;
+late = kat(await get('/api/live-now'));
+ok(late && late.stat === 3 && late.state === 'live',
+  `with the box alone, 3 against 3.5 and six minutes left is live, not cashing: his own 2.6 a game leaves about a 28% chance of another (${late && late.state})`);
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
