@@ -135,7 +135,8 @@ draw({ ...REC.board, record: b.record }, false);
 ok(tabled && tabled.map((x) => `${x.away}@${x.home}`).join() === 'KC@SEA',
   `at 3:18 PM the table is tonight's game alone; the ten under way or over, Panthers +3000 among them, are left out (${tabled && tabled.length})`);
 ok(el.nflCount.textContent === '1 game · week 7' && /prices as of/.test(els.nflNote.textContent), `"${el.nflCount.textContent}", "${els.nflNote.textContent}"`);
-ok(/Record so far <b>[\d–]+<\/b> · favourites at 65%\+ <b>15 of 22<\/b>/.test(els.nflMlGrid.innerHTML), `the record line above it: ${els.nflMlGrid.innerHTML.replace(/<[^>]+>/g, '').split('.')[0]}`);
+// From 2026-10-26 the line leads with the NFL's own bar, 75%+ (tests/nflbar.mjs).
+ok(/Record so far <b>[\d–]+<\/b> · favourites at 75%\+ <b>11 of 13<\/b>.* · at 65–75% <b>4 of 9<\/b>/.test(els.nflMlGrid.innerHTML), `the record line above it: ${els.nflMlGrid.innerHTML.replace(/<[^>]+>/g, '').split('.')[0]}`);
 ok(/const NFL_ML_COLS = \['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', ''\];/.test(app)
   && /\$\{club\(g\.away, g\.awayLogo\)\}<span class="at-sep">@<\/span>\$\{club\(g\.home, g\.homeLogo\)\}/.test(lift('nflRow')),
   "the NBA and NHL tabs' heads, and each club's mark beside its name");

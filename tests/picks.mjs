@@ -113,7 +113,7 @@ ppRow(TODAY, 'g849827', 999101, 'Some Starter', 'SD', 'K', 85, null, 4.5);  // s
 gmRow('nba', TODAY, 'evA', 'h2h', 'reg', iso(NOW + 2 * H), 'home', 'Boston Celtics', 'Boston Celtics', 'New York Knicks', 78, -320, null);
 gmRow('nba', TODAY, 'evPRE', 'h2h', 'pre', iso(NOW + 4 * H), 'home', 'Utah Jazz', 'Utah Jazz', 'Portland Trail Blazers', 85, -500, null);
 gmRow('nba', TODAY, 'evGONE', 'h2h', 'reg', iso(NOW - 1 * H), 'home', 'Miami Heat', 'Miami Heat', 'Orlando Magic', 80, -400, null);
-gmRow('nfl', ptDay(NOW + 20 * H), 'evN', 'h2h', 'REG', iso(NOW + 20 * H), 'home', 'DAL', 'DAL', 'TB', 67, -220, null);
+gmRow('nfl', ptDay(NOW + 20 * H), 'evN', 'h2h', 'REG', iso(NOW + 20 * H), 'home', 'DAL', 'DAL', 'TB', 76, -320, null);   // NFL's bar is 75 (2026-10-26)
 gmRow('soccer', ptDay(NOW + 30 * H), 'evS', 'fav', 'epl', iso(NOW + 30 * H), 'home', 'Arsenal', 'Arsenal', 'Leeds United', 72, -260, null);
 gmRow('soccer', TODAY, 'evS2', 'fav', 'epl', iso(NOW + 6 * H), 'home', 'Chelsea', 'Chelsea', 'Brentford', 64, -170, null);
 // NBA PrizePicks unders.
@@ -137,8 +137,8 @@ const L = d.legs || [];
 console.log('  ' + L.map((x) => `${x.rank}. ${x.title} ${x.p}% [${x.kind}]`).join(' | '));
 const leg = (t) => L.find((x) => x.title.startsWith(t));
 ok(L.length === 6 && L.every((x, i) => i === 0 || L[i - 1].p >= x.p), `six legs, best first (${L.length})`);
-ok(L.map((x) => x.title.split(' ')[0]).join(',') === 'Celtics,R.,Jalen,J.,NYY,DAL',
-  'Boston 78, Grichuk 74, Brunson 72, Chourio 71, the Yankees 68, Dallas 67 -- and the Dodgers at 66 are seventh, off the list');
+ok(L.map((x) => x.title.split(' ')[0]).join(',') === 'Celtics,DAL,R.,Jalen,J.,NYY',
+  'Boston 78, Dallas 76, Grichuk 74, Brunson 72, Chourio 71, the Yankees 68 -- and the Dodgers at 66 are seventh, off the list');
 ok(leg('NYY ML') && leg('NYY ML').legId === 'ml:g849838:NYY' && leg('NYY ML').p === 68 && leg('NYY ML').spec.side === 'home',
   `the board led with Tampa Bay at 32%: the favourite is the Yankees, at 68, at home (${leg('NYY ML') && leg('NYY ML').legId})`);
 ok(!L.some((x) => /Pham/.test(x.title)), 'Pham, on neither posted card, is not listed');
@@ -165,7 +165,7 @@ ok(d.kinds.nba_ml.record.n === 0, 'an NBA preseason favourite is not an NBA favo
 ok(leg('NYY ML').record && leg('NYY ML').record.n === 2 && leg('NYY ML').record.proven === false,
   'each leg carries its kind\'s record, and says when it is too thin to lean on');
 const e2 = (d.entries || [])[0];
-ok(e2 && e2.entry === '2-pick power' && e2.allLand === Math.round(78 * 74 / 100 * 10) / 10 && e2.perLegBreakEven === 57.7,
+ok(e2 && e2.entry === '2-pick power' && e2.allLand === Math.round(78 * 76 / 100 * 10) / 10 && e2.perLegBreakEven === 57.7,
   `the entry read: the top two both land ${e2 && e2.allLand}% of the time, each needing 57.7% for a 2-pick power`);
 
 // ---- the list's own record -------------------------------------------------------------

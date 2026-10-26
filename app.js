@@ -6425,17 +6425,23 @@
     }).join('')}</ol></div>`;
   }
   function nhlRecordHtml(r) { return gmRecordHtml(r, 'Record: logged from Oct 20, graded from the NHL’s finals each morning.'); }
-  // A moneyline log's record and its 65%+ favourites, the bar Picks of the day
-  // lists favourites at: the NHL tab's line, and the NFL tab's since 2026-10-25.
+  // A moneyline log's record and its favourites at the bar Picks of the day
+  // lists them at (r.bar; 65%+, the NFL's 75%+ from 2026-10-26): the NHL tab's
+  // line, and the NFL tab's since 2026-10-25.
   function gmRecordHtml(r, none) {
     if (!r || !r.n) return `<p class="soc-note">${none}</p>`;
-    const hi = (r.byBand && r.byBand['65+']) || { n: 0 };
+    const bar = r.bar || 65;
+    const hi = (r.byBand && r.byBand[bar + '+']) || { n: 0 };
     const won = hi.n ? Number(String(hi.record).split('–')[0]) : 0;
+    // The NFL's 65-75% favourites, off the list since the bar went to 75%.
+    const lo = bar === 75 && r.byBand && r.byBand['65-75'];
+    const loWon = lo && lo.n ? Number(String(lo.record).split('–')[0]) : 0;
     // NHL home favourites at 60%+ (2026-10-26): logged beside the bar, not on Picks.
     const hf = r.homeFav60;
     const hfWon = hf && hf.n ? Number(String(hf.record).split('–')[0]) : 0;
     return `<p class="soc-note">Record so far <b>${esc(r.record)}</b>`
-      + (hi.n ? ` · favourites at 65%+ <b>${won} of ${hi.n}</b> (${esc(String(hi.expected))}% expected)` : ' · none at 65%+ yet')
+      + (hi.n ? ` · favourites at ${bar}%+ <b>${won} of ${hi.n}</b> (${esc(String(hi.expected))}% expected)` : ` · none at ${bar}%+ yet`)
+      + (lo && lo.n ? ` · at 65–75% <b>${loWon} of ${lo.n}</b> (${esc(String(lo.expected))}% expected), off Picks` : '')
       + (hf && hf.n ? ` · home favourites at 60%+ <b>${hfWon} of ${hf.n}</b> (${esc(String(hf.expected))}% expected)` : '')
       + '</p>';
   }

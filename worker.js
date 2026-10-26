@@ -4573,9 +4573,13 @@ function buildGmRecord(rows, sport) {
     // The NHL log is judged band by band, 65%+ first: that is the bar Picks of
     // the day lists every other sport's favourites at (PICK_KINDS), and NHL is
     // not on that list until its own 65%+ favourites have held up (2026-10-20).
-    // The NFL board shows the same line since 2026-10-25.
+    // The NFL board shows the same line since 2026-10-25, and from 2026-10-26
+    // its own bar, 75%+, with the 65-75% favourites it left beside it. `bar`
+    // is the sport's Picks floor, so the page leads with the band Picks uses.
     ...(sport === 'nhl' || sport === 'nfl' ? { byBand: { '65+': gmBand(graded, 65, 101), '60-65': gmBand(graded, 60, 65),
-      '55-60': gmBand(graded, 55, 60), 'under 55': gmBand(graded, 0, 55) } } : {}),
+      '55-60': gmBand(graded, 55, 60), 'under 55': gmBand(graded, 0, 55),
+      ...(sport === 'nfl' ? { '75+': gmBand(graded, 75, 101), '65-75': gmBand(graded, 65, 75) } : {}) },
+      bar: PICK_KINDS[sport + '_ml'].min } : {}),
     // NHL home favourites at 60%+ (2026-10-26), logged beside the 65%+ bar:
     // by Oct 25 the NHL's 65%+ favourites were 2 of 5 and its 55-65% ones 13
     // of 18, home sides 17 of 26 and away ones 5 of 13. Two weeks of this say
@@ -8167,7 +8171,8 @@ async function topLegs(env, url) {
 //     all 878 games the site's win chance was 57.2% realised vs 57.0% claimed.
 //   MLB PrizePicks unders at 70%+: 19 of 25 (76%). Below 70 the model ran 5-10
 //     points hot (60-65%: 55 of 109), and strikeout unders hit 49%: both out.
-//   NBA, NFL and soccer favourites at 65%+ and NBA PrizePicks unders at 70%+:
+//   NBA and soccer favourites at 65%+, NFL's at 75%+ (from 2026-10-26), and
+//   NBA PrizePicks unders at 70%+:
 //     in, each with its own record beside it. The sharp line is the best
 //     number there is and the NBA model held up on last season's games, but
 //     none has PICKS_PROVEN_N graded legs at its bar yet. NBA preseason is out:
@@ -8188,7 +8193,11 @@ const PICK_KINDS = {
   mlb_pp: { sport: 'mlb', label: 'MLB PrizePicks under (TB, H+R+RBI)', min: 70 },
   nba_ml: { sport: 'nba', label: 'NBA moneyline favourite', min: 65 },
   nba_pp: { sport: 'nba', label: 'NBA PrizePicks under (3PM, AST; PP line not below the book)', min: 70 },
-  nfl_ml: { sport: 'nfl', label: 'NFL moneyline favourite', min: 65 },
+  // NFL at 75%+ from 2026-10-26, on the owner's call ("too many losses"):
+  // through Week 7 the log's favourites at 75%+ won 11 of 14 (78.5% stated)
+  // and those at 65-75% 6 of 12 (about 70% stated) -- the Texans at 80.9% and
+  // the Jets at 65.6% both lost on Oct 25.
+  nfl_ml: { sport: 'nfl', label: 'NFL moneyline favourite', min: 75 },
   // NHL since 2026-10-22, on the owner's call after last season's backtest:
   // 2025-26 favourites the sharp books made 65%+ won 114 of 171 (66.7%,
   // stated 69.1%), from /api/hist-backtest?job=nhl. Overtime and the shootout
@@ -10166,7 +10175,7 @@ async function nhlBoardData(env) {
   if (!env || !env.DB) return out;
   try {
     const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'nhl'").all()).results) || [], 'nhl');
-    out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand, homeFav60: rec.homeFav60 };
+    out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand, bar: rec.bar, homeFav60: rec.homeFav60 };
   } catch (e) { /* no log yet */ }
   return out;
 }
@@ -13823,7 +13832,7 @@ async function nflBoardData(env, url) {
     if (url) {
       try {
         const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'nfl'").all()).results) || [], 'nfl');
-        out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand };
+        out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand, bar: rec.bar };
       } catch (e) { /* no log yet */ }
     }
   } catch (e) { out.error = String((e && e.message) || e); }

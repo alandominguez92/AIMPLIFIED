@@ -242,7 +242,7 @@ const gm = (sport, gid, market, league, commence, side, pick, home, away, wp, pr
 // Kickoffs as ESPN lists them on Oct 18. The odds feed writes "Bournemouth";
 // ESPN writes "AFC Bournemouth". Chelsea is not on ESPN's Oct 18 card at all.
 gm('nba', 'evBOS', 'h2h', 'reg', '2026-10-18T23:30:00Z', 'home', 'Boston Celtics', 'Boston Celtics', 'Detroit Pistons', 78, -330);
-gm('nfl', 'evWAS', 'h2h', 'REG', '2026-10-18T17:00:00Z', 'home', 'WAS', 'WAS', 'NYG', 70, -240);
+gm('nfl', 'evWAS', 'h2h', 'REG', '2026-10-18T17:00:00Z', 'home', 'WAS', 'WAS', 'NYG', 76, -320);   // NFL's bar is 75 (2026-10-26)
 gm('soccer', 'evNFO', 'fav', 'epl', '2026-10-18T15:30:00Z', 'away', 'Arsenal', 'Nottingham Forest', 'Arsenal', 72, -250);
 gm('soccer', 'evBOU', 'fav', 'epl', '2026-10-18T13:00:00Z', 'home', 'Bournemouth', 'Bournemouth', 'Sunderland', 68, -200);
 gm('soccer', 'evCHE', 'fav', 'epl', '2026-10-18T14:00:00Z', 'home', 'Chelsea', 'Chelsea', 'Brentford', 66, -180);
