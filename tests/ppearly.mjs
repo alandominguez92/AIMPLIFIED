@@ -53,7 +53,7 @@ const PRIORS = fs.readFileSync(path.join(BOARD, 'nba-priors.json'), 'utf8');
 const ODDS = 'https://api.the-odds-api.com/v4/sports';
 const NBA_READ = `${ODDS}/basketball_nba/events/${NBA.id}/odds?apiKey=k`
   + '&markets=player_threes,player_assists,player_rebounds,player_blocks,player_steals&oddsFormat=american&dateFormat=iso'
-  + '&bookmakers=prizepicks,underdog,pick6,draftkings,fanduel';
+  + '&bookmakers=prizepicks,underdog,pick6,draftkings,fanduel,pinnacle,lowvig,betonlineag,novig,prophetx';
 const NBA_CHECK = `${ODDS}/basketball_nba/events/${NBA.id}/odds?apiKey=k&markets=player_rebounds&oddsFormat=american&dateFormat=iso&bookmakers=prizepicks`;
 const NHL_CHECK = `${ODDS}/icehockey_nhl/events/${NHL.id}/odds?apiKey=k&markets=player_points&oddsFormat=american&dateFormat=iso&bookmakers=prizepicks`;
 
@@ -248,7 +248,7 @@ const ui = { nbaPp: b, slip: {} };
 let C;
 try {
   C = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'nbaPpCardHtml']
+    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'nbaPpCardHtml']
     .map(lift).join('\n') + '\nreturn { ppMovedTag, ppCloseLineHtml, nbaPpCardHtml };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, '').trim();

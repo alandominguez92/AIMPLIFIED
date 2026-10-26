@@ -2795,6 +2795,16 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tc-gap { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none;
   color:var(--positive); border:1px solid color-mix(in srgb, var(--positive) 45%, var(--border)); border-radius:4px; padding:1px 5px; white-space:nowrap; }
 .tc-gap.lower { color:var(--caution); border-color:color-mix(in srgb, var(--caution) 45%, var(--border)); }
+/* Underdog's or Pick6's line level with or below PrizePicks', and the sharp
+   books' chance of the under (2026-10-25): plain chips beside the coloured
+   ones. Sharp at a 2-pick power's break-even or better reads positive, under
+   50% cautionary. */
+.tc-dfs, .tc-sharp-chip { font-family:var(--sans); font-size:var(--fsSm); letter-spacing:0; text-transform:none;
+  color:var(--textDim); border:1px solid var(--border); border-radius:4px; padding:1px 5px; white-space:nowrap; }
+.tc-sharp-chip.up { color:var(--positive); border-color:color-mix(in srgb, var(--positive) 45%, var(--border)); }
+.tc-sharp-chip.down { color:var(--caution); border-color:color-mix(in srgb, var(--caution) 45%, var(--border)); }
+.tc-sharp.up { color:var(--positive); }
+.tc-sharp.down { color:var(--caution); }
 .tc-rec-line b { color:var(--text); font-weight:600; }
 
 /* Picks of the day: the today-card layout, plus a record line under each leg.

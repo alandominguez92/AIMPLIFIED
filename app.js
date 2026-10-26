@@ -6036,6 +6036,8 @@
       if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
       // Underdog or Pick6 above PrizePicks on the same under (2026-10-25).
       if (x.dfs && x.spec && x.spec.pp) { const t = dfsLinesHtml(x.spec.pp.line, x.dfs.ud, x.dfs.p6).trim(); if (t) tags.push(t); }
+      // The sharp books' chance at the line shown (2026-10-25).
+      if (typeof x.sharp === 'number') tags.push(sharpTag(x.sharp, null, true));
       if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
       if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
       const mv = pickMoved(x);
@@ -6174,6 +6176,26 @@
       ? ` <span class="tc-gap" title="${full}'s line is higher than PrizePicks': the under is easier there">${k} ${esc(String(v))}</span>`
       : ` <span class="tc-dfs" title="${full}'s line on the same under">${k} ${esc(String(v))}</span>`)).join('');
   }
+  // The sharp books' chance of the under at PrizePicks' line, de-vigged
+  // (2026-10-25), coloured against the break-evens: at or above a 2-pick
+  // power's 57.7% it reads as an edge, under 50% as a leg the market rates
+  // the other way.
+  function sharpTag(p, src, chip) {
+    if (typeof p !== 'number') return '';
+    const tone = p >= 57.7 ? ' up' : p < 50 ? ' down' : '';
+    const books = src ? String(src).split(',').map((b) => ({ pinnacle: 'Pinnacle', lowvig: 'LowVig', betonlineag: 'BetOnline', novig: 'Novig', prophetx: 'ProphetX' })[b] || b).join(', ') : 'the sharp books';
+    return `<span class="${chip ? 'tc-sharp-chip' : 'tc-sharp'}${tone}" title="${esc(books)}: their price at PrizePicks' line, de-vigged">sharp ${Math.round(p)}%</span>`;
+  }
+  // The card's third line: the book's line, the sharp chance, and his games
+  // this season against today's number (context: recent form regresses).
+  function ppBookLine(x) {
+    const parts = [];
+    if (x.book_line != null) parts.push(`book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}`);
+    const sh = sharpTag(x.sharp_under, x.sharp_src);
+    if (sh) parts.push(sh);
+    if (x.l10_n > 0) parts.push(`<span title="His games this season against this line">season: under ${x.l10_under} of ${x.l10_n}</span>`);
+    return parts.length ? `<span class="tc-book">${parts.join(' · ')}</span>` : '';
+  }
   function nbaPpCardHtml() {
     const d = state.nbaPp;
     if (!d) return '';
@@ -6220,7 +6242,7 @@
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
         + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
-        + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
+        + `${ppBookLine(x)}</span>`
         + `</div></li>`;
     }).join('')}</ol></div>`;
   }

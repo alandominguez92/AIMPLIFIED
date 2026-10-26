@@ -8437,7 +8437,9 @@ async function picksCandidates(env, now) {
         market: r.market, side: 'Under', book: { line: r.book_line != null ? r.book_line : null, price: typeof r.book_under === 'number' ? r.book_under : null, under: null },
         pp: { line: r.point, under: r.model_under } },
       // Underdog's and Pick6's line on the same under, where read (2026-10-25).
-      dfs: { ud: r.ud_line == null ? null : r.ud_line, p6: r.p6_line == null ? null : r.p6_line } });
+      dfs: { ud: r.ud_line == null ? null : r.ud_line, p6: r.p6_line == null ? null : r.p6_line },
+      // The sharp books' chance of the under at the line shown (2026-10-25).
+      sharp: r.sharp_under == null ? null : r.sharp_under });
   }
   return { legs, unavailable };
 }
@@ -8681,6 +8683,7 @@ async function picksBoard(env) {
       firstP: firsts.has(l.legId) ? round1(firsts.get(l.legId).first_p) : null, firstAt: firsts.has(l.legId) ? firsts.get(l.legId).first_at : null,
       record: kinds[l.kind], legId: l.legId, spec: l.spec,
       ...(l.dfs ? { dfs: l.dfs } : {}),
+      ...(l.sharp != null ? { sharp: l.sharp } : {}),
     }));
     // The entry read: the top two as a 2-pick power (both have to land), and
     // the average leg of the top three to six against the flex break-even.
@@ -10519,7 +10522,10 @@ const NBA_PP_MARKETS = { player_threes: 'threes', player_assists: 'ast', player_
 // Underdog and DraftKings Pick6 ride along (2026-10-22): the feed bills ten
 // named books as one region, so the same read now says where each pick'em
 // app sets its line. Only PrizePicks' lines are logged and graded.
-const NBA_PP_BOOKS = ['prizepicks', 'underdog', 'pick6', 'draftkings', 'fanduel'];
+// The sharp books joined on 2026-10-25 (NBA_SHARP: Pinnacle, LowVig,
+// BetOnline, Novig, ProphetX), for the sharp-fair chance at PrizePicks' line:
+// ten books in all, still one region, so the read costs what it did.
+const NBA_PP_BOOKS = ['prizepicks', 'underdog', 'pick6', 'draftkings', 'fanduel', ...NBA_SHARP];
 const NBA_PRIOR_K = 5;
 const NBA_DISP = { threes: 1.15, ast: 1.25, reb: 1.2, blk: 1.15, stl: 1.1 };
 // The markets Picks of the day may carry: the ones whose under it was built on.
@@ -10564,7 +10570,8 @@ function ppReadDue(commence, st, now) {
 const ppCurrent = (r) => (r.close_point == null
   ? { ...r, first_point: r.point, first_under: r.model_under }
   : { ...r, first_point: r.point, first_under: r.model_under, point: r.close_point, model_under: r.close_under,
-    book_line: r.close_book_line, book_under: r.close_book_under });
+    book_line: r.close_book_line, book_under: r.close_book_under,
+    sharp_under: r.close_sharp_under != null ? r.close_sharp_under : (r.close_at && r.sharp_under != null ? null : r.sharp_under) });
 // Which side a count landed on against a line.
 const ppSide = (actual, line) => (actual < line ? 'under' : actual > line ? 'over' : 'push');
 // The legs PrizePicks still has up. One whose game had the pre-tip read and
@@ -10713,6 +10720,11 @@ async function ensureNbaSchema(db) {
   await addColumns(db, 'nbapp', PP_CLOSE_COLS);
   // Underdog's and Pick6's lines on the same under, as last read (2026-10-25).
   await addColumns(db, 'nbapp', [['ud_line', 'REAL'], ['p6_line', 'REAL']]);
+  // The sharp books' chance of the under at PrizePicks' line, at the first
+  // read and the pre-tip one, and his season's games against the line as last
+  // read (2026-10-25).
+  await addColumns(db, 'nbapp', [['sharp_under', 'REAL'], ['sharp_n', 'INTEGER'], ['sharp_src', 'TEXT'], ['close_sharp_under', 'REAL'],
+    ['l10_n', 'INTEGER'], ['l10_under', 'INTEGER']]);
 }
 const PP_CLOSE_COLS = [['close_point', 'REAL'], ['close_under', 'REAL'], ['close_book_line', 'REAL'], ['close_book_under', 'INTEGER'],
   ['close_at', 'TEXT'], ['close_result', 'TEXT']];
@@ -10770,6 +10782,44 @@ async function nbaRecentMap(db) {
   return m;
 }
 
+// The sharp books' chance of an under at PrizePicks' number (2026-10-25): the
+// way every +EV pick'em guide prices a leg -- a sharp book's two-way price,
+// de-vigged -- and the way this site's moneylines are priced (12 of 13 NBA
+// favourites landed by Oct 25, while the box-score model ran about 52% at
+// PrizePicks' lines). Each sharp book's Over/Under on the player, Shin
+// de-vigged, gives its fair chance of the under at its own line; that chance
+// fixes the projection the book is pricing (the mean whose distribution puts
+// that much under its line, at the market's dispersion), and the projection
+// prices the under at PrizePicks' line, so a book a half point off still
+// counts. A whole-number book line is fair over the two non-push outcomes. The
+// median over the sharp books that quote him; null when none does.
+function nbaSharpUnder(ev, mk, name, line, disp) {
+  const below = (mu, b) => negBinomCdf(Math.ceil(b) - 1, mu, disp);                   // P(X < b)
+  const under = (mu, b) => (Number.isInteger(b) ? below(mu, b) / (below(mu, b) + 1 - negBinomCdf(b, mu, disp)) : below(mu, b));
+  const at = [];
+  const src = [];
+  for (const bk of NBA_SHARP) {
+    const b = (ev.bookmakers || []).find((x) => x.key === bk);
+    const m = b && (b.markets || []).find((x) => x.key === mk);
+    if (!m) continue;
+    // The book's line nearest PrizePicks' with both sides quoted.
+    const mine = (m.outcomes || []).filter((o) => nbaName(o.description) === name && o.point != null && typeof o.price === 'number');
+    const pts = [...new Set(mine.map((o) => o.point))].filter((p) => mine.some((o) => o.point === p && o.name === 'Over') && mine.some((o) => o.point === p && o.name === 'Under'));
+    if (!pts.length) continue;
+    const p = pts.sort((a, c) => Math.abs(a - line) - Math.abs(c - line))[0];
+    const fair = shinDevig(mine.find((o) => o.point === p && o.name === 'Under').price, mine.find((o) => o.point === p && o.name === 'Over').price);
+    if (fair == null || !(fair > 0 && fair < 1)) continue;
+    let lo = 0.001, hi = Math.max(5, p * 4 + 5);                                       // under falls as the mean rises
+    for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (under(mid, p) > fair) lo = mid; else hi = mid; }
+    at.push(below((lo + hi) / 2, line));
+    src.push(bk);
+  }
+  if (!at.length) return null;
+  at.sort((a, c) => a - c);
+  const med = at.length % 2 ? at[(at.length - 1) / 2] : (at[at.length / 2 - 1] + at[at.length / 2]) / 2;
+  return { under: round1(med * 100), n: at.length, src: src.join(',') };
+}
+
 // Pure: one event's odds in, log rows out.
 function nbaPpLegs(ev, pri, recent) {
   const out = [];
@@ -10823,12 +10873,18 @@ function nbaPpLegs(ev, pri, recent) {
         ? (recMin.reduce((a, b) => a + b, 0) + NBA_PRIOR_K * priorMin) / (recMin.length + NBA_PRIOR_K)
         : (recMin.length ? recMin.reduce((a, b) => a + b, 0) / recMin.length : null);
       const bl = bookLine(m.key, name);
+      const sh = nbaSharpUnder(ev, m.key, name, o.point, NBA_DISP[market]);
       out.push({
         game_id: ev.id, commence: ev.commence_time, home: ev.home_team, away: ev.away_team,
         player: o.description, player_id: pl.id, team: pl.tm || null, market, point: o.point,
         proj: round1(proj), model_under: round1(under * 100), n_recent: rec.length, prior_gp: pl.gp || 0,
         min_proj: minProj != null ? round1(minProj) : null, book_line: bl.line, book_under: bl.price,
         ud_line: dfsLine('underdog', m.key, name), p6_line: dfsLine('pick6', m.key, name),
+        sharp_under: sh ? sh.under : null, sharp_n: sh ? sh.n : null, sharp_src: sh ? sh.src : null,
+        // His games this season against this line (2026-10-25): context, not
+        // a forecast -- recent form regresses, which is why the projection
+        // blends it with last season.
+        l10_n: rec.length, l10_under: rec.filter((v) => v < o.point).length,
       });
     }
   }
@@ -10887,14 +10943,18 @@ async function logNbaPp(db, lg, legs, close) {
   for (const l of legs) {
     const day = ptDateOf(Date.parse(l.commence));
     stmts.push(db.prepare(
-      `INSERT OR IGNORE INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, prior_gp, min_proj, book_line, book_under, model_ver, captured_at, ud_line, p6_line)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT OR IGNORE INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, prior_gp, min_proj, book_line, book_under, model_ver, captured_at, ud_line, p6_line,
+         sharp_under, sharp_n, sharp_src, l10_n, l10_under)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(day, l.game_id, l.player, l.market, lg, l.commence, l.home, l.away, l.team, l.player_id,
       l.point, l.proj, l.model_under, l.n_recent, l.prior_gp, l.min_proj, l.book_line, l.book_under, NBA_PP_VER, stamp,
-      l.ud_line == null ? null : l.ud_line, l.p6_line == null ? null : l.p6_line));
+      l.ud_line == null ? null : l.ud_line, l.p6_line == null ? null : l.p6_line,
+      l.sharp_under == null ? null : l.sharp_under, l.sharp_n == null ? null : l.sharp_n, l.sharp_src || null,
+      l.l10_n == null ? null : l.l10_n, l.l10_under == null ? null : l.l10_under));
     if (close) stmts.push(db.prepare(
-      'UPDATE nbapp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=?, ud_line=?, p6_line=? WHERE date=? AND game_id=? AND player=? AND market=?'
+      'UPDATE nbapp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=?, ud_line=?, p6_line=?, close_sharp_under=?, l10_n=?, l10_under=? WHERE date=? AND game_id=? AND player=? AND market=?'
     ).bind(l.point, l.model_under, l.book_line, l.book_under, stamp, l.ud_line == null ? null : l.ud_line, l.p6_line == null ? null : l.p6_line,
+      l.sharp_under == null ? null : l.sharp_under, l.l10_n == null ? null : l.l10_n, l.l10_under == null ? null : l.l10_under,
       day, l.game_id, l.player, l.market));
   }
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
@@ -11120,10 +11180,12 @@ async function nbaPpBoard(env) {
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       first_point: r.first_point, first_under: r.first_under, first_at: r.captured_at, close_at: r.close_at,
       ud_line: r.ud_line == null ? null : r.ud_line, p6_line: r.p6_line == null ? null : r.p6_line,
+      sharp_under: r.sharp_under == null ? null : r.sharp_under, sharp_src: r.sharp_src || null,
+      l10_n: r.l10_n == null ? null : r.l10_n, l10_under: r.l10_under == null ? null : r.l10_under,
     })).sort((a, b) => b.model_under - a.model_under);
     // The record is kept over the players the card shows. A bench player's 0.5
     // line tops any ranking by the model's chance, and he is the one who sits.
-    const graded = ((await env.DB.prepare("SELECT date, market, model_under, point, book_line, min_proj, result, close_point, close_result FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
+    const graded = ((await env.DB.prepare("SELECT date, market, model_under, point, book_line, min_proj, result, close_point, close_result, sharp_under FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
       .filter((g) => g.min_proj != null && g.min_proj >= NBA_ROTATION_MIN);
     const split = ppSplitRecord(graded.map((g) => ({
       p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null),
@@ -11173,9 +11235,20 @@ async function nbaPpBoard(env) {
         byBand: ov.byBand, byLineGap: ov.byLineGap,
         byMarket: Object.fromEntries(Object.entries(ovBy).map(([k, v]) => [k, { n: v.n, hit: v.hit, hitRate: v.n ? round1(v.hit / v.n * 100) : null }])) },
       ...ppCloseRecord(graded),
+      sharp: ppSharpRecord(graded),
     };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
+}
+// How the unders landed by the sharp books' chance at the first line
+// (2026-10-25), against the break-evens: 54.2% (5-6 flex) and 57.7% (2-pick
+// power). The model's own bands sit beside it (byBand); a week of both says
+// which one Picks of the day should rank by.
+function ppSharpRecord(rows) {
+  const d = rows.filter((g) => g.sharp_under != null && (g.result === 'under' || g.result === 'over'));
+  const band = (lo, hi) => { const l = d.filter((g) => g.sharp_under >= lo && g.sharp_under < hi); const hit = l.filter((g) => g.result === 'under').length;
+    return { n: l.length, hit, hitRate: l.length ? round1(hit / l.length * 100) : null }; };
+  return { n: d.length, byBand: { '<50': band(0, 50), '50-54': band(50, 54), '54-58': band(54, 58), '58+': band(58, 101) } };
 }
 
 // ---------------------------------------------------------------------------

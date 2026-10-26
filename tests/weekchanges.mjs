@@ -29,7 +29,7 @@ globalThis.Date = class extends RealDate {
 };
 const READ_URL = `https://api.the-odds-api.com/v4/sports/basketball_nba/events/${HOU.id}/odds?apiKey=k`
   + '&markets=player_threes,player_assists,player_rebounds,player_blocks,player_steals&oddsFormat=american&dateFormat=iso'
-  + '&bookmakers=prizepicks,underdog,pick6,draftkings,fanduel';
+  + '&bookmakers=prizepicks,underdog,pick6,draftkings,fanduel,pinnacle,lowvig,betonlineag,novig,prophetx';
 const calls = [];
 globalThis.fetch = async (u) => {
   const url = String(u);
