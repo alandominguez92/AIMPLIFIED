@@ -4576,6 +4576,11 @@ function buildGmRecord(rows, sport) {
     // The NFL board shows the same line since 2026-10-25.
     ...(sport === 'nhl' || sport === 'nfl' ? { byBand: { '65+': gmBand(graded, 65, 101), '60-65': gmBand(graded, 60, 65),
       '55-60': gmBand(graded, 55, 60), 'under 55': gmBand(graded, 0, 55) } } : {}),
+    // NHL home favourites at 60%+ (2026-10-26), logged beside the 65%+ bar:
+    // by Oct 25 the NHL's 65%+ favourites were 2 of 5 and its 55-65% ones 13
+    // of 18, home sides 17 of 26 and away ones 5 of 13. Two weeks of this say
+    // whether it, and not 65%+, is the NHL's bar. Not on Picks of the day.
+    ...(sport === 'nhl' ? { homeFav60: gmBand(graded.filter((r) => r.side === 'home'), 60, 101) } : {}),
     clvBeatRate: clvN ? round1(beat / clvN * 100) : null, clvN,
   };
 }
@@ -10161,7 +10166,7 @@ async function nhlBoardData(env) {
   if (!env || !env.DB) return out;
   try {
     const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'nhl'").all()).results) || [], 'nhl');
-    out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand };
+    out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand, homeFav60: rec.homeFav60 };
   } catch (e) { /* no log yet */ }
   return out;
 }
@@ -11185,7 +11190,7 @@ async function nbaPpBoard(env) {
     })).sort((a, b) => b.model_under - a.model_under);
     // The record is kept over the players the card shows. A bench player's 0.5
     // line tops any ranking by the model's chance, and he is the one who sits.
-    const graded = ((await env.DB.prepare("SELECT date, market, model_under, point, book_line, min_proj, result, close_point, close_result, sharp_under FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
+    const graded = ((await env.DB.prepare("SELECT date, game_id, market, model_under, point, book_line, min_proj, result, close_point, close_result, sharp_under FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
       .filter((g) => g.min_proj != null && g.min_proj >= NBA_ROTATION_MIN);
     const split = ppSplitRecord(graded.map((g) => ({
       p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null),
@@ -11236,6 +11241,13 @@ async function nbaPpBoard(env) {
         byMarket: Object.fromEntries(Object.entries(ovBy).map(([k, v]) => [k, { n: v.n, hit: v.hit, hitRate: v.n ? round1(v.hit / v.n * 100) : null }])) },
       ...ppCloseRecord(graded),
       sharp: ppSharpRecord(graded),
+      // By how lopsided the game was (2026-10-26): the moneyline log's chance
+      // for the same game's favourite (gmpicks, keyed by the odds feed's event
+      // id as nbapp is). Starters sit late in a blowout, which an under
+      // should like; this says whether it does at PrizePicks' lines.
+      // A moneyline log it cannot read leaves this split out, never the record.
+      byGame: await env.DB.prepare("SELECT game_id, win_prob FROM gmpicks WHERE sport = 'nba' AND market = 'h2h'").all()
+        .then((x) => ppGameRecord(graded, new Map((x.results || []).map((g) => [g.game_id, g.win_prob])))).catch(() => null),
     };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
@@ -11244,6 +11256,19 @@ async function nbaPpBoard(env) {
 // (2026-10-25), against the break-evens: 54.2% (5-6 flex) and 57.7% (2-pick
 // power). The model's own bands sit beside it (byBand); a week of both says
 // which one Picks of the day should rank by.
+// Unders by the favourite's chance in their game: 75%+ (lopsided), 60-75,
+// under 60 (close), and no moneyline logged; all rotation legs, and starters
+// (28+ projected minutes) apart, since they are the ones a blowout sits.
+function ppGameRecord(rows, fav) {
+  const d = rows.filter((g) => g.result === 'under' || g.result === 'over');
+  const cell = (l) => { const hit = l.filter((g) => g.result === 'under').length; return { n: l.length, hit, hitRate: l.length ? round1(hit / l.length * 100) : null }; };
+  const split = (l) => {
+    const p = (g) => fav.get(g.game_id);
+    return { '75+': cell(l.filter((g) => p(g) >= 75)), '60-75': cell(l.filter((g) => p(g) >= 60 && p(g) < 75)),
+      'under 60': cell(l.filter((g) => p(g) != null && p(g) < 60)), 'no line': cell(l.filter((g) => p(g) == null)) };
+  };
+  return { all: split(d), starters: split(d.filter((g) => g.min_proj >= 28)) };
+}
 function ppSharpRecord(rows) {
   const d = rows.filter((g) => g.sharp_under != null && (g.result === 'under' || g.result === 'over'));
   const band = (lo, hi) => { const l = d.filter((g) => g.sharp_under >= lo && g.sharp_under < hi); const hit = l.filter((g) => g.result === 'under').length;

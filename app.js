@@ -6196,6 +6196,14 @@
     if (x.l10_n > 0) parts.push(`<span title="His games this season against this line">season: under ${x.l10_under} of ${x.l10_n}</span>`);
     return parts.length ? `<span class="tc-book">${parts.join(' · ')}</span>` : '';
   }
+  // Unders by how lopsided the game was (2026-10-26): the favourite at 75%+
+  // against a game under 60%, for the starters a blowout sits.
+  function ppGameLineHtml(g) {
+    const s = g && g.starters;
+    if (!s || !(s['75+'].n || s['under 60'].n)) return '';
+    const c = (x) => (x.n ? `<b>${x.hit} of ${x.n}</b>` : 'none yet');
+    return `<div class="tc-sub tc-rec-line">Starters' unders: in a lopsided game (favourite 75%+) ${c(s['75+'])} · in a close one (under 60%) ${c(s['under 60'])}</div>`;
+  }
   function nbaPpCardHtml() {
     const d = state.nbaPp;
     if (!d) return '';
@@ -6221,7 +6229,7 @@
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span>${rec}</div>`
       + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
-      + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r);
+      + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame);
     if (!top.length) {
       return `<div class="nba-pp">${head}<div class="tc-wait-note">${all.length
         ? 'No rotation players among the logged lines yet.'
@@ -6423,8 +6431,12 @@
     if (!r || !r.n) return `<p class="soc-note">${none}</p>`;
     const hi = (r.byBand && r.byBand['65+']) || { n: 0 };
     const won = hi.n ? Number(String(hi.record).split('–')[0]) : 0;
+    // NHL home favourites at 60%+ (2026-10-26): logged beside the bar, not on Picks.
+    const hf = r.homeFav60;
+    const hfWon = hf && hf.n ? Number(String(hf.record).split('–')[0]) : 0;
     return `<p class="soc-note">Record so far <b>${esc(r.record)}</b>`
       + (hi.n ? ` · favourites at 65%+ <b>${won} of ${hi.n}</b> (${esc(String(hi.expected))}% expected)` : ' · none at 65%+ yet')
+      + (hf && hf.n ? ` · home favourites at 60%+ <b>${hfWon} of ${hf.n}</b> (${esc(String(hf.expected))}% expected)` : '')
       + '</p>';
   }
   function renderNhl() {

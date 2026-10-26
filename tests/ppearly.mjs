@@ -248,7 +248,7 @@ const ui = { nbaPp: b, slip: {} };
 let C;
 try {
   C = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'nbaPpCardHtml']
+    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'nbaPpCardHtml']
     .map(lift).join('\n') + '\nreturn { ppMovedTag, ppCloseLineHtml, nbaPpCardHtml };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, '').trim();
