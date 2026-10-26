@@ -8680,6 +8680,7 @@ async function picksBoard(env) {
       lineup: l.lineup || null, vsBook: l.vsBook == null ? null : l.vsBook, league: l.league || null,
       firstP: firsts.has(l.legId) ? round1(firsts.get(l.legId).first_p) : null, firstAt: firsts.has(l.legId) ? firsts.get(l.legId).first_at : null,
       record: kinds[l.kind], legId: l.legId, spec: l.spec,
+      ...(l.dfs ? { dfs: l.dfs } : {}),
     }));
     // The entry read: the top two as a 2-pick power (both have to land), and
     // the average leg of the top three to six against the flex break-even.

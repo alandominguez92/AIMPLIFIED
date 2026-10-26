@@ -103,6 +103,7 @@ sq.prepare('INSERT OR REPLACE INTO feed_cache (key, data, updated_at) VALUES (?,
   JSON.stringify({ asOf: new RealDate(NOW).toISOString(), games: [{ id: 'nhl1', league: 'reg', commence: new RealDate(NOW + 5 * 3600e3).toISOString(), home: 'Seattle Kraken', away: 'Minnesota Wild' }] }), NOW);
 await tick();
 ok(calls.includes(READ_URL), 'the read: the same URL, Underdog and Pick6 asked with PrizePicks as since Oct 22');
+const ptDay = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new RealDate(iso));
 const ud = HOU.bookmakers.find((b) => b.key === 'underdog'), pp = HOU.bookmakers.find((b) => b.key === 'prizepicks');
 const under = (bk, mk, name) => { const m = bk.markets.find((x) => x.key === mk); const o = m && m.outcomes.find((x) => x.name === 'Under' && x.description === name); return o ? o.point : null; };
 const MK = { player_threes: 'threes', player_assists: 'ast', player_rebounds: 'reb', player_blocks: 'blk', player_steals: 'stl' };
@@ -116,6 +117,15 @@ ok(rows.every((r) => r.p6_line == null), 'Pick6 had not posted this game: no Pic
 const board = await get('/api/nba-pp');
 const bl = board.legs.find((x) => x.ud_line != null);
 ok(bl && typeof bl.ud_line === 'number' && 'p6_line' in bl, `the card's legs carry them (${bl && `${bl.player} PP ${bl.point}, UD ${bl.ud_line}`})`);
+
+// On Picks of the day too: a leg of that game at the bar, as the pre-tip read
+// leaves it, with Underdog a point above PrizePicks.
+sq.prepare(`INSERT INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, min_proj,
+  book_line, book_under, captured_at, close_point, close_under, close_book_line, close_book_under, close_at, ud_line)
+  VALUES (?, ?, 'Test Shooter', 'threes', 'reg', ?, ?, ?, 'HOU', '1', 1.5, 0.6, 80, 5, 30, 1.5, -130, ?, 1.5, 80, 1.5, -130, ?, 2.5)`)
+  .run(ptDay(HOU.commence_time), HOU.id, HOU.commence_time, HOU.home_team, HOU.away_team, new RealDate(NOW).toISOString(), new RealDate(NOW).toISOString());
+const pl = ((await get('/api/picks')).legs || []).find((x) => x.title === 'Test Shooter Under 1.5 3PM');
+ok(pl && pl.dfs && pl.dfs.ud === 2.5 && pl.dfs.p6 === null, `and Picks of the day's leg carries them to the page (${pl && JSON.stringify(pl.dfs)})`);
 
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
