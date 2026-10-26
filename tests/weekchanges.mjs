@@ -161,6 +161,13 @@ const note = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PH
   'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NHL_MK', 'nhlPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'nhlPpCardHtml'].map((n) => lift(n)).join('\n')
   + '\nreturn nhlPpCardHtml;')({ nhlPp: { paused: '2026-10-25', legs: [], record: { graded: 84, hit: 39 } }, slip: {} }, esc)();
 ok(/Paused on Oct 25/.test(note) && /39 of 84/.test(note) && !/has not posted/.test(note), `the card: "${text(note).slice(-170)}"`);
+// Monday's legs were read before the pause, and the card still lists them: the
+// note sits above them.
+const withLegs = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
+  'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NHL_MK', 'nhlPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'nhlPpCardHtml'].map((n) => lift(n)).join('\n')
+  + '\nreturn nhlPpCardHtml;')({ nhlPp: { paused: '2026-10-25', record: { graded: 84, hit: 39 }, legs: [{ player: 'Zach Hyman', team: 'EDM', market: 'pts', point: 0.5,
+    model_under: 58, proj: 0.55, game_id: 'g1', commence: new RealDate(NOW + 864e5).toISOString(), player_id: '8475786' }] }, slip: {} }, esc)();
+ok(withLegs.indexOf('Paused on Oct 25') > 0 && withLegs.indexOf('Paused on Oct 25') < withLegs.indexOf('Zach Hyman'), 'and above any legs read before it');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

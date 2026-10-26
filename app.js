@@ -6368,10 +6368,10 @@
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span></div>`
       + `<div class="tc-sub">The chance the under lands at PrizePicks' line, from the skater's scoring rate this season and last. Points and assists; regulars (15+ minutes). Read when PrizePicks posts and again before puck drop. Logged, not posted.</div>`
       + recLine + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r);
-    // Reads paused (2026-10-25): the record stays, and says why.
-    if (d.paused && !top.length) {
-      return `<div class="nba-pp">${head}<div class="tc-wait-note">Paused on Oct 25: at PrizePicks' own lines these unders landed${r.graded ? ` ${r.hit} of ${r.graded}` : ''}, short of what two seasons of box scores promised (59-67%). No new lines are read; the ones logged still grade.</div></div>`;
-    }
+    // Reads paused (2026-10-25): the record stays, and says why -- above any
+    // legs read before the pause, which still grade.
+    const paused = d.paused ? `<div class="tc-wait-note">Paused on Oct 25: at PrizePicks' own lines these unders landed${r.graded ? ` ${r.hit} of ${r.graded}` : ''}, short of what two seasons of box scores promised (59-67%). No new lines are read; the ones logged still grade.</div>` : '';
+    if (d.paused && !top.length) return `<div class="nba-pp">${head}${paused}</div>`;
     if (!top.length) {
       return `<div class="nba-pp">${head}<div class="tc-wait-note">PrizePicks has not posted NHL lines for the next games yet: they are read as soon as it does, and again about 90 minutes before puck drop.</div></div>`;
     }
@@ -6381,7 +6381,7 @@
     // two-game night every leg shares a game with another, and a tag on all
     // five said nothing.
     const spread = Object.keys(perGame).length >= 3;
-    return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map((x) => {
+    return `<div class="nba-pp">${head}${paused}<ol class="tc-legs">${top.map((x) => {
       const leg = nhlPpLeg(x);
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
