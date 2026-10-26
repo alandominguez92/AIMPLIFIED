@@ -125,7 +125,11 @@ const DB = {
 };
 const env = { DB, ODDS_API_KEY: 'k', ASSETS: { fetch: async (r) => (new URL(r.url).pathname === '/nba-priors.json'
   ? new Response(PRIORS, { status: 200, headers: { 'content-type': 'application/json' } }) : new Response('{}', { status: 404 })) } };
-const src = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n');
+// The NHL reads were paused on 2026-10-25 (NHL_PP_PAUSED); this tests them as
+// they run when switched back on. tests/weekchanges.mjs holds the pause itself.
+const src = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n')
+  .replace('const NHL_PP_PAUSED = true;', 'const NHL_PP_PAUSED = false;');
+if (!src.includes('const NHL_PP_PAUSED = false;')) throw new Error('worker.js has no NHL_PP_PAUSED to lift');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
 const tick = async () => { const held = []; await mod.default.scheduled({}, env, { waitUntil: (p) => held.push(p) }); await Promise.allSettled(held); };
 const hit = async (u) => (await mod.default.fetch(new Request('https://x' + u), env, { waitUntil: () => {} })).json();
@@ -244,7 +248,7 @@ const ui = { nbaPp: b, slip: {} };
 let C;
 try {
   C = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'nbaPpCardHtml']
+    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'nbaPpCardHtml']
     .map(lift).join('\n') + '\nreturn { ppMovedTag, ppCloseLineHtml, nbaPpCardHtml };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, '').trim();

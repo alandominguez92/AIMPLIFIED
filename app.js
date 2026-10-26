@@ -6034,6 +6034,8 @@
       const tags = [];
       if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
       if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
+      // Underdog or Pick6 above PrizePicks on the same under (2026-10-25).
+      if (x.dfs && x.spec && x.spec.pp) { const t = dfsLinesHtml(x.spec.pp.line, x.dfs.ud, x.dfs.p6).trim(); if (t) tags.push(t); }
       if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
       if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
       const mv = pickMoved(x);
@@ -6064,6 +6066,13 @@
       if (n === 2) {
         const all = top.reduce((a, x) => a * x.p / 100, 1) * 100;
         ent.push(`<li><span>Top 2 ${esc(kind)}</span><span class="pk-v"><b>${pct0(all)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span></li>`);
+        // The two best legs at 75%+ (2026-10-25): legs that strong landed 28
+        // of 31 from Oct 10 to 24, those at 65-75% 20 of 29.
+        const hi = legs.filter((x) => x.p >= 75).slice(0, 2);
+        if (hi.length === 2) {
+          const both = hi.reduce((a, x) => a * x.p / 100, 1) * 100;
+          ent.push(`<li class="pk-e75"><span>Top 2 ${esc(kind)}, 75%+</span><span class="pk-v"><b>${pct0(both)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span></li>`);
+        }
       } else {
         const avg = top.reduce((a, x) => a + x.p, 0) / n;
         ent.push(`<li><span>Top ${n} ${esc(kind)}</span><span class="pk-v"><b>${pct0(avg)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span></li>`);
@@ -6157,6 +6166,14 @@
     const raised = m && m.raised && m.raised.n ? ` · first line, where PP then raised it: <b>${m.raised.hit} of ${m.raised.n}</b>` : '';
     return `<div class="tc-sub tc-rec-line">At the pre-tip line: <b>${c.hit} of ${c.n}</b>${raised}</div>`;
   }
+  // Underdog's and Pick6's line on the same under (2026-10-25): read with every
+  // NBA PrizePicks read at no extra credit. Higher than PrizePicks' number, the
+  // under is easier there, and the tag says so.
+  function dfsLinesHtml(point, ud, p6) {
+    return [['UD', 'Underdog', ud], ['P6', 'Pick6', p6]].filter(([, , v]) => typeof v === 'number').map(([k, full, v]) => (v > point
+      ? ` <span class="tc-gap" title="${full}'s line is higher than PrizePicks': the under is easier there">${k} ${esc(String(v))}</span>`
+      : ` <span class="tc-dfs" title="${full}'s line on the same under">${k} ${esc(String(v))}</span>`)).join('');
+  }
   function nbaPpCardHtml() {
     const d = state.nbaPp;
     if (!d) return '';
@@ -6202,7 +6219,7 @@
         // The team code leads line two: beside the face on line one it cut
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
         + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
         + `</div></li>`;
     }).join('')}</ol></div>`;
@@ -6351,6 +6368,10 @@
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span></div>`
       + `<div class="tc-sub">The chance the under lands at PrizePicks' line, from the skater's scoring rate this season and last. Points and assists; regulars (15+ minutes). Read when PrizePicks posts and again before puck drop. Logged, not posted.</div>`
       + recLine + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r);
+    // Reads paused (2026-10-25): the record stays, and says why.
+    if (d.paused && !top.length) {
+      return `<div class="nba-pp">${head}<div class="tc-wait-note">Paused on Oct 25: at PrizePicks' own lines these unders landed${r.graded ? ` ${r.hit} of ${r.graded}` : ''}, short of what two seasons of box scores promised (59-67%). No new lines are read; the ones logged still grade.</div></div>`;
+    }
     if (!top.length) {
       return `<div class="nba-pp">${head}<div class="tc-wait-note">PrizePicks has not posted NHL lines for the next games yet: they are read as soon as it does, and again about 90 minutes before puck drop.</div></div>`;
     }

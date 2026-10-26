@@ -8435,7 +8435,9 @@ async function picksCandidates(env, now) {
       // headshot reads (2026-10-14); it was null.
       spec: { sport: 'nba', date: ptDateOf(Date.parse(r.commence)), gamePk: r.game_id, playerId: r.player_id || null, player: r.player, team: r.team || null,
         market: r.market, side: 'Under', book: { line: r.book_line != null ? r.book_line : null, price: typeof r.book_under === 'number' ? r.book_under : null, under: null },
-        pp: { line: r.point, under: r.model_under } } });
+        pp: { line: r.point, under: r.model_under } },
+      // Underdog's and Pick6's line on the same under, where read (2026-10-25).
+      dfs: { ud: r.ud_line == null ? null : r.ud_line, p6: r.p6_line == null ? null : r.p6_line } });
   }
   return { legs, unavailable };
 }
@@ -8555,8 +8557,11 @@ async function pickKindRecords(db) {
 // leg in it has graded. A void or tie in it counts as a refund, neither won
 // nor lost: PrizePicks drops that leg and pays the smaller entry, or refunds a
 // two-pick, and the smaller entry is not one the list showed.
-const PICK_HIST_ENTRIES = [['p2', 'Top 2 Power', 2, 'power'], ['f3', 'Top 3 Flex', 3, 'flex'], ['f4', 'Top 4 Flex', 4, 'flex'],
-  ['f5', 'Top 5 Flex', 5, 'flex'], ['f6', 'Top 6 Flex', 6, 'flex']];
+// The fifth field is a floor (2026-10-25): the 75%+ Power takes the day's top
+// two legs at 75% or better, and skips a day without two. From Oct 10 to 24,
+// legs at 75%+ landed 28 of 31 and legs at 65-75% 20 of 29.
+const PICK_HIST_ENTRIES = [['p2', 'Top 2 Power', 2, 'power'], ['p2h', 'Top 2 Power, 75%+', 2, 'power', 75], ['f3', 'Top 3 Flex', 3, 'flex'],
+  ['f4', 'Top 4 Flex', 4, 'flex'], ['f5', 'Top 5 Flex', 5, 'flex'], ['f6', 'Top 6 Flex', 6, 'flex']];
 const PICK_HIST_DAYS = 14;
 function pickHistory(rows) {
   const byDay = new Map();
@@ -8566,8 +8571,8 @@ function pickHistory(rows) {
   for (const [date, l] of [...byDay.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     l.sort((a, b) => b.p - a.p);
     const entries = {};
-    for (const [key, , n, type] of PICK_HIST_ENTRIES) {
-      const top = l.slice(0, n);
+    for (const [key, , n, type, min] of PICK_HIST_ENTRIES) {
+      const top = (min ? l.filter((x) => x.p >= min) : l).slice(0, n);
       if (top.length < n || top.some((x) => x.result == null)) continue;
       const t = tot[key];
       if (top.some((x) => x.result !== 'hit' && x.result !== 'miss')) { t.refunds++; entries[key] = { refund: true, net: 0 }; continue; }
@@ -10335,8 +10340,12 @@ async function logNhlPp(db, legs, close) {
 // Cron: each game watched from 36 hours out, read when PrizePicks posts it and
 // again before puck drop (ppReadDue, as the NBA log), the games taken from the
 // free events list and the NHL board's snapshot (ppWatchGames).
+// Paused 2026-10-25, the user's call: 39 of 84 unders (46%) landed at
+// PrizePicks' lines against the backtest's 59-67%. The legs already logged
+// still grade (gradeNhlPp); nothing new is read, about 35 credits a day saved.
+const NHL_PP_PAUSED = true;
 async function nhlPpMaybeCapture(env) {
-  if (!env || !env.DB || !env.ODDS_API_KEY) return null;
+  if (NHL_PP_PAUSED || !env || !env.DB || !env.ODDS_API_KEY) return null;
   const now = Date.now();
   const states = await ppReadStates(env.DB, 'nhl_pp_games', now);
   const due = (await ppWatchGames(env, 'nhl', 'reg', NHL_LEAGUES.reg, now))
@@ -10441,7 +10450,8 @@ async function nhlPpBoard(env, url) {
     return hit.present ? hit.data : { none: 'no capture with PrizePicks on it yet' };
   }
   if (url && url.searchParams && url.searchParams.get('raw') === 'events') return ppEventsRaw(env, 'nhl', 'reg');
-  const out = { note: 'LOGGED, not posted. The chance the under lands at PrizePicks’ line: Poisson at the skater’s scoring rate, this season blended with last. Points and assists, regulars (15+ minutes).', legs: [], record: null };
+  const out = { note: 'LOGGED, not posted. The chance the under lands at PrizePicks’ line: Poisson at the skater’s scoring rate, this season blended with last. Points and assists, regulars (15+ minutes).', legs: [], record: null,
+    ...(NHL_PP_PAUSED ? { paused: '2026-10-25' } : {}) };
   try {
     await ensureNhlPpSchema(env.DB);
     const now = Date.now();
@@ -10700,6 +10710,8 @@ async function ensureNbaSchema(db) {
   // the first line's, graded as result; the close_ columns are the last read
   // before tip, graded as close_result.
   await addColumns(db, 'nbapp', PP_CLOSE_COLS);
+  // Underdog's and Pick6's lines on the same under, as last read (2026-10-25).
+  await addColumns(db, 'nbapp', [['ud_line', 'REAL'], ['p6_line', 'REAL']]);
 }
 const PP_CLOSE_COLS = [['close_point', 'REAL'], ['close_under', 'REAL'], ['close_book_line', 'REAL'], ['close_book_under', 'INTEGER'],
   ['close_at', 'TEXT'], ['close_result', 'TEXT']];
@@ -10763,6 +10775,15 @@ function nbaPpLegs(ev, pri, recent) {
   if (!ev || !pri) return out;
   const pp = (ev.bookmakers || []).find((b) => b.key === 'prizepicks');
   if (!pp) return out;
+  // The other pick'em apps' line on the same under (2026-10-25). The read has
+  // carried them since Oct 22 at no extra credit; a higher number there is an
+  // easier under than PrizePicks'.
+  const dfsLine = (bk, mk, name) => {
+    const b = (ev.bookmakers || []).find((x) => x.key === bk);
+    const m = b && (b.markets || []).find((x) => x.key === mk);
+    const u = m && (m.outcomes || []).find((o) => o.name === 'Under' && nbaName(o.description) === name);
+    return u && u.point != null ? u.point : null;
+  };
   const bookLine = (mk, name) => {
     for (const bk of ['draftkings', 'fanduel']) {
       const b = (ev.bookmakers || []).find((x) => x.key === bk);
@@ -10806,6 +10827,7 @@ function nbaPpLegs(ev, pri, recent) {
         player: o.description, player_id: pl.id, team: pl.tm || null, market, point: o.point,
         proj: round1(proj), model_under: round1(under * 100), n_recent: rec.length, prior_gp: pl.gp || 0,
         min_proj: minProj != null ? round1(minProj) : null, book_line: bl.line, book_under: bl.price,
+        ud_line: dfsLine('underdog', m.key, name), p6_line: dfsLine('pick6', m.key, name),
       });
     }
   }
@@ -10864,13 +10886,15 @@ async function logNbaPp(db, lg, legs, close) {
   for (const l of legs) {
     const day = ptDateOf(Date.parse(l.commence));
     stmts.push(db.prepare(
-      `INSERT OR IGNORE INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, prior_gp, min_proj, book_line, book_under, model_ver, captured_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT OR IGNORE INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, prior_gp, min_proj, book_line, book_under, model_ver, captured_at, ud_line, p6_line)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(day, l.game_id, l.player, l.market, lg, l.commence, l.home, l.away, l.team, l.player_id,
-      l.point, l.proj, l.model_under, l.n_recent, l.prior_gp, l.min_proj, l.book_line, l.book_under, NBA_PP_VER, stamp));
+      l.point, l.proj, l.model_under, l.n_recent, l.prior_gp, l.min_proj, l.book_line, l.book_under, NBA_PP_VER, stamp,
+      l.ud_line == null ? null : l.ud_line, l.p6_line == null ? null : l.p6_line));
     if (close) stmts.push(db.prepare(
-      'UPDATE nbapp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=? WHERE date=? AND game_id=? AND player=? AND market=?'
-    ).bind(l.point, l.model_under, l.book_line, l.book_under, stamp, day, l.game_id, l.player, l.market));
+      'UPDATE nbapp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=?, ud_line=?, p6_line=? WHERE date=? AND game_id=? AND player=? AND market=?'
+    ).bind(l.point, l.model_under, l.book_line, l.book_under, stamp, l.ud_line == null ? null : l.ud_line, l.p6_line == null ? null : l.p6_line,
+      day, l.game_id, l.player, l.market));
   }
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
   return legs.length;
@@ -11094,6 +11118,7 @@ async function nbaPpBoard(env) {
       // PrizePicks' number minus the books': above 0, its under is easier.
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       first_point: r.first_point, first_under: r.first_under, first_at: r.captured_at, close_at: r.close_at,
+      ud_line: r.ud_line == null ? null : r.ud_line, p6_line: r.p6_line == null ? null : r.p6_line,
     })).sort((a, b) => b.model_under - a.model_under);
     // The record is kept over the players the card shows. A bench player's 0.5
     // line tops any ranking by the model's chance, and he is the one who sits.

@@ -91,7 +91,11 @@ const DB = {
 };
 const env = { DB, ODDS_API_KEY: 'k', ASSETS: { fetch: async (r) => (new URL(r.url).pathname === '/nba-priors.json'
   ? new Response(PRIORS, { status: 200, headers: { 'content-type': 'application/json' } }) : new Response('{}', { status: 404 })) } };
-const src = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n');
+// The NHL reads were paused on 2026-10-25 (NHL_PP_PAUSED); this tests them as
+// they run when switched back on. tests/weekchanges.mjs holds the pause itself.
+const src = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n')
+  .replace('const NHL_PP_PAUSED = true;', 'const NHL_PP_PAUSED = false;');
+if (!src.includes('const NHL_PP_PAUSED = false;')) throw new Error('worker.js has no NHL_PP_PAUSED to lift');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
 const tick = async () => { const held = []; await mod.default.scheduled({}, env, { waitUntil: (p) => held.push(p) }); await Promise.allSettled(held); };
 const hit = async (u) => (await mod.default.fetch(new Request('https://x' + u), env, { waitUntil: () => {} })).json();
