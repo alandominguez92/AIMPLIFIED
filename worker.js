@@ -8219,6 +8219,12 @@ const PICK_KINDS = {
   // and those at 65-75% 6 of 12 (about 70% stated) -- the Texans at 80.9% and
   // the Jets at 65.6% both lost on Oct 25.
   nfl_ml: { sport: 'nfl', label: 'NFL moneyline favourite', min: 75 },
+  // NFL passing-TD unders at 60%+ from 2026-10-27, the owner's call: the
+  // sharp books' chance of under 1.5 (passTdEntries), whose 60%+ legs landed
+  // 26 of 37 through Week 7 (62-67% stated; 60-65% went 20 of 24, 65%+ 6 of
+  // 13). The chance is at the books' 1.5, so a leg is listed only while
+  // PrizePicks has the same 1.5 up, or has not posted the player yet.
+  nfl_ptd: { sport: 'nfl', label: 'NFL passing TDs under 1.5 (sharp books)', min: 60 },
   // NHL since 2026-10-22, on the owner's call after last season's backtest:
   // 2025-26 favourites the sharp books made 65%+ won 114 of 171 (66.7%,
   // stated 69.1%), from /api/hist-backtest?job=nhl. Overtime and the shootout
@@ -8237,7 +8243,21 @@ const lastWord = (s) => String(s || '').trim().split(/\s+/).pop();
 const gmPickKind = (r) => (r.sport === 'nba' && r.market === 'h2h' && r.league === 'reg' ? 'nba_ml'
   : r.sport === 'nhl' && r.market === 'h2h' && r.league === 'reg' ? 'nhl_ml'
     : r.sport === 'nfl' && r.market === 'h2h' ? 'nfl_ml'
-      : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null);
+      : r.sport === 'nflptd' && r.market === 'pass_tds' ? 'nfl_ptd'
+        : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null);
+// PrizePicks' passing-TD line for each quarterback with a game in the next
+// day, as the NFL props read last left it: `${event}|${player}` -> point.
+// Read only when a passing-TD leg could make the list.
+async function ptdPpLines(db, now) {
+  const out = new Map();
+  try {
+    const rows = (await db.prepare(`SELECT event_id, player, point FROM nfl_lines WHERE market = 'player_pass_tds' AND book = 'prizepicks'
+        AND commence > ? AND commence < ? ORDER BY captured_at ASC, rowid ASC`)
+      .bind(new Date(now).toISOString(), new Date(now + PICKS_WINDOW_MS).toISOString()).all()).results || [];
+    for (const r of rows) out.set(`${r.event_id}|${r.player}`, Number(r.point));
+  } catch (e) { /* no NFL props table yet: every line unread */ }
+  return out;
+}
 // An NHL club by nickname, two words for the Blue Jackets, Golden Knights,
 // Maple Leafs and Red Wings: the NHL board's nhlNick, so a Picks leg and the
 // board's own leg read the same.
@@ -8414,7 +8434,8 @@ async function picksCandidates(env, now) {
   // NBA, NHL, NFL and soccer game lines: the side the sharp books favour, from
   // the game-line log (each board refreshes its row's win chance and price).
   await ensureGamePickSchema(db);
-  const gm = (await db.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','soccer') AND date IN (?, ?) AND result IS NULL").bind(...days).all()).results || [];
+  const gm = (await db.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','nflptd','soccer') AND date IN (?, ?) AND result IS NULL").bind(...days).all()).results || [];
+  const ptdPP = gm.some((r) => r.sport === 'nflptd' && soon(r.commence) && r.win_prob >= PICK_KINDS.nfl_ptd.min) ? await ptdPpLines(db, now) : new Map();
   for (const r of gm) {
     if (!soon(r.commence) || r.win_prob == null) continue;
     const kind = gmPickKind(r);
@@ -8441,6 +8462,17 @@ async function picksCandidates(env, now) {
         // The NFL slip keys a game by matchup and day, as its board does.
         spec: { sport: 'nfl', date: day, gamePk: `${r.away} @ ${r.home}|${day}`, player: r.pick, team: r.pick, market: 'ml', side: r.side,
           logo: moneylineLogo('nfl', r.pick), book, pp: null } });
+    } else if (kind === 'nfl_ptd') {
+      // One leg a game with the NFL moneyline (the event id leads the row's
+      // game_id). PrizePicks at another number is another under: left off.
+      const [event, player] = String(r.game_id).split('|');
+      const pp = ptdPP.get(r.game_id);
+      if (pp != null && pp !== r.point) continue;
+      const away = NFL_ABBR[r.away] || r.away, home = NFL_ABBR[r.home] || r.home;
+      legs.push({ ...base, gameKey: 'nfl:' + event, legId: `nfl:ptd:${event}:${player}`,
+        title: `${player} Under ${r.point} Pass TDs`, sub: `${away} @ ${home}${pp == null ? ` · check PrizePicks has ${r.point}` : ''}`,
+        spec: { sport: 'nfl', date: day, gamePk: `${away} @ ${home}|${day}`, player, team: null, market: 'pass_tds', side: 'Under', logo: null,
+          book: { line: r.point, price, under: null }, pp: { line: r.point, under: round1(r.win_prob) } } });
     } else {
       legs.push({ ...base, gameKey: 'soc:' + r.game_id, legId: `soc:${r.game_id}:${r.side}`,
         title: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`,
@@ -8519,7 +8551,7 @@ async function logDayPicks(db, list, unavailable, now) {
 }
 
 // A game-line kind's log (gmpicks) by sport.
-const PICK_GM_SPORT = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', soccer_fav: 'soccer' };
+const PICK_GM_SPORT = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', nfl_ptd: 'nflptd', soccer_fav: 'soccer' };
 // The side a listed under landed on: a leg the list showed at the pre-tip
 // line grades at that line, and the label carries the number it showed
 // ("... Under 6.5 REB").
@@ -8640,6 +8672,10 @@ async function pickKindRecords(db) {
     const kind = gmPickKind(r);
     if (kind && r.win_prob != null && r.win_prob >= PICK_KINDS[kind].min) add(kind, r.result === 'win');
   }
+  // Passing-TD unders, one row a quarterback a game (dedupePassTds): before
+  // 2026-09-24 a capture filed four Sunday passers under Thursday too.
+  const ptd = (await db.prepare("SELECT date, game_id, commence, market, win_prob, result FROM gmpicks WHERE sport = 'nflptd' AND result IN ('win','loss')").all()).results || [];
+  for (const r of dedupePassTds(ptd)) if (r.win_prob != null && r.win_prob >= PICK_KINDS.nfl_ptd.min) add('nfl_ptd', r.result === 'win');
   // The kind's record is the legs the list carries, so a blocks or steals leg,
   // or one under a PrizePicks line below the books', cannot vouch for a threes
   // leg beside it.

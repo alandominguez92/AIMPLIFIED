@@ -6021,7 +6021,7 @@
     const rules = `<details class="pk-rules"><summary>What gets on the list</summary><ul>${Object.values(kinds).map((k) => {
       const r = k.record || {};
       return `<li><b>${esc(k.label)}</b> at ${k.min}%+ · ${r.n ? `${r.hit} of ${r.n} landed (${pct0(r.hitRate)})` : 'no graded legs yet'}${r.n && !r.proven ? ' · <span class="pk-new">new</span>' : ''}</li>`;
-    }).join('')}</ul><p>Only the best leg of each game, because legs from one game tend to land or miss together. Strikeout unders, NFL yardage, passing-TD unders and MLB unders under 70% are left off: their numbers have not held up.</p></details>`;
+    }).join('')}</ul><p>Only the best leg of each game, because legs from one game tend to land or miss together. Strikeout unders, NFL yardage, passing-TD unders under 60% and MLB unders under 70% are left off: their numbers have not held up.</p></details>`;
     const rec = d.record || {};
     const recLine = rec.legs && rec.legs.n
       ? `This list: <b>${rec.legs.hit} of ${rec.legs.n}</b> landed${rec.since ? ' since ' + esc(shortDay(rec.since) || rec.since) : ''}`
