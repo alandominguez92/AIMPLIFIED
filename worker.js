@@ -3794,7 +3794,9 @@ function buildPpRecord(rows) {
 //
 // Nothing here is posted or ranked. It is a record being accumulated so that in
 // a month there is something to read.
-const GM_MODEL_VER = 'gm-v1';
+// gm-v2 (2026-10-27): the fair line is Pinnacle's when it quotes (sharpFair),
+// and each row carries every book's no-vig chance of its pick (book_fairs).
+const GM_MODEL_VER = 'gm-v2';
 
 async function ensureGamePickSchema(db) {
   // The first shape of this table keyed on (sport, date, game_id), which allowed
@@ -3848,6 +3850,9 @@ async function ensureGamePickSchema(db) {
   // The first read kept beside the latest (2026-10-11), as mlpicks now does:
   // win_prob and edge are overwritten by every read, entry_price is not.
   await addColumns(db, 'gmpicks', [['entry_win_prob', 'REAL'], ['entry_edge', 'REAL'], ['entry_at', 'TEXT'], ['close_at', 'TEXT']]);
+  // Every book's no-vig chance of the pick, as last read (2026-10-27): which
+  // book is sharpest per sport, scored on this site's own games.
+  await addColumns(db, 'gmpicks', [['book_fairs', 'TEXT']]);
 }
 
 // entries: { game_id, league, commence, side, pick, home, away, win_prob,
@@ -3865,19 +3870,19 @@ async function logGamePicks(db, sport, date, entries) {
     const at = new Date().toISOString();
     stmts.push(db.prepare(
       `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,market,league,week,commence,side,point,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver,
-         entry_win_prob,entry_edge,entry_at,close_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         entry_win_prob,entry_edge,entry_at,close_at,book_fairs)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(sport, date, String(e.game_id), market, e.league || null, e.week == null ? null : e.week,
       e.commence || null, e.side || null,
       e.point == null ? null : e.point, e.pick || null,
       e.home || null, e.away || null, e.win_prob, e.implied == null ? null : e.implied, e.edge == null ? null : e.edge,
       e.price, e.price, e.book || null, e.fair_src || null, e.sharp_n == null ? null : e.sharp_n, GM_MODEL_VER,
-      e.win_prob, e.edge == null ? null : e.edge, at, at));
+      e.win_prob, e.edge == null ? null : e.edge, at, at, e.book_fairs || null));
     // Close refreshes only while the same side is still the board's lead, so a
     // flip later in the week cannot overwrite the entry side's closing number.
     stmts.push(db.prepare(
-      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=?, close_at=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
-    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied, at,
+      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=?, close_at=?, book_fairs=COALESCE(?, book_fairs) WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
+    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied, at, e.book_fairs || null,
       sport, date, String(e.game_id), market, e.side || null));
   }
   if (!stmts.length) return 0;
@@ -4140,16 +4145,20 @@ function passTdEntries(rows, week, seasonType) {
   }
   const out = [];
   for (const g of byPlayer.values()) {
-    // Fair from the sharp pool, two-way Shin on over/under, median across books.
-    const fairs = [];
-    for (const bk of PTD_SHARP) {
-      const q = g.books[bk];
+    // Every book's no-vig chance of the under, two-way Shin on over/under.
+    const byBook = {};
+    for (const [bk, q] of Object.entries(g.books)) {
       if (!q || typeof q.over !== 'number' || typeof q.under !== 'number') continue;
       const pOver = shinDevig(q.over, q.under);
-      if (pOver != null) fairs.push(1 - pOver);              // p(under)
+      if (pOver != null && isFinite(pOver)) byBook[bk] = 1 - pOver;              // p(under)
     }
-    if (fairs.length < 2) continue;                          // same two-book rule as everywhere
-    const fairUnder = median(fairs);
+    // The fair (2026-10-27): Pinnacle's, then FanDuel's -- Pikkit's 2024 NFL
+    // props ranking has Pinnacle first and FanDuel second -- and without
+    // either, two or more of the rest of the pool (sharpFair).
+    const pool = sharpFair(Object.fromEntries(PTD_SHARP.filter((bk) => byBook[bk] != null).map((bk) => [bk, byBook[bk]])));
+    const sf = byBook.pinnacle != null ? pool : byBook.fanduel != null ? { fair: byBook.fanduel, src: 'fanduel', n: pool.n } : pool;
+    if (sf.fair == null) continue;
+    const fairUnder = sf.fair;
     // Best executable under price.
     let price = null, book = null;
     for (const bk of PTD_EXEC) {
@@ -4169,7 +4178,7 @@ function passTdEntries(rows, week, seasonType) {
       // Edge against the realised baseline, not against the model — there is no
       // model. Positive means the price is cheaper than the rate history ran at.
       edge: Math.round((NFL_PASS_TD_BASE - amProb(price) * 100) * 10) / 10,
-      price, book, fair_src: 'sharp-pool', sharp_n: fairs.length,
+      price, book, fair_src: sf.src, sharp_n: sf.n, book_fairs: bookFairsJson(byBook),
     });
   }
   return out;
@@ -7836,6 +7845,34 @@ function median(xs) {
   return n % 2 ? a[(n - 1) / 2] : (a[n / 2 - 1] + a[n / 2]) / 2;
 }
 
+// The sharp fair line for a game (2026-10-27, the owner's call: "keep it as
+// sharp betting ... Pinnacle where possible"). Pikkit's sharpness rankings
+// (the books the market moves toward) put Pinnacle first or second on main
+// markets in every sport they rank, behind only Circa; Circa, BookMaker and
+// South Point are not in The Odds API. So: Pinnacle's no-vig number when it
+// quotes. Without it, the median of the rest of the pool, BetOnline and
+// LowVig counted once -- one shop's two screens, which the old median let
+// vote twice -- and at least minPool of them. fairs: book -> fair (a chance,
+// or a three-way array). n: the sharp books that quoted.
+function sharpFair(fairs, minPool = 2) {
+  const n = Object.keys(fairs).length;
+  if (fairs.pinnacle != null) return { fair: fairs.pinnacle, src: 'pinnacle', n };
+  const pool = Object.entries(fairs).filter(([bk]) => !(bk === 'lowvig' && fairs.betonlineag != null)).map(([, f]) => f);
+  if (pool.length < minPool) return { fair: null, src: 'MKT', n };
+  return { fair: Array.isArray(pool[0]) ? pool[0].map((_, i) => median(pool.map((f) => f[i]))) : median(pool), src: 'sharp-pool', n };
+}
+// Every book's no-vig chance of a row's pick, in percent, as its book_fairs
+// (JSON): the record that will say, from this site's own games, which book
+// was sharpest in each sport.
+// The pick'em apps quote both sides at a flat price that is no chance of
+// anything: left out.
+const DFS_BOOKS = new Set(['prizepicks', 'underdog', 'pick6', 'dabble_us_dfs']);
+function bookFairsJson(map) {
+  const out = {};
+  for (const [bk, p] of Object.entries(map || {})) if (!DFS_BOOKS.has(bk) && p != null && isFinite(p)) out[bk] = Math.round(p * 1000) / 10;
+  return Object.keys(out).length ? JSON.stringify(out) : null;
+}
+
 // Strikeout park factors (normalized ~1.00; >1 = more Ks). Approximate, stable
 // season-level values — thin-air Coors suppresses whiffs; pitcher parks lift
 // them. Keyed by home-team abbreviation.
@@ -8364,6 +8401,52 @@ const PICK_KINDS = {
   nhl_ml: { sport: 'nhl', label: 'NHL moneyline favourite', min: 65 },
   soccer_fav: { sport: 'soccer', label: 'Soccer favourite to win', min: 65 },
 };
+// ---- Edge and stake (2026-10-27, the owner's call: quarter Kelly) -----------
+// Edge is where the chance and the price meet: EV = p x decimal - 1, so +110
+// against a fair +100 is 0.5 x 2.10 - 1 = +5%. The stake is Kelly's, the edge
+// over the net odds (+110 at 50%: 0.05 / 1.10 = 4.5% of the bankroll), taken at
+// a quarter: the chance is an estimate, and full Kelly on an over-stated one
+// is how a bankroll goes. The chance Kelly is fed is the leg's stated one,
+// never above it, pulled toward its kind's own record with KELLY_PRIOR_N legs
+// of weight on the stated chance -- NBA PrizePicks unders stated 70%+ had
+// landed 60% by Oct 27, the NHL's 65%+ favourites 43%. betAt is the price
+// that chance breaks even at: anything better is a bet, at any book, Circa
+// and South Point included.
+const KELLY_FRACTION = 0.25;
+const KELLY_PRIOR_N = 20;
+const decOf = (am) => (am > 0 ? 1 + am / 100 : 1 + 100 / -am);
+const amOfChance = (p) => (p >= 0.5 ? -Math.round(p / (1 - p) * 100) : Math.round((1 - p) / p * 100));
+function kellyChance(p, rec) {             // p and the result in %; rec { n, hit }
+  if (p == null) return null;
+  if (!rec || !rec.n) return p;
+  return Math.min(p, (rec.hit * 100 + KELLY_PRIOR_N * p) / (rec.n + KELLY_PRIOR_N));
+}
+function legStake(p, price, rec) {
+  const pk = kellyChance(p, rec);
+  if (pk == null || !(pk > 0 && pk < 100)) return {};
+  const out = { kellyP: round1(pk), betAt: amOfChance(pk / 100) };
+  if (typeof price !== 'number') return out;
+  const d = decOf(price), ev = pk / 100 * d - 1;
+  out.ev = round1(ev * 100);
+  out.stake = ev > 0 ? round1(ev / (d - 1) * KELLY_FRACTION * 100) : 0;
+  return out;
+}
+// A PrizePicks entry the same way: each leg's Kelly chance, the chance of
+// each count landing (Poisson-binomial), PrizePicks' payout for each, and the
+// stake that maximises the expected log of the bankroll -- Kelly for an entry
+// with several outcomes -- at a quarter.
+function entryStake(ps, type) {              // ps: chances 0-1
+  const n = ps.length;
+  let dist = [1];
+  for (const p of ps) { const nx = new Array(dist.length + 1).fill(0); dist.forEach((v, k) => { nx[k] += v * (1 - p); nx[k + 1] += v * p; }); dist = nx; }
+  const pay = (k) => (type === 'power' ? (k === n ? PP_POWER[n] || 0 : 0) : ((PP_FLEX[n] || {})[k] || 0));
+  const ev = dist.reduce((s, v, k) => s + v * pay(k), 0) - 1;
+  if (!(ev > 0)) return { ev: round1(ev * 100), stake: 0 };
+  const growth = (f) => dist.reduce((s, v, k) => s + (v > 0 ? v * Math.log(Math.max(1e-12, 1 + f * (pay(k) - 1))) : 0), 0);
+  let lo = 0, hi = 0.999;
+  for (let i = 0; i < 100; i++) { const a = lo + (hi - lo) / 3, b = hi - (hi - lo) / 3; if (growth(a) < growth(b)) lo = a; else hi = b; }
+  return { ev: round1(ev * 100), stake: round1((lo + hi) / 2 * KELLY_FRACTION * 100) };
+}
 // Per leg, the PrizePicks break-even for an entry of that many legs (2-pick
 // power; 3 to 6, flex). The same table the slip's parlay read uses.
 const PICKS_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 4: ['4-pick flex', 56.9], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
@@ -8961,6 +9044,8 @@ async function picksBoard(env) {
       record: kinds[l.kind], legId: l.legId, spec: l.spec,
       ...(l.dfs ? { dfs: l.dfs } : {}),
       ...(l.sharp != null ? { sharp: l.sharp } : {}),
+      // Its edge at the best price, and the quarter-Kelly stake (legStake).
+      ...legStake(l.p, l.odds, kinds[l.kind]),
     }));
     // The entry read: the top two as a 2-pick power (both have to land), and
     // the average leg of the top three to six against the flex break-even.
@@ -8969,7 +9054,9 @@ async function picksBoard(env) {
       const [name, be] = PICKS_BREAK_EVEN[n];
       out.entries.push({ legs: n, entry: name, perLegBreakEven: be,
         avgLeg: round1(top.reduce((a, x) => a + x.p, 0) / n),
-        allLand: round1(top.reduce((a, x) => a * x.p / 100, 1) * 100) });
+        allLand: round1(top.reduce((a, x) => a * x.p / 100, 1) * 100),
+        // At PrizePicks' payouts, on each leg's Kelly chance (entryStake).
+        ...entryStake(top.map((x) => (x.kellyP != null ? x.kellyP : x.p) / 100), n === 2 ? 'power' : 'flex') });
     }
     try { out.record = await dayPickRecord(env.DB); } catch (e) { out.recordError = String((e && e.message) || e); }
   } catch (e) { out.error = String((e && e.message) || e); }
@@ -10241,15 +10328,11 @@ function h2hGames(cfg, evs, lg, now) {
       const a = mk && (mk.outcomes || []).find((o) => o.name === away);
       if (h && a && typeof h.price === 'number' && typeof a.price === 'number') px[bm.key] = { home: h.price, away: a.price };
     }
-    const fairs = [];
-    for (const bk of cfg.sharp) {
-      const q = px[bk];
-      const f = q ? shinDevig(q.home, q.away) : null;
-      if (f != null && isFinite(f)) fairs.push(f);
-    }
-    let fairHome = null, fairSrc = 'MKT';
-    if (fairs.length >= 2) { fairHome = median(fairs); fairSrc = 'sharp-pool'; }
-    else if (px.pinnacle) { fairHome = shinDevig(px.pinnacle.home, px.pinnacle.away); fairSrc = 'pinnacle'; }
+    // Every book's no-vig chance of the home side; the sharp ones make the fair.
+    const byBook = {};
+    for (const [bk, q] of Object.entries(px)) { const f = shinDevig(q.home, q.away); if (f != null && isFinite(f)) byBook[bk] = f; }
+    const sf = sharpFair(Object.fromEntries(cfg.sharp.filter((bk) => byBook[bk] != null).map((bk) => [bk, byBook[bk]])));
+    let fairHome = sf.fair, fairSrc = sf.src;
     if (fairHome != null && !isFinite(fairHome)) fairHome = null;
     if (fairHome == null) fairSrc = 'MKT';
     const best = (side) => {
@@ -10267,7 +10350,7 @@ function h2hGames(cfg, evs, lg, now) {
     const pickSide = fairHome == null ? null : (fairHome >= 0.5 ? 'home' : 'away');
     out.push({
       id: e.id, league: lg, commence: e.commence_time, home, away,
-      fairSrc, sharpN: fairSrc === 'pinnacle' ? 1 : fairs.length,
+      fairSrc, sharpN: sf.n, byBook,
       homeFair: fairHome == null ? null : round1(fairHome * 100),
       awayFair: fairHome == null ? null : round1((1 - fairHome) * 100),
       homePrice: bh.price, homeBook: bh.book, awayPrice: ba.price, awayBook: ba.book,
@@ -10294,6 +10377,7 @@ function h2hEntries(cfg, evs, lg, now) {
       pick: side === 'home' ? g.home : g.away, home: g.home, away: g.away,
       win_prob: round1(winProb * 100), implied: round1(imp * 100), edge: round1((winProb - imp) * 100),
       price, book: side === 'home' ? g.homeBook : g.awayBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
+      book_fairs: bookFairsJson(Object.fromEntries(Object.entries(g.byBook || {}).map(([bk, p]) => [bk, side === 'home' ? p : 1 - p]))),
     });
   }
   return out;
@@ -11018,6 +11102,8 @@ async function ensureNbaSchema(db) {
   // read (2026-10-25).
   await addColumns(db, 'nbapp', [['sharp_under', 'REAL'], ['sharp_n', 'INTEGER'], ['sharp_src', 'TEXT'], ['close_sharp_under', 'REAL'],
     ['l10_n', 'INTEGER'], ['l10_under', 'INTEGER']]);
+  // Every book's own line and no-vig under there (2026-10-27): nbaBookUnders.
+  await addColumns(db, 'nbapp', [['book_unders', 'TEXT']]);
 }
 const PP_CLOSE_COLS = [['close_point', 'REAL'], ['close_under', 'REAL'], ['close_book_line', 'REAL'], ['close_book_under', 'INTEGER'],
   ['close_at', 'TEXT'], ['close_result', 'TEXT']];
@@ -11086,12 +11172,17 @@ async function nbaRecentMap(db) {
 // prices the under at PrizePicks' line, so a book a half point off still
 // counts. A whole-number book line is fair over the two non-push outcomes. The
 // median over the sharp books that quote him; null when none does.
+// FanDuel joined on 2026-10-27: Pikkit's 2024 NBA props ranking has it first
+// (FanDuel, BookMaker, Propbuilder, Novig, Pinnacle), it quotes all five of
+// the log's markets, and Pinnacle posts none in this feed. It was already
+// read, as an execution book.
+const NBA_PROP_SHARP = ['fanduel', ...NBA_SHARP];
 function nbaSharpUnder(ev, mk, name, line, disp) {
   const below = (mu, b) => negBinomCdf(Math.ceil(b) - 1, mu, disp);                   // P(X < b)
   const under = (mu, b) => (Number.isInteger(b) ? below(mu, b) / (below(mu, b) + 1 - negBinomCdf(b, mu, disp)) : below(mu, b));
   const at = [];
   const src = [];
-  for (const bk of NBA_SHARP) {
+  for (const bk of NBA_PROP_SHARP) {
     const b = (ev.bookmakers || []).find((x) => x.key === bk);
     const m = b && (b.markets || []).find((x) => x.key === mk);
     if (!m) continue;
@@ -11111,6 +11202,28 @@ function nbaSharpUnder(ev, mk, name, line, disp) {
   at.sort((a, c) => a - c);
   const med = at.length % 2 ? at[(at.length - 1) / 2] : (at[at.length / 2 - 1] + at[at.length / 2]) / 2;
   return { under: round1(med * 100), n: at.length, src: src.join(',') };
+}
+// Every book's own line and no-vig chance of the under there (2026-10-27),
+// as a leg's book_unders (JSON, book -> [line, percent]): graded against the
+// count, it scores each book on the same legs. A book's line is the one it
+// quotes both ways nearest an even price -- its main line.
+function nbaBookUnders(ev, mk, name) {
+  const out = {};
+  for (const b of (ev.bookmakers || [])) {
+    const m = !DFS_BOOKS.has(b.key) && (b.markets || []).find((x) => x.key === mk);
+    if (!m) continue;
+    const mine = (m.outcomes || []).filter((o) => nbaName(o.description) === name && o.point != null && typeof o.price === 'number');
+    let best = null;
+    for (const p of new Set(mine.map((o) => o.point))) {
+      const u = mine.find((o) => o.point === p && o.name === 'Under'), ov = mine.find((o) => o.point === p && o.name === 'Over');
+      if (!u || !ov) continue;
+      const f = shinDevig(u.price, ov.price);
+      if (f == null || !(f > 0 && f < 1)) continue;
+      if (!best || Math.abs(f - 0.5) < Math.abs(best[1] - 0.5)) best = [p, f];
+    }
+    if (best) out[b.key] = [best[0], round1(best[1] * 100)];
+  }
+  return Object.keys(out).length ? JSON.stringify(out) : null;
 }
 
 // Pure: one event's odds in, log rows out.
@@ -11174,6 +11287,7 @@ function nbaPpLegs(ev, pri, recent) {
         min_proj: minProj != null ? round1(minProj) : null, book_line: bl.line, book_under: bl.price,
         ud_line: dfsLine('underdog', m.key, name), p6_line: dfsLine('pick6', m.key, name),
         sharp_under: sh ? sh.under : null, sharp_n: sh ? sh.n : null, sharp_src: sh ? sh.src : null,
+        book_unders: nbaBookUnders(ev, m.key, name),
         // His games this season against this line (2026-10-25): context, not
         // a forecast -- recent form regresses, which is why the projection
         // blends it with last season.
@@ -11237,17 +11351,18 @@ async function logNbaPp(db, lg, legs, close) {
     const day = ptDateOf(Date.parse(l.commence));
     stmts.push(db.prepare(
       `INSERT OR IGNORE INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, prior_gp, min_proj, book_line, book_under, model_ver, captured_at, ud_line, p6_line,
-         sharp_under, sharp_n, sharp_src, l10_n, l10_under)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         sharp_under, sharp_n, sharp_src, l10_n, l10_under, book_unders)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(day, l.game_id, l.player, l.market, lg, l.commence, l.home, l.away, l.team, l.player_id,
       l.point, l.proj, l.model_under, l.n_recent, l.prior_gp, l.min_proj, l.book_line, l.book_under, NBA_PP_VER, stamp,
       l.ud_line == null ? null : l.ud_line, l.p6_line == null ? null : l.p6_line,
       l.sharp_under == null ? null : l.sharp_under, l.sharp_n == null ? null : l.sharp_n, l.sharp_src || null,
-      l.l10_n == null ? null : l.l10_n, l.l10_under == null ? null : l.l10_under));
+      l.l10_n == null ? null : l.l10_n, l.l10_under == null ? null : l.l10_under, l.book_unders || null));
+    // book_unders as last read: the pre-tip read's lines are the sharper ones.
     if (close) stmts.push(db.prepare(
-      'UPDATE nbapp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=?, ud_line=?, p6_line=?, close_sharp_under=?, l10_n=?, l10_under=? WHERE date=? AND game_id=? AND player=? AND market=?'
+      'UPDATE nbapp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=?, ud_line=?, p6_line=?, close_sharp_under=?, l10_n=?, l10_under=?, book_unders=COALESCE(?, book_unders) WHERE date=? AND game_id=? AND player=? AND market=?'
     ).bind(l.point, l.model_under, l.book_line, l.book_under, stamp, l.ud_line == null ? null : l.ud_line, l.p6_line == null ? null : l.p6_line,
-      l.sharp_under == null ? null : l.sharp_under, l.l10_n == null ? null : l.l10_n, l.l10_under == null ? null : l.l10_under,
+      l.sharp_under == null ? null : l.sharp_under, l.l10_n == null ? null : l.l10_n, l.l10_under == null ? null : l.l10_under, l.book_unders || null,
       day, l.game_id, l.player, l.market));
   }
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
@@ -12280,27 +12395,22 @@ async function soccerBoardData(env, url, opts = {}) {
     }
     for (const g of games.values()) {
       const sides = [g.home, 'Draw', g.away];
-      // Fair 1X2 from each sharp book that quoted all three, medianed per outcome.
-      const fairs = [];
-      for (const bk of SOCCER_SHARP) {
+      // Every book's de-vigged 1X2 where it quoted all three; the sharp ones make
+      // the fair (sharpFair: Pinnacle's when it quotes, which every league now
+      // takes -- before 2026-10-27 only pinnacleFallback leagues took it alone).
+      const byBook = {};
+      for (const bk of new Set(Object.values(g.h2h).flatMap((x) => Object.keys(x)))) {
         const ps = sides.map((s) => (g.h2h[s] || {})[bk]);
         if (ps.some((x) => typeof x !== 'number')) continue;
         const dv = devigThreeWay(ps);
-        if (dv) fairs.push(dv);
+        if (dv) byBook[bk] = dv;
       }
-      const sharpN = fairs.length;
-      let fair = sharpN >= 2
-        ? sides.map((_, i) => median(fairs.map((f) => f[i])))
-        : null;
-      let fairSrc = fair ? 'sharp-pool' : 'MKT';
-      // Short of a pool, a league that allows it takes Pinnacle's own three-way
-      // line, de-vigged the same way. Only Pinnacle: a lone lowvig or BetOnline
-      // quote stays MKT.
-      if (!fair && SOCCER_LEAGUES[g.league] && SOCCER_LEAGUES[g.league].pinnacleFallback) {
-        const ps = sides.map((s) => (g.h2h[s] || {}).pinnacle);
-        const dv = ps.every((x) => typeof x === 'number') ? devigThreeWay(ps) : null;
-        if (dv) { fair = dv; fairSrc = 'pinnacle'; }
-      }
+      const sf = sharpFair(Object.fromEntries(SOCCER_SHARP.filter((bk) => byBook[bk]).map((bk) => [bk, byBook[bk]])));
+      const sharpN = sf.n;
+      const fair = sf.fair;
+      const fairSrc = sf.src;
+      // A pick's chance at each book, for the log's book_fairs.
+      const bookFairsOf = (sel) => { const i = sides.indexOf(sel); return i < 0 ? null : bookFairsJson(Object.fromEntries(Object.entries(byBook).map(([bk, dv]) => [bk, dv[i]]))); };
       const best = (sel) => {
         let bp = null, bb = null;
         for (const bk of SOCCER_EXEC) {
@@ -12320,6 +12430,7 @@ async function soccerBoardData(env, url, opts = {}) {
           price: b.price, book: b.book,
           implied: imp != null ? Math.round(imp * 1000) / 10 : null,
           value: (f != null && imp != null) ? Math.round((f - imp) * 1000) / 10 : null,
+          bookFairs: bookFairsOf(sel),
         };
       });
       const lead = picks.filter((p) => p.value != null).sort((a, b) => b.value - a.value)[0] || null;
@@ -12449,7 +12560,7 @@ async function soccerBoardData(env, url, opts = {}) {
           side: g.lead.selection === 'Draw' ? 'draw' : (g.lead.selection === g.home ? 'home' : 'away'),
           pick: g.lead.selection, home: g.home, away: g.away,
           win_prob: g.lead.fair, implied: g.lead.implied, edge: g.lead.value,
-          price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN,
+          price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.lead.bookFairs,
         })));
         // The goals total is bought on the same call as the 1X2 and shown on the
         // same row, so logging it costs nothing and doubles what a matchday
@@ -12478,7 +12589,7 @@ async function soccerBoardData(env, url, opts = {}) {
           side: g.fav.selection === g.home ? 'home' : 'away',
           pick: g.fav.selection, home: g.home, away: g.away,
           win_prob: g.fav.fair, implied: g.fav.implied, edge: g.fav.value,
-          price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN,
+          price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.fav.bookFairs,
         }));
         if (favs.length) await logByDay(favs);
       }
@@ -13503,7 +13614,9 @@ const NFL_ABBR = {
 // Falls back to the full name rather than an invented abbreviation: a relocation
 // or a rename should read oddly and get fixed, not silently render as garbage.
 const nflAbbr = (n) => NFL_ABBR[n] || n || '';
-const NFL_GAMELINE_POOL = ['pinnacle', 'lowvig', 'betonlineag'];
+// Novig joined on 2026-10-27 (Pikkit's 2024 NFL main markets: Circa, Pinnacle,
+// BookMaker, Novig), so a game Pinnacle has not hung still has two shops.
+const NFL_GAMELINE_POOL = ['pinnacle', 'novig', 'lowvig', 'betonlineag'];
 const NFL_EXEC = ['draftkings', 'fanduel', 'betmgm', 'betrivers', 'williamhill_us'];
 // Sharp candidates for PLAYER PROPS, which is not the same list as the game
 // lines. The 2026-09-09 probe found lowvig and betonlineag quote game lines but
@@ -14031,21 +14144,22 @@ async function nflBoardData(env, url) {
       if (teams.length !== 2) continue;   // a half-quoted game is not a board row
       const [a, b] = g.away && teams.includes(g.away) ? [g.away, teams.find((t) => t !== g.away)] : teams;
 
-      // Fair from the sharp pool only, Shin de-vigged per book then medianed.
-      // Two books minimum: one book's number is that book's opinion, not a fair
-      // line, and it can never be checked against a second source.
-      const fairs = [];
-      const usedBooks = [];
-      for (const bk of NFL_GAMELINE_POOL) {
+      // Every book's no-vig chance of team a; the sharp ones make the fair
+      // (sharpFair, 2026-10-27): Pinnacle's when it quotes, else two or more of
+      // the rest, BetOnline and LowVig as one.
+      const byBook = {};
+      for (const bk of new Set([...Object.keys(g.h2h[a] || {}), ...Object.keys(g.h2h[b] || {})])) {
         const pa = g.h2h[a] && g.h2h[a][bk];
         const pb = g.h2h[b] && g.h2h[b][bk];
         if (typeof pa !== 'number' || typeof pb !== 'number') continue;
         const f = shinDevig(pa, pb);
-        if (f != null && isFinite(f)) { fairs.push(f); usedBooks.push(bk); }
+        if (f != null && isFinite(f)) byBook[bk] = f;
       }
-      const sharpN = fairs.length;
-      const fair = sharpN >= 2 ? median(fairs) : null;
-      const fairSrc = sharpN >= 2 ? 'gameline-pool' : 'MKT';
+      const usedBooks = NFL_GAMELINE_POOL.filter((bk) => byBook[bk] != null);
+      const sf = sharpFair(Object.fromEntries(usedBooks.map((bk) => [bk, byBook[bk]])));
+      const sharpN = sf.n;
+      const fair = sf.fair;
+      const fairSrc = sf.src === 'sharp-pool' ? 'gameline-pool' : sf.src;
 
       // Best available price per side across execution books, book-attributed.
       const best = (team) => {
@@ -14097,7 +14211,7 @@ async function nflBoardData(env, url) {
         commence: g.commence, week: g.week,
         standalone: sg ? !!sg.standalone : null,
         roof: sg ? sg.roof : null,
-        fairSrc, sharpN, fairBooks: usedBooks,
+        fairSrc, sharpN, fairBooks: usedBooks, byBookA: byBook,
         away_fair: fair != null ? Math.round(fair * 1000) / 10 : null,
         home_fair: fair != null ? Math.round((1 - fair) * 1000) / 10 : null,
         away_price: bestA.price, away_book: bestA.book,
@@ -14134,7 +14248,7 @@ async function nflBoardData(env, url) {
     // real fair line behind them, and only the side the board is leading with.
     try {
       const pre = out.games.filter((g) => g.pickTeam && g.pickPrice != null && g.pickFair != null
-        && g.sharpN >= 2 && Date.parse(g.commence || 0) > Date.now());
+        && g.fairSrc !== 'MKT' && Date.parse(g.commence || 0) > Date.now());
       if (pre.length) {
         await logGamePicks(env.DB, 'nfl', out.slateDay || ptDateOf(Date.now()), pre.map((g) => ({
           game_id: g.id, league: out.seasonType, week: g.week, commence: g.commence,
@@ -14142,6 +14256,8 @@ async function nflBoardData(env, url) {
           home: g.home, away: g.away,
           win_prob: g.pickFair, implied: g.pickImplied, edge: g.pickValue,
           price: g.pickPrice, book: g.pickBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
+          // byBookA is each book's chance of the away side (team a).
+          book_fairs: bookFairsJson(Object.fromEntries(Object.entries(g.byBookA || {}).map(([bk, p]) => [bk, g.pickTeam === g.away ? p : 1 - p]))),
         })));
       }
     } catch (e) { /* logging never breaks the board */ }

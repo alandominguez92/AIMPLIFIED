@@ -163,14 +163,18 @@ const run = (sql, a) => {
     const [league, event_id, commence, home, away, market, selection, point, book, price, captured_at] = a;
     soccerLines.push({ league, event_id, commence, home, away, market, selection, point, book, price, captured_at });
   } else if (/^\s*INSERT OR IGNORE INTO gmpicks/i.test(sql)) {
-    const c = ['sport', 'date', 'game_id', 'market', 'league', 'week', 'commence', 'side', 'point', 'pick', 'home', 'away', 'win_prob', 'implied', 'edge', 'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'model_ver'];
+    const c = ['sport', 'date', 'game_id', 'market', 'league', 'week', 'commence', 'side', 'point', 'pick', 'home', 'away', 'win_prob', 'implied', 'edge', 'entry_price', 'close_price', 'book', 'fair_src', 'sharp_n', 'model_ver',
+      'entry_win_prob', 'entry_edge', 'entry_at', 'close_at', 'book_fairs'];
     const row = Object.fromEntries(c.map((k, i) => [k, a[i]]));
     const k = gmKey([row.sport, row.date, row.game_id, row.market]);
     if (!gm.has(k)) gm.set(k, { ...row, result: null, home_score: null, away_score: null });
   } else if (/^\s*UPDATE gmpicks SET close_price/i.test(sql)) {
-    // close_at (2026-10-11) rides between the latest read and the key.
-    const [cp, edge, wp, imp, sport, date, gid, mkt] = /close_at/.test(sql) ? [...a.slice(0, 4), ...a.slice(5)] : a;
-    const r = gm.get(gmKey([sport, date, gid, mkt])); if (r) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; }
+    // close_at (2026-10-11), then book_fairs (2026-10-27), ride between the
+    // latest read and the key.
+    const bf = /book_fairs/.test(sql) ? a[5] : undefined;
+    const [cp, edge, wp, imp, sport, date, gid, mkt] = /book_fairs/.test(sql) ? [...a.slice(0, 4), ...a.slice(6)]
+      : /close_at/.test(sql) ? [...a.slice(0, 4), ...a.slice(5)] : a;
+    const r = gm.get(gmKey([sport, date, gid, mkt])); if (r) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; if (bf != null) r.book_fairs = bf; }
   } else if (/^\s*UPDATE gmpicks SET result/i.test(sql)) {
     const [res, hs, as, sport, date, gid, mkt] = a;
     const r = gm.get(gmKey([sport, date, gid, mkt])); if (r) { r.result = res; r.home_score = hs; r.away_score = as; }
@@ -230,7 +234,9 @@ console.log('  logged: ' + logged.map((r) => `${r.sport}:${r.pick}@${r.entry_pri
 const soc = logged.filter((r) => r.sport === 'soccer');
 const nfl = logged.filter((r) => r.sport === 'nfl');
 const socH2h = soc.filter((r) => r.market === 'h2h'), socTot = soc.filter((r) => r.market === 'totals');
-ok(socH2h.length === 3 && nfl.length === 2, `both boards write the 1X2 / moneyline row per game (soccer ${socH2h.length}, nfl ${nfl.length})`);
+// Four soccer fixtures since 2026-10-27: the Champions League one priced by
+// Pinnacle alone is logged too (sharpFair: Pinnacle first, in every league).
+ok(socH2h.length === 4 && nfl.length === 2, `both boards write the 1X2 / moneyline row per game (soccer ${socH2h.length}, nfl ${nfl.length})`);
 ok(socTot.length === 3 && socTot.every((r) => (r.side === 'over' || r.side === 'under') && r.entry_price != null),
   `the goals total is kept too — bought on the same call, so it costs nothing (${socTot.map((r) => r.pick + '@' + r.entry_price).join(', ')})`);
 const s1t = socTot.find((r) => r.game_id === 's1'), s2t = socTot.find((r) => r.game_id === 's2');
@@ -250,16 +256,17 @@ ok(nfl.every((r) => r.side === 'home' || r.side === 'away'), `NFL has no draw si
 // the side the sharp pool rates higher, whatever the board's value pick was.
 const socFav = soc.filter((r) => r.market === 'fav');
 const socBoard = await hit('/api/soccer-board');
-ok(socFav.length === 3 && socFav.every((r) => r.side === 'home' || r.side === 'away'),
+ok(socFav.length === 4 && socFav.every((r) => r.side === 'home' || r.side === 'away'),
   `each fixture logs its likeliest winner, never the draw (${socFav.map((r) => r.pick + ' ' + r.win_prob + '%').join(', ')})`);
-ok(socFav.length === 3 && socFav.every((r) => {
+ok(socFav.length === 4 && socFav.every((r) => {
   const g = (socBoard.games || []).find((x) => x.id === r.game_id);
   const teams = g ? g.oneXtwo.filter((p) => p.selection !== 'Draw') : [];
   return g && teams.length === 2 && r.win_prob === Math.max(...teams.map((p) => p.fair)) && g.fav && g.fav.selection === r.pick;
 }), 'and it is the team with the higher sharp win probability, as the board shows it');
 
-// The Nations League follows Pinnacle alone when the sharp pool is short; a
-// league without that setting, in exactly the same state, stays unpriced.
+// The Nations League follows Pinnacle alone when the sharp pool is short. Since
+// 2026-10-27 so does every league (the owner's call: Pinnacle first); before,
+// a league without pinnacleFallback, in exactly the same state, stayed MKT.
 const u1 = (socBoard.games || []).find((g) => g.id === 'u1');
 const c1 = (socBoard.games || []).find((g) => g.id === 'c1');
 const pinFairHome = (() => { const p = SP.pinnacle; const q = [p.home, p.draw, p.away].map((x) => (x < 0 ? -x / (-x + 100) : 100 / (x + 100))); return q[0] / q.reduce((s, x) => s + x, 0) * 100; })();
@@ -270,14 +277,17 @@ ok(u1 && Math.abs(u1.oneXtwo[0].fair - pinFairHome) < 1.5,
 ok(soc.some((r) => r.game_id === 'u1' && r.market === 'h2h' && r.fair_src === 'pinnacle' && r.sharp_n === 1)
   && soc.some((r) => r.game_id === 'u1' && r.market === 'fav'),
   'it is logged, and the log says the fair line was Pinnacle alone');
-ok(c1 && c1.fairSrc === 'MKT' && !c1.fav && !soc.some((r) => r.game_id === 'c1'),
-  `a Champions League fixture in the same state stays MKT and is not logged (${c1 && c1.fairSrc})`);
+ok(c1 && c1.fairSrc === 'pinnacle' && c1.fav && soc.some((r) => r.game_id === 'c1' && r.market === 'h2h' && r.fair_src === 'pinnacle'),
+  `a Champions League fixture in the same state takes Pinnacle's line and is logged (${c1 && c1.fairSrc})`);
+const c1r = soc.find((r) => r.game_id === 'c1' && r.market === 'fav');
+ok(c1r && c1r.book_fairs && JSON.parse(c1r.book_fairs).pinnacle === c1r.win_prob,
+  `and the row keeps each book's chance of its pick, Pinnacle's the fair (${c1r && c1r.book_fairs})`);
 
 // Logging twice must not double up, and must not move the entry price.
 const before = JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price]));
 await hit('/api/nfl-board');
 await hit('/api/soccer-board');
-ok(gm.size === 11 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price])) === before,
+ok(gm.size === 13 && JSON.stringify([...gm.values()].map((r) => [r.game_id, r.market, r.entry_price])) === before,
   `a second board load re-freezes nothing (${gm.size} rows)`);
 
 // ---- grade -----------------------------------------------------------------------------

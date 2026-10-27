@@ -5871,6 +5871,17 @@
   // page opens on it. Gold is the bet (the pick and the add button); the
   // chance is green only when legs like it have cleared PrizePicks' 2-pick
   // break-even (57.7%) over five or more graded legs.
+  // A leg's edge at its price, and its stake (2026-10-27): the worker's
+  // legStake -- EV at the best price on the leg's Kelly chance, a quarter of
+  // Kelly's stake as a share of the bankroll. With no edge, the price that
+  // would be one: any book, Circa and South Point included.
+  function pickEdgeHtml(x) {
+    if (typeof x.ev !== 'number' || typeof x.betAt !== 'number') return '';
+    if (x.ev > 0 && x.stake > 0) {
+      return ` · <span class="pk-edge up" title="Expected value at this price, on a ${esc(pct0(x.kellyP))} chance; a quarter of the Kelly stake">edge +${esc(String(x.ev))}% · ¼ Kelly ${esc(String(x.stake))}%</span>`;
+    }
+    return ` · <span class="pk-edge" title="At ${esc(AM(x.odds))} this leg is not +EV on a ${esc(pct0(x.kellyP))} chance">no edge · bet at ${esc(AM(x.betAt))} or better</span>`;
+  }
   function heroLegHtml(x, opts) {
     const lg = pickLeg(x);
     const on = !!state.slip[offerLeg(lg)];
@@ -5908,6 +5919,7 @@
       // The game on its own line, so a long matchup never squeezes the name.
       + `<span class="hl-game">${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span></div>`
       + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
+      + (typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
       + `<div class="hl-actions"><button type="button" class="hl-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? '★ In your slip' : '☆ Add to slip'}</button>`
       + (opts && opts.link ? `<a href="#" class="hl-all" data-action="set-sport" data-sport="picks">All picks →</a>` : '')
       + `</div></article>`;
@@ -6058,13 +6070,24 @@
         + `<span class="tc-l1"><b>${esc(x.title)}</b><span class="tc-p">${pct0(x.p)}</span></span>`
         // A soccer leg's league says the sport; the others name it.
         + `<span class="tc-l2"><span><span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
-        + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}</span>` : ''}</span>`
+        + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${pickEdgeHtml(x)}</span>` : ''}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     }).join('');
     // Entry math over the legs still to come: the top two as a 2-pick power,
     // and the average leg of three to six against the flex break-even.
     const ent = [];
+    // Each entry's EV at PrizePicks' payouts and its quarter-Kelly stake
+    // (2026-10-27), the worker's entryStake -- while the list is the one it
+    // priced (no leg of it under way yet).
+    const whole = legs.length === (d.legs || []).length;
+    const evOf = (n) => {
+      const w = whole && (d.entries || []).find((e) => e.legs === n);
+      if (!w || typeof w.ev !== 'number') return '<span class="pk-ev"></span>';
+      return w.ev > 0 && w.stake > 0
+        ? `<span class="pk-ev up" title="Expected value at PrizePicks' payout; a quarter of the Kelly stake">+${esc(String(w.ev))}% · ${esc(String(w.stake))}%</span>`
+        : '<span class="pk-ev">no edge</span>';
+    };
     for (let n = 2; n <= legs.length; n++) {
       const top = legs.slice(0, n);
       const be = PP_BREAK_EVEN[n];
@@ -6075,24 +6098,24 @@
       const kind = be[0].replace(/^\d-pick /, '');
       if (n === 2) {
         const all = top.reduce((a, x) => a * x.p / 100, 1) * 100;
-        ent.push(`<li><span>Top 2 ${esc(kind)}</span><span class="pk-v"><b>${pct0(all)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span></li>`);
+        ent.push(`<li><span>Top 2 ${esc(kind)}</span><span class="pk-v"><b>${pct0(all)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span>${evOf(2)}</li>`);
         // The two best legs at 75%+ (2026-10-25): legs that strong landed 28
         // of 31 from Oct 10 to 24, those at 65-75% 20 of 29.
         const hi = legs.filter((x) => x.p >= 75).slice(0, 2);
         if (hi.length === 2) {
           const both = hi.reduce((a, x) => a * x.p / 100, 1) * 100;
-          ent.push(`<li class="pk-e75"><span>Top 2 ${esc(kind)}, 75%+</span><span class="pk-v"><b>${pct0(both)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span></li>`);
+          ent.push(`<li class="pk-e75"><span>Top 2 ${esc(kind)}, 75%+</span><span class="pk-v"><b>${pct0(both)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span><span class="pk-ev"></span></li>`);
         }
       } else {
         const avg = top.reduce((a, x) => a + x.p, 0) / n;
-        ent.push(`<li><span>Top ${n} ${esc(kind)}</span><span class="pk-v"><b>${pct0(avg)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span></li>`);
+        ent.push(`<li><span>Top ${n} ${esc(kind)}</span><span class="pk-v"><b>${pct0(avg)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span>${evOf(n)}</li>`);
       }
     }
     grid.innerHTML = `<div class="nba-pp pk-card">`
       + `<div class="tc-sub pk-intro">One leg a game, best first. Under each: how legs like it have actually done.</div>`
       + hero
       + (items ? `<ol class="tc-legs">${items}</ol>` : '')
-      + (ent.length ? `<ul class="pk-entries"><li class="pk-eh"><span>As an entry</span><span>chance</span><span>to pay</span></li>${ent.join('')}</ul>` : '')
+      + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As an entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>` : '')
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>` + after;
   }
 

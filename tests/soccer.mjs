@@ -133,7 +133,9 @@ if (g) {
 ok(!!g && g.oneXtwo.length === 3, 'each fixture carries all three 1X2 outcomes, draw included');
 const fairSum = g ? g.oneXtwo.reduce((s, p) => s + (p.fair || 0), 0) : 0;
 ok(Math.abs(fairSum - 100) < 0.6, `the 1X2 fair line sums to 100% — de-vigged across three outcomes, not two (${fairSum.toFixed(1)}%)`);
-ok(g && g.sharpN >= 2 && g.fairSrc === 'sharp-pool', `priced against the sharp pool (${g && g.sharpN} books)`);
+// Pinnacle's line when it quotes, since 2026-10-27 (sharpFair); sharpN still
+// counts the sharp books that did.
+ok(g && g.sharpN >= 2 && g.fairSrc === 'pinnacle', `priced against Pinnacle's line, ${g && g.sharpN} sharp books quoting (${g && g.fairSrc})`);
 ok(g && g.oneXtwo.every((p) => p.book === 'draftkings' || p.book === 'fanduel' || p.price == null),
   'the price shown is one you could actually take (DK/FD), never the sharp book');
 ok(g && g.total && g.total.point === 2.5 && g.total.overFair != null && Math.abs((g.total.overFair + g.total.underFair) - 100) < 0.6,

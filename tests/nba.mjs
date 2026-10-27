@@ -104,8 +104,10 @@ const run = (sql, a) => {
     const k = gmKey([row.sport, row.date, row.game_id, row.market]);
     if (!gm.has(k)) gm.set(k, { ...row, result: null, home_score: null, away_score: null });
   } else if (/^\s*UPDATE gmpicks SET close_price/i.test(sql)) {
-    // close_at (2026-10-11) rides between the latest read and the key.
-    const [cp, edge, wp, imp, sport, date, gid, mkt, side] = /close_at/.test(sql) ? [...a.slice(0, 4), ...a.slice(5)] : a;
+    // close_at (2026-10-11), then book_fairs (2026-10-27), ride between the
+    // latest read and the key.
+    const [cp, edge, wp, imp, sport, date, gid, mkt, side] = /book_fairs/.test(sql) ? [...a.slice(0, 4), ...a.slice(6)]
+      : /close_at/.test(sql) ? [...a.slice(0, 4), ...a.slice(5)] : a;
     const r = gm.get(gmKey([sport, date, gid, mkt]));
     if (r && r.side === side) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; }
   } else if (/^\s*UPDATE gmpicks SET result=\?, home_score=\?, away_score=\?/i.test(sql)) {
@@ -176,8 +178,10 @@ ok(mia && mia.entry_price === -140 && mia.book === 'fanduel',
 ok(mia && mia.date === '2026-10-03' && mia.league === 'pre' && (mia.market || 'h2h') === 'h2h',
   `dated by its own tip, Pacific, and filed as preseason (${mia && mia.date}, ${mia && mia.league})`);
 const lac = rows.find((r) => r.game_id === 'n2');
-ok(lac && lac.fair_src === 'sharp-pool' && lac.sharp_n === 3 && lac.pick === 'Los Angeles Clippers' && lac.entry_price === -130,
-  `with two or more sharp books it is the pooled fair (${lac && lac.fair_src}/${lac && lac.sharp_n}, ${lac && lac.pick} ${lac && lac.entry_price})`);
+// Since 2026-10-27 Pinnacle's line is the fair whenever it quotes (sharpFair),
+// however many other sharp books do; sharp_n still counts them.
+ok(lac && lac.fair_src === 'pinnacle' && lac.sharp_n === 3 && lac.pick === 'Los Angeles Clippers' && lac.entry_price === -130,
+  `with Pinnacle among three sharp books, it is Pinnacle's fair (${lac && lac.fair_src}/${lac && lac.sharp_n}, ${lac && lac.pick} ${lac && lac.entry_price})`);
 ok(!rows.some((r) => r.game_id === 'n3'), 'a game no sharp book prices logs nothing');
 ok(!rows.some((r) => r.game_id === 'n4'), 'and a game outside the 36h window waits for its own day');
 

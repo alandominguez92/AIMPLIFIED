@@ -49,7 +49,7 @@ const lift = (name, from) => {
   }
   throw new Error('could not lift ' + name);
 };
-const names = ['NBA_SHARP', 'amProb', 'shinDevig', 'poissonCdf', 'negBinomCdf', 'round1', 'normName', 'NFL_NAME_SUFFIX', 'nflBaseName', 'nbaBaseName',
+const names = ['NBA_SHARP', 'NBA_PROP_SHARP', 'amProb', 'shinDevig', 'poissonCdf', 'negBinomCdf', 'round1', 'normName', 'NFL_NAME_SUFFIX', 'nflBaseName', 'nbaBaseName',
   'NBA_NAME_ALIAS', 'NBA_ALIAS', 'nbaName', 'nbaSharpUnder'];
 const F = new Function(names.map((n) => lift(n, worker)).join('\n') + '\nreturn { nbaSharpUnder, shinDevig };')();
 
