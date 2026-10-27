@@ -2894,6 +2894,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Its price line carries the fair, the stake and the read's time: it wraps,
    where the list's one-price line does not (a phone ran it 120px wide). */
 .pk-ev-list .tc-book { white-space:normal; line-height:1.5; }
+/* So does a Picks leg's, since it carries the fair price and EV too
+   (2026-10-27): "-209 · fair -152 · EV -10.7% · bet at ..." ran 14px past
+   its card on a phone. */
+.pk-card .tc-legs .tc-book { white-space:normal; line-height:1.5; }
 .tc-p.pk-ev-up { color:var(--positive); }
 .pk-asof { color:var(--textFaint); }
 .pk-noentry { margin-top:8px; }
