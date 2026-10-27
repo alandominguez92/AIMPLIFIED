@@ -6042,7 +6042,7 @@
       : 'This list keeps its own record from today: each leg on it when its game starts is graded.';
     if (!legs.length) {
       grid.innerHTML = `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
-        + `<div class="tc-sub">${recLine}</div>${rules}</div>` + after;
+        + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
       return;
     }
     // The first leg is the night's best, drawn large; the rest follow.
@@ -6077,10 +6077,13 @@
     // Entry math over the legs still to come: the top two as a 2-pick power,
     // and the average leg of three to six against the flex break-even.
     const ent = [];
-    // Each entry's EV at PrizePicks' payouts and its quarter-Kelly stake
-    // (2026-10-27), the worker's entryStake -- while the list is the one it
-    // priced (no leg of it under way yet).
-    const whole = legs.length === (d.legs || []).length;
+    // An entry is built from the legs PrizePicks takes (2026-10-27): its
+    // player picks and one NFL team pick, which the worker marks ppOk. Each
+    // entry's EV at PrizePicks' payouts and its quarter-Kelly stake are the
+    // worker's entryStake -- while the list is the one it priced (no leg of it
+    // under way yet).
+    const ppLegs = legs.filter((x) => x.ppOk);
+    const whole = ppLegs.length === (d.legs || []).filter((x) => x.ppOk).length;
     const evOf = (n) => {
       const w = whole && (d.entries || []).find((e) => e.legs === n);
       if (!w || typeof w.ev !== 'number') return '<span class="pk-ev"></span>';
@@ -6088,8 +6091,8 @@
         ? `<span class="pk-ev up" title="Expected value at PrizePicks' payout; a quarter of the Kelly stake">+${esc(String(w.ev))}% · ${esc(String(w.stake))}%</span>`
         : '<span class="pk-ev">no edge</span>';
     };
-    for (let n = 2; n <= legs.length; n++) {
-      const top = legs.slice(0, n);
+    for (let n = 2; n <= ppLegs.length; n++) {
+      const top = ppLegs.slice(0, n);
       const be = PP_BREAK_EVEN[n];
       if (!be) continue;
       // Three columns that never break mid-phrase: the entry, the chance, the
@@ -6101,7 +6104,7 @@
         ent.push(`<li><span>Top 2 ${esc(kind)}</span><span class="pk-v"><b>${pct0(all)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span>${evOf(2)}</li>`);
         // The two best legs at 75%+ (2026-10-25): legs that strong landed 28
         // of 31 from Oct 10 to 24, those at 65-75% 20 of 29.
-        const hi = legs.filter((x) => x.p >= 75).slice(0, 2);
+        const hi = ppLegs.filter((x) => x.p >= 75).slice(0, 2);
         if (hi.length === 2) {
           const both = hi.reduce((a, x) => a * x.p / 100, 1) * 100;
           ent.push(`<li class="pk-e75"><span>Top 2 ${esc(kind)}, 75%+</span><span class="pk-v"><b>${pct0(both)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span><span class="pk-ev"></span></li>`);
@@ -6115,8 +6118,26 @@
       + `<div class="tc-sub pk-intro">One leg a game, best first. Under each: how legs like it have actually done.</div>`
       + hero
       + (items ? `<ol class="tc-legs">${items}</ol>` : '')
-      + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As an entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>` : '')
-      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>` + after;
+      + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As a PrizePicks entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>`
+        : (legs.length ? `<div class="tc-sub pk-noentry">Fewer than two of these legs are ones PrizePicks takes (its player picks, and one NFL team pick an entry): the rest are sportsbook bets.</div>` : ''))
+      + (ent.length && ppLegs.length < legs.length ? `<div class="tc-sub pk-noentry">Entries use the ${ppLegs.length} legs PrizePicks takes; the other moneylines are sportsbook bets.</div>` : '')
+      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
+  }
+  // Bets with an edge (2026-10-27): prices that beat the sharp line, from the
+  // worker's evBets -- best edge first, each with its quarter-Kelly stake and
+  // the price it breaks even at, and how old its price is.
+  function evBetsHtml(d) {
+    const bets = (d && d.evBets || []).filter((b) => Date.parse(b.commence) > Date.now());
+    const total = bets.reduce((s, b) => s + (b.stake || 0), 0);
+    const head = `<div class="tc-head"><span class="tc-title">Bets with an edge</span>${bets.length ? `<span class="tc-rec">¼ Kelly total <b>${esc(String(Math.round(total * 10) / 10))}%</b></span>` : ''}</div>`
+      + `<div class="tc-sub">Prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check the book before you bet.</div>`;
+    if (!bets.length) return `<div class="nba-pp pk-card pk-ev-card">${head}<div class="tc-wait-note">No price beats the sharp line by enough right now.</div></div>`;
+    return `<div class="nba-pp pk-card pk-ev-card">${head}<ol class="tc-legs pk-ev-list">${bets.map((b) => `<li><div class="tc-leg">`
+      + `<span class="tc-l1"><b>${esc(b.label)}</b><span class="tc-p pk-ev-up">+${esc(String(b.ev))}%</span></span>`
+      + `<span class="tc-l2"><span><span class="pk-sport">${esc(PICK_SPORT[b.sport] || b.sport)}</span> · ${esc(b.sub)} · <span class="pk-when">${esc(soccerKick(b.commence))}</span></span></span>`
+      + `<span class="tc-book">${esc(AM(b.price))} ${esc(String(b.book || '').replace(/^draftkings$/, 'DK').replace(/^fanduel$/, 'FD'))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(String(b.stake))}%</span>`
+      + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
+      + `</div></li>`).join('')}</ol></div>`;
   }
 
   function applySportChrome(sport) {

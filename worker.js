@@ -8447,6 +8447,89 @@ function entryStake(ps, type) {              // ps: chances 0-1
   for (let i = 0; i < 100; i++) { const a = lo + (hi - lo) / 3, b = hi - (hi - lo) / 3; if (growth(a) < growth(b)) lo = a; else hi = b; }
   return { ev: round1(ev * 100), stake: round1((lo + hi) / 2 * KELLY_FRACTION * 100) };
 }
+// The kinds PrizePicks takes in an entry (2026-10-27): its player picks. Of
+// the list's moneylines it takes only the NFL's, as a team pick ("game
+// winner"), one an entry. The NBA, NHL, soccer and MLB moneylines are
+// sportsbook bets; priced at PrizePicks' payouts they made a 2-pick Power read
+// +62% and stake 7.8% of a bankroll, on an entry that could not be placed.
+const PP_ENTRY_KINDS = new Set(['mlb_pp', 'nba_pp', 'nfl_ptd']);
+
+// ---- Bets with an edge (2026-10-27) -------------------------------------------
+// The list ranks by how likely a leg is to land; sharp betting asks where a
+// price beats the sharp line. Every side the logs hold a fair and a best price
+// for, starting in the next day: both sides of each NBA and NHL game (the
+// boards' snapshots); the NFL and soccer sides the boards logged (the
+// favourite, the best-value 1X2 side, the goals total); every passing-TD
+// under; and NBA threes and assists unders where PrizePicks' line is the
+// book's, so the sharp chance is at the line the price is for. The edge is EV
+// at the best price on the sharp chance itself -- there is no record to pull
+// it toward -- and the stake a quarter of Kelly's. Game lines need +1.5% and
+// props +3%: the fair line is an estimate too, and props' holds are wider.
+// Nothing is bought: snapshots and logs only. asOf says how old each price is.
+const EV_MIN_LINE = 1.5;
+const EV_MIN_PROP = 3;
+const EV_MAX = 12;
+// Further out than the list's day: an early price is often the better one,
+// and the moneyline captures read 36 hours ahead.
+const EV_WINDOW_MS = 36 * 3600e3;
+async function evBets(env, now) {
+  const out = [];
+  const seen = new Set();
+  const add = (o) => {
+    const t = Date.parse(o.commence);
+    if (!(t > now && t - now <= EV_WINDOW_MS) || o.fair == null || typeof o.price !== 'number' || seen.has(o.key)) return;
+    const p = o.fair / 100;
+    if (!(p > 0 && p < 1) || !mlPriceSane(o.price, o.fair)) return;
+    const d = decOf(o.price), ev = p * d - 1;
+    if (ev * 100 < (o.prop ? EV_MIN_PROP : EV_MIN_LINE)) return;
+    seen.add(o.key);
+    const { key, ...rest } = o;
+    out.push({ ...rest, fair: round1(o.fair), ev: round1(ev * 100), stake: round1(ev / (d - 1) * KELLY_FRACTION * 100), betAt: amOfChance(p) });
+  };
+  // NBA and NHL: both sides of every game, as the last capture priced them.
+  for (const sport of ['nba', 'nhl']) {
+    const hit = await loadFeedCache(env.DB, `${sport}_board:reg`).catch(() => null);
+    const snap = hit && hit.present ? hit.data : null;
+    const nick = sport === 'nhl' ? nhlNick : lastWord;
+    for (const g of (snap && snap.games) || []) {
+      if (!g.fairSrc || g.fairSrc === 'MKT') continue;
+      const sub = `${nick(g.away)} @ ${nick(g.home)}`;
+      for (const [side, team, fair, price, book] of [['home', g.home, g.homeFair, g.homePrice, g.homeBook], ['away', g.away, g.awayFair, g.awayPrice, g.awayBook]]) {
+        add({ key: `${sport}:${g.id}:${side}`, sport, market: 'ml', label: `${nick(team)} ML`, sub, commence: g.commence,
+          fair, price, book, fairSrc: g.fairSrc, asOf: snap.asOf });
+      }
+    }
+  }
+  // The NFL, passing TDs and soccer: the sides the boards logged, at their latest read.
+  const days = [ptDateOf(now), ptDateOf(now + 86400e3), ptDateOf(now + 2 * 86400e3)];
+  const gm = (await env.DB.prepare("SELECT * FROM gmpicks WHERE sport IN ('nfl','nflptd','soccer') AND date IN (?, ?, ?) AND result IS NULL").bind(...days).all()).results || [];
+  for (const r of gm) {
+    const base = { commence: r.commence, fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, book: r.book, fairSrc: r.fair_src, asOf: r.close_at || r.entry_at };
+    if (r.sport === 'nfl' && r.market === 'h2h') {
+      add({ ...base, key: `nfl:${r.game_id}:${r.pick}`, sport: 'nfl', market: 'ml', label: `${r.pick} ML`, sub: `${r.away} @ ${r.home}` });
+    } else if (r.sport === 'nflptd') {
+      const [, player] = String(r.game_id).split('|');
+      add({ ...base, key: `ptd:${r.game_id}`, sport: 'nfl', market: 'pass_tds', prop: true, label: `${player} Under ${r.point} Pass TDs`,
+        sub: `${NFL_ABBR[r.away] || r.away} @ ${NFL_ABBR[r.home] || r.home}` });
+    } else if (r.sport === 'soccer') {
+      const league = (SOCCER_LEAGUES[r.league] && SOCCER_LEAGUES[r.league].label) || r.league || '';
+      const label = r.market === 'totals' ? `${r.pick} goals` : r.side === 'draw' ? 'Draw' : `${r.pick} ML`;
+      add({ ...base, key: `soc:${r.game_id}:${r.market === 'totals' ? 'tot' : 'res'}:${r.pick}`, sport: 'soccer', market: r.market === 'totals' ? 'totals' : 'ml',
+        label, sub: `${r.away} @ ${r.home}${league ? ' · ' + league : ''}` });
+    }
+  }
+  // NBA unders at the book's own line, where the sharp books priced him.
+  const np = (await env.DB.prepare(`SELECT * FROM nbapp WHERE date IN (?, ?, ?) AND result IS NULL AND sharp_under IS NOT NULL AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
+    .bind(...days, ...NBA_PICK_MARKETS).all()).results || [];
+  for (const row of ppStanding(np)) {
+    const r = ppCurrent(row);
+    if (r.book_line == null || r.book_line !== r.point || typeof r.book_under !== 'number' || r.sharp_under == null) continue;
+    add({ key: `nbapp:${r.game_id}:${r.player}:${r.market}`, sport: 'nba', market: r.market, prop: true,
+      label: `${r.player} Under ${r.point} ${PICKS_NBA_MK[r.market] || r.market}`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
+      commence: r.commence, fair: r.sharp_under, price: r.book_under, book: 'DK/FD', fairSrc: 'sharp books', asOf: r.close_at || r.captured_at });
+  }
+  return out.sort((a, b) => b.ev - a.ev).slice(0, EV_MAX);
+}
 // Per leg, the PrizePicks break-even for an entry of that many legs (2-pick
 // power; 3 to 6, flex). The same table the slip's parlay read uses.
 const PICKS_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 4: ['4-pick flex', 56.9], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
@@ -9048,9 +9131,17 @@ async function picksBoard(env) {
       ...legStake(l.p, l.odds, kinds[l.kind]),
     }));
     // The entry read: the top two as a 2-pick power (both have to land), and
-    // the average leg of the top three to six against the flex break-even.
-    for (let n = 2; n <= out.legs.length; n++) {
-      const top = out.legs.slice(0, n);
+    // the average leg of the top three to six against the flex break-even --
+    // over the legs PrizePicks takes (PP_ENTRY_KINDS, and the first NFL
+    // moneyline as the entry's one team pick), each marked ppOk.
+    let teamPick = false;
+    for (const l of out.legs) {
+      l.ppOk = PP_ENTRY_KINDS.has(l.kind);
+      if (!l.ppOk && l.kind === 'nfl_ml' && !teamPick) { l.ppOk = true; teamPick = true; }
+    }
+    const ppLegs = out.legs.filter((l) => l.ppOk);
+    for (let n = 2; n <= ppLegs.length; n++) {
+      const top = ppLegs.slice(0, n);
       const [name, be] = PICKS_BREAK_EVEN[n];
       out.entries.push({ legs: n, entry: name, perLegBreakEven: be,
         avgLeg: round1(top.reduce((a, x) => a + x.p, 0) / n),
@@ -9058,6 +9149,8 @@ async function picksBoard(env) {
         // At PrizePicks' payouts, on each leg's Kelly chance (entryStake).
         ...entryStake(top.map((x) => (x.kellyP != null ? x.kellyP : x.p) / 100), n === 2 ? 'power' : 'flex') });
     }
+    // Prices that beat the sharp line, wherever they are (evBets).
+    try { out.evBets = await evBets(env, now); } catch (e) { out.evBets = []; out.evError = String((e && e.message) || e); }
     try { out.record = await dayPickRecord(env.DB); } catch (e) { out.recordError = String((e && e.message) || e); }
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;

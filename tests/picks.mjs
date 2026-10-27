@@ -165,8 +165,13 @@ ok(d.kinds.nba_ml.record.n === 0, 'an NBA preseason favourite is not an NBA favo
 ok(leg('NYY ML').record && leg('NYY ML').record.n === 2 && leg('NYY ML').record.proven === false,
   'each leg carries its kind\'s record, and says when it is too thin to lean on');
 const e2 = (d.entries || [])[0];
-ok(e2 && e2.entry === '2-pick power' && e2.allLand === Math.round(78 * 76 / 100 * 10) / 10 && e2.perLegBreakEven === 57.7,
-  `the entry read: the top two both land ${e2 && e2.allLand}% of the time, each needing 57.7% for a 2-pick power`);
+// From 2026-10-27 an entry is built from the legs PrizePicks takes: its player
+// picks and one NFL team pick. Boston's NBA moneyline and the Yankees' are
+// sportsbook bets, so the top two are Dallas (the team pick) and Grichuk.
+ok(e2 && e2.entry === '2-pick power' && e2.allLand === Math.round(76 * 74 / 100 * 10) / 10 && e2.perLegBreakEven === 57.7,
+  `the entry read: Dallas and Grichuk both land ${e2 && e2.allLand}% of the time, each needing 57.7% for a 2-pick power`);
+ok(leg('Celtics ML').ppOk === false && leg('NYY ML').ppOk === false && leg('DAL ML').ppOk === true && leg('R. Grichuk').ppOk === true,
+  'the NBA and MLB moneylines are not PrizePicks legs; the NFL one is, as its team pick');
 
 // ---- the list's own record -------------------------------------------------------------
 console.log('\n-- logged as shown --');

@@ -2888,6 +2888,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-ev.up, .pk-edge.up { color:var(--positive); }
 .pk-edge { font-family:var(--sans); font-size:12px; color:var(--textFaint); }
 .hl-edge { margin-top:6px; font-family:var(--mono); font-size:12.5px; color:var(--textDim); }
+/* Bets with an edge (2026-10-27): its own card under the list. */
+.pk-ev-card { margin-top:14px; }
+.pk-ev-list .tc-leg { padding-left:2px; }
+.tc-p.pk-ev-up { color:var(--positive); }
+.pk-asof { color:var(--textFaint); }
+.pk-noentry { margin-top:8px; }
 .pk-record { margin-top:10px; }
 .pk-record b { color:var(--text); font-weight:600; }
 .pk-rules { margin-top:10px; font-size:12.5px; color:var(--textDim); }
