@@ -3108,13 +3108,17 @@ function liveOverState(stat, line, gone, proj) {
 const liveMeta = (g) => ({ away: g.awayAb, awayR: g.as, home: g.homeAb, homeR: g.hs, inning: g.label });
 
 async function nbaLiveCards(env, now, feeds) {
+  // A card needs its game under way on the scoreboard, so with none under way
+  // there is nothing to read: the night's open legs are some 250 rows, and the
+  // page asks every 45 seconds all day (2026-10-27).
+  const games = await feeds.nba();
+  if (!games || !games.length) return [];
   const days = [ptDateOf(now), ptDateOf(now - 864e5)];
   await ensureNbaSchema(env.DB);
   const rows = (await env.DB.prepare('SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
   const picked = await livePickIds(env.DB, days, ['nba_pp']);
   const legs = liveFollowed(rows, now, picked, (r) => `nbapp:${r.game_id}:${r.player}:${r.market}`, (r) => r.min_proj >= NBA_ROTATION_MIN);
   if (!legs.length) return [];
-  const games = await feeds.nba();
   const cards = [];
   for (const r of legs) {
     const g = liveGameOf(games, r.home, r.away, nbaMatch);
@@ -3131,6 +3135,9 @@ async function nbaLiveCards(env, now, feeds) {
 }
 
 async function nhlLiveCards(env, now, feeds) {
+  // As the NBA's: no game under way, no card, so nothing to read.
+  const games = await feeds.nhl();
+  if (!games || !games.length) return [];
   const days = [ptDateOf(now), ptDateOf(now - 864e5)];
   await ensureNhlPpSchema(env.DB);
   const rows = (await env.DB.prepare('SELECT * FROM nhlpp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
@@ -3139,7 +3146,6 @@ async function nhlLiveCards(env, now, feeds) {
   const more = (r) => (r.model_under == null ? -1 : 100 - r.model_under);
   const legs = liveFollowed(rows, now, new Set(), (r) => `nhlpp:${r.game_id}:${r.player}:${r.market}`, (r) => more(r) >= PP_MORE_MIN, more);
   if (!legs.length) return [];
-  const games = await feeds.nhl();
   const cards = [];
   for (const r of legs) {
     const g = liveGameOf(games, r.home, r.away, nhlMatch);
@@ -3391,46 +3397,12 @@ async function trackRecord(env) {
     try { await gradeGamePicks(env); } catch (e) { /* additive */ }
     try { await gradePassTds(env); } catch (e) { /* additive */ }
     try { await gradePassYds(env); } catch (e) { /* additive */ }
-    const kres = await env.DB.prepare('SELECT * FROM picks').all();
-    const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
-    // Normalize both feeds to one row shape: pitcher picks are market 'K' with
-    // actual_k; batter picks map their per-market actual into the same field.
-    const unified = [
-      ...(kres.results || []).map((r) => ({ ...r, market: 'K' })),
-      ...(bres.results || []).map((r) => ({ ...r, actual_k: r.actual, market: String(r.market || '').toUpperCase() })),
-    ];
-    const out = buildTrackRecord(unified);
-    let mlRows = [];
+    // MLB's half, kept until a row of its six tables is written (recordCached;
+    // the graders above made the tables): after the World Series nothing
+    // writes them until spring.
+    const mlb = await recordCached(env, 'track-mlb', () => trackRecordMlb(env));
+    const out = mlb.out;
     try {
-      const mlres = await env.DB.prepare('SELECT * FROM mlpicks').all();
-      mlRows = mlres.results || [];
-      out.ml = buildMlRecord(mlRows);
-      out.ml.byPriceBand = buildMlPriceBands(mlRows);
-      out.ml.vsSharpClose = mlVsSharpClose(mlRows);
-    } catch (e) { /* ML record is additive — never break the props track record */ }
-    try {
-      // Reuses buildMlRecord: an rlpicks row is shaped the same as an mlpicks
-      // row for every field the record needs (result, entry/close price, tier,
-      // edge), so a second aggregator would be a copy that could drift.
-      const rlres = await env.DB.prepare('SELECT * FROM rlpicks').all();
-      const rlRows = rlres.results || [];
-      // Pass-tier included, deliberately — see buildMlRecord. Every run-line
-      // pick is currently pass, so the alternative is an empty record forever.
-      out.rl = buildMlRecord(rlRows, true);
-      out.rl.logged = rlRows.length;
-      out.rl.passShare = rlRows.length
-        ? Math.round(rlRows.filter((r) => String(r.tier) === 'pass').length / rlRows.length * 100) : null;
-      out.rl.note = 'run line, graded against the posted +/-1.5 from the final score. '
-        + 'ALL tiers counted including pass, because none of these were posted and the question is whether the model reads the 1.5 at all. '
-        + 'Logged and graded, still not posted.';
-    } catch (e) { /* additive */ }
-    try {
-      await ensureTotSchema(env.DB);
-      out.totals = buildTotRecord(((await env.DB.prepare('SELECT * FROM totpicks').all()).results) || []);
-    } catch (e) { /* additive */ }
-    try {
-      await ensurePpSchema(env.DB);
-      out.prizepicks = buildPpRecord(((await env.DB.prepare('SELECT * FROM pppicks').all()).results) || []);
       // NFL and soccer game lines. MLB's moneyline stays in out.ml, on its own
       // table, so its 763 rows keep running without a schema change under them.
       const gm = ((await env.DB.prepare('SELECT * FROM gmpicks').all()).results) || [];
@@ -3445,11 +3417,60 @@ async function trackRecord(env) {
       await ensurePassYdsSchema(env.DB);
       out.nflPassYds = buildPassYdsRecord(((await env.DB.prepare('SELECT * FROM nflpyd').all()).results) || []);
     } catch (e) { /* additive */ }
-    out.recent = buildRecent(unified, mlRows);
+    out.recent = mlb.recent;
     return cors(json(out, 120));
   } catch (e) {
     return cors(json({ empty: true, logged: 0, error: String(e) }, 60));
   }
+}
+
+// The track record's MLB half: strikeout and batter props, moneyline, run
+// line, totals, PrizePicks -- every row of each, which is most of what the
+// record reads. Incomplete when one of the additive parts could not be read.
+async function trackRecordMlb(env) {
+  let complete = true;
+  const kres = await env.DB.prepare('SELECT * FROM picks').all();
+  const bres = await env.DB.prepare('SELECT * FROM bpicks').all();
+  // Normalize both feeds to one row shape: pitcher picks are market 'K' with
+  // actual_k; batter picks map their per-market actual into the same field.
+  const unified = [
+    ...(kres.results || []).map((r) => ({ ...r, market: 'K' })),
+    ...(bres.results || []).map((r) => ({ ...r, actual_k: r.actual, market: String(r.market || '').toUpperCase() })),
+  ];
+  const out = buildTrackRecord(unified);
+  let mlRows = [];
+  try {
+    const mlres = await env.DB.prepare('SELECT * FROM mlpicks').all();
+    mlRows = mlres.results || [];
+    out.ml = buildMlRecord(mlRows);
+    out.ml.byPriceBand = buildMlPriceBands(mlRows);
+    out.ml.vsSharpClose = mlVsSharpClose(mlRows);
+  } catch (e) { complete = false; /* ML record is additive — never break the props track record */ }
+  try {
+    // Reuses buildMlRecord: an rlpicks row is shaped the same as an mlpicks
+    // row for every field the record needs (result, entry/close price, tier,
+    // edge), so a second aggregator would be a copy that could drift.
+    const rlres = await env.DB.prepare('SELECT * FROM rlpicks').all();
+    const rlRows = rlres.results || [];
+    // Pass-tier included, deliberately — see buildMlRecord. Every run-line
+    // pick is currently pass, so the alternative is an empty record forever.
+    out.rl = buildMlRecord(rlRows, true);
+    out.rl.logged = rlRows.length;
+    out.rl.passShare = rlRows.length
+      ? Math.round(rlRows.filter((r) => String(r.tier) === 'pass').length / rlRows.length * 100) : null;
+    out.rl.note = 'run line, graded against the posted +/-1.5 from the final score. '
+      + 'ALL tiers counted including pass, because none of these were posted and the question is whether the model reads the 1.5 at all. '
+      + 'Logged and graded, still not posted.';
+  } catch (e) { complete = false; /* additive */ }
+  try {
+    await ensureTotSchema(env.DB);
+    out.totals = buildTotRecord(((await env.DB.prepare('SELECT * FROM totpicks').all()).results) || []);
+  } catch (e) { complete = false; /* additive */ }
+  try {
+    await ensurePpSchema(env.DB);
+    out.prizepicks = buildPpRecord(((await env.DB.prepare('SELECT * FROM pppicks').all()).results) || []);
+  } catch (e) { complete = false; /* additive */ }
+  return { data: { out, recent: buildRecent(unified, mlRows) }, complete };
 }
 
 async function ensureSchema(db) {
@@ -5235,6 +5256,100 @@ async function saveFeedCache(db, key, data) {
       'INSERT OR REPLACE INTO feed_cache (key, data, updated_at, claimed_until) VALUES (?,?,?,0)'
     ).bind(key, JSON.stringify(data), Date.now()).run();
   } catch (e) { /* best-effort; a failed write just means the next colo pays */ }
+}
+
+// ---- Records kept until their rows change (2026-10-27) ---------------------------
+// D1 bills every row a query reads, and the records the page polls read every
+// row ever logged: the track record every ten minutes while a page is open
+// (20,700 rows on 2026-10-27, 15,000 of them bpicks), Picks of the day's kind
+// records on every read of the list (6,500), the soccer and NBA cards' records
+// on every read of theirs. With one page open all day that came to about five
+// million rows, D1's whole free-tier day, and every one of those tables grows.
+// Nearly none of those rows had changed since the read before: a record over
+// graded rows moves only when a row is graded, and MLB's tables not at all
+// once its season is over.
+//
+// So each such record is kept in feed_cache and rebuilt only once a row it is
+// built from has been written. rec_dirty holds one flag a record. SQLite
+// triggers on each table it reads raise the flag on every write that can move
+// it -- any row, for a record over every row; a row graded before or after the
+// write, for one over graded rows -- whatever code wrote it. A rebuild lowers
+// the flag before it reads, so a write landing mid-build raises it again, and
+// counts a generation as it does: a kept record is served only while its
+// generation is the latest, so of two builds racing only the later stands.
+//
+// Kept per deploy (CF_VERSION_METADATA, wrangler.toml): code that changes how
+// a record is built never serves one the code before it built. A build that
+// could not read everything is not kept, and nothing is served past
+// REC_MAX_AGE_MS, so a lost trigger or a failed write costs a rebuild, not a
+// wrong record. Without rec_dirty (D1 refusing it) every read builds, as before.
+const REC_MAX_AGE_MS = 6 * 3600e3;
+// A row-filter over R (each trigger's NEW or OLD row); none for every row.
+const REC_GRADED = 'R.result IS NOT NULL';
+const REC_SOURCES = {
+  // trackRecordMlb: the track record's MLB half, every row of six tables.
+  'track-mlb': [['picks'], ['bpicks'], ['mlpicks'], ['rlpicks'], ['totpicks'], ['pppicks']],
+  // pickKindRecords: graded rows only (each read is `result IN (...)`).
+  'pick-kinds': [['mlpicks', REC_GRADED], ['pppicks', REC_GRADED], ['gmpicks', REC_GRADED], ['nbapp', REC_GRADED]],
+  // socPropsBoard's record at the default lines.
+  'soc-record': [['socprops', REC_GRADED]],
+  // nbaPpBoard's record, and the NBA moneylines its byGame split reads.
+  'nba-record': [['nbapp', REC_GRADED], ['gmpicks', "R.sport = 'nba' AND R.market = 'h2h'"]],
+  // topLegs for MLB, every PrizePicks row, on a day none of today's needs the lineups.
+  'top-legs-mlb': [['pppicks']],
+};
+const REC_READY = new Set();
+async function ensureRecordFlags(db, key) {
+  if (REC_READY.has(key)) return;
+  const sts = [
+    db.prepare('CREATE TABLE IF NOT EXISTS rec_dirty (k TEXT PRIMARY KEY, dirty INTEGER NOT NULL, gen INTEGER NOT NULL)'),
+    db.prepare('INSERT OR IGNORE INTO rec_dirty (k, dirty, gen) VALUES (?, 1, 0)').bind(key),
+  ];
+  for (const [table, rows] of REC_SOURCES[key]) {
+    for (const ev of ['INSERT', 'UPDATE', 'DELETE']) {
+      const on = (r) => rows.replace(/\bR\./g, r + '.');
+      const when = !rows ? '' : ` WHEN ${ev === 'INSERT' ? on('NEW') : ev === 'DELETE' ? on('OLD') : `(${on('OLD')}) OR (${on('NEW')})`}`;
+      sts.push(db.prepare(`CREATE TRIGGER IF NOT EXISTS rec_${key.replace(/-/g, '_')}_${table}_${ev[0].toLowerCase()} AFTER ${ev} ON ${table}${when}
+        BEGIN UPDATE rec_dirty SET dirty = 1 WHERE k = '${key}' AND dirty = 0; END`));
+    }
+  }
+  await db.batch(sts);
+  REC_READY.add(key);
+}
+const raiseRecord = (db, key) => db.prepare('UPDATE rec_dirty SET dirty = 1 WHERE k = ?').bind(key).run().catch(() => null);
+// The record build() makes, kept until a write raises its flag. build returns
+// { data, complete }; an incomplete build is served once and not kept. A
+// variant (a day, say) keeps one copy at a time: another variant rebuilds.
+async function recordCached(env, key, build, variant = '') {
+  const db = env.DB;
+  const base = `rec:${key}:`;
+  const ck = base + ((env.CF_VERSION_METADATA && env.CF_VERSION_METADATA.id) || '') + (variant ? ':' + variant : '');
+  let gen = null;
+  try {
+    await ensureRecordFlags(db, key);
+    const f = await db.prepare('SELECT dirty, gen FROM rec_dirty WHERE k = ?').bind(key).first();
+    if (f && Number(f.dirty) === 0) {
+      const hit = await loadFeedCache(db, ck);
+      if (hit.present && hit.ageMs < REC_MAX_AGE_MS && hit.data && hit.data.gen === Number(f.gen)) return hit.data.data;
+    }
+    const [, g] = await db.batch([
+      db.prepare('UPDATE rec_dirty SET dirty = 0, gen = gen + 1 WHERE k = ?').bind(key),
+      db.prepare('SELECT gen FROM rec_dirty WHERE k = ?').bind(key),
+    ]);
+    const row = g && g.results && g.results[0];
+    if (row) gen = Number(row.gen);
+  } catch (e) { /* unflagged: built every time */ }
+  let built;
+  try { built = await build(); } catch (e) { if (gen != null) await raiseRecord(db, key); throw e; }
+  if (gen == null) return built.data;
+  if (!built.complete) { await raiseRecord(db, key); return built.data; }
+  try {
+    await db.prepare('INSERT OR REPLACE INTO feed_cache (key, data, updated_at, claimed_until) VALUES (?,?,?,0)')
+      .bind(ck, JSON.stringify({ gen, data: built.data }), Date.now()).run();
+    // The deploys before this one's copies.
+    await db.prepare('DELETE FROM feed_cache WHERE key >= ? AND key < ? AND key <> ?').bind(base, base.slice(0, -1) + ';', ck).run();
+  } catch (e) { await raiseRecord(db, key); }
+  return built.data;
 }
 
 // Run lines (spreads) persist the same way — snapshot the DK/FD + Pinnacle
@@ -8033,148 +8148,165 @@ function lineupStatus(cards, r) {
 }
 
 async function topLegs(env, url) {
-  const out = {
+  const blank = () => ({
     note: 'LOGGED ONLY, nothing posted and nothing shown on the site. Ranks every leg already logged '
       + 'by confidence, pools them across markets, and reports how the best N of each day actually did.',
     rankedBy: null, sport: null, bands: {}, byDay: [], today: [],
     breakEvens: { '6-pick flex': 54.2, '5-pick flex': 54.3, '4-pick flex': 56.9, '3-pick flex': 59.1, '2-pick power': 57.7 },
-  };
+  });
+  let out = blank();
   if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 300)); }
   const sport = (url.searchParams.get('sport') || 'mlb').toLowerCase();
   out.sport = sport;
   try {
-    let rows = [];
+    // The page reads MLB's every ten minutes. Kept until pppicks is written or
+    // the day turns (recordCached), on a day none of today's legs needed the
+    // lineups -- from the end of the World Series until spring.
     if (sport === 'mlb') {
-      await ensurePpSchema(env.DB);
-      rows = ((await env.DB.prepare('SELECT * FROM pppicks').all()).results) || [];
-      out.rankedBy = "the model's probability that the under lands (a model claim)";
-      out.source = 'pppicks — PrizePicks lines at their own number';
-    } else {
-      await ensureGamePickSchema(env.DB);
-      const want = sport === 'nflptd' ? 'nflptd' : sport;
-      rows = (((await env.DB.prepare('SELECT * FROM gmpicks WHERE sport = ?').bind(want).all()).results) || [])
-        .filter((r) => r.market !== 'fav');
-      if (want === 'nflptd') rows = dedupePassTds(rows);   // the ranking is per day
-      out.rankedBy = sport === 'nflptd'
-        ? 'the gap between the best price and the realised 55.4% under rate'
-        : "the gap between the sharp pool's fair line and the best price (no model exists here)";
-      out.source = `gmpicks, sport='${want}'`;
-    }
-    out.logged = rows.length;
-
-    const scored = rows.map((r) => ({ r, s: topLegScore(sport, r), w: topLegWon(sport, r) }))
-      .filter((x) => x.s != null);
-    const graded = scored.filter((x) => x.w != null);
-    out.graded = graded.length;
-    // How legs at each level of the model's chance have actually landed at
-    // PrizePicks' numbers -- the card prints the one each leg falls in
-    // (2026-10-11). This is the calibration, kept live rather than fitted:
-    // batter legs the model put anywhere under 65% landed about 50%, so a
-    // fitted map would mostly invent precision the top buckets do not have.
-    // Batter legs (TB, H+R+RBI) and strikeouts are kept apart; they did not
-    // behave alike.
-    if (sport === 'mlb') {
-      out.legBands = {};
-      for (const [g, f] of [['batter', (x) => x.r.market !== 'K'], ['K', (x) => x.r.market === 'K']]) {
-        out.legBands[g] = TOP_LEG_LEVELS.map(([lo, hi]) => {
-          const b = graded.filter((x) => f(x) && x.s >= lo && x.s < hi);
-          const hit = b.filter((x) => x.w === 1).length;
-          return { lo, hi: hi > 100 ? null : hi, n: b.length, hit, hitRate: b.length ? round1(hit / b.length * 100) : null };
-        });
-      }
-    }
-
-    // Per day, best first.
-    const days = new Map();
-    for (const x of graded) {
-      if (!days.has(x.r.date)) days.set(x.r.date, []);
-      days.get(x.r.date).push(x);
-    }
-    for (const [, list] of days) list.sort((a, b) => b.s - a.s);
-
-    const band = (n) => {
-      let w = 0, tot = 0;
-      for (const [, list] of days) {
-        for (const x of list.slice(0, n)) { w += x.w; tot++; }
-      }
-      return { n: tot, hit: w, hitRate: tot ? round1(w / tot * 100) : null };
-    };
-    for (const n of TOP_LEG_BANDS) out.bands['top ' + n] = band(n);
-    out.bands.everything = band(1e9);
-    // The bands above rank only legs that played: a leg voided because the
-    // player sat is dropped and the next one moves up, which nobody building
-    // before lineups could have done. `voided` counts how many of each day's
-    // top N, ranked over every settled leg, never played -- out of `slots`.
-    const settledDays = new Map();
-    for (const x of scored) {
-      if (x.r.result == null) continue;
-      if (!settledDays.has(x.r.date)) settledDays.set(x.r.date, []);
-      settledDays.get(x.r.date).push(x);
-    }
-    for (const [, list] of settledDays) list.sort((a, b) => b.s - a.s);
-    const voidsIn = (n) => {
-      let v = 0, t = 0;
-      for (const [, list] of settledDays) for (const x of list.slice(0, n)) { t++; if (x.r.result === 'void') v++; }
-      return { voided: v, slots: t, voidRate: t ? round1(v / t * 100) : null };
-    };
-    for (const n of TOP_LEG_BANDS) Object.assign(out.bands['top ' + n], voidsIn(n));
-    Object.assign(out.bands.everything, voidsIn(1e9));
-    // The point of the exercise: how many of the entry break-evens each band clears.
-    for (const k of Object.keys(out.bands)) {
-      const hr = out.bands[k].hitRate;
-      out.bands[k].clears = hr == null ? null
-        : Object.entries(out.breakEvens).filter(([, be]) => hr >= be).map(([name]) => name);
-    }
-
-    const label = (r) => (sport === 'mlb'
-      ? `${r.player} ${r.market} u${r.point}`
-      : `${r.pick}${r.point != null ? ' ' + r.point : ''} (${r.away} @ ${r.home})`);
-    for (const [date, list] of [...days.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-      out.byDay.push({
-        date, legs: list.length,
-        top: list.slice(0, 5).map((x) => ({ leg: label(x.r), score: x.s, result: x.r.result })),
-        topHit: list.slice(0, 3).filter((x) => x.w === 1).length,
-      });
-    }
-
-    // What it would take today, ungraded — so the idea can be watched forward
-    // rather than only backwards.
-    const todayYmd = slateDate();
-    let todayAll = scored.filter((x) => x.r.date === todayYmd && x.w == null)
-      .sort((a, b) => b.s - a.s);
-    // A leg is logged while its player is listed, often before the card posts,
-    // and stays here after he is benched: the books pull his props, he drops off
-    // the batter board, and the board's scratch flag never sees him. Pham,
-    // 2026-10-07, sat at 80% atop this list a few minutes before first pitch,
-    // benched, and was voided. The posted cards are checked here instead, and a
-    // benched leg leaves the list so the next one moves up.
-    let cards = null;
-    if (sport === 'mlb' && todayAll.length) {
-      cards = await postedLineups(todayYmd);
-      out.lineupCheck = cards ? 'checked against posted lineups' : 'lineups unavailable, not checked';
-      for (const x of todayAll) x.lineup = lineupStatus(cards, x.r);
-      const benched = todayAll.filter((x) => x.lineup === 'out');
-      if (benched.length) out.todayBenched = benched.map((x) => ({ leg: label(x.r), score: x.s, team: x.r.team || null }));
-      todayAll = todayAll.filter((x) => x.lineup !== 'out');
-    }
-    const todayList = todayAll.slice(0, 8);
-    // Legs from one game tend to land or miss together, which a PrizePicks entry
-    // pays for all at once. sameGame counts the legs in THIS list that share the
-    // leg's game, so a check can warn without knowing anything about the slate.
-    // Passing-TD rows key on "event|player" so both quarterbacks of a game can
-    // be logged; the game is the part before the bar.
-    const gameOf = (r) => (r.game_id ? String(r.game_id).split('|')[0] : null);
-    const perGame = {};
-    for (const x of todayList) { const k = gameOf(x.r); if (k) perGame[k] = (perGame[k] || 0) + 1; }
-    out.today = todayList.map((x) => ({
-      leg: label(x.r), score: x.s,
-      team: x.r.team || null, game: gameOf(x.r),
-      sameGame: gameOf(x.r) ? perGame[gameOf(x.r)] : 1,
-      ...(sport === 'mlb' ? { lineup: x.lineup || (x.r.market === 'K' ? 'pitcher' : (cards ? 'not posted' : 'unchecked')) } : {}),
-    }));
-    if (!out.today.length) out.todayNote = `nothing ungraded logged for ${todayYmd} yet`;
+      out = await recordCached(env, 'top-legs-mlb', async () => {
+        const o = blank();
+        o.sport = sport;
+        return { data: o, complete: !(await topLegsFill(env, sport, o)) };
+      }, slateDate());
+    } else await topLegsFill(env, sport, out);
   } catch (e) { out.error = String((e && e.message) || e); }
   return cors(json(out, 300));
+}
+// Fills out; true when it read the posted lineups for today's legs.
+async function topLegsFill(env, sport, out) {
+  let lineups = false;
+  let rows = [];
+  if (sport === 'mlb') {
+    await ensurePpSchema(env.DB);
+    rows = ((await env.DB.prepare('SELECT * FROM pppicks').all()).results) || [];
+    out.rankedBy = "the model's probability that the under lands (a model claim)";
+    out.source = 'pppicks — PrizePicks lines at their own number';
+  } else {
+    await ensureGamePickSchema(env.DB);
+    const want = sport === 'nflptd' ? 'nflptd' : sport;
+    rows = (((await env.DB.prepare('SELECT * FROM gmpicks WHERE sport = ?').bind(want).all()).results) || [])
+      .filter((r) => r.market !== 'fav');
+    if (want === 'nflptd') rows = dedupePassTds(rows);   // the ranking is per day
+    out.rankedBy = sport === 'nflptd'
+      ? 'the gap between the best price and the realised 55.4% under rate'
+      : "the gap between the sharp pool's fair line and the best price (no model exists here)";
+    out.source = `gmpicks, sport='${want}'`;
+  }
+  out.logged = rows.length;
+
+  const scored = rows.map((r) => ({ r, s: topLegScore(sport, r), w: topLegWon(sport, r) }))
+    .filter((x) => x.s != null);
+  const graded = scored.filter((x) => x.w != null);
+  out.graded = graded.length;
+  // How legs at each level of the model's chance have actually landed at
+  // PrizePicks' numbers -- the card prints the one each leg falls in
+  // (2026-10-11). This is the calibration, kept live rather than fitted:
+  // batter legs the model put anywhere under 65% landed about 50%, so a
+  // fitted map would mostly invent precision the top buckets do not have.
+  // Batter legs (TB, H+R+RBI) and strikeouts are kept apart; they did not
+  // behave alike.
+  if (sport === 'mlb') {
+    out.legBands = {};
+    for (const [g, f] of [['batter', (x) => x.r.market !== 'K'], ['K', (x) => x.r.market === 'K']]) {
+      out.legBands[g] = TOP_LEG_LEVELS.map(([lo, hi]) => {
+        const b = graded.filter((x) => f(x) && x.s >= lo && x.s < hi);
+        const hit = b.filter((x) => x.w === 1).length;
+        return { lo, hi: hi > 100 ? null : hi, n: b.length, hit, hitRate: b.length ? round1(hit / b.length * 100) : null };
+      });
+    }
+  }
+
+  // Per day, best first.
+  const days = new Map();
+  for (const x of graded) {
+    if (!days.has(x.r.date)) days.set(x.r.date, []);
+    days.get(x.r.date).push(x);
+  }
+  for (const [, list] of days) list.sort((a, b) => b.s - a.s);
+
+  const band = (n) => {
+    let w = 0, tot = 0;
+    for (const [, list] of days) {
+      for (const x of list.slice(0, n)) { w += x.w; tot++; }
+    }
+    return { n: tot, hit: w, hitRate: tot ? round1(w / tot * 100) : null };
+  };
+  for (const n of TOP_LEG_BANDS) out.bands['top ' + n] = band(n);
+  out.bands.everything = band(1e9);
+  // The bands above rank only legs that played: a leg voided because the
+  // player sat is dropped and the next one moves up, which nobody building
+  // before lineups could have done. `voided` counts how many of each day's
+  // top N, ranked over every settled leg, never played -- out of `slots`.
+  const settledDays = new Map();
+  for (const x of scored) {
+    if (x.r.result == null) continue;
+    if (!settledDays.has(x.r.date)) settledDays.set(x.r.date, []);
+    settledDays.get(x.r.date).push(x);
+  }
+  for (const [, list] of settledDays) list.sort((a, b) => b.s - a.s);
+  const voidsIn = (n) => {
+    let v = 0, t = 0;
+    for (const [, list] of settledDays) for (const x of list.slice(0, n)) { t++; if (x.r.result === 'void') v++; }
+    return { voided: v, slots: t, voidRate: t ? round1(v / t * 100) : null };
+  };
+  for (const n of TOP_LEG_BANDS) Object.assign(out.bands['top ' + n], voidsIn(n));
+  Object.assign(out.bands.everything, voidsIn(1e9));
+  // The point of the exercise: how many of the entry break-evens each band clears.
+  for (const k of Object.keys(out.bands)) {
+    const hr = out.bands[k].hitRate;
+    out.bands[k].clears = hr == null ? null
+      : Object.entries(out.breakEvens).filter(([, be]) => hr >= be).map(([name]) => name);
+  }
+
+  const label = (r) => (sport === 'mlb'
+    ? `${r.player} ${r.market} u${r.point}`
+    : `${r.pick}${r.point != null ? ' ' + r.point : ''} (${r.away} @ ${r.home})`);
+  for (const [date, list] of [...days.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    out.byDay.push({
+      date, legs: list.length,
+      top: list.slice(0, 5).map((x) => ({ leg: label(x.r), score: x.s, result: x.r.result })),
+      topHit: list.slice(0, 3).filter((x) => x.w === 1).length,
+    });
+  }
+
+  // What it would take today, ungraded — so the idea can be watched forward
+  // rather than only backwards.
+  const todayYmd = slateDate();
+  let todayAll = scored.filter((x) => x.r.date === todayYmd && x.w == null)
+    .sort((a, b) => b.s - a.s);
+  // A leg is logged while its player is listed, often before the card posts,
+  // and stays here after he is benched: the books pull his props, he drops off
+  // the batter board, and the board's scratch flag never sees him. Pham,
+  // 2026-10-07, sat at 80% atop this list a few minutes before first pitch,
+  // benched, and was voided. The posted cards are checked here instead, and a
+  // benched leg leaves the list so the next one moves up.
+  let cards = null;
+  if (sport === 'mlb' && todayAll.length) {
+    lineups = true;
+    cards = await postedLineups(todayYmd);
+    out.lineupCheck = cards ? 'checked against posted lineups' : 'lineups unavailable, not checked';
+    for (const x of todayAll) x.lineup = lineupStatus(cards, x.r);
+    const benched = todayAll.filter((x) => x.lineup === 'out');
+    if (benched.length) out.todayBenched = benched.map((x) => ({ leg: label(x.r), score: x.s, team: x.r.team || null }));
+    todayAll = todayAll.filter((x) => x.lineup !== 'out');
+  }
+  const todayList = todayAll.slice(0, 8);
+  // Legs from one game tend to land or miss together, which a PrizePicks entry
+  // pays for all at once. sameGame counts the legs in THIS list that share the
+  // leg's game, so a check can warn without knowing anything about the slate.
+  // Passing-TD rows key on "event|player" so both quarterbacks of a game can
+  // be logged; the game is the part before the bar.
+  const gameOf = (r) => (r.game_id ? String(r.game_id).split('|')[0] : null);
+  const perGame = {};
+  for (const x of todayList) { const k = gameOf(x.r); if (k) perGame[k] = (perGame[k] || 0) + 1; }
+  out.today = todayList.map((x) => ({
+    leg: label(x.r), score: x.s,
+    team: x.r.team || null, game: gameOf(x.r),
+    sameGame: gameOf(x.r) ? perGame[gameOf(x.r)] : 1,
+    ...(sport === 'mlb' ? { lineup: x.lineup || (x.r.market === 'K' ? 'pitcher' : (cards ? 'not posted' : 'unchecked')) } : {}),
+  }));
+  if (!out.today.length) out.todayNote = `nothing ungraded logged for ${todayYmd} yet`;
+  return lineups;
 }
 
 // ---------------------------------------------------------------------------
@@ -8655,10 +8787,15 @@ async function dayPickDrops(db, now, listed) {
 
 // How each kind has done at its bar, from its own log -- the number printed
 // beside each leg, so a 72% leg says whether 72% legs have been landing.
-async function pickKindRecords(db) {
+// Graded rows only, so kept until one is graded (recordCached).
+async function pickKindRecords(env) {
+  const db = env.DB;
+  await ensureMlPickSchema(db); await ensurePpSchema(db); await ensureGamePickSchema(db); await ensureNbaSchema(db);
+  return recordCached(env, 'pick-kinds', async () => ({ data: await pickKindBuild(db), complete: true }));
+}
+async function pickKindBuild(db) {
   const rec = Object.fromEntries(Object.keys(PICK_KINDS).map((k) => [k, { n: 0, hit: 0 }]));
   const add = (k, won) => { rec[k].n++; if (won) rec[k].hit++; };
-  await ensureMlPickSchema(db); await ensurePpSchema(db); await ensureGamePickSchema(db); await ensureNbaSchema(db);
   for (const r of ((await db.prepare("SELECT win_prob, result FROM mlpicks WHERE result IN ('win','loss')").all()).results || [])) {
     if (r.win_prob == null) continue;
     const fav = r.win_prob >= 50;
@@ -8799,7 +8936,7 @@ async function picksBoard(env) {
     // there (D1 answered one read "out of memory: SQLITE_NOMEM" at 23:56 Pacific)
     // took the whole list down with it. Now the legs stand without them.
     let kinds = {};
-    try { kinds = await pickKindRecords(env.DB); } catch (e) { out.recordError = String((e && e.message) || e); }
+    try { kinds = await pickKindRecords(env); } catch (e) { out.recordError = String((e && e.message) || e); }
     let timer;
     await Promise.race([logos, new Promise((r) => { timer = setTimeout(r, SOC_LOGO_WAIT_MS); })]);
     clearTimeout(timer);
@@ -11368,70 +11505,77 @@ async function nbaPpBoard(env) {
     })).sort((a, b) => b.model_under - a.model_under);
     // The record is kept over the players the card shows. A bench player's 0.5
     // line tops any ranking by the model's chance, and he is the one who sits.
-    const graded = ((await env.DB.prepare("SELECT date, game_id, market, model_under, point, book_line, min_proj, result, close_point, close_result, sharp_under FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
-      .filter((g) => g.min_proj != null && g.min_proj >= NBA_ROTATION_MIN);
-    const split = ppSplitRecord(graded.map((g) => ({
-      p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null),
-      gap: g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null,
-    })));
-    const decided = graded.filter((g) => g.result !== 'push');
-    const by = {};
-    for (const g of decided) {
-      by[g.market] = by[g.market] || { n: 0, under: 0 };
-      by[g.market].n++; if (g.result === 'under') by[g.market].under++;
-    }
-    const days = new Map();
-    for (const g of decided) { if (!days.has(g.date)) days.set(g.date, []); days.get(g.date).push(g); }
-    let t3n = 0, t3h = 0;
-    for (const list of days.values()) {
-      const top = list.sort((a, b) => b.model_under - a.model_under).slice(0, 3);
-      t3n += top.length; t3h += top.filter((x) => x.result === 'under').length;
-    }
-    // Whether the box scores are coming in at all -- without them nothing is
-    // projected past last season and nothing grades.
-    const ig = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM nba_box_games').first();
-    out.ingest = { games: Number((ig && ig.n) || 0), read: Number((ig && ig.d) || 0), lastDay: (ig && ig.last) || null };
-    // The over side of the same legs (2026-10-22). The model's chance of the
-    // over is 100 minus the under's and the log grades both sides, so overs are
-    // judged on the legs where the model leaned over: by band of that chance,
-    // by market, and by where PrizePicks' number sat against the books' -- for
-    // an over, ppLower (PrizePicks below the books) is the easier side.
-    const lean = graded.filter((g) => g.model_under != null && g.model_under < 50);
-    const ov = ppSplitRecord(lean.map((g) => ({
-      p: 100 - g.model_under, won: g.result === 'over' ? 1 : (g.result === 'under' ? 0 : null),
-      gap: g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null,
-    })));
-    const ovBy = {};
-    for (const g of lean) {
-      if (g.result === 'push') continue;
-      ovBy[g.market] = ovBy[g.market] || { n: 0, hit: 0 };
-      ovBy[g.market].n++; if (g.result === 'over') ovBy[g.market].hit++;
-    }
-    out.record = {
-      scope: `rotation players (${NBA_ROTATION_MIN}+ projected minutes), as on the card`,
-      graded: decided.length,
-      byMarket: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, { n: v.n, hitRate: v.n ? round1(v.under / v.n * 100) : null }])),
-      top3: { n: t3n, hit: t3h, hitRate: t3n ? round1(t3h / t3n * 100) : null },
-      byBand: split.byBand,
-      byLineGap: split.byLineGap,
-      overs: { scope: 'the legs where the model leaned over, at PrizePicks’ line', graded: ov.n, hit: ov.hit, hitRate: ov.hitRate,
-        byBand: ov.byBand, byLineGap: ov.byLineGap,
-        byMarket: Object.fromEntries(Object.entries(ovBy).map(([k, v]) => [k, { n: v.n, hit: v.hit, hitRate: v.n ? round1(v.hit / v.n * 100) : null }])) },
-      // Blocks More (2026-10-27, the user's call): the one NBA market whose
-      // More side has landed -- 26 of 41 where the model leaned More through
-      // Oct 26, 16 of 23 at 55%+, against 42-45% for threes and assists
-      // Mores. Listed on the card, logged; not on Picks of the day.
-      blkMore: ppMoreRecord(lean.filter((g) => g.market === 'blk')),
-      ...ppCloseRecord(graded),
-      sharp: ppSharpRecord(graded),
+    // Graded rows only, and the NBA moneylines byGame reads, so kept until one
+    // of them is written (recordCached).
+    out.record = await recordCached(env, 'nba-record', async () => {
+      const graded = ((await env.DB.prepare("SELECT date, game_id, market, model_under, point, book_line, min_proj, result, close_point, close_result, sharp_under FROM nbapp WHERE result IN ('under','over','push')").all()).results || [])
+        .filter((g) => g.min_proj != null && g.min_proj >= NBA_ROTATION_MIN);
+      const split = ppSplitRecord(graded.map((g) => ({
+        p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null),
+        gap: g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null,
+      })));
+      const decided = graded.filter((g) => g.result !== 'push');
+      const by = {};
+      for (const g of decided) {
+        by[g.market] = by[g.market] || { n: 0, under: 0 };
+        by[g.market].n++; if (g.result === 'under') by[g.market].under++;
+      }
+      const days = new Map();
+      for (const g of decided) { if (!days.has(g.date)) days.set(g.date, []); days.get(g.date).push(g); }
+      let t3n = 0, t3h = 0;
+      for (const list of days.values()) {
+        const top = list.sort((a, b) => b.model_under - a.model_under).slice(0, 3);
+        t3n += top.length; t3h += top.filter((x) => x.result === 'under').length;
+      }
+      // The over side of the same legs (2026-10-22). The model's chance of the
+      // over is 100 minus the under's and the log grades both sides, so overs are
+      // judged on the legs where the model leaned over: by band of that chance,
+      // by market, and by where PrizePicks' number sat against the books' -- for
+      // an over, ppLower (PrizePicks below the books) is the easier side.
+      const lean = graded.filter((g) => g.model_under != null && g.model_under < 50);
+      const ov = ppSplitRecord(lean.map((g) => ({
+        p: 100 - g.model_under, won: g.result === 'over' ? 1 : (g.result === 'under' ? 0 : null),
+        gap: g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null,
+      })));
+      const ovBy = {};
+      for (const g of lean) {
+        if (g.result === 'push') continue;
+        ovBy[g.market] = ovBy[g.market] || { n: 0, hit: 0 };
+        ovBy[g.market].n++; if (g.result === 'over') ovBy[g.market].hit++;
+      }
       // By how lopsided the game was (2026-10-26): the moneyline log's chance
       // for the same game's favourite (gmpicks, keyed by the odds feed's event
       // id as nbapp is). Starters sit late in a blowout, which an under
       // should like; this says whether it does at PrizePicks' lines.
-      // A moneyline log it cannot read leaves this split out, never the record.
-      byGame: await env.DB.prepare("SELECT game_id, win_prob FROM gmpicks WHERE sport = 'nba' AND market = 'h2h'").all()
-        .then((x) => ppGameRecord(graded, new Map((x.results || []).map((g) => [g.game_id, g.win_prob])))).catch(() => null),
-    };
+      // A moneyline log it cannot read leaves this split out, never the record
+      // (and that record is not kept).
+      let complete = true;
+      const byGame = await env.DB.prepare("SELECT game_id, win_prob FROM gmpicks WHERE sport = 'nba' AND market = 'h2h'").all()
+        .then((x) => ppGameRecord(graded, new Map((x.results || []).map((g) => [g.game_id, g.win_prob])))).catch(() => { complete = false; return null; });
+      return { data: {
+        scope: `rotation players (${NBA_ROTATION_MIN}+ projected minutes), as on the card`,
+        graded: decided.length,
+        byMarket: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, { n: v.n, hitRate: v.n ? round1(v.under / v.n * 100) : null }])),
+        top3: { n: t3n, hit: t3h, hitRate: t3n ? round1(t3h / t3n * 100) : null },
+        byBand: split.byBand,
+        byLineGap: split.byLineGap,
+        overs: { scope: 'the legs where the model leaned over, at PrizePicks’ line', graded: ov.n, hit: ov.hit, hitRate: ov.hitRate,
+          byBand: ov.byBand, byLineGap: ov.byLineGap,
+          byMarket: Object.fromEntries(Object.entries(ovBy).map(([k, v]) => [k, { n: v.n, hit: v.hit, hitRate: v.n ? round1(v.hit / v.n * 100) : null }])) },
+        // Blocks More (2026-10-27, the user's call): the one NBA market whose
+        // More side has landed -- 26 of 41 where the model leaned More through
+        // Oct 26, 16 of 23 at 55%+, against 42-45% for threes and assists
+        // Mores. Listed on the card, logged; not on Picks of the day.
+        blkMore: ppMoreRecord(lean.filter((g) => g.market === 'blk')),
+        ...ppCloseRecord(graded),
+        sharp: ppSharpRecord(graded),
+        byGame,
+      }, complete };
+    });
+    // Whether the box scores are coming in at all -- without them nothing is
+    // projected past last season and nothing grades.
+    const ig = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM nba_box_games').first();
+    out.ingest = { games: Number((ig && ig.n) || 0), read: Number((ig && ig.d) || 0), lastDay: (ig && ig.last) || null };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }
@@ -12008,13 +12152,6 @@ async function socPropsBoard(env, url) {
     // Logged once a lineup is seen: the first read after the cards post fixes
     // the row (INSERT OR IGNORE), so later reads do not move the record.
     for (let i = 0; i < logs.length; i += 50) await db.batch(logs.slice(i, i + 50));
-    // The record: each logged row's leaning side at the line it showed.
-    const graded = (await db.prepare("SELECT market, p_under, p_over, result FROM socprops WHERE result IN ('under','over','push')").all()).results || [];
-    const items = graded.map((g) => {
-      const under = g.p_under >= g.p_over;
-      return { market: g.market, side: under ? 'under' : 'over', p: under ? g.p_under : g.p_over, won: g.result === 'push' ? null : ((g.result === 'under') === under ? 1 : 0), gap: null };
-    });
-    const split = ppSplitRecord(items);
     const byStat = (list) => Object.fromEntries(SOC_PROP_STATS.map((s) => { const c = ppSplitRecord(list.filter((x) => x.market === s)); return [s, { n: c.n, hit: c.hit, hitRate: c.hitRate }]; }));
     // Unders and overs apart (2026-10-22): the card shows whichever side the
     // chance favours, and a low line leans over (tackles and fouls at 0.5), so
@@ -12024,8 +12161,18 @@ async function socPropsBoard(env, url) {
       const c = ppSplitRecord(l);
       return [sd, { n: c.n, hit: c.hit, hitRate: c.hitRate, byBand: c.byBand, byMarket: byStat(l) }];
     }));
-    out.record = { scope: 'the side each row leans at the line it showed, before kickoff', graded: split.n, hit: split.hit, hitRate: split.hitRate,
-      byBand: split.byBand, byMarket: byStat(items), bySide: bySide(items) };
+    // The record: each logged row's leaning side at the line it showed. Graded
+    // rows only, so kept until one is graded (recordCached).
+    out.record = await recordCached(env, 'soc-record', async () => {
+      const graded = (await db.prepare("SELECT market, p_under, p_over, result FROM socprops WHERE result IN ('under','over','push')").all()).results || [];
+      const items = graded.map((g) => {
+        const under = g.p_under >= g.p_over;
+        return { market: g.market, side: under ? 'under' : 'over', p: under ? g.p_under : g.p_over, won: g.result === 'push' ? null : ((g.result === 'under') === under ? 1 : 0), gap: null };
+      });
+      const split = ppSplitRecord(items);
+      return { data: { scope: 'the side each row leans at the line it showed, before kickoff', graded: split.n, hit: split.hit, hitRate: split.hitRate,
+        byBand: split.byBand, byMarket: byStat(items), bySide: bySide(items) }, complete: true };
+    });
     // The record at PrizePicks' own numbers: each line set on the card, the
     // side the card showed there, graded from the same box scores. This, not
     // the default-line record above, is what decides whether soccer props
