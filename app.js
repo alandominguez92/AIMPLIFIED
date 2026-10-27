@@ -5872,15 +5872,17 @@
   // chance is green only when legs like it have cleared PrizePicks' 2-pick
   // break-even (57.7%) over five or more graded legs.
   // A leg's edge at its price, and its stake (2026-10-27): the worker's
-  // legStake -- EV at the best price on the leg's Kelly chance, a quarter of
-  // Kelly's stake as a share of the bankroll. With no edge, the price that
-  // would be one: any book, Circa and South Point included.
+  // legStake -- its fair price (the one its Kelly chance breaks even at), EV
+  // at the best price on that chance, and a quarter of Kelly's stake as a
+  // share of the bankroll. With no edge, the price that would be one: any
+  // book, Circa and South Point included.
   function pickEdgeHtml(x) {
     if (typeof x.ev !== 'number' || typeof x.betAt !== 'number') return '';
+    const fair = ` · fair ${esc(AM(x.betAt))} · EV ${x.ev > 0 ? '+' : ''}${esc(String(x.ev))}%`;
     if (x.ev > 0 && x.stake > 0) {
-      return ` · <span class="pk-edge up" title="Expected value at this price, on a ${esc(pct0(x.kellyP))} chance; a quarter of the Kelly stake">edge +${esc(String(x.ev))}% · ¼ Kelly ${esc(String(x.stake))}%</span>`;
+      return `<span class="pk-edge up" title="Expected value at this price, on a ${esc(pct0(x.kellyP))} chance; a quarter of the Kelly stake">${fair} · ¼ Kelly ${esc(String(x.stake))}%</span>`;
     }
-    return ` · <span class="pk-edge" title="At ${esc(AM(x.odds))} this leg is not +EV on a ${esc(pct0(x.kellyP))} chance">no edge · bet at ${esc(AM(x.betAt))} or better</span>`;
+    return `<span class="pk-edge" title="At ${esc(AM(x.odds))} this leg is not +EV on a ${esc(pct0(x.kellyP))} chance">${fair} · bet at ${esc(AM(x.betAt))} or better</span>`;
   }
   function heroLegHtml(x, opts) {
     const lg = pickLeg(x);

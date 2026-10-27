@@ -51,7 +51,7 @@ const lift = (name, from) => {
 const names = ['amProb', 'shinDevig', 'round1', 'median', 'sharpFair', 'bookFairsJson', 'h2hGames', 'h2hEntries',
   'NFL_PASS_TD_LINE', 'NFL_PASS_TD_BASE', 'PTD_SHARP', 'PTD_EXEC', 'passTdEntries',
   'NBA_SHARP', 'NBA_PROP_SHARP', 'poissonCdf', 'negBinomCdf', 'normName', 'NFL_NAME_SUFFIX', 'nflBaseName', 'nbaBaseName',
-  'NBA_NAME_ALIAS', 'NBA_ALIAS', 'nbaName', 'nbaSharpUnder', 'DFS_BOOKS', 'nbaBookUnders', 'NBA_DISP',
+  'NBA_NAME_ALIAS', 'NBA_ALIAS', 'nbaName', 'nhlName', 'nbaSharpUnder', 'DFS_BOOKS', 'bookUndersJson', 'NBA_DISP',
   'PP_POWER', 'PP_FLEX', 'KELLY_FRACTION', 'KELLY_PRIOR_N', 'decOf', 'amOfChance', 'kellyChance', 'legStake', 'entryStake'];
 let W;
 try {
@@ -92,8 +92,18 @@ const sh = W.nbaSharpUnder(NBA, 'player_threes', name, 2.5, W.NBA_DISP.threes);
 console.log('  ' + JSON.stringify(sh));
 ok(sh && sh.src === 'fanduel' && sh.n === 1 && Math.abs(sh.under - 50) < 1,
   `FanDuel's -113/-113 at 2.5 is the sharp chance at PrizePicks' 2.5: ${sh && sh.under}% (no other sharp book quoted)`);
-const bu = JSON.parse(W.nbaBookUnders(NBA, 'player_threes', name) || '{}');
+const bu = JSON.parse(W.bookUndersJson(NBA, 'player_threes', name) || '{}');
 ok(bu.fanduel && bu.fanduel[0] === 2.5 && bu.draftkings && !bu.prizepicks, `every book's own line and no-vig under: ${JSON.stringify(bu)}`);
+// The NHL log keeps the same (2026-10-27): production's points and assists
+// read of Utah at Seattle on Oct 22 (odds-nhl-pp-ec5f71ec-20261022.json).
+const NHL = read('odds-nhl-pp-ec5f71ec-20261022.json').payload;
+const mon = JSON.parse(W.bookUndersJson(NHL, 'player_assists', W.nhlName('Brandon Montour'), W.nhlName) || '{}');
+ok(mon.pinnacle && mon.pinnacle[0] === 0.5 && Math.abs(mon.pinnacle[1] - W.shinDevig(-248, 180) * 100) < 0.06 && mon.novig && mon.prophetx && mon.draftkings
+  && !mon.prizepicks && !mon.underdog && !mon.pick6, `an NHL leg: every priced book's line and no-vig under, Pinnacle's ${mon.pinnacle && mon.pinnacle[1]}% (${Object.keys(mon).join(', ')})`);
+const nhlSrc = worker.slice(worker.indexOf('\nfunction nhlPpLegs('), worker.indexOf('\nasync function logNhlPp('));
+ok(/book_unders: bookUndersJson\(ev, m\.key, name, nhlName\)/.test(nhlSrc) && /book_unders\)\s*\n\s*VALUES/.test(worker.slice(worker.indexOf('\nasync function logNhlPp(')))
+  && /book_unders=COALESCE\(\?, book_unders\)/.test(worker.slice(worker.indexOf('\nasync function logNhlPp('), worker.indexOf('\nasync function logNhlPp(') + 2500)),
+  'and the NHL read writes it, at the first read and refreshed at the pre-tip one');
 
 // ---- passing TDs: Pinnacle, then FanDuel ---------------------------------------------------------------
 console.log('\n-- passing TDs --');
@@ -173,7 +183,9 @@ const AM = (o) => (o > 0 ? '+' + o : String(o));
 const pct0 = (v) => `${Math.round(v)}%`;
 const edge = new Function('esc', 'AM', 'pct0', body + '\nreturn pickEdgeHtml;')((s) => String(s), AM, pct0);
 const txt = (h) => h.replace(/<[^>]+>/g, '');
-ok(txt(edge({ odds: 110, ...s110 })) === ' · edge +5% · ¼ Kelly 1.1%' && txt(edge({ odds: -575, ...sCel })) === ' · no edge · bet at -525 or better',
+// Every priced leg: its fair price and EV beside the best price; the stake
+// when it has an edge, the price to beat when it does not.
+ok(txt(edge({ odds: 110, ...s110 })) === ' · fair -100 · EV +5% · ¼ Kelly 1.1%' && txt(edge({ odds: -575, ...sCel })) === ' · fair -525 · EV -1.4% · bet at -525 or better',
   `the leg's line: "${txt(edge({ odds: 110, ...s110 }))}", "${txt(edge({ odds: -575, ...sCel }))}"`);
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');

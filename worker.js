@@ -10700,6 +10700,7 @@ async function ensureNhlPpSchema(db) {
     PRIMARY KEY (date, game_id, player, market)
   )`).run();
   await addColumns(db, 'nhlpp', PP_CLOSE_COLS);   // the pre-tip read, as the NBA log keeps it
+  await addColumns(db, 'nhlpp', [['book_unders', 'TEXT']]);   // every book's line and under (bookUndersJson)
   // The hourly grader's `result IS NULL AND date < today` went through the key,
   // which is every day before today: the whole log, to find last night's
   // legs. Only the open rows, as nbapp_ungraded does for the NBA.
@@ -10775,7 +10776,9 @@ function nhlPpLegs(ev, pri, cur) {
       out.push({ game_id: ev.id, commence: ev.commence_time, home: ev.home_team, away: ev.away_team,
         player: o.description, player_id: who.id, team: (c && c.team) || (p && p.team) || null, market, point: o.point,
         proj: Math.round(proj * 100) / 100, model_under: round1(negBinomCdf(Math.ceil(o.point) - 1, proj, 1) * 100),
-        gp_cur: c ? c.gp : 0, prior_gp: p ? p.gp : 0, toi_proj: round1(toi), book_line: bl.line, book_under: bl.price });
+        gp_cur: c ? c.gp : 0, prior_gp: p ? p.gp : 0, toi_proj: round1(toi), book_line: bl.line, book_under: bl.price,
+        // Every book's own line and no-vig under, as the NBA log keeps (2026-10-27).
+        book_unders: bookUndersJson(ev, m.key, name, nhlName) });
     }
   }
   return out;
@@ -10784,14 +10787,15 @@ async function logNhlPp(db, legs, close) {
   if (!legs.length) return 0;
   const stamp = new Date().toISOString();
   const stmts = legs.map((l) => db.prepare(
-    `INSERT OR IGNORE INTO nhlpp (date, game_id, player, market, commence, home, away, team, player_id, point, proj, model_under, gp_cur, prior_gp, toi_proj, book_line, book_under, captured_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    `INSERT OR IGNORE INTO nhlpp (date, game_id, player, market, commence, home, away, team, player_id, point, proj, model_under, gp_cur, prior_gp, toi_proj, book_line, book_under, captured_at, book_unders)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market, l.commence, l.home, l.away, l.team, l.player_id,
-    l.point, l.proj, l.model_under, l.gp_cur, l.prior_gp, l.toi_proj, l.book_line, l.book_under, stamp));
-  // The pre-tip read fills each leg's close_ columns (logNbaPp's rule).
+    l.point, l.proj, l.model_under, l.gp_cur, l.prior_gp, l.toi_proj, l.book_line, l.book_under, stamp, l.book_unders || null));
+  // The pre-tip read fills each leg's close_ columns (logNbaPp's rule), and
+  // book_unders as last read.
   if (close) for (const l of legs) stmts.push(db.prepare(
-    'UPDATE nhlpp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=? WHERE date=? AND game_id=? AND player=? AND market=?'
-  ).bind(l.point, l.model_under, l.book_line, l.book_under, stamp, ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market));
+    'UPDATE nhlpp SET close_point=?, close_under=?, close_book_line=?, close_book_under=?, close_at=?, book_unders=COALESCE(?, book_unders) WHERE date=? AND game_id=? AND player=? AND market=?'
+  ).bind(l.point, l.model_under, l.book_line, l.book_under, stamp, l.book_unders || null, ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market));
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
   return legs.length;
 }
@@ -11299,13 +11303,14 @@ function nbaSharpUnder(ev, mk, name, line, disp) {
 // Every book's own line and no-vig chance of the under there (2026-10-27),
 // as a leg's book_unders (JSON, book -> [line, percent]): graded against the
 // count, it scores each book on the same legs. A book's line is the one it
-// quotes both ways nearest an even price -- its main line.
-function nbaBookUnders(ev, mk, name) {
+// quotes both ways nearest an even price -- its main line. NBA and NHL legs
+// alike, each matching names its own way (nameOf).
+function bookUndersJson(ev, mk, name, nameOf = nbaName) {
   const out = {};
   for (const b of (ev.bookmakers || [])) {
     const m = !DFS_BOOKS.has(b.key) && (b.markets || []).find((x) => x.key === mk);
     if (!m) continue;
-    const mine = (m.outcomes || []).filter((o) => nbaName(o.description) === name && o.point != null && typeof o.price === 'number');
+    const mine = (m.outcomes || []).filter((o) => nameOf(o.description) === name && o.point != null && typeof o.price === 'number');
     let best = null;
     for (const p of new Set(mine.map((o) => o.point))) {
       const u = mine.find((o) => o.point === p && o.name === 'Under'), ov = mine.find((o) => o.point === p && o.name === 'Over');
@@ -11380,7 +11385,7 @@ function nbaPpLegs(ev, pri, recent) {
         min_proj: minProj != null ? round1(minProj) : null, book_line: bl.line, book_under: bl.price,
         ud_line: dfsLine('underdog', m.key, name), p6_line: dfsLine('pick6', m.key, name),
         sharp_under: sh ? sh.under : null, sharp_n: sh ? sh.n : null, sharp_src: sh ? sh.src : null,
-        book_unders: nbaBookUnders(ev, m.key, name),
+        book_unders: bookUndersJson(ev, m.key, name),
         // His games this season against this line (2026-10-25): context, not
         // a forecast -- recent form regresses, which is why the projection
         // blends it with last season.
