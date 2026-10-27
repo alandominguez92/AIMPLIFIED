@@ -2915,6 +2915,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-lr.pk-miss { color:var(--caution); }
 .pk-lr.pk-void, .pk-lr.pk-open { color:var(--textFaint); font-weight:400; }
 .pk-lp { font-family:var(--mono); font-size:12px; color:var(--textDim); }
+/* Legs dropped before their start (2026-10-27): dimmed, the reason under. */
+.pk-legs li.pk-offh { display:block; margin-top:6px; padding-top:6px; border-top:1px solid var(--border); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--textDim); }
+.pk-legs li.pk-off { color:var(--textDim); }
+.pk-why { display:block; font-size:12px; color:var(--textFaint); margin-top:1px; }
 .pk-lm { font-size:11px; color:var(--textFaint); }
 .pk-moved { margin-top:8px; }
 

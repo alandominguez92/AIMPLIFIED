@@ -515,6 +515,8 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nhl-pp') return cors(json(await nhlPpBoard(env, url), 120));
   if (p === '/api/nba-pp') {
     const raw = url && url.searchParams.get('raw');
+    const day = url && url.searchParams.get('day');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return cors(json(await nbaPpDay(env, day), 120));
     return cors(json(raw === '1' ? await nbaPpRaw(env) : raw === 'events' ? await ppEventsRaw(env, 'nba', 'reg') : await nbaPpBoard(env), 120));
   }
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
@@ -8497,6 +8499,16 @@ async function logDayPicks(db, list, unavailable, now) {
   await db.batch(stmts);
 }
 
+// A game-line kind's log (gmpicks) by sport.
+const PICK_GM_SPORT = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', soccer_fav: 'soccer' };
+// The side a listed under landed on: a leg the list showed at the pre-tip
+// line grades at that line, and the label carries the number it showed
+// ("... Under 6.5 REB").
+function ppShownResult(m, label) {
+  const shown = Number((String(label || '').match(/ Under (\d+(?:\.\d+)?) /) || [])[1]);
+  return m && (m.close_point != null && m.close_point !== m.point && shown === m.close_point ? m.close_result : m.result);
+}
+const ppLegResult = (res) => (res === 'under' ? 'hit' : res === 'over' ? 'miss' : res === 'push' ? 'push' : res === 'void' ? 'void' : null);
 // A listed leg's result, read from the log it came from. hit / miss / push /
 // void, or null while that log has not graded it.
 async function dayPickResult(db, r) {
@@ -8510,13 +8522,9 @@ async function dayPickResult(db, r) {
     const m = r.kind === 'mlb_pp'
       ? await one('SELECT result FROM pppicks WHERE date = ? AND game_id = ? AND player_id = ? AND market = ?', r.src_date, r.game_id, Number(r.player_key), r.market)
       : await one('SELECT result, point, close_point, close_result FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', r.src_date, r.game_id, r.player_key, r.market);
-    // A leg the list showed at the pre-tip line grades at that line: the
-    // label carries the number it showed ("... Under 6.5 REB").
-    const shown = Number((String(r.label || '').match(/ Under (\d+(?:\.\d+)?) /) || [])[1]);
-    const res = m && (m.close_point != null && m.close_point !== m.point && shown === m.close_point ? m.close_result : m.result);
-    return res === 'under' ? 'hit' : res === 'over' ? 'miss' : res === 'push' ? 'push' : res === 'void' ? 'void' : null;
+    return ppLegResult(ppShownResult(m, r.label));
   }
-  const sport = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', soccer_fav: 'soccer' }[r.kind];
+  const sport = PICK_GM_SPORT[r.kind];
   if (!sport) return null;
   const m = await one('SELECT result FROM gmpicks WHERE sport = ? AND date = ? AND game_id = ? AND market = ?', sport, r.src_date, r.game_id, r.market);
   const res = m && m.result;
@@ -8532,6 +8540,66 @@ async function gradeDayPicks(db, now) {
     if (res) ups.push(db.prepare('UPDATE daypicks SET result = ? WHERE date = ? AND leg_id = ?').bind(res, r.date, r.leg_id));
   }
   if (ups.length) await db.batch(ups);
+}
+
+// ---- Legs that left the list before their start (2026-10-27) -----------------
+// On Oct 26 Sion James's threes under led the list at 2 PM (78%) and was off
+// it at tip, where it would have landed, and nothing said why. The record
+// judges the list on what it showed at each start, so a leg off by then is
+// not in it; this sits beside it: each leg the list showed in the last few
+// days and dropped before its game, why, from the log it came from, and how
+// it went. The rows are daypicks' own: a dropped leg keeps on_list = 0 and
+// seen_at, the last time it was on the list.
+const PICK_DROP_DAYS = 3;
+const PICK_DROP_MAX = 30;
+const dropOutranked = (o) => `${o.label} (${Math.round(o.p)}%) took its game's place`;
+// An NBA under, as the pre-tip read left it (ppStanding, ppCurrent): taken
+// down, moved, under the bar, below the books' line -- or still good, and
+// beaten in its game by the leg that held the place at tip (other).
+function ppDropWhy(m, reread, other) {
+  if (!m) return null;
+  if (reread && m.close_point == null) return 'PrizePicks took the line down before tip, most often a player ruled out';
+  const cur = ppCurrent(m), min = PICK_KINDS.nba_pp.min;
+  const why = [];
+  if (cur.point !== m.point) why.push(`PrizePicks moved the line from ${m.point} to ${cur.point}`);
+  if (!(cur.model_under >= min)) why.push(cur.model_under == null ? `no chance was read at ${cur.point}` : `the chance at ${cur.point} was ${round1(cur.model_under)}%, under the ${min}% bar`);
+  else if (ppBelowBook(cur)) why.push(`PrizePicks' ${cur.point} sat below the books' ${cur.book_line}`);
+  else if (other) why.push(dropOutranked(other));
+  return why.length ? why.join('; ') : null;
+}
+// A moneyline or soccer favourite, by the game-line log's row at the start.
+function gmDropWhy(g, r, other) {
+  if (!g) return null;
+  if (g.pick !== r.team) return `the books' favourite became ${g.pick}`;
+  const min = PICK_KINDS[r.kind].min;
+  if (g.win_prob != null && g.win_prob < min) return `its chance was ${round1(g.win_prob)}% by the start, under the ${min}% bar`;
+  return other ? dropOutranked(other) : null;
+}
+// listed: the list's on_list rows (date, label, p, game_id), for the leg that
+// held a dropped leg's game at its start.
+async function dayPickDrops(db, now, listed) {
+  const off = (await db.prepare(`SELECT date, leg_id, kind, src_date, game_id, player_key, market, team, label, p, seen_at, commence FROM daypicks
+      WHERE on_list = 0 AND seen_at IS NOT NULL AND date >= ? AND julianday(commence) <= julianday(?) ORDER BY date DESC, p DESC LIMIT ?`)
+    .bind(ptDateOf(now - PICK_DROP_DAYS * 86400e3), new Date(now).toISOString(), PICK_DROP_MAX).all()).results || [];
+  const one = (sql, ...a) => db.prepare(sql).bind(...a).first();
+  return Promise.all(off.map(async (r) => {
+    const other = listed.find((x) => x.date === r.date && String(x.game_id) === String(r.game_id)) || null;
+    let why = null, result = null, actual = null;
+    if (r.kind === 'nba_pp') {
+      const m = await one('SELECT * FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', r.src_date, r.game_id, r.player_key, r.market);
+      const reread = !!(m && (m.close_at || await one('SELECT 1 AS x FROM nbapp WHERE date = ? AND game_id = ? AND close_at IS NOT NULL LIMIT 1', r.src_date, r.game_id)));
+      why = ppDropWhy(m, reread, other);
+      result = ppLegResult(ppShownResult(m, r.label));
+      if (m && m.actual != null) actual = m.actual;
+    } else if (PICK_GM_SPORT[r.kind]) {
+      const g = await one('SELECT pick, win_prob, result FROM gmpicks WHERE sport = ? AND date = ? AND game_id = ? AND market = ?', PICK_GM_SPORT[r.kind], r.src_date, r.game_id, r.market);
+      why = gmDropWhy(g, r, other);
+      // As listed: a favourite that flipped is a different leg.
+      if (g && g.pick === r.team) result = { win: 'hit', loss: 'miss', push: 'push', void: 'void' }[g.result] || null;
+    }
+    if (!why) why = other ? dropOutranked(other) : 'off the list before its start';
+    return { date: r.date, kind: r.kind, label: r.label, p: round1(r.p), lastOn: r.seen_at, why, result, ...(actual != null ? { actual } : {}) };
+  }));
 }
 
 // How each kind has done at its bar, from its own log -- the number printed
@@ -8626,11 +8694,14 @@ function pickHistory(rows) {
 // disagree (a day counts once both its top legs have graded).
 async function dayPickRecord(db) {
   await ensureDayPickSchema(db);
-  const all = (await db.prepare('SELECT date, kind, label, p, first_p, result FROM daypicks WHERE on_list = 1').all()).results || [];
+  const all = (await db.prepare('SELECT date, kind, label, p, first_p, result, game_id FROM daypicks WHERE on_list = 1').all()).results || [];
   const rows = all.filter((r) => r.result != null);
   const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
   const hit = dec.filter((r) => r.result === 'hit').length;
   const history = pickHistory(all);
+  // Beside each recent day, the legs that left the list before their start.
+  const drops = await dayPickDrops(db, Date.now(), all).catch(() => []);
+  for (const d of history.days) { const l = drops.filter((x) => x.date === d.date); if (l.length) d.dropped = l; }
   const p2 = history.entries.find((e) => e.key === 'p2');
   return {
     since: rows.length ? rows.map((r) => r.date).sort()[0] : null,
@@ -11165,6 +11236,33 @@ async function nbaPpRaw(env) {
   if (!env || !env.DB) return { error: 'no DB binding' };
   const hit = await loadFeedCache(env.DB, NBA_PP_RAW_KEY);
   return hit.present ? hit.data : { none: 'no capture with PrizePicks on it yet' };
+}
+// ?day=YYYY-MM-DD (2026-10-27): every leg logged for one day's games, as the
+// reads left it -- the first line and chance, the pre-tip read's, the books'
+// and the sharp books' -- with its count and result, and where it stood on
+// Picks of the day: on the list at tip, off it before (and why), or never on
+// it. The card shows only legs still to play; this is the day after. Free:
+// the log alone.
+async function nbaPpDay(env, day) {
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  await ensureNbaSchema(env.DB); await ensureDayPickSchema(env.DB);
+  const rows = (await env.DB.prepare('SELECT * FROM nbapp WHERE date = ? ORDER BY commence, game_id, model_under DESC').bind(day).all()).results || [];
+  const dp = (await env.DB.prepare('SELECT leg_id, kind, label, p, game_id, on_list, seen_at, result FROM daypicks WHERE date = ?').bind(day).all()).results || [];
+  const onList = dp.filter((r) => r.on_list === 1);
+  const byId = new Map(dp.map((r) => [r.leg_id, r]));
+  const reread = new Set(rows.filter((r) => r.close_at).map((r) => r.game_id));
+  const legs = rows.map((m) => {
+    const d = byId.get(`nbapp:${m.game_id}:${m.player}:${m.market}`);
+    const other = onList.find((x) => String(x.game_id) === String(m.game_id)) || null;
+    const picks = !d ? null : d.on_list === 1 ? { on: true, p: d.p, result: d.result }
+      : { on: false, p: d.p, lastOn: d.seen_at, why: ppDropWhy(m, reread.has(m.game_id), other) || (other ? dropOutranked(other) : 'off the list before its start') };
+    return { game: `${m.away} @ ${m.home}`, game_id: m.game_id, commence: m.commence, player: m.player, team: m.team, market: m.market, min_proj: m.min_proj,
+      first: { line: m.point, under: m.model_under, book: m.book_line, book_under: m.book_under, sharp: m.sharp_under, at: m.captured_at },
+      tip: m.close_at ? { line: m.close_point, under: m.close_under, book: m.close_book_line, book_under: m.close_book_under, sharp: m.close_sharp_under, at: m.close_at } : null,
+      pulled: reread.has(m.game_id) && m.close_point == null, ud: m.ud_line, p6: m.p6_line,
+      season: m.l10_n ? { under: m.l10_under, n: m.l10_n } : null, actual: m.actual, result: m.result, tipResult: m.close_result, picks };
+  });
+  return { day, n: legs.length, onPicks: legs.filter((l) => l.picks && l.picks.on).length, dropped: legs.filter((l) => l.picks && !l.picks.on).length, legs };
 }
 // ?raw=events: the events list the watch last read, as it came. Free.
 async function ppEventsRaw(env, sport, lg) {

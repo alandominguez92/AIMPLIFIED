@@ -5975,8 +5975,16 @@
         const mvTxt = Math.abs(mv) >= 1 ? ` <span class="pk-lm${tone(mv)}" title="It joined the list at ${esc(pct0(x.first))}">${mv > 0 ? '▲' : '▼'}${Math.abs(mv)}</span>` : '';
         return `<li><span class="pk-lr ${m[1]}">${m[0]}</span><span class="pk-ll">${esc(x.label)}</span><span class="pk-lp">${pct0(x.p)}${mvTxt}</span></li>`;
       }).join('');
-      return `<details class="pk-day"><summary><span class="pk-dd"><b>${esc(shortDay(d.date))}</b> ${[count, playing].filter(Boolean).join(' · ')}</span>`
-        + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}</ul></details>`;
+      // Legs the list showed and dropped before their start (2026-10-27), with
+      // why and how each went. Not in the day's count: the list is judged on
+      // what it showed at each start.
+      const went = { hit: 'would have landed', miss: 'would have missed', push: 'would have tied', void: 'void' };
+      const off = (d.dropped || []).map((x) => `<li class="pk-off"><span class="pk-lr pk-open">off</span>`
+        + `<span class="pk-ll">${esc(x.label)}<span class="pk-why">${esc(x.why)}${went[x.result] ? ` · ${went[x.result]}` : ''}</span></span>`
+        + `<span class="pk-lp">${pct0(x.p)}</span></li>`).join('');
+      const offN = (d.dropped || []).length ? `${d.dropped.length} off before the start` : '';
+      return `<details class="pk-day"><summary><span class="pk-dd"><b>${esc(shortDay(d.date))}</b> ${[count, playing, offN].filter(Boolean).join(' · ')}</span>`
+        + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}${off ? `<li class="pk-offh">Off the list before the start</li>${off}` : ''}</ul></details>`;
     }).join('');
     return `<div class="nba-pp pk-card pk-hist">`
       + `<div class="tc-head"><span class="tc-title">How the list did</span>${h.since ? `<span class="tc-rec">since ${esc(shortDay(h.since))}</span>` : ''}</div>`
