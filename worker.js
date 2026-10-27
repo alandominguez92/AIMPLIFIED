@@ -3069,14 +3069,15 @@ async function livePickIds(db, days, kinds) {
   return new Set(rows.map((r) => r.leg_id));
 }
 // Logged PrizePicks legs whose games have started, at their current lines:
-// the list's own, and each game's best three by the model's chance.
-function liveFollowed(rows, now, picked, idOf, ok) {
+// the list's own, and each game's best three by the model's chance -- of the
+// under, or with chance given, of the side followed (the NHL's More).
+function liveFollowed(rows, now, picked, idOf, ok, chance = (r) => r.model_under) {
   const started = ppStanding(rows).map(ppCurrent).filter((r) => { const t = Date.parse(r.commence); return t <= now && t > now - LIVE_LOOKBACK_MS; });
   // One leg a player: the list's, else his best.
   const out = new Map();
   for (const r of started) if (picked.has(idOf(r))) out.set(r.player, { ...r, onPicks: true });
   const byGame = new Map();
-  for (const r of started.filter(ok).sort((a, b) => b.model_under - a.model_under)) {
+  for (const r of started.filter(ok).sort((a, b) => chance(b) - chance(a))) {
     const n = byGame.get(r.game_id) || 0;
     if (n >= 3 || out.has(r.player)) continue;
     byGame.set(r.game_id, n + 1);
@@ -3084,10 +3085,25 @@ function liveFollowed(rows, now, picked, idOf, ok) {
   }
   return [...out.values()];
 }
-function livePropCard(sport, r, g, stat, label, played, note, m) {
+function livePropCard(sport, r, g, stat, label, played, note, m, side = 'Under') {
+  const over = side === 'Over';
   const c = liveCard({ id: `${sport}:${r.game_id}:${r.player}:${r.market}`, pid: `${sport}${r.player}${r.market}`, name: r.player, team: r.team || '', pos: '',
-    stat, label, line: r.point, side: 'Under', m, note, progress: g.gone, edge: r.model_under, started: played });
-  return { sport, ...c, state: liveUnderState(stat, r.point, g.gone, r.proj), ...(r.onPicks ? { onPicks: true } : {}) };
+    stat, label, line: r.point, side, m, note, progress: g.gone, edge: over ? 100 - r.model_under : r.model_under, started: played });
+  return { sport, ...c, state: over ? liveOverState(stat, r.point, g.gone, r.proj) : liveUnderState(stat, r.point, g.gone, r.proj), ...(r.onPicks ? { onPicks: true } : {}) };
+}
+// An over in progress (2026-10-27, the NHL's More): past the line, it has
+// landed (cashing); else the chance the time left adds what it needs, Poisson
+// at what remains of his projection -- 40%+ live, under that cooling. A point
+// at 0.5 needs one more; at 1.5 with none yet, two. Without a projection,
+// live while a third of the game is left.
+function liveOverState(stat, line, gone, proj) {
+  if (stat > line) return 'cashing';
+  if (!(proj > 0)) return gone < 0.67 ? 'live' : 'cooling';
+  const need = Math.floor(line - stat) + 1;
+  const m = proj * Math.max(0, 1 - gone);
+  let t = Math.exp(-m), short = t;                 // the chance he adds fewer than need
+  for (let k = 1; k < need; k++) { t *= m / k; short += t; }
+  return 1 - short >= 0.4 ? 'live' : 'cooling';
 }
 const liveMeta = (g) => ({ away: g.awayAb, awayR: g.as, home: g.homeAb, homeR: g.hs, inning: g.label });
 
@@ -3118,7 +3134,10 @@ async function nhlLiveCards(env, now, feeds) {
   const days = [ptDateOf(now), ptDateOf(now - 864e5)];
   await ensureNhlPpSchema(env.DB);
   const rows = (await env.DB.prepare('SELECT * FROM nhlpp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
-  const legs = liveFollowed(rows, now, new Set(), (r) => `nhlpp:${r.game_id}:${r.player}:${r.market}`, () => true);
+  // The NHL card lists Mores since 2026-10-27, so Live follows them: each
+  // game's best three at a More chance of PP_MORE_MIN or better.
+  const more = (r) => (r.model_under == null ? -1 : 100 - r.model_under);
+  const legs = liveFollowed(rows, now, new Set(), (r) => `nhlpp:${r.game_id}:${r.player}:${r.market}`, (r) => more(r) >= PP_MORE_MIN, more);
   if (!legs.length) return [];
   const games = await feeds.nhl();
   const cards = [];
@@ -3130,7 +3149,7 @@ async function nhlLiveCards(env, now, feeds) {
     if (!b) continue;
     const stat = Number(r.market === 'ast' ? b.a : b.p) || 0;
     cards.push(livePropCard('nhl', r, g, stat, r.market === 'ast' ? 'AST' : 'PTS', !!b.toi && b.toi !== '00:00',
-      b.toi ? `${b.toi} on ice` : '', liveMeta(g)));
+      b.toi ? `${b.toi} on ice` : '', liveMeta(g), 'Over'));
   }
   return rankLive(cards, LIVE_PER_SPORT);
 }
@@ -10430,9 +10449,11 @@ async function logNhlPp(db, legs, close) {
 // again before puck drop (ppReadDue, as the NBA log), the games taken from the
 // free events list and the NHL board's snapshot (ppWatchGames).
 // Paused 2026-10-25, the user's call: 39 of 84 unders (46%) landed at
-// PrizePicks' lines against the backtest's 59-67%. The legs already logged
-// still grade (gradeNhlPp); nothing new is read, about 35 credits a day saved.
-const NHL_PP_PAUSED = true;
+// PrizePicks' lines against the backtest's 59-67%. Read again from 2026-10-27,
+// the user's call, for the other side: where the model leaned More, 29 of 51
+// landed through Oct 26 and 18 of 26 at a More chance of 55%+. The card lists
+// Mores now; about 20-55 credits a day (Oct 23-25's reads).
+const NHL_PP_PAUSED = false;
 async function nhlPpMaybeCapture(env) {
   if (NHL_PP_PAUSED || !env || !env.DB || !env.ODDS_API_KEY) return null;
   const now = Date.now();
@@ -10539,7 +10560,7 @@ async function nhlPpBoard(env, url) {
     return hit.present ? hit.data : { none: 'no capture with PrizePicks on it yet' };
   }
   if (url && url.searchParams && url.searchParams.get('raw') === 'events') return ppEventsRaw(env, 'nhl', 'reg');
-  const out = { note: 'LOGGED, not posted. The chance the under lands at PrizePicks’ line: Poisson at the skater’s scoring rate, this season blended with last. Points and assists, regulars (15+ minutes).', legs: [], record: null,
+  const out = { note: 'LOGGED, not posted. The chance the under lands at PrizePicks’ line: Poisson at the skater’s scoring rate, this season blended with last. Points and assists, regulars (15+ minutes). The card lists the More side (100 minus it) since 2026-10-27.', legs: [], record: null,
     ...(NHL_PP_PAUSED ? { paused: '2026-10-25' } : {}) };
   try {
     await ensureNhlPpSchema(env.DB);
@@ -10564,6 +10585,7 @@ async function nhlPpBoard(env, url) {
     out.record = { scope: `regular skaters (${NHL_TOI_MIN}+ minutes), at PrizePicks’ line`, graded: un.n, hit: un.hit, hitRate: un.hitRate,
       byBand: un.byBand, byLineGap: un.byLineGap, byMarket: byMarket(graded, 'under'),
       overs: { graded: ov.n, hit: ov.hit, hitRate: ov.hitRate, byBand: ov.byBand, byLineGap: ov.byLineGap, byMarket: byMarket(lean, 'over') },
+      more: ppMoreRecord(lean),
       ...ppCloseRecord(graded) };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
@@ -10659,6 +10681,19 @@ const ppCurrent = (r) => (r.close_point == null
     sharp_under: r.close_sharp_under != null ? r.close_sharp_under : (r.close_at && r.sharp_under != null ? null : r.sharp_under) });
 // Which side a count landed on against a line.
 const ppSide = (actual, line) => (actual < line ? 'under' : actual > line ? 'over' : 'push');
+// The More side of legs the model leaned More on (2026-10-27): all of them,
+// and those at a More chance of PP_MORE_MIN or better -- the bar the NBA
+// card's blocks and the NHL card list them at. Graded at the first line, as
+// every leg is.
+const PP_MORE_MIN = 55;
+function ppMoreRecord(lean) {
+  const cell = (l) => {
+    const d = l.filter((g) => g.result === 'over' || g.result === 'under');
+    const hit = d.filter((g) => g.result === 'over').length;
+    return { n: d.length, hit, hitRate: d.length ? round1(hit / d.length * 100) : null };
+  };
+  return { bar: PP_MORE_MIN, leaned: cell(lean), atBar: cell(lean.filter((g) => 100 - g.model_under >= PP_MORE_MIN)) };
+}
 // The legs PrizePicks still has up. One whose game had the pre-tip read and
 // that was not on it was taken down after the first read -- most often a
 // player ruled out -- so it leaves the card and the list. It still grades at
@@ -11256,7 +11291,7 @@ async function nbaPpDay(env, day) {
     const other = onList.find((x) => String(x.game_id) === String(m.game_id)) || null;
     const picks = !d ? null : d.on_list === 1 ? { on: true, p: d.p, result: d.result }
       : { on: false, p: d.p, lastOn: d.seen_at, why: ppDropWhy(m, reread.has(m.game_id), other) || (other ? dropOutranked(other) : 'off the list before its start') };
-    return { game: `${m.away} @ ${m.home}`, game_id: m.game_id, commence: m.commence, player: m.player, team: m.team, market: m.market, min_proj: m.min_proj,
+    return { game: `${m.away} @ ${m.home}`, game_id: m.game_id, commence: m.commence, player: m.player, team: m.team, market: m.market, min_proj: m.min_proj, proj: m.proj,
       first: { line: m.point, under: m.model_under, book: m.book_line, book_under: m.book_under, sharp: m.sharp_under, at: m.captured_at },
       tip: m.close_at ? { line: m.close_point, under: m.close_under, book: m.close_book_line, book_under: m.close_book_under, sharp: m.close_sharp_under, at: m.close_at } : null,
       pulled: reread.has(m.game_id) && m.close_point == null, ud: m.ud_line, p6: m.p6_line,
@@ -11346,6 +11381,11 @@ async function nbaPpBoard(env) {
       overs: { scope: 'the legs where the model leaned over, at PrizePicks’ line', graded: ov.n, hit: ov.hit, hitRate: ov.hitRate,
         byBand: ov.byBand, byLineGap: ov.byLineGap,
         byMarket: Object.fromEntries(Object.entries(ovBy).map(([k, v]) => [k, { n: v.n, hit: v.hit, hitRate: v.n ? round1(v.hit / v.n * 100) : null }])) },
+      // Blocks More (2026-10-27, the user's call): the one NBA market whose
+      // More side has landed -- 26 of 41 where the model leaned More through
+      // Oct 26, 16 of 23 at 55%+, against 42-45% for threes and assists
+      // Mores. Listed on the card, logged; not on Picks of the day.
+      blkMore: ppMoreRecord(lean.filter((g) => g.market === 'blk')),
       ...ppCloseRecord(graded),
       sharp: ppSharpRecord(graded),
       // By how lopsided the game was (2026-10-26): the moneyline log's chance

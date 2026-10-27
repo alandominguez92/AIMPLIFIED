@@ -206,22 +206,30 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 let card;
 try {
   card = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NHL_MK', 'nhlPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'nhlPpCardHtml'].map(liftApp).join('\n')
+    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NBA_MK', 'NHL_MK', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
+    'ppMoreLineHtml', 'nhlPpCardHtml'].map(liftApp).join('\n')
     + '\nreturn nhlPpCardHtml;')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
+// Since 2026-10-27 the card lists the More side at 55%+ (tests/morelegs.mjs).
+// This capture's six legs lean Under (45-59%); to fill the card, each is read
+// 20 points further toward More (25-39% under, so 61-75% More).
+ui.nhlPp = { ...ui.nhlPp, legs: ui.nhlPp.legs.map((x) => ({ ...x, model_under: x.model_under - 20 })) };
 let html = card();
-const trocheck = REAL[Object.keys(REAL).find((u) => u.includes('20262027'))].data.find((x) => x.skaterFullName === 'Vincent Trocheck');
-ok((html.match(/<li>/g) || []).length === 5 && html.includes(`https://assets.nhle.com/mugs/nhl/20262027/UTA/${trocheck.playerId}.png`),
-  'five legs, each with the NHL\'s own photo of the skater (Trocheck: Utah\'s)');
+const shown = ui.nhlPp.legs.filter((x) => 100 - x.model_under >= 55).sort((a, b) => a.model_under - b.model_under);
+const order = [...new Set(shown.map((x) => x.player))].slice(0, 5);
+ok((html.match(/<li>/g) || []).length === 5 && order.every((p) => html.includes(`/${shown.find((x) => x.player === p).player_id}.png`)),
+  "the best five, each with the NHL's own photo of the skater");
 ok(!/same game/.test(html), 'one game\'s legs on a quiet night carry no "same game" tag on every row');
-// Legs from three games: the warning comes back for the game with two.
-ui.nhlPp = { ...ui.nhlPp, legs: ui.nhlPp.legs.map((x, i) => ({ ...x, game_id: ['ga', 'ga', 'gb', 'gc', 'gc', 'gc'][i] })) };
+// Legs from three games: the warning comes back for the games with two or more.
+// The five shown, best first, spread as ga, ga, gb, gc, gc.
+const gid = Object.fromEntries(order.map((p, i) => [p, ['ga', 'ga', 'gb', 'gc', 'gc'][i]]));
+ui.nhlPp = { ...ui.nhlPp, legs: ui.nhlPp.legs.map((x) => ({ ...x, game_id: gid[x.player] || 'gz' })) };
 html = card();
-ok((html.match(/same game/g) || []).length === 4, 'with three games on the card, the legs that share one are marked');
+ok(order.length === 5 && (html.match(/same game/g) || []).length === 4, 'with three games on the card, the legs that share one are marked');
 ok(/const rec = nhlRecordHtml\(d\.record\) \+ nhlPpCardHtml\(\);/.test(app) && /fetchJson\('\/api\/nhl-pp'\)/.test(app),
   'the NHL tab reads /api/nhl-pp and draws the card under the moneyline record');
-ok(/id: `nhlpp:\$\{x\.game_id\}:\$\{x\.player\}:\$\{x\.market\}`/.test(app) && /sport: 'nhl'[^}]*market: x\.market, side: 'Under'/.test(app),
-  'each leg stars into the slip as an NHL PrizePicks under');
+ok(/id: `\$\{sport\}pp:\$\{x\.game_id\}:\$\{x\.player\}:\$\{x\.market\}:over`/.test(app) && /market: x\.market, side: 'Over'/.test(app),
+  'each leg stars into the slip as a PrizePicks Over, under its own id');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

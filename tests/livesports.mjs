@@ -161,16 +161,16 @@ const back = sq.prepare(`INSERT INTO nbapp (${cols.join(',')}) VALUES (${cols.ma
 for (const r of saved) back.run(...cols.map((k) => r[k]));
 
 console.log('\n-- NHL, two games under way --');
-console.log('  ' + nhl.map((c) => `${c.name} ${c.stat}/${c.line} ${c.statLabel} ${c.state} [${c.matchup} ${c.inning}]`).join(' | '));
-ok(nhl.length === 6 && !nhl.some((c) => ['Tyler Bertuzzi', 'Connor Bedard'].includes(c.name)),
-  `each game's best three by the model's chance: ${nhl.map((c) => c.name).join(', ')}`);
-const kan = nhl.find((c) => c.name === 'Roman Kantserov');
-ok(kan && kan.stat === nhlLine('2026020166', '8484390').points && kan.state === 'live' && kan.matchup === 'MTL 2 – CHI 1' && kan.inning === 'P2 11:06',
-  `Kantserov: ${kan && kan.stat} points at P2 11:06, still under: ${kan && kan.state}`);
-const kad = nhl.find((c) => c.name === 'Nazem Kadri'), nec = nhl.find((c) => c.name === 'Martin Necas');
-ok(kad && kad.stat === 1 && kad.state === 'cooling' && nec && nec.stat === nhlLine('2026020167', '8480039').assists && nec.state === 'cooling',
-  `Kadri's point and Necas' assist in the first period: over 0.5, cooling (${kad && kad.stat}, ${nec && nec.stat})`);
-ok(nhl.every((c) => c.statLabel === (c.name === 'Martin Necas' ? 'AST' : 'PTS')), 'points and assists, labelled');
+console.log('  ' + nhl.map((c) => `${c.name} ${c.side} ${c.stat}/${c.line} ${c.statLabel} ${c.state} [${c.matchup} ${c.inning}]`).join(' | '));
+// Since 2026-10-27 Live follows the NHL card's Mores at 55%+ (tests/morelegs.mjs).
+// Of these eight legs one leans that way: Brock Nelson, 44.9% to stay under.
+// The under side of the rest -- Kantserov's 71.7%, Kadri's point -- is no
+// longer followed.
+ok(nhl.length === 1 && nhl[0].name === 'Brock Nelson' && nhl[0].side === 'Over' && nhl[0].statLabel === 'PTS',
+  `each game's best three Mores at 55%+: ${nhl.map((c) => c.name).join(', ')} alone`);
+const nel = nhl[0] || {};
+ok(nel.stat === nhlLine('2026020167', '8475754').points && nel.stat === 0 && nel.state === 'live' && nel.matchup === 'TBL 0 – COL 2' && nel.inning === 'P1 12:25',
+  `Nelson: ${nel.stat} points at ${nel.inning}, over 0.5 with the game to play: ${nel.state}`);
 
 console.log('\n-- the moneylines on Picks --');
 const rap = ml.find((c) => c.name === 'Raptors ML');

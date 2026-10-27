@@ -248,7 +248,7 @@ const ui = { nbaPp: b, slip: {} };
 let C;
 try {
   C = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'nbaPpCardHtml']
+    'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'NHL_MK', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbaPpCardHtml']
     .map(lift).join('\n') + '\nreturn { ppMovedTag, ppCloseLineHtml, nbaPpCardHtml };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, '').trim();
@@ -258,9 +258,10 @@ ok(text(tcc) === 'PP 9 → 8' && /class="tc-gap lower"/.test(tcc), `lowered: "${
 ok(C.ppMovedTag(bl('Jalen Duren', 'ast')) === '' && C.ppMovedTag(bl('Payton Pritchard', 'threes')) === '', 'a line that did not move carries no tag');
 const card = C.nbaPpCardHtml();
 ok(/<span class="tc-title">PrizePicks unders<\/span>/.test(card) && !/Tonight/.test(card), 'the card is "PrizePicks unders": its legs can be tomorrow\'s');
-ok(/\$\{gap\}\$\{ppMovedTag\(x\)\}/.test(lift('nbaPpCardHtml')) && /\$\{same\}\$\{ppMovedTag\(x\)\}/.test(lift('nhlPpCardHtml'))
-  && /ppCloseLineHtml\(r\)/.test(lift('nbaPpCardHtml')) && /ppCloseLineHtml\(r\)/.test(lift('nhlPpCardHtml')),
-  'both cards, NBA and NHL, draw the tag on each leg and the pre-tip record under the head');
+// The NHL card lists Mores since 2026-10-27 (tests/morelegs.mjs): the moved tag
+// and the pre-tip record are the unders', so they stay on the NBA card alone.
+ok(/\$\{gap\}\$\{ppMovedTag\(x\)\}/.test(lift('nbaPpCardHtml')) && /ppCloseLineHtml\(r\)/.test(lift('nbaPpCardHtml')),
+  'the NBA card draws the tag on each leg and the pre-tip record under the head');
 ui.nbaPp = { ...b, legs: [] };
 ok(/read as soon as it does/.test(C.nbaPpCardHtml()), 'with nothing posted yet, the card says the lines come as soon as PrizePicks posts them');
 

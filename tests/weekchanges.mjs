@@ -7,7 +7,7 @@
 //   - Underdog's and Pick6's line on the same under ride beside PrizePicks' on
 //     the NBA card and on Picks of the day. The NBA read has carried them since
 //     Oct 22 at no extra credit; a higher number there is an easier under.
-//   - NHL PrizePicks reads are paused: 39 of 84 unders landed at PrizePicks'
+//   - NHL PrizePicks reads were paused (read again from Oct 27): 39 of 84 unders landed at PrizePicks
 //     lines against the backtest's 59-67%. The logged legs still grade.
 //
 // Real data: production's Picks of the day record as /api/picks served it at
@@ -152,22 +152,14 @@ ok(/\$\{ppMovedTag\(x\)\}\$\{dfsLinesHtml\(x\.point, x\.ud_line, x\.p6_line\)\}/
 ok(/const hi = legs\.filter\(\(x\) => x\.p >= 75\)\.slice\(0, 2\);/.test(app) && /Top 2 \$\{esc\(kind\)\}, 75%\+/.test(app),
   "the entry table's 75%+ Power, for the list still to play");
 
-// ---- NHL reads paused ------------------------------------------------------------------------------
-console.log('\n-- NHL PrizePicks reads paused --');
-ok(!calls.some((u) => /icehockey_nhl\/events\/[^/]+\/odds/.test(u)), 'an NHL game five hours out: no PrizePicks read, no check');
+// ---- NHL reads: paused Oct 25, read again from Oct 27 -----------------------------------------
+// The pause held two days. On Oct 27 the owner had the NHL read again for its
+// More side (29 of 51 where the model leaned More); the card lists Mores
+// (tests/morelegs.mjs). So the game five hours out gets its PrizePicks check.
+console.log('\n-- NHL PrizePicks reads, read again --');
+ok(calls.some((u) => /icehockey_nhl\/events\/nhl1\/odds/.test(u)), 'an NHL game five hours out: its PrizePicks check, as before the pause');
 const nb = await get('/api/nhl-pp');
-ok(nb.paused === '2026-10-25', `the board says so (${nb.paused})`);
-const note = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-  'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NHL_MK', 'nhlPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'nhlPpCardHtml'].map((n) => lift(n)).join('\n')
-  + '\nreturn nhlPpCardHtml;')({ nhlPp: { paused: '2026-10-25', legs: [], record: { graded: 84, hit: 39 } }, slip: {} }, esc)();
-ok(/Paused on Oct 25/.test(note) && /39 of 84/.test(note) && !/has not posted/.test(note), `the card: "${text(note).slice(-170)}"`);
-// Monday's legs were read before the pause, and the card still lists them: the
-// note sits above them.
-const withLegs = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-  'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NHL_MK', 'nhlPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'nhlPpCardHtml'].map((n) => lift(n)).join('\n')
-  + '\nreturn nhlPpCardHtml;')({ nhlPp: { paused: '2026-10-25', record: { graded: 84, hit: 39 }, legs: [{ player: 'Zach Hyman', team: 'EDM', market: 'pts', point: 0.5,
-    model_under: 58, proj: 0.55, game_id: 'g1', commence: new RealDate(NOW + 864e5).toISOString(), player_id: '8475786' }] }, slip: {} }, esc)();
-ok(withLegs.indexOf('Paused on Oct 25') > 0 && withLegs.indexOf('Paused on Oct 25') < withLegs.indexOf('Zach Hyman'), 'and above any legs read before it');
+ok(nb.paused === undefined, 'and the board no longer says paused');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

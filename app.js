@@ -6212,6 +6212,55 @@
     const c = (x) => (x.n ? `<b>${x.hit} of ${x.n}</b>` : 'none yet');
     return `<div class="tc-sub tc-rec-line">Starters' unders: in a lopsided game (favourite 75%+) ${c(s['75+'])} · in a close one (under 60%) ${c(s['under 60'])}</div>`;
   }
+  // PrizePicks More legs (2026-10-27): NBA blocks and the NHL's points and
+  // assists, the markets whose More side has landed where the model leaned
+  // More. A More leg is the under's log row taken Over, under its own id so a
+  // star on one is not a star on the other; the slip reads its chance as 100
+  // minus the under's. Listed at a More chance of PP_MORE_MIN or better, the
+  // worker's bar for the same record.
+  const PP_MORE_MIN = 55;
+  const ppMoreP = (x) => 100 - x.model_under;
+  const ppMoreMk = (x, sport) => (sport === 'nhl' ? NHL_MK : NBA_MK)[x.market] || x.market;
+  function ppMoreLeg(x, sport) {
+    return { id: `${sport}pp:${x.game_id}:${x.player}:${x.market}:over`, board: 'PrizePicks',
+      title: `${x.player} Over ${x.point} ${ppMoreMk(x, sport)}`, sub: x.game, odds: null, tier: null, edge: null,
+      spec: { sport, date: ptDayOf(Date.parse(x.commence)), gamePk: x.game_id, playerId: x.player_id || null,
+        player: x.player, team: x.team || null, market: x.market, side: 'Over',
+        book: { line: x.book_line != null ? x.book_line : null, price: null, under: null },
+        pp: { line: x.point, under: x.model_under } } };
+  }
+  // The best More legs to come, one a player, best first.
+  function ppMoreTop(legs, ok, n) {
+    const now = Date.now(), seen = new Set();
+    return (legs || []).filter((x) => Date.parse(x.commence) > now && x.model_under != null && ppMoreP(x) >= PP_MORE_MIN && ok(x))
+      .sort((a, b) => a.model_under - b.model_under)
+      .filter((x) => !seen.has(x.player) && seen.add(x.player)).slice(0, n);
+  }
+  function ppMoreListHtml(legs, sport) {
+    // Legs of one game land or miss together: marked when the list spans three
+    // games or more (on a two-game night every leg would carry the tag).
+    const perGame = {};
+    for (const x of legs) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
+    const spread = Object.keys(perGame).length >= 3;
+    return `<ol class="tc-legs">${legs.map((x) => {
+      const same = spread && perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
+      const leg = ppMoreLeg(x, sport);
+      const on = !!state.slip[offerLeg(leg)];
+      const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
+      const face = avatarHtml({ sport, playerId: x.player_id, team: x.team, name: x.player });
+      const per = x.proj == null ? '' : sport === 'nhl' ? ` · ${esc(String(x.proj))} a game` : ` · proj ${esc(String(x.proj))}`;
+      return `<li>${star}<div class="tc-leg has-hs">${face}`
+        + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(ppMoreP(x))}%</span></span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))}${per} · ${esc(soccerKick(x.commence))}${same}</span></span>`
+        + `</div></li>`;
+    }).join('')}</ol>`;
+  }
+  // Its record: every leg the model leaned More on, and those at the bar.
+  function ppMoreLineHtml(m, what) {
+    if (!m || !m.leaned || !m.leaned.n) return '';
+    return `<div class="tc-sub tc-rec-line">${what}: where the model leaned More <b>${m.leaned.hit} of ${m.leaned.n}</b>`
+      + `${m.atBar && m.atBar.n ? ` · at ${esc(String(m.bar))}%+ <b>${m.atBar.hit} of ${m.atBar.n}</b>` : ''}</div>`;
+  }
   function nbaPpCardHtml() {
     const d = state.nbaPp;
     if (!d) return '';
@@ -6260,7 +6309,17 @@
         + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
         + `${ppBookLine(x)}</span>`
         + `</div></li>`;
-    }).join('')}</ol></div>`;
+    }).join('')}</ol>${nbaBlkMoreHtml(d, rot)}</div>`;
+  }
+  // Blocks More (2026-10-27), under the unders: the best three to come.
+  function nbaBlkMoreHtml(d, rot) {
+    const m = d.record && d.record.blkMore;
+    const top = ppMoreTop(rot, (x) => x.market === 'blk', 3);
+    if (!top.length && !(m && m.leaned && m.leaned.n)) return '';
+    return `<div class="tc-head pp-more-head"><span class="tc-title">Blocks: More</span></div>`
+      + `<div class="tc-sub">The other side of the same blocks lines, at ${PP_MORE_MIN}%+: the one NBA market where the model's More has landed. Logged, not on Picks of the day.</div>`
+      + ppMoreLineHtml(m, 'Blocks')
+      + (top.length ? ppMoreListHtml(top, 'nba') : `<div class="tc-wait-note">No blocks More at ${PP_MORE_MIN}%+ in the next games yet.</div>`);
   }
   function renderNba() {
     const grid = document.getElementById('nbaGrid');
@@ -6381,56 +6440,27 @@
     state.nhlPp = pp && Array.isArray(pp.legs) ? pp : null;
     renderNhl();
   }
-  // NHL PrizePicks points and assists unders (2026-10-22), the NBA card's
-  // shape: tonight's best five by the model's chance, regulars only, a star
-  // each, the record under the title. Logged, not posted.
+  // NHL PrizePicks points and assists (2026-10-22), the NBA card's shape: the
+  // best five to come, regulars only, a star each, the record under the
+  // title. Logged, not posted. Unders were the card until their reads were
+  // paused on Oct 25 (39 of 84 at PrizePicks' lines); from Oct 27 it lists the
+  // More side, which had landed where the model leaned that way.
   const NHL_MK = { pts: 'points', ast: 'assists' };
-  function nhlPpLeg(x) {
-    return { id: `nhlpp:${x.game_id}:${x.player}:${x.market}`, board: 'PrizePicks',
-      title: `${x.player} Under ${x.point} ${NHL_MK[x.market] || x.market}`, sub: x.game, odds: null, tier: null, edge: null,
-      // gamePk is the odds feed's event id, the one the NHL moneyline leg carries.
-      spec: { sport: 'nhl', date: ptDayOf(Date.parse(x.commence)), gamePk: x.game_id, playerId: x.player_id || null,
-        player: x.player, team: x.team || null, market: x.market, side: 'Under',
-        book: { line: x.book_line != null ? x.book_line : null, price: typeof x.book_under === 'number' ? x.book_under : null, under: null },
-        pp: { line: x.point, under: x.model_under } } };
-  }
   function nhlPpCardHtml() {
     const d = state.nhlPp;
     if (!d) return '';
-    const now = Date.now();
-    const top = (d.legs || []).filter((x) => Date.parse(x.commence) > now).slice(0, 5);
     const r = d.record || {};
-    const hi = ['65-70', '70+'].map((k) => (r.byBand && r.byBand[k]) || { n: 0, hit: 0 })
-      .reduce((a, c) => ({ n: a.n + c.n, hit: a.hit + c.hit }), { n: 0, hit: 0 });
-    const recLine = r.graded ? `<div class="tc-sub tc-rec-line">Unders: <b>${r.hit} of ${r.graded}</b> landed${hi.n ? ` · 65%+ <b>${hi.hit} of ${hi.n}</b>` : ''}</div>` : '';
-    const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span></div>`
-      + `<div class="tc-sub">The chance the under lands at PrizePicks' line, from the skater's scoring rate this season and last. Points and assists; regulars (15+ minutes). Read when PrizePicks posts and again before puck drop. Logged, not posted.</div>`
-      + recLine + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r);
-    // Reads paused (2026-10-25): the record stays, and says why -- above any
-    // legs read before the pause, which still grade.
-    const paused = d.paused ? `<div class="tc-wait-note">Paused on Oct 25: at PrizePicks' own lines these unders landed${r.graded ? ` ${r.hit} of ${r.graded}` : ''}, short of what two seasons of box scores promised (59-67%). No new lines are read; the ones logged still grade.</div>` : '';
-    if (d.paused && !top.length) return `<div class="nba-pp">${head}${paused}</div>`;
+    const top = ppMoreTop(d.legs, () => true, 5);
+    const unders = r.graded ? `<div class="tc-sub tc-rec-line">Unders, no longer listed: <b>${r.hit} of ${r.graded}</b> landed</div>` : '';
+    const head = `<div class="tc-head"><span class="tc-title">PrizePicks: More</span></div>`
+      + `<div class="tc-sub">The chance the skater gets past PrizePicks' line, a point or an assist, from his scoring rate this season and last. Regulars (15+ minutes), at ${PP_MORE_MIN}%+. Read when PrizePicks posts and again before puck drop. Logged, not posted.</div>`
+      + ppMoreLineHtml(r.more, 'More') + unders;
     if (!top.length) {
-      return `<div class="nba-pp">${head}<div class="tc-wait-note">PrizePicks has not posted NHL lines for the next games yet: they are read as soon as it does, and again about 90 minutes before puck drop.</div></div>`;
+      const any = (d.legs || []).some((x) => Date.parse(x.commence) > Date.now());
+      return `<div class="nba-pp">${head}<div class="tc-wait-note">${any ? `No More at ${PP_MORE_MIN}%+ among the lines read so far.`
+        : 'PrizePicks has not posted NHL lines for the next games yet: they are read as soon as it does, and again about 90 minutes before puck drop.'}</div></div>`;
     }
-    const perGame = {};
-    for (const x of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
-    // The same-game warning only when the card spans three games or more: on a
-    // two-game night every leg shares a game with another, and a tag on all
-    // five said nothing.
-    const spread = Object.keys(perGame).length >= 3;
-    return `<div class="nba-pp">${head}${paused}<ol class="tc-legs">${top.map((x) => {
-      const leg = nhlPpLeg(x);
-      const on = !!state.slip[offerLeg(leg)];
-      const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
-      const same = spread && perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
-      const face = avatarHtml({ sport: 'nhl', playerId: x.player_id, team: x.team, name: x.player });
-      return `<li>${star}<div class="tc-leg has-hs">${face}`
-        + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NHL_MK[x.market] || x.market)} · ${esc(String(x.proj))} a game · ${esc(soccerKick(x.commence))}${same}${ppMovedTag(x)}</span>`
-        + `${x.book_line != null ? `<span class="tc-book">book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}</span>` : ''}</span>`
-        + `</div></li>`;
-    }).join('')}</ol></div>`;
+    return `<div class="nba-pp">${head}${ppMoreListHtml(top, 'nhl')}</div>`;
   }
   function nhlRecordHtml(r) { return gmRecordHtml(r, 'Record: logged from Oct 20, graded from the NHL’s finals each morning.'); }
   // A moneyline log's record and its favourites at the bar Picks of the day
