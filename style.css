@@ -2891,6 +2891,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Bets with an edge (2026-10-27): its own card under the list. */
 .pk-ev-card { margin-top:14px; }
 .pk-ev-list .tc-leg { padding-left:2px; }
+/* Its price line carries the fair, the stake and the read's time: it wraps,
+   where the list's one-price line does not (a phone ran it 120px wide). */
+.pk-ev-list .tc-book { white-space:normal; line-height:1.5; }
 .tc-p.pk-ev-up { color:var(--positive); }
 .pk-asof { color:var(--textFaint); }
 .pk-noentry { margin-top:8px; }
