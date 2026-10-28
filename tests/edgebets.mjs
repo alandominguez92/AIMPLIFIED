@@ -243,6 +243,13 @@ ok(mls.map((b) => b.label).join() === 'CF Montreal ML,Draw' && mls[1].sub.starts
   'the MLS bets are the sides the 12:20 PM read priced: CF Montreal +450 and the Portland-St. Louis draw +330, as production listed them');
 ok(!p.evBets.some((b) => /Cincinnati/.test(b.label)) && stale.some((r) => r.pick === 'FC Cincinnati'),
   'and not FC Cincinnati +410, which production listed on its Oct 27 5 AM price');
+// Production's log took it at its first read, before the card left frozen
+// rows off: that row is voided, and the record does not count it.
+const CIN = 'soc:995383601ec82bc39259205612a1f007:res:FC Cincinnati';
+sq.prepare("INSERT INTO edgebets (date, key, sport, market, label, commence, first_price, first_fair, first_ev, first_stake, close_price, close_fair, result) VALUES ('2026-10-28', ?, 'soccer', 'ml', 'FC Cincinnati ML', '2026-10-28T23:30:00Z', 410, 20.7, 5.6, 0.3, 410, 20.7, NULL)").run(CIN);
+const before2 = (await get('/api/picks')).edgeRecord;
+ok(sq.prepare('SELECT result FROM edgebets WHERE key = ?').get(CIN).result === 'void' && before2.n === R.n && before2.void === R.void + 1 && before2.clv.n === R.clv.n,
+  "the log's FC Cincinnati +410 from production's first read is void, and counts for nothing");
 const rp = alift('renderPicks');
 ok(/grid\.innerHTML = bankHtml\(\) \+ ppCard \+ evBetsHtml\(d\) \+ listCard \+ after;/.test(rp) && /<span class="tc-title">Your PrizePicks entry<\/span>/.test(rp) && /<span class="tc-title">Most likely to land<\/span>/.test(rp),
   'Picks leads with the PrizePicks entry, then the sportsbook bets, then the likeliest legs');

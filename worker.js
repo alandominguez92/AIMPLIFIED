@@ -8610,6 +8610,12 @@ async function ensureEdgeBetSchema(db) {
     PRIMARY KEY (date, key)
   )`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS edgebets_open ON edgebets (date) WHERE result IS NULL').run();
+  // The log's first read (12:44 PM Pacific, Oct 28) came before the card left
+  // off frozen rows, and took FC Cincinnati +410 from Oct 27's 5 AM read -- not
+  // a price anyone could have had then. Void, once: it would read as a bet
+  // that beat its close.
+  await db.prepare("UPDATE edgebets SET result = 'void', graded_at = ? WHERE date = '2026-10-28' AND key = 'soc:995383601ec82bc39259205612a1f007:res:FC Cincinnati' AND result IS NULL")
+    .bind(new Date().toISOString()).run();
 }
 // scan: evScan's. Writes only what changed, so an unchanged read costs nothing.
 async function logEdgeBets(db, scan, now) {
