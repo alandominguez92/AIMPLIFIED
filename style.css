@@ -3184,3 +3184,61 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-card .hl-name { font-size:20px; }
 .pk-card .hl-pct { font-size:34px; }
 @media (max-width:380px) { .hl-name { font-size:19px; } .hl-pct { font-size:34px; } }
+/* The chance ring (2026-10-28): the number and "chance" sit inside it. Gold at
+   75%+, green where a sportsbook price beats its line, the model's blue else;
+   it fills from empty once a page load (.bars-in). */
+.hl-p.ring { position:relative; width:82px; height:82px; display:grid; place-content:center; text-align:center; }
+.hl-p.ring .hl-pct, .pk-card .hl-p.ring .hl-pct { position:relative; font-size:24px; }
+.hl-p.ring .hl-pk { position:relative; font-size:11px; }
+.hl-ring { position:absolute; inset:0; width:100%; height:100%; transform:rotate(-90deg); }
+.hl-ring circle { fill:none; stroke-width:7; }
+.hl-ring .rg-t { stroke:var(--board2); }
+.hl-ring .rg-f { --rc:213.6; stroke:var(--model); stroke-linecap:round; }
+.hl-ring.gold .rg-f { stroke:var(--accent); }
+.hl-ring.edge .rg-f { stroke:var(--positive); }
+@keyframes ringIn { from { stroke-dashoffset:var(--rc); } }
+.bars-in .hl-ring .rg-f { animation:ringIn 1.1s cubic-bezier(.2,.8,.2,1) both; }
+/* Held empty until the Picks tab's first draws settle (picksAnimate). */
+.pk-pre .bmini .uz { transform:scaleX(0); }
+.pk-pre .hl-ring .rg-f { stroke-dashoffset:var(--rc) !important; }
+@media (max-width:380px) { .hl-p.ring { width:74px; height:74px; } .hl-p.ring .hl-pct, .pk-card .hl-p.ring .hl-pct { font-size:21px; } }
+
+/* "Last night" (2026-10-28): yesterday graded, at the top of Picks. */
+.pk-recap { margin:0 0 12px; border:1px solid var(--border); border-radius:12px; background:var(--board); padding:10px 14px; }
+.pk-recap summary { cursor:pointer; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; list-style:none; }
+.pk-recap summary::-webkit-details-marker { display:none; }
+.rc-h { font-family:var(--sans); font-weight:800; font-size:13px; text-transform:uppercase; letter-spacing:.02em; color:var(--accent); }
+.rc-day { font-size:12px; color:var(--textDim); }
+.rc-n { font-family:var(--mono); font-weight:700; font-size:18px; color:var(--text); }
+.rc-dots { font-family:var(--mono); font-size:13px; letter-spacing:.08em; color:var(--textDim); margin-left:auto; }
+.rc-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.rc-chip { font-size:12.5px; padding:3px 9px; border-radius:999px; border:1px solid var(--border); color:var(--textDim); white-space:nowrap; }
+.rc-chip.rc-hit { color:var(--positive); border-color:color-mix(in srgb, var(--positive) 45%, var(--border)); background:color-mix(in srgb, var(--positive) 10%, transparent); }
+.rc-chip.rc-miss { color:var(--danger); border-color:color-mix(in srgb, var(--danger) 45%, var(--border)); background:color-mix(in srgb, var(--danger) 10%, transparent); }
+.rc-lines { list-style:none; margin:10px 0 0; padding:0; display:grid; gap:4px; font-size:13px; }
+.rc-lines li { display:flex; justify-content:space-between; gap:12px; color:var(--textDim); }
+.rc-lines b { font-family:var(--mono); font-weight:600; color:var(--text); text-align:right; }
+.rc-lines b.u { color:var(--positive); } .rc-lines b.o { color:var(--danger); }
+.rc-off { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-size:12.5px; color:var(--textDim); }
+
+/* The entry ticket (2026-10-28). */
+.pk-ticket { margin:12px 0 0; border:1px dashed color-mix(in srgb, var(--accent) 55%, var(--border)); border-radius:12px; padding:12px; }
+.tk-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+.tk-name { font-family:var(--sans); font-weight:800; font-size:16px; color:var(--text); }
+.tk-edge { font-family:var(--mono); font-size:12.5px; color:var(--textFaint); }
+.tk-edge.up { color:var(--positive); }
+/* Three across on a phone (80px: 92 put the third of three alone on a row). */
+.tk-legs { display:grid; grid-template-columns:repeat(auto-fill, minmax(80px, 1fr)); gap:10px 6px; margin-top:12px; }
+.tk-leg { display:grid; justify-items:center; gap:2px; text-align:center; min-width:0; }
+.tk-leg b { font-size:13px; color:var(--text); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tk-leg span { font-size:12px; color:var(--accent); }
+.tk-leg .tk-p { font-family:var(--mono); color:var(--textDim); }
+.tk-foot { margin-top:12px; padding-top:10px; border-top:1px dashed var(--border); display:grid; gap:4px; font-size:13px; }
+.tk-foot div { display:flex; justify-content:space-between; gap:12px; color:var(--textDim); }
+.tk-foot b { font-family:var(--mono); font-weight:600; color:var(--text); text-align:right; }
+.tk-ctl { margin-top:10px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+.tk-sizes { display:inline-flex; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.tk-n { min-width:40px; min-height:36px; border:0; background:transparent; color:var(--textDim); font-family:var(--mono); font-weight:600; cursor:pointer; }
+.tk-n + .tk-n { border-left:1px solid var(--border); }
+.tk-n.on { background:var(--accentFill); color:var(--onAccent); }
+.tk-save { min-height:36px; padding:0 14px; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--text); font-weight:700; cursor:pointer; }

@@ -8692,7 +8692,17 @@ async function edgeBetRecord(env) {
     let flat = 0, kelly = 0;
     for (const r of dec) { const d = decOf(r.first_price); flat += r.result === 'hit' ? d - 1 : -1; kelly += (r.first_stake || 0) * (r.result === 'hit' ? d - 1 : -1); }
     const clv = rows.filter((r) => r.close_fair != null && r.result !== 'void').map((r) => (r.close_fair / 100 * decOf(r.first_price) - 1) * 100);
+    // Each recent day's own (2026-10-28), for the page's "Last night" recap.
+    const byDay = {};
+    for (const date of [...new Set(rows.map((r) => r.date))].sort().slice(-7)) {
+      const l = rows.filter((r) => r.date === date && r.result !== 'void');
+      const d2 = l.filter((r) => r.result === 'hit' || r.result === 'miss');
+      const c = l.filter((r) => r.close_fair != null).map((r) => r.close_fair / 100 * decOf(r.first_price) - 1);
+      byDay[date] = { n: d2.length, hit: d2.filter((r) => r.result === 'hit').length,
+        units: round2(d2.reduce((s, r) => s + (r.result === 'hit' ? decOf(r.first_price) - 1 : -1), 0)), clvN: c.length, beat: c.filter((v) => v > 0).length };
+    }
     return { data: {
+      byDay,
       since: rows.length ? rows.map((r) => r.date).sort()[0] : null,
       n: dec.length, hit: dec.filter((r) => r.result === 'hit').length, push: rows.filter((r) => r.result === 'push').length, void: rows.filter((r) => r.result === 'void').length,
       units: round2(flat), kellyUnits: round2(kelly), roi: dec.length ? round1(flat / dec.length * 100) : null,

@@ -43,7 +43,7 @@ function lift(name, from = src) {
   throw new Error(`could not close ${name}`);
 }
 const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
-  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'pickFace', 'ptDayOf', 'pickMoved', 'heroLegHtml'];
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved', 'heroLegHtml'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const state = { slip: {} };
 const F = new Function('state', 'esc', names.map((n) => lift(n)).join('\n')
@@ -108,12 +108,13 @@ const pp = { kind: 'mlb_pp', sport: 'mlb', title: 'B. Williamson Under 1.5 H+R+R
   spec: { sport: 'mlb', playerId: 680757, player: 'Bryan Williamson', team: 'TB', market: 'hrr' } };
 const h = F.heroLegHtml(pp, { link: true });
 ok(/class="hl-name">B\. Williamson</.test(h) && /class="hl-pick">Under 1\.5 H\+R\+RBI</.test(h), 'the player large, the pick under him');
-ok(/hl-p good"><span class="hl-pct">78%</.test(h), 'the chance in green: legs like it landed 12 of 16, above 57.7%');
+// The chance sits in a ring since 2026-10-28 (tests/flashy.mjs).
+ok(/hl-p ring good"><span class="hl-pct">78%</.test(h), 'the chance in green: legs like it landed 12 of 16, above 57.7%');
 ok(/Legs like this: <b>12 of 16<\/b> landed \(75%\)/.test(h) && /lineup in/.test(h), 'with its record and its lineup status');
 ok(/data-action="leg-add" data-leg="pp:b1:hrr"/.test(h) && /data-action="set-sport" data-sport="picks"/.test(h), 'one tap adds it; the link opens the whole list');
 ok(/people\/680757\/headshot/.test(h), 'with his face');
 const thin = F.heroLegHtml({ ...pp, record: { n: 3, hit: 3, hitRate: 100 } });
-ok(/class="hl-p"><span class="hl-pct">/.test(thin) && !/data-sport="picks"/.test(thin), 'under five graded legs, no green; and no link on the Picks tab itself');
+ok(/class="hl-p ring"><span class="hl-pct">/.test(thin) && !/data-sport="picks"/.test(thin), 'under five graded legs, no green; and no link on the Picks tab itself');
 const ml = F.heroLegHtml({ ...pp, kind: 'mlb_ml', title: 'LAD ML', odds: -150, spec: { sport: 'mlb', team: 'LAD', market: 'ml' } });
 ok(/class="hl-name">LAD</.test(ml) && /Moneyline <span class="hl-odds">-150</.test(ml) && /team-logos\/119\.svg/.test(ml), 'a moneyline: the club, its mark and price');
 const nbaMl = F.heroLegHtml({ ...pp, kind: 'nba_ml', sport: 'nba', title: 'Celtics ML', odds: -330,

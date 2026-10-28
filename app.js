@@ -4838,6 +4838,9 @@
         onLeadingClick(target.dataset.id);
         break;
       case 'row-click': onRowClick(target.dataset.id); break;
+      // The entry ticket (2026-10-28): how many legs, and a picture of it.
+      case 'ticket-n': state.ticketN = Number(target.dataset.n) || 3; renderPicks(); break;
+      case 'ticket-save': saveTicketImage(); break;
       case 'today-jump': jumpToLeg(target.dataset.view, target.dataset.id); break;
       case 'today-add': {
         if (e) e.stopPropagation();
@@ -5950,6 +5953,17 @@
     }
     return `<span class="pk-edge" title="At ${esc(AM(x.odds))} this leg is not +EV on a ${esc(pct0(x.kellyP))} chance">${fair} · bet at ${esc(AM(x.betAt))} or better</span>`;
   }
+  // The chance as a ring round the top leg's number (2026-10-28): gold at 75%+,
+  // green where a sportsbook price beats its line, the model's blue otherwise.
+  // It fills from empty where the card carries .bars-in, once a page load.
+  const RING_C = 2 * Math.PI * 34;
+  function chanceRingSvg(x) {
+    if (typeof x.p !== 'number') return '';
+    const tone = typeof x.ev === 'number' && x.ev > 0 ? ' edge' : x.p >= 75 ? ' gold' : '';
+    const off = Math.round(RING_C * (1 - Math.max(0, Math.min(100, x.p)) / 100) * 10) / 10;
+    return `<svg class="hl-ring${tone}" viewBox="0 0 80 80" aria-hidden="true"><circle class="rg-t" cx="40" cy="40" r="34"/>`
+      + `<circle class="rg-f" cx="40" cy="40" r="34" style="--rc:${Math.round(RING_C * 10) / 10};stroke-dasharray:${Math.round(RING_C * 10) / 10};stroke-dashoffset:${off}"/></svg>`;
+  }
   function heroLegHtml(x, opts) {
     const lg = pickLeg(x);
     const on = !!state.slip[offerLeg(lg)];
@@ -5983,7 +5997,7 @@
       + `<div class="hl-what"><b class="hl-name">${esc(name)}</b>`
       + `<span class="hl-pick">${esc(pick)}${typeof x.odds === 'number' ? ` <span class="hl-odds">${esc(AM(x.odds))}</span>` : ''}</span>`
       + `</div>`
-      + `<div class="hl-p${good ? ' good' : ''}"><span class="hl-pct">${pct0(x.p)}</span><span class="hl-pk">chance</span></div>`
+      + `<div class="hl-p ring${good ? ' good' : ''}"><span class="hl-pct">${pct0(x.p)}</span><span class="hl-pk">chance</span>${chanceRingSvg(x)}</div>`
       // The game on its own line, so a long matchup never squeezes the name.
       + `<span class="hl-game">${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span>`
       // A player leg's projection against its line, as the MLB board draws it;
@@ -6125,7 +6139,7 @@
         + (rec.voided ? ` · ${rec.voided} void` : '')
       : 'This list keeps its own record from today: each leg on it when its game starts is graded.';
     if (!legs.length) {
-      grid.innerHTML = `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
+      grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
       return;
     }
@@ -6216,6 +6230,7 @@
       + `<div class="tc-sub pk-intro">The best leg PrizePicks takes in each game, best first, from everything that clears its bar. Under each: how legs like it have actually done.</div>`
       + (ppLegs.length ? hero + (ppLegs.length > 1 ? `<ol class="tc-legs pk-pool">${ppLegs.slice(1).map(itemHtml).join('')}</ol>` : '')
         : '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>')
+      + ticketHtml(ticketData(d, ppLegs, whole))
       + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As a PrizePicks entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>`
         : (ppLegs.length ? `<div class="tc-sub pk-noentry">One leg PrizePicks takes clears its bar so far: an entry needs two.</div>` : ''))
       + ppEntryRecordHtml(d.record && d.record.history)
@@ -6225,8 +6240,158 @@
       + `<div class="tc-sub">Every kind of leg, one a game, best chance first. The moneylines are sportsbook bets: under each, its chance against its price.</div>`
       + `<ol class="tc-legs">${legs.map(itemHtml).join('')}</ol>`
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
-    grid.innerHTML = bankHtml() + ppCard + evBetsHtml(d) + listCard + after;
+    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + bankHtml() + ppCard + evBetsHtml(d) + listCard + after;
+    picksAnimate(grid);
   }
+  // The bars and the ring fill in once a page load (2026-10-28), after the
+  // first draws settle: the list, then the soccer strip and the saved lines,
+  // redraw the tab within a second, and each redraw cut an animation off. Held
+  // empty (.pk-pre) until then, filled through .bars-in on the grid itself,
+  // which outlives every redraw.
+  let picksAnimDone = false, picksAnimT = null;
+  function picksAnimate(grid) {
+    if (picksAnimDone) return;
+    grid.classList.add('pk-pre');
+    clearTimeout(picksAnimT);
+    picksAnimT = setTimeout(() => {
+      picksAnimDone = true;
+      grid.classList.remove('pk-pre');
+      grid.classList.add('bars-in');
+      setTimeout(() => grid.classList.remove('bars-in'), 1600);
+    }, 450);
+  }
+  // "Last night" (2026-10-28): yesterday's legs graded -- the PrizePicks
+  // entry's from the day its pool was first logged, the list's before -- with
+  // the entry's units, the edge bets' day, and what left before the start.
+  // Open the first time a day shows on this device, folded after.
+  let recapSeenAtLoad = null;
+  try { recapSeenAtLoad = localStorage.getItem('aimplified_recap_seen'); } catch (e) { /* private mode */ }
+  // "Wendell Carter Jr Under 2.5 AST" -> "Carter Jr U2.5 AST"; "Celtics ML" -> "Celtics".
+  function shortLeg(label) {
+    const s = String(label || '');
+    const m = s.match(/^(.*?) (Under|Over) ([\d.]+) (.+)$/);
+    if (!m) return s.replace(/ ML$/, '');
+    const w = m[1].split(/\s+/);
+    const sur = w.length > 2 && /^(Jr\.?|Sr\.?|II|III|IV)$/.test(w[w.length - 1]) ? w.slice(-2).join(' ') : w[w.length - 1];
+    return `${sur} ${m[2] === 'Under' ? 'U' : 'O'}${m[3]} ${m[4]}`;
+  }
+  function recapHtml(h, edge) {
+    if (!h || !Array.isArray(h.days)) return '';
+    const date = ptDayOf(Date.now() - 864e5);
+    const d = h.days.find((x) => x.date === date);
+    if (!d) return '';
+    const legs = d.pool && d.pool.length ? d.pool : d.legs;
+    const dec = legs.filter((x) => x.result === 'hit' || x.result === 'miss');
+    if (!dec.length) return '';
+    const hit = dec.filter((x) => x.result === 'hit').length;
+    const units = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
+    const glyph = { hit: '✓', miss: '✗', void: 'void', push: 'tie' };
+    const chips = legs.map((x) => `<span class="rc-chip rc-${esc(x.result || 'open')}">${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}</span>`).join('');
+    const lines = [];
+    for (const [k, label] of [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
+      const e = d.entries && d.entries[k];
+      if (e) lines.push(`<li><span>${label}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
+    }
+    const eb = edge && edge.byDay && edge.byDay[date];
+    if (eb && eb.n) lines.push(`<li><span>Edge bets</span><b class="${eb.units > 0 ? 'u' : eb.units < 0 ? 'o' : ''}">${eb.hit} of ${eb.n} · ${units(eb.units)}${eb.clvN ? ` · beat the close ${eb.beat} of ${eb.clvN}` : ''}</b></li>`);
+    if (d.pool && d.pool.length && d.decided) lines.push(`<li><span>The list</span><b>${d.hit} of ${d.decided}</b></li>`);
+    const went = { hit: ', would have landed', miss: ', would have missed', push: ', would have tied' };
+    const off = (d.dropped || []).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
+    const open = recapSeenAtLoad !== date;
+    try { localStorage.setItem('aimplified_recap_seen', date); } catch (e) { /* private mode */ }
+    return `<details class="pk-recap"${open ? ' open' : ''}><summary><span class="rc-h">Last night</span>`
+      + `<span class="rc-day">${esc(shortDay(date))}</span><b class="rc-n">${hit} of ${dec.length}</b>`
+      + `<span class="rc-dots">${dec.map((x) => (x.result === 'hit' ? '✓' : '✗')).join('')}</span></summary>`
+      + `<div class="rc-chips">${chips}</div>`
+      + (lines.length ? `<ul class="rc-lines">${lines.join('')}</ul>` : '')
+      + (off ? `<div class="rc-off">Off before the start: ${off}</div>` : '')
+      + `</details>`;
+  }
+
+  // The PrizePicks entry as a ticket (2026-10-28): the pool's top n legs, More
+  // or Less at each line, the chance all of them land, PrizePicks' payouts
+  // (the worker's PP_POWER and PP_FLEX), the edge and the stake. The 3-pick
+  // Flex first: it still pays on two of three, the steadier read while the
+  // entry builds its record. Save image draws it for the phone's photos.
+  const PP_PAY = { power: { 2: 3, 3: 5, 4: 10, 5: 20, 6: 37.5 },
+    flex: { 3: { 3: 2.25, 2: 1.25 }, 4: { 4: 5, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } } };
+  function ticketData(d, legs, whole) {
+    if (!legs || legs.length < 2) return null;
+    const n = Math.max(2, Math.min(state.ticketN || 3, legs.length, 6));
+    const top = legs.slice(0, n);
+    const e = (whole && (d.entries || []).find((x) => x.legs === n)) || {};
+    const pays = n === 2 ? `both land ${PP_PAY.power[2]}x`
+      : Object.entries(PP_PAY.flex[n]).sort((a, b) => b[0] - a[0]).map(([k, v]) => `${k} of ${n} ${v}x`).join(' · ');
+    return {
+      n, sizes: Array.from({ length: Math.min(legs.length, 6) - 1 }, (_, i) => i + 2),
+      name: n === 2 ? '2-pick Power' : `${n}-pick Flex`,
+      legs: top.map((x) => {
+        const s = x.spec || {};
+        const mk = (String(x.title || '').match(/ ([A-Z0-9+]+)$/) || [])[1] || '';
+        const who = pickIsTeam(x) ? String(x.title || '').replace(/ ML$/, '') : (s.player || x.title);
+        return { x, who, short: pickIsTeam(x) ? who : shortLeg(x.title).replace(/ [UO][\d.]+ .*$/, ''),
+          pick: pickIsTeam(x) ? 'to win' : `${s.side === 'Over' ? 'More' : 'Less'} ${s.pp ? s.pp.line : ''} ${mk}`.trim(), p: x.p };
+      }),
+      all: top.reduce((a, x) => a * x.p / 100, 1) * 100, pays,
+      ev: typeof e.ev === 'number' ? e.ev : null, stake: typeof e.stake === 'number' ? e.stake : null, capped: !!e.capped,
+    };
+  }
+  function ticketHtml(t) {
+    if (!t) return '';
+    const sizes = t.sizes.map((k) => `<button type="button" class="tk-n${k === t.n ? ' on' : ''}" data-action="ticket-n" data-n="${k}" aria-pressed="${k === t.n}">${k}</button>`).join('');
+    const edge = t.ev == null ? '' : t.ev > 0 ? `<span class="tk-edge up">+${esc(String(t.ev))}% edge</span>` : '<span class="tk-edge">no edge</span>';
+    return `<div class="pk-ticket"><div class="tk-head"><b class="tk-name">${esc(t.name)}</b>${edge}</div>`
+      + `<div class="tk-legs">${t.legs.map((l) => `<div class="tk-leg">${pickFace(l.x, 40)}<b>${esc(l.short)}</b><span>${esc(l.pick)}</span><span class="tk-p">${esc(pct0(l.p))}</span></div>`).join('')}</div>`
+      + `<div class="tk-foot"><div><span>All ${t.n} land</span><b>${esc(pct0(t.all))}</b></div><div><span>Pays</span><b>${esc(t.pays)}</b></div>`
+      + (t.stake != null && t.stake > 0 ? `<div><span>¼ Kelly</span><b>${esc(stakeTxt(t.stake))}${t.capped ? ' cap' : ''}</b></div>` : '')
+      + `</div><div class="tk-ctl"><span class="tk-sizes" role="group" aria-label="Legs in the entry">${sizes}</span>`
+      + `<button type="button" class="tk-save" data-action="ticket-save">Save image</button></div></div>`;
+  }
+  // The ticket drawn on a canvas, to share or keep: initials for faces (a
+  // headshot from another site would taint the canvas), the page's own colours.
+  function saveTicketImage() {
+    const d = state.picks || {};
+    const all = d.ppPool || [];
+    const legs = all.filter((x) => Date.parse(x.commence) > Date.now());
+    const t = ticketData(d, legs, legs.length === all.length);
+    if (!t) return;
+    const css = getComputedStyle(document.documentElement);
+    const col = (v, f) => (css.getPropertyValue(v).trim() || f);
+    const W = 1080, top = 250, row = 128, H = top + t.legs.length * row + 260;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    const font = (w, px) => `${w} ${px}px system-ui, -apple-system, Segoe UI, sans-serif`;
+    g.fillStyle = col('--card', '#12161d'); g.fillRect(0, 0, W, H);
+    g.fillStyle = col('--accent', '#f2c34d'); g.font = font(800, 40); g.fillText('AIMPLIFIED.', 64, 96);
+    g.fillStyle = col('--text', '#e8ecf2'); g.font = font(800, 64); g.fillText(t.name, 64, 190);
+    if (t.ev != null) { g.textAlign = 'right'; g.fillStyle = t.ev > 0 ? col('--positive', '#3ecf8e') : col('--textDim', '#98a2b3'); g.font = font(700, 40); g.fillText(t.ev > 0 ? `+${t.ev}% edge` : 'no edge', W - 64, 190); g.textAlign = 'left'; }
+    t.legs.forEach((l, i) => {
+      const y = top + i * row + 64;
+      g.fillStyle = col('--board2', '#1b212a'); g.beginPath(); g.arc(112, y - 14, 44, 0, Math.PI * 2); g.fill();
+      g.fillStyle = col('--text', '#e8ecf2'); g.font = font(700, 30); g.textAlign = 'center'; g.fillText(initialsOf(l.who, pickIsTeam(l.x)), 112, y - 4); g.textAlign = 'left';
+      g.font = font(700, 40); g.fillText(l.who, 184, y - 22);
+      g.fillStyle = col('--accent', '#f2c34d'); g.font = font(600, 32); g.fillText(l.pick, 184, y + 22);
+      g.fillStyle = col('--text', '#e8ecf2'); g.font = font(700, 44); g.textAlign = 'right'; g.fillText(pct0(l.p), W - 64, y); g.textAlign = 'left';
+    });
+    const fy = top + t.legs.length * row + 70;
+    g.fillStyle = col('--textDim', '#98a2b3'); g.font = font(500, 32);
+    g.fillText(`All ${t.n} land ${pct0(t.all)}   ·   pays ${t.pays}`, 64, fy);
+    if (t.stake != null && t.stake > 0) g.fillText(`¼ Kelly ${stakeTxt(t.stake)}${t.capped ? ' (cap)' : ''}`, 64, fy + 52);
+    g.fillText(`${ptDayOf(Date.now())} · aimplified`, 64, fy + 104);
+    cv.toBlob(async (blob) => {
+      if (!blob) return;
+      const file = new File([blob], `aimplified-entry-${ptDayOf(Date.now())}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: `AIMPLIFIED ${t.name}` }); return; } catch (err) { if (err && err.name === 'AbortError') return; }
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = file.name;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }, 'image/png');
+  }
+
   // The entry's own units since its pool was first logged (2026-10-28), from
   // "How the list did": the Power and the 3-pick Flex.
   function ppEntryRecordHtml(h) {

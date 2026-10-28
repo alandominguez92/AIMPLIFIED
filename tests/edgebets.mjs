@@ -165,6 +165,10 @@ ok(R && R.n === 4 && R.hit === 3 && R.units === flat && R.since === '2026-10-27'
 ok(R.kellyUnits === r2(graded.reduce((s, r) => s + r.first_stake * (r.result === 'hit' ? dec(r.first_price) - 1 : -1), 0)), `and ${R.kellyUnits}% of the bankroll at the quarter-Kelly stakes shown`);
 ok(R.clv.n === 4 && R.clv.beat === clv.filter((v) => v > 0).length && R.clv.avg === r1(clv.reduce((a, v) => a + v, 0) / 4),
   `beat the close ${R.clv.beat} of ${R.clv.n}, by ${R.clv.avg}% on average (EV at the first price on the closing fair)`);
+// Each day's own, for the page's "Last night" (2026-10-28, tests/flashy.mjs).
+const d27 = R.byDay && R.byDay['2026-10-27'];
+ok(d27 && d27.n === 4 && d27.hit === 3 && d27.units === flat && d27.clvN === 4 && d27.beat === R.clv.beat && Object.keys(R.byDay).join() === '2026-10-27',
+  `and by day: Oct 27, ${d27 && d27.hit} of ${d27 && d27.n}, ${d27 && d27.units}u, beat the close ${d27 && d27.beat} of ${d27 && d27.clvN}`);
 
 // ---- fresh prices ---------------------------------------------------------------------------------
 console.log('\n-- fresh prices --');
@@ -251,7 +255,8 @@ const before2 = (await get('/api/picks')).edgeRecord;
 ok(sq.prepare('SELECT result FROM edgebets WHERE key = ?').get(CIN).result === 'void' && before2.n === R.n && before2.void === R.void + 1 && before2.clv.n === R.clv.n,
   "the log's FC Cincinnati +410 from production's first read is void, and counts for nothing");
 const rp = alift('renderPicks');
-ok(/grid\.innerHTML = bankHtml\(\) \+ ppCard \+ evBetsHtml\(d\) \+ listCard \+ after;/.test(rp) && /<span class="tc-title">Your PrizePicks entry<\/span>/.test(rp) && /<span class="tc-title">Most likely to land<\/span>/.test(rp),
+// (Since later on 2026-10-28 the "Last night" recap leads: tests/flashy.mjs.)
+ok(/grid\.innerHTML = recapHtml\(d\.record && d\.record\.history, d\.edgeRecord\) \+ bankHtml\(\) \+ ppCard \+ evBetsHtml\(d\) \+ listCard \+ after;/.test(rp) && /<span class="tc-title">Your PrizePicks entry<\/span>/.test(rp) && /<span class="tc-title">Most likely to land<\/span>/.test(rp),
   'Picks leads with the PrizePicks entry, then the sportsbook bets, then the likeliest legs');
 ok(/if \(t\.dataset\.action === 'bank-amount' \|\| t\.dataset\.action === 'bank-cap'\)/.test(app) && /localStorage\.setItem\('aimplified_bankroll'/.test(app), 'the bankroll is kept on the device');
 
