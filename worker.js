@@ -3861,6 +3861,7 @@ async function logGamePicks(db, sport, date, entries) {
   if (!db || !date || !entries || !entries.length) return 0;
   await ensureGamePickSchema(db);
   const stmts = [];
+  let logged = 0;
   for (const e of entries) {
     if (!e || !e.game_id || e.price == null || e.win_prob == null) continue;
     // The same rule the moneyline learned: a price disagreeing with the fair
@@ -3884,10 +3885,24 @@ async function logGamePicks(db, sport, date, entries) {
       'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=?, close_at=?, book_fairs=COALESCE(?, book_fairs) WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
     ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied, at, e.book_fairs || null,
       sport, date, String(e.game_id), market, e.side || null));
+    // A row whose side has lost the board's lead (2026-10-28) keeps its own
+    // side's read too, from the same capture's quotes for every side. Its close
+    // had stopped at the last read that led with it -- FC Cincinnati's +410
+    // stood 33 hours on Oct 27's 5 AM price -- so its closing price measured
+    // nothing, and a favourite that had stopped being one stayed on Picks at
+    // its old chance. Same line only: a total read at another number is not
+    // this row's.
+    for (const [sd, q] of Object.entries(e.quotes || {})) {
+      if (sd === e.side || !q || typeof q.price !== 'number' || q.fair == null || !mlPriceSane(q.price, q.fair)) continue;
+      const imp = round1(amProb(q.price) * 100);
+      stmts.push(db.prepare('UPDATE gmpicks SET close_price=?, win_prob=?, implied=?, edge=?, close_at=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=? AND point IS ?')
+        .bind(q.price, q.fair, imp, round1(q.fair - imp), at, sport, date, String(e.game_id), market, sd, e.point == null ? null : e.point));
+    }
+    logged++;
   }
   if (!stmts.length) return 0;
   await db.batch(stmts);
-  return stmts.length / 2;
+  return logged;
 }
 
 // ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
@@ -8490,8 +8505,10 @@ const EV_MAX = 12;
 // and the moneyline captures read 36 hours ahead.
 const EV_WINDOW_MS = 36 * 3600e3;
 // How far behind its league's latest read a row's may be and still be that
-// read's: one capture writes its rows within a second or two.
-const GM_READ_SLACK_MS = 30 * 60e3;
+// read's: one capture writes its rows within a second or two. (30 minutes
+// until 2026-10-28, which let CF Montreal's +450 through from a read 25
+// minutes before the one that took its game's lead away.)
+const GM_READ_SLACK_MS = 5 * 60e3;
 // evScan keeps every side it priced (all), as well as those past the bar
 // (bets): the edge-bet log reads each logged bet's closing price and fair
 // from all (2026-10-28). Each side carries how it grades (grade).
@@ -10840,6 +10857,8 @@ function h2hEntries(cfg, evs, lg, now) {
       win_prob: round1(winProb * 100), implied: round1(imp * 100), edge: round1((winProb - imp) * 100),
       price, book: side === 'home' ? g.homeBook : g.awayBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
       book_fairs: bookFairsJson(Object.fromEntries(Object.entries(g.byBook || {}).map(([bk, p]) => [bk, side === 'home' ? p : 1 - p]))),
+      // Both clubs, for a row whose side has lost the lead (logGamePicks).
+      quotes: { home: { price: g.homePrice, fair: g.homeFair }, away: { price: g.awayPrice, fair: g.awayFair } },
     });
   }
   return out;
@@ -12835,6 +12854,13 @@ function devigThreeWay(prices) {
 // opts.log: write the picks even for an ?all=1 read, limited to fixtures inside
 // the capture horizon. The cron uses it after every capture (see
 // soccerMaybeIngest), so a matchday nobody opened still leaves a record.
+// A soccer game's three ways as logGamePicks takes them (oneXtwo is home,
+// draw, away).
+const soc1x2Quotes = (g) => {
+  const [h, d, a] = g.oneXtwo || [];
+  const q = (p) => (p ? { price: p.price, fair: p.fair } : null);
+  return { home: q(h), draw: q(d), away: q(a) };
+};
 async function soccerBoardData(env, url, opts = {}) {
   // leagueList, not just the keys: the chips used to be hardcoded in the HTML and
   // would have silently kept saying "three leagues" with two of them missing.
@@ -13043,6 +13069,8 @@ async function soccerBoardData(env, url, opts = {}) {
           pick: g.lead.selection, home: g.home, away: g.away,
           win_prob: g.lead.fair, implied: g.lead.implied, edge: g.lead.value,
           price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.lead.bookFairs,
+          // All three ways, for a row whose side has lost the lead (logGamePicks).
+          quotes: soc1x2Quotes(g),
         })));
         // The goals total is bought on the same call as the 1X2 and shown on the
         // same row, so logging it costs nothing and doubles what a matchday
@@ -13063,6 +13091,7 @@ async function soccerBoardData(env, url, opts = {}) {
             win_prob: best.fair, implied: best.price == null ? null : Math.round(amProb(best.price) * 1000) / 10,
             edge: best.value, price: best.price, book: best.book,
             fair_src: t.fairSrc || 'sharp-pool', sharp_n: t.sharpN,
+            quotes: { over: { price: t.overPrice, fair: t.overFair }, under: { price: t.underPrice, fair: t.underFair } },
           });
         }
         if (tot.length) await logByDay(tot);
@@ -13072,6 +13101,7 @@ async function soccerBoardData(env, url, opts = {}) {
           pick: g.fav.selection, home: g.home, away: g.away,
           win_prob: g.fav.fair, implied: g.fav.implied, edge: g.fav.value,
           price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.fav.bookFairs,
+          quotes: soc1x2Quotes(g),
         }));
         if (favs.length) await logByDay(favs);
       }
@@ -14740,6 +14770,8 @@ async function nflBoardData(env, url) {
           price: g.pickPrice, book: g.pickBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
           // byBookA is each book's chance of the away side (team a).
           book_fairs: bookFairsJson(Object.fromEntries(Object.entries(g.byBookA || {}).map(([bk, p]) => [bk, g.pickTeam === g.away ? p : 1 - p]))),
+          // Both teams, for a row whose side has lost the lead (logGamePicks).
+          quotes: { home: { price: g.home_price, fair: g.home_fair }, away: { price: g.away_price, fair: g.away_fair } },
         })));
       }
     } catch (e) { /* logging never breaks the board */ }

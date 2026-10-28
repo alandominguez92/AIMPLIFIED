@@ -168,13 +168,21 @@ const run = (sql, a) => {
     const row = Object.fromEntries(c.map((k, i) => [k, a[i]]));
     const k = gmKey([row.sport, row.date, row.game_id, row.market]);
     if (!gm.has(k)) gm.set(k, { ...row, result: null, home_score: null, away_score: null });
+  } else if (/^\s*UPDATE gmpicks SET close_price=\?, win_prob=\?/i.test(sql)) {
+    // A row's own side, from the capture's quotes for every side (2026-10-28):
+    // its side and line have to match, as the SQL says.
+    const [cp, wp, imp, edge, , sport, date, gid, mkt, side, point] = a;
+    const r = gm.get(gmKey([sport, date, gid, mkt]));
+    if (r && r.side === side && (r.point == null ? null : r.point) === (point == null ? null : point)) { r.close_price = cp; r.win_prob = wp; r.implied = imp; r.edge = edge; }
   } else if (/^\s*UPDATE gmpicks SET close_price/i.test(sql)) {
     // close_at (2026-10-11), then book_fairs (2026-10-27), ride between the
-    // latest read and the key.
+    // latest read and the key; the side ends it, and the row's has to match
+    // (2026-10-28: the stub had updated whichever side the row held).
     const bf = /book_fairs/.test(sql) ? a[5] : undefined;
-    const [cp, edge, wp, imp, sport, date, gid, mkt] = /book_fairs/.test(sql) ? [...a.slice(0, 4), ...a.slice(6)]
+    const [cp, edge, wp, imp, sport, date, gid, mkt, side] = /book_fairs/.test(sql) ? [...a.slice(0, 4), ...a.slice(6)]
       : /close_at/.test(sql) ? [...a.slice(0, 4), ...a.slice(5)] : a;
-    const r = gm.get(gmKey([sport, date, gid, mkt])); if (r) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; if (bf != null) r.book_fairs = bf; }
+    const r = gm.get(gmKey([sport, date, gid, mkt]));
+    if (r && r.side === side) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; if (bf != null) r.book_fairs = bf; }
   } else if (/^\s*UPDATE gmpicks SET result/i.test(sql)) {
     const [res, hs, as, sport, date, gid, mkt] = a;
     const r = gm.get(gmKey([sport, date, gid, mkt])); if (r) { r.result = res; r.home_score = hs; r.away_score = as; }

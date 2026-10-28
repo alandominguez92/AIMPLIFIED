@@ -77,7 +77,7 @@ for (const [sport, b] of [['nba', F.nbaBoard], ['nhl', F.nhlBoard]]) {
 const readAt = (r) => r.close_at || r.entry_at;
 const latestRead = {};
 for (const r of F.gm) if (!(readAt(r) <= latestRead[r.league])) latestRead[r.league] = readAt(r);
-const currentRow = (r) => RealDate.parse(readAt(r)) >= RealDate.parse(latestRead[r.league]) - 30 * 60e3;
+const currentRow = (r) => RealDate.parse(readAt(r)) >= RealDate.parse(latestRead[r.league]) - 5 * 60e3;
 for (const r of F.gm.filter(currentRow)) cands.push({ sport: 'soccer', fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, prop: false, t: r.commence });
 for (const l of F.ppLegs) if (l.book_line === l.point && l.market !== 'reb' && l.market !== 'blk' && l.market !== 'stl') cands.push({ sport: 'nba', fair: l.sharp_under, price: l.book_under, prop: true, t: l.commence });
 const want = cands.filter((c) => c.fair != null && typeof c.price === 'number' && within(c.t) && Math.abs(c.price) >= 100 && Math.abs(c.price) <= 600

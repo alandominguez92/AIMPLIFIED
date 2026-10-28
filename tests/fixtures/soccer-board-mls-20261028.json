@@ -1,0 +1,1000 @@
+{
+ "_recorded": "Production /api/soccer-board?league=mls at 1:30 PM Pacific, Oct 28: the MLS board from the 12:45 PM read (asOf), every game as served.",
+ "asOf": "2026-10-28T19:45:35.617Z",
+ "games": [
+  {
+   "id": "cd715f0ae437d4348d5b603fe260d8d2",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-28T23:30:00Z",
+   "home": "New York City FC",
+   "away": "Atlanta United FC",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "New York City FC",
+     "fair": 53.9,
+     "price": -140,
+     "book": "draftkings",
+     "implied": 58.3,
+     "value": -4.5,
+     "bookFairs": "{\"pinnacle\":53.9,\"fanduel\":54.8,\"betonlineag\":54.8,\"lowvig\":54.8,\"draftkings\":53.8}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 24.2,
+     "price": 290,
+     "book": "draftkings",
+     "implied": 25.6,
+     "value": -1.4,
+     "bookFairs": "{\"pinnacle\":24.2,\"fanduel\":23.7,\"betonlineag\":23,\"lowvig\":23,\"draftkings\":23.7}"
+    },
+    {
+     "selection": "Atlanta United FC",
+     "fair": 21.9,
+     "price": 330,
+     "book": "fanduel",
+     "implied": 23.3,
+     "value": -1.3,
+     "bookFairs": "{\"pinnacle\":21.9,\"fanduel\":21.5,\"betonlineag\":22.2,\"lowvig\":22.2,\"draftkings\":22.5}"
+    }
+   ],
+   "lead": {
+    "selection": "Atlanta United FC",
+    "fair": 21.9,
+    "price": 330,
+    "book": "fanduel",
+    "implied": 23.3,
+    "value": -1.3,
+    "bookFairs": "{\"pinnacle\":21.9,\"fanduel\":21.5,\"betonlineag\":22.2,\"lowvig\":22.2,\"draftkings\":22.5}"
+   },
+   "fav": {
+    "selection": "New York City FC",
+    "fair": 53.9,
+    "price": -140,
+    "book": "draftkings",
+    "implied": 58.3,
+    "value": -4.5,
+    "bookFairs": "{\"pinnacle\":53.9,\"fanduel\":54.8,\"betonlineag\":54.8,\"lowvig\":54.8,\"draftkings\":53.8}"
+   },
+   "total": {
+    "point": 3,
+    "sharpN": 2,
+    "fairSrc": "sharp-pool",
+    "lines": "3:2s/0x 2.75:1s/0x",
+    "overFair": 48.3,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 51.7,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "16b7995b18b6f97f2699d033074c64bb",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-28T23:30:00Z",
+   "home": "Toronto FC",
+   "away": "D.C. United",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Toronto FC",
+     "fair": 50.6,
+     "price": -115,
+     "book": "draftkings",
+     "implied": 53.5,
+     "value": -2.9,
+     "bookFairs": "{\"pinnacle\":50.6,\"fanduel\":50.4,\"betonlineag\":49.7,\"lowvig\":49.7,\"draftkings\":49.4}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 24.1,
+     "price": 290,
+     "book": "fanduel",
+     "implied": 25.6,
+     "value": -1.5,
+     "bookFairs": "{\"pinnacle\":24.1,\"fanduel\":24.2,\"betonlineag\":24.5,\"lowvig\":24.5,\"draftkings\":24.3}"
+    },
+    {
+     "selection": "D.C. United",
+     "fair": 25.3,
+     "price": 270,
+     "book": "fanduel",
+     "implied": 27,
+     "value": -1.7,
+     "bookFairs": "{\"pinnacle\":25.3,\"fanduel\":25.5,\"betonlineag\":25.8,\"lowvig\":25.8,\"draftkings\":26.4}"
+    }
+   ],
+   "lead": {
+    "selection": "Draw",
+    "fair": 24.1,
+    "price": 290,
+    "book": "fanduel",
+    "implied": 25.6,
+    "value": -1.5,
+    "bookFairs": "{\"pinnacle\":24.1,\"fanduel\":24.2,\"betonlineag\":24.5,\"lowvig\":24.5,\"draftkings\":24.3}"
+   },
+   "fav": {
+    "selection": "Toronto FC",
+    "fair": 50.6,
+    "price": -115,
+    "book": "draftkings",
+    "implied": 53.5,
+    "value": -2.9,
+    "bookFairs": "{\"pinnacle\":50.6,\"fanduel\":50.4,\"betonlineag\":49.7,\"lowvig\":49.7,\"draftkings\":49.4}"
+   },
+   "total": {
+    "point": 3,
+    "sharpN": 2,
+    "fairSrc": "sharp-pool",
+    "lines": "3:2s/0x 3.25:1s/0x",
+    "overFair": 53.5,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 46.5,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "995383601ec82bc39259205612a1f007",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-28T23:30:00Z",
+   "home": "Inter Miami CF",
+   "away": "FC Cincinnati",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Inter Miami CF",
+     "fair": 61.2,
+     "price": -190,
+     "book": "draftkings",
+     "implied": 65.5,
+     "value": -4.3,
+     "bookFairs": "{\"pinnacle\":61.2,\"fanduel\":61.4,\"lowvig\":62.1,\"betonlineag\":62.1,\"draftkings\":60.6}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 19.4,
+     "price": 390,
+     "book": "fanduel",
+     "implied": 20.4,
+     "value": -1.1,
+     "bookFairs": "{\"pinnacle\":19.4,\"fanduel\":19.1,\"lowvig\":18.6,\"betonlineag\":18.6,\"draftkings\":19.3}"
+    },
+    {
+     "selection": "FC Cincinnati",
+     "fair": 19.4,
+     "price": 380,
+     "book": "fanduel",
+     "implied": 20.8,
+     "value": -1.4,
+     "bookFairs": "{\"pinnacle\":19.4,\"fanduel\":19.5,\"lowvig\":19.3,\"betonlineag\":19.3,\"draftkings\":20.1}"
+    }
+   ],
+   "lead": {
+    "selection": "Draw",
+    "fair": 19.4,
+    "price": 390,
+    "book": "fanduel",
+    "implied": 20.4,
+    "value": -1.1,
+    "bookFairs": "{\"pinnacle\":19.4,\"fanduel\":19.1,\"lowvig\":18.6,\"betonlineag\":18.6,\"draftkings\":19.3}"
+   },
+   "fav": {
+    "selection": "Inter Miami CF",
+    "fair": 61.2,
+    "price": -190,
+    "book": "draftkings",
+    "implied": 65.5,
+    "value": -4.3,
+    "bookFairs": "{\"pinnacle\":61.2,\"fanduel\":61.4,\"lowvig\":62.1,\"betonlineag\":62.1,\"draftkings\":60.6}"
+   },
+   "total": {
+    "point": 4,
+    "sharpN": 3,
+    "fairSrc": "sharp-pool",
+    "lines": "4:3s/0x",
+    "overFair": 50,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 50,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "2b0bc4a27e4c8ba094bb47544dcf8471",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-28T23:30:00Z",
+   "home": "New England Revolution",
+   "away": "New York Red Bulls",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "New England Revolution",
+     "fair": 45.8,
+     "price": 105,
+     "book": "draftkings",
+     "implied": 48.8,
+     "value": -2.9,
+     "bookFairs": "{\"fanduel\":45.7,\"pinnacle\":45.8,\"lowvig\":45.8,\"betonlineag\":45.8,\"draftkings\":45.1}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 23.8,
+     "price": 290,
+     "book": "fanduel",
+     "implied": 25.6,
+     "value": -1.8,
+     "bookFairs": "{\"fanduel\":24,\"pinnacle\":23.8,\"lowvig\":23.6,\"betonlineag\":23.6,\"draftkings\":24}"
+    },
+    {
+     "selection": "New York Red Bulls",
+     "fair": 30.3,
+     "price": 210,
+     "book": "fanduel",
+     "implied": 32.3,
+     "value": -1.9,
+     "bookFairs": "{\"fanduel\":30.2,\"pinnacle\":30.3,\"lowvig\":30.7,\"betonlineag\":30.7,\"draftkings\":30.8}"
+    }
+   ],
+   "lead": {
+    "selection": "Draw",
+    "fair": 23.8,
+    "price": 290,
+    "book": "fanduel",
+    "implied": 25.6,
+    "value": -1.8,
+    "bookFairs": "{\"fanduel\":24,\"pinnacle\":23.8,\"lowvig\":23.6,\"betonlineag\":23.6,\"draftkings\":24}"
+   },
+   "fav": {
+    "selection": "New England Revolution",
+    "fair": 45.8,
+    "price": 105,
+    "book": "draftkings",
+    "implied": 48.8,
+    "value": -2.9,
+    "bookFairs": "{\"fanduel\":45.7,\"pinnacle\":45.8,\"lowvig\":45.8,\"betonlineag\":45.8,\"draftkings\":45.1}"
+   },
+   "total": {
+    "point": 3.5,
+    "sharpN": 3,
+    "fairSrc": "sharp-pool",
+    "lines": "3.5:3s/0x",
+    "overFair": 48.3,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 51.7,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "6579762c374e7bc06dacf0b2c8ef8b42",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-28T23:30:00Z",
+   "home": "Charlotte FC",
+   "away": "CF Montreal",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Charlotte FC",
+     "fair": 58,
+     "price": -160,
+     "book": "draftkings",
+     "implied": 61.5,
+     "value": -3.6,
+     "bookFairs": "{\"fanduel\":58.9,\"pinnacle\":58,\"lowvig\":58.7,\"betonlineag\":58.7,\"draftkings\":57.2}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 21.3,
+     "price": 350,
+     "book": "fanduel",
+     "implied": 22.2,
+     "value": -0.9,
+     "bookFairs": "{\"fanduel\":20.8,\"pinnacle\":21.3,\"lowvig\":21.4,\"betonlineag\":21.4,\"draftkings\":21.6}"
+    },
+    {
+     "selection": "CF Montreal",
+     "fair": 20.7,
+     "price": 360,
+     "book": "fanduel",
+     "implied": 21.7,
+     "value": -1,
+     "bookFairs": "{\"fanduel\":20.3,\"pinnacle\":20.7,\"lowvig\":19.9,\"betonlineag\":19.9,\"draftkings\":21.1}"
+    }
+   ],
+   "lead": {
+    "selection": "Draw",
+    "fair": 21.3,
+    "price": 350,
+    "book": "fanduel",
+    "implied": 22.2,
+    "value": -0.9,
+    "bookFairs": "{\"fanduel\":20.8,\"pinnacle\":21.3,\"lowvig\":21.4,\"betonlineag\":21.4,\"draftkings\":21.6}"
+   },
+   "fav": {
+    "selection": "Charlotte FC",
+    "fair": 58,
+    "price": -160,
+    "book": "draftkings",
+    "implied": 61.5,
+    "value": -3.6,
+    "bookFairs": "{\"fanduel\":58.9,\"pinnacle\":58,\"lowvig\":58.7,\"betonlineag\":58.7,\"draftkings\":57.2}"
+   },
+   "total": {
+    "point": 3.5,
+    "sharpN": 2,
+    "fairSrc": "sharp-pool",
+    "lines": "3.5:2s/0x 3.25:1s/0x",
+    "overFair": 45.7,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 54.3,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "ab6757d920885818de2ea52539580308",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T00:30:00Z",
+   "home": "Chicago Fire",
+   "away": "Orlando City SC",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Chicago Fire",
+     "fair": 62.6,
+     "price": -195,
+     "book": "draftkings",
+     "implied": 66.1,
+     "value": -3.5,
+     "bookFairs": "{\"fanduel\":63.3,\"pinnacle\":62.6,\"lowvig\":62,\"betonlineag\":62,\"draftkings\":61.1}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 18.3,
+     "price": 410,
+     "book": "fanduel",
+     "implied": 19.6,
+     "value": -1.4,
+     "bookFairs": "{\"fanduel\":18.3,\"pinnacle\":18.3,\"lowvig\":18.9,\"betonlineag\":18.9,\"draftkings\":18.9}"
+    },
+    {
+     "selection": "Orlando City SC",
+     "fair": 19.2,
+     "price": 410,
+     "book": "fanduel",
+     "implied": 19.6,
+     "value": -0.4,
+     "bookFairs": "{\"fanduel\":18.3,\"pinnacle\":19.2,\"lowvig\":19.1,\"betonlineag\":19.1,\"draftkings\":20.1}"
+    }
+   ],
+   "lead": {
+    "selection": "Orlando City SC",
+    "fair": 19.2,
+    "price": 410,
+    "book": "fanduel",
+    "implied": 19.6,
+    "value": -0.4,
+    "bookFairs": "{\"fanduel\":18.3,\"pinnacle\":19.2,\"lowvig\":19.1,\"betonlineag\":19.1,\"draftkings\":20.1}"
+   },
+   "fav": {
+    "selection": "Chicago Fire",
+    "fair": 62.6,
+    "price": -195,
+    "book": "draftkings",
+    "implied": 66.1,
+    "value": -3.5,
+    "bookFairs": "{\"fanduel\":63.3,\"pinnacle\":62.6,\"lowvig\":62,\"betonlineag\":62,\"draftkings\":61.1}"
+   },
+   "total": {
+    "point": 4,
+    "sharpN": 3,
+    "fairSrc": "sharp-pool",
+    "lines": "4:3s/0x",
+    "overFair": 50,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 50,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "88e2736c1e17fafa10888dfcf932f44d",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T00:30:00Z",
+   "home": "Nashville SC",
+   "away": "Philadelphia Union",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Nashville SC",
+     "fair": 54.3,
+     "price": -135,
+     "book": "draftkings",
+     "implied": 57.4,
+     "value": -3.1,
+     "bookFairs": "{\"fanduel\":55.1,\"pinnacle\":54.3,\"lowvig\":54.6,\"betonlineag\":54.6,\"draftkings\":53.1}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 23.4,
+     "price": 300,
+     "book": "fanduel",
+     "implied": 25,
+     "value": -1.6,
+     "bookFairs": "{\"fanduel\":23.3,\"pinnacle\":23.4,\"lowvig\":23.3,\"betonlineag\":23.3,\"draftkings\":23.7}"
+    },
+    {
+     "selection": "Philadelphia Union",
+     "fair": 22.3,
+     "price": 330,
+     "book": "fanduel",
+     "implied": 23.3,
+     "value": -0.9,
+     "bookFairs": "{\"fanduel\":21.6,\"pinnacle\":22.3,\"lowvig\":22.1,\"betonlineag\":22.1,\"draftkings\":23.1}"
+    }
+   ],
+   "lead": {
+    "selection": "Philadelphia Union",
+    "fair": 22.3,
+    "price": 330,
+    "book": "fanduel",
+    "implied": 23.3,
+    "value": -0.9,
+    "bookFairs": "{\"fanduel\":21.6,\"pinnacle\":22.3,\"lowvig\":22.1,\"betonlineag\":22.1,\"draftkings\":23.1}"
+   },
+   "fav": {
+    "selection": "Nashville SC",
+    "fair": 54.3,
+    "price": -135,
+    "book": "draftkings",
+    "implied": 57.4,
+    "value": -3.1,
+    "bookFairs": "{\"fanduel\":55.1,\"pinnacle\":54.3,\"lowvig\":54.6,\"betonlineag\":54.6,\"draftkings\":53.1}"
+   },
+   "total": {
+    "point": 3,
+    "sharpN": 3,
+    "fairSrc": "sharp-pool",
+    "lines": "3:3s/0x",
+    "overFair": 48.3,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 51.7,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "b7c3d4a130a023950652a1b4af4d9a19",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T00:30:00Z",
+   "home": "FC Dallas",
+   "away": "Columbus Crew SC",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "FC Dallas",
+     "fair": 43.4,
+     "price": 120,
+     "book": "fanduel",
+     "implied": 45.5,
+     "value": -2,
+     "bookFairs": "{\"fanduel\":42.8,\"pinnacle\":43.4,\"lowvig\":42.6,\"betonlineag\":42.6,\"draftkings\":43}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 24.6,
+     "price": 280,
+     "book": "fanduel",
+     "implied": 26.3,
+     "value": -1.7,
+     "bookFairs": "{\"fanduel\":24.8,\"pinnacle\":24.6,\"lowvig\":25,\"betonlineag\":25,\"draftkings\":24.6}"
+    },
+    {
+     "selection": "Columbus Crew SC",
+     "fair": 32,
+     "price": 190,
+     "book": "fanduel",
+     "implied": 34.5,
+     "value": -2.5,
+     "bookFairs": "{\"fanduel\":32.5,\"pinnacle\":32,\"lowvig\":32.4,\"betonlineag\":32.4,\"draftkings\":32.4}"
+    }
+   ],
+   "lead": {
+    "selection": "Draw",
+    "fair": 24.6,
+    "price": 280,
+    "book": "fanduel",
+    "implied": 26.3,
+    "value": -1.7,
+    "bookFairs": "{\"fanduel\":24.8,\"pinnacle\":24.6,\"lowvig\":25,\"betonlineag\":25,\"draftkings\":24.6}"
+   },
+   "fav": {
+    "selection": "FC Dallas",
+    "fair": 43.4,
+    "price": 120,
+    "book": "fanduel",
+    "implied": 45.5,
+    "value": -2,
+    "bookFairs": "{\"fanduel\":42.8,\"pinnacle\":43.4,\"lowvig\":42.6,\"betonlineag\":42.6,\"draftkings\":43}"
+   },
+   "total": {
+    "point": 3.5,
+    "sharpN": 2,
+    "fairSrc": "sharp-pool",
+    "lines": "3.5:2s/0x 3.25:1s/0x",
+    "overFair": 44.9,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 55.1,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "22fbabab5da12c7e78a8aa08ac6387ec",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T00:30:00Z",
+   "home": "Minnesota United FC",
+   "away": "Sporting Kansas City",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Minnesota United FC",
+     "fair": 67.2,
+     "price": -245,
+     "book": "draftkings",
+     "implied": 71,
+     "value": -3.8,
+     "bookFairs": "{\"fanduel\":68.1,\"pinnacle\":67.2,\"betonlineag\":67.6,\"lowvig\":67.6,\"draftkings\":65.5}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 18.1,
+     "price": 430,
+     "book": "fanduel",
+     "implied": 18.9,
+     "value": -0.8,
+     "bookFairs": "{\"fanduel\":17.6,\"pinnacle\":18.1,\"betonlineag\":17.7,\"lowvig\":17.7,\"draftkings\":18.4}"
+    },
+    {
+     "selection": "Sporting Kansas City",
+     "fair": 14.7,
+     "price": 550,
+     "book": "fanduel",
+     "implied": 15.4,
+     "value": -0.7,
+     "bookFairs": "{\"fanduel\":14.3,\"pinnacle\":14.7,\"betonlineag\":14.7,\"lowvig\":14.7,\"draftkings\":16}"
+    }
+   ],
+   "lead": {
+    "selection": "Sporting Kansas City",
+    "fair": 14.7,
+    "price": 550,
+    "book": "fanduel",
+    "implied": 15.4,
+    "value": -0.7,
+    "bookFairs": "{\"fanduel\":14.3,\"pinnacle\":14.7,\"betonlineag\":14.7,\"lowvig\":14.7,\"draftkings\":16}"
+   },
+   "fav": {
+    "selection": "Minnesota United FC",
+    "fair": 67.2,
+    "price": -245,
+    "book": "draftkings",
+    "implied": 71,
+    "value": -3.8,
+    "bookFairs": "{\"fanduel\":68.1,\"pinnacle\":67.2,\"betonlineag\":67.6,\"lowvig\":67.6,\"draftkings\":65.5}"
+   },
+   "total": {
+    "point": 3.5,
+    "sharpN": 3,
+    "fairSrc": "sharp-pool",
+    "lines": "3.5:3s/0x",
+    "overFair": 51.7,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 48.3,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "d10543f6fe18777d7a312edfdb0a7e45",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T00:30:00Z",
+   "home": "Austin FC",
+   "away": "Real Salt Lake",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Austin FC",
+     "fair": 31.5,
+     "price": 200,
+     "book": "fanduel",
+     "implied": 33.3,
+     "value": -1.9,
+     "bookFairs": "{\"fanduel\":31.2,\"pinnacle\":31.5,\"betonlineag\":32.2,\"lowvig\":32.2,\"draftkings\":32.3}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 25.4,
+     "price": 270,
+     "book": "draftkings",
+     "implied": 27,
+     "value": -1.7,
+     "bookFairs": "{\"fanduel\":25.3,\"pinnacle\":25.4,\"betonlineag\":24.9,\"lowvig\":24.9,\"draftkings\":24.9}"
+    },
+    {
+     "selection": "Real Salt Lake",
+     "fair": 43.1,
+     "price": 115,
+     "book": "draftkings",
+     "implied": 46.5,
+     "value": -3.4,
+     "bookFairs": "{\"fanduel\":43.5,\"pinnacle\":43.1,\"betonlineag\":42.9,\"lowvig\":42.9,\"draftkings\":42.8}"
+    }
+   ],
+   "lead": {
+    "selection": "Draw",
+    "fair": 25.4,
+    "price": 270,
+    "book": "draftkings",
+    "implied": 27,
+    "value": -1.7,
+    "bookFairs": "{\"fanduel\":25.3,\"pinnacle\":25.4,\"betonlineag\":24.9,\"lowvig\":24.9,\"draftkings\":24.9}"
+   },
+   "fav": {
+    "selection": "Real Salt Lake",
+    "fair": 43.1,
+    "price": 115,
+    "book": "draftkings",
+    "implied": 46.5,
+    "value": -3.4,
+    "bookFairs": "{\"fanduel\":43.5,\"pinnacle\":43.1,\"betonlineag\":42.9,\"lowvig\":42.9,\"draftkings\":42.8}"
+   },
+   "total": {
+    "point": 3,
+    "sharpN": 3,
+    "fairSrc": "sharp-pool",
+    "lines": "3:3s/0x",
+    "overFair": 48.9,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 51.1,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "47c2514142ff3a1962e588c98d655c5f",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T00:30:00Z",
+   "home": "St. Louis City SC",
+   "away": "Portland Timbers",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "St. Louis City SC",
+     "fair": 48.9,
+     "price": -110,
+     "book": "draftkings",
+     "implied": 52.4,
+     "value": -3.5,
+     "bookFairs": "{\"fanduel\":49.1,\"pinnacle\":48.9,\"lowvig\":49.3,\"betonlineag\":49.3,\"draftkings\":48.4}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 24.2,
+     "price": 290,
+     "book": "fanduel",
+     "implied": 25.6,
+     "value": -1.5,
+     "bookFairs": "{\"fanduel\":24.1,\"pinnacle\":24.2,\"lowvig\":24,\"betonlineag\":24,\"draftkings\":24}"
+    },
+    {
+     "selection": "Portland Timbers",
+     "fair": 27,
+     "price": 250,
+     "book": "fanduel",
+     "implied": 28.6,
+     "value": -1.6,
+     "bookFairs": "{\"fanduel\":26.8,\"pinnacle\":27,\"lowvig\":26.7,\"betonlineag\":26.7,\"draftkings\":27.6}"
+    }
+   ],
+   "lead": {
+    "selection": "Draw",
+    "fair": 24.2,
+    "price": 290,
+    "book": "fanduel",
+    "implied": 25.6,
+    "value": -1.5,
+    "bookFairs": "{\"fanduel\":24.1,\"pinnacle\":24.2,\"lowvig\":24,\"betonlineag\":24,\"draftkings\":24}"
+   },
+   "fav": {
+    "selection": "St. Louis City SC",
+    "fair": 48.9,
+    "price": -110,
+    "book": "draftkings",
+    "implied": 52.4,
+    "value": -3.5,
+    "bookFairs": "{\"fanduel\":49.1,\"pinnacle\":48.9,\"lowvig\":49.3,\"betonlineag\":49.3,\"draftkings\":48.4}"
+   },
+   "total": {
+    "point": 3.5,
+    "sharpN": 2,
+    "fairSrc": "sharp-pool",
+    "lines": "3.5:2s/0x 3.25:1s/0x",
+    "overFair": 45.4,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 54.6,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "00dd37a07b7e4fab35b56736d980675a",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T02:30:00Z",
+   "home": "San Jose Earthquakes",
+   "away": "Colorado Rapids",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "San Jose Earthquakes",
+     "fair": 39.6,
+     "price": 140,
+     "book": "fanduel",
+     "implied": 41.7,
+     "value": -2.1,
+     "bookFairs": "{\"fanduel\":39.3,\"pinnacle\":39.6,\"lowvig\":41.1,\"betonlineag\":41.1,\"draftkings\":40}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 26.7,
+     "price": 250,
+     "book": "fanduel",
+     "implied": 28.6,
+     "value": -1.8,
+     "bookFairs": "{\"fanduel\":27,\"pinnacle\":26.7,\"lowvig\":26.3,\"betonlineag\":26.3,\"draftkings\":26.6}"
+    },
+    {
+     "selection": "Colorado Rapids",
+     "fair": 33.7,
+     "price": 180,
+     "book": "fanduel",
+     "implied": 35.7,
+     "value": -2,
+     "bookFairs": "{\"fanduel\":33.7,\"pinnacle\":33.7,\"lowvig\":32.5,\"betonlineag\":32.5,\"draftkings\":33.4}"
+    }
+   ],
+   "lead": {
+    "selection": "Draw",
+    "fair": 26.7,
+    "price": 250,
+    "book": "fanduel",
+    "implied": 28.6,
+    "value": -1.8,
+    "bookFairs": "{\"fanduel\":27,\"pinnacle\":26.7,\"lowvig\":26.3,\"betonlineag\":26.3,\"draftkings\":26.6}"
+   },
+   "fav": {
+    "selection": "San Jose Earthquakes",
+    "fair": 39.6,
+    "price": 140,
+    "book": "fanduel",
+    "implied": 41.7,
+    "value": -2.1,
+    "bookFairs": "{\"fanduel\":39.3,\"pinnacle\":39.6,\"lowvig\":41.1,\"betonlineag\":41.1,\"draftkings\":40}"
+   },
+   "total": {
+    "point": 3,
+    "sharpN": 2,
+    "fairSrc": "sharp-pool",
+    "lines": "3:2s/0x 2.75:1s/0x",
+    "overFair": 45.7,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 54.3,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "372bffc1619cc28902ab4f209af093c2",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T02:30:00Z",
+   "home": "Seattle Sounders FC",
+   "away": "Houston Dynamo",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Seattle Sounders FC",
+     "fair": 55.1,
+     "price": -135,
+     "book": "draftkings",
+     "implied": 57.4,
+     "value": -2.4,
+     "bookFairs": "{\"fanduel\":55.4,\"pinnacle\":55.1,\"lowvig\":54.6,\"betonlineag\":54.6,\"draftkings\":53}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 23.2,
+     "price": 300,
+     "book": "fanduel",
+     "implied": 25,
+     "value": -1.8,
+     "bookFairs": "{\"fanduel\":23.4,\"pinnacle\":23.2,\"lowvig\":23.6,\"betonlineag\":23.6,\"draftkings\":24}"
+    },
+    {
+     "selection": "Houston Dynamo",
+     "fair": 21.7,
+     "price": 340,
+     "book": "fanduel",
+     "implied": 22.7,
+     "value": -1,
+     "bookFairs": "{\"fanduel\":21.3,\"pinnacle\":21.7,\"lowvig\":21.9,\"betonlineag\":21.9,\"draftkings\":23.1}"
+    }
+   ],
+   "lead": {
+    "selection": "Houston Dynamo",
+    "fair": 21.7,
+    "price": 340,
+    "book": "fanduel",
+    "implied": 22.7,
+    "value": -1,
+    "bookFairs": "{\"fanduel\":21.3,\"pinnacle\":21.7,\"lowvig\":21.9,\"betonlineag\":21.9,\"draftkings\":23.1}"
+   },
+   "fav": {
+    "selection": "Seattle Sounders FC",
+    "fair": 55.1,
+    "price": -135,
+    "book": "draftkings",
+    "implied": 57.4,
+    "value": -2.4,
+    "bookFairs": "{\"fanduel\":55.4,\"pinnacle\":55.1,\"lowvig\":54.6,\"betonlineag\":54.6,\"draftkings\":53}"
+   },
+   "total": {
+    "point": 3,
+    "sharpN": 2,
+    "fairSrc": "sharp-pool",
+    "lines": "3:2s/0x 2.75:1s/0x",
+    "overFair": 45.9,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 54.1,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  },
+  {
+   "id": "c053847753ea72ff5c917f7ae0ec5b64",
+   "league": "mls",
+   "leagueLabel": "MLS",
+   "commence": "2026-10-29T02:30:00Z",
+   "home": "Vancouver Whitecaps FC",
+   "away": "San Diego FC",
+   "sharpN": 3,
+   "fairSrc": "pinnacle",
+   "oneXtwo": [
+    {
+     "selection": "Vancouver Whitecaps FC",
+     "fair": 66.4,
+     "price": -245,
+     "book": "draftkings",
+     "implied": 71,
+     "value": -4.6,
+     "bookFairs": "{\"fanduel\":68.1,\"pinnacle\":66.4,\"lowvig\":66.5,\"betonlineag\":66.5,\"draftkings\":65.5}"
+    },
+    {
+     "selection": "Draw",
+     "fair": 17.8,
+     "price": 430,
+     "book": "fanduel",
+     "implied": 18.9,
+     "value": -1.1,
+     "bookFairs": "{\"fanduel\":17.6,\"pinnacle\":17.8,\"lowvig\":18.2,\"betonlineag\":18.2,\"draftkings\":18.4}"
+    },
+    {
+     "selection": "San Diego FC",
+     "fair": 15.8,
+     "price": 550,
+     "book": "fanduel",
+     "implied": 15.4,
+     "value": 0.4,
+     "bookFairs": "{\"fanduel\":14.3,\"pinnacle\":15.8,\"lowvig\":15.3,\"betonlineag\":15.3,\"draftkings\":16}"
+    }
+   ],
+   "lead": {
+    "selection": "San Diego FC",
+    "fair": 15.8,
+    "price": 550,
+    "book": "fanduel",
+    "implied": 15.4,
+    "value": 0.4,
+    "bookFairs": "{\"fanduel\":14.3,\"pinnacle\":15.8,\"lowvig\":15.3,\"betonlineag\":15.3,\"draftkings\":16}"
+   },
+   "fav": {
+    "selection": "Vancouver Whitecaps FC",
+    "fair": 66.4,
+    "price": -245,
+    "book": "draftkings",
+    "implied": 71,
+    "value": -4.6,
+    "bookFairs": "{\"fanduel\":68.1,\"pinnacle\":66.4,\"lowvig\":66.5,\"betonlineag\":66.5,\"draftkings\":65.5}"
+   },
+   "total": {
+    "point": 3.5,
+    "sharpN": 3,
+    "fairSrc": "sharp-pool",
+    "lines": "3.5:3s/0x",
+    "overFair": 50.7,
+    "overPrice": null,
+    "overBook": null,
+    "overValue": null,
+    "underFair": 49.3,
+    "underPrice": null,
+    "underBook": null,
+    "underValue": null
+   }
+  }
+ ]
+}
