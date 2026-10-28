@@ -71,7 +71,14 @@ const cands = [];
 for (const [sport, b] of [['nba', F.nbaBoard], ['nhl', F.nhlBoard]]) {
   for (const g of b.games) for (const [fair, price] of [[g.homeFair, g.homePrice], [g.awayFair, g.awayPrice]]) cands.push({ sport, fair, price, prop: false, t: g.commence });
 }
-for (const r of F.gm) cands.push({ sport: 'soccer', fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, prop: false, t: r.commence });
+// A soccer row its league's latest read did not refresh is left off since
+// 2026-10-28 (tests/edgebets.mjs): its side had lost the board's lead, and
+// its price was that of the read that last had it.
+const readAt = (r) => r.close_at || r.entry_at;
+const latestRead = {};
+for (const r of F.gm) if (!(readAt(r) <= latestRead[r.league])) latestRead[r.league] = readAt(r);
+const currentRow = (r) => RealDate.parse(readAt(r)) >= RealDate.parse(latestRead[r.league]) - 30 * 60e3;
+for (const r of F.gm.filter(currentRow)) cands.push({ sport: 'soccer', fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, prop: false, t: r.commence });
 for (const l of F.ppLegs) if (l.book_line === l.point && l.market !== 'reb' && l.market !== 'blk' && l.market !== 'stl') cands.push({ sport: 'nba', fair: l.sharp_under, price: l.book_under, prop: true, t: l.commence });
 const want = cands.filter((c) => c.fair != null && typeof c.price === 'number' && within(c.t) && Math.abs(c.price) >= 100 && Math.abs(c.price) <= 600
   && Math.abs(c.fair - imp(c.price) * 100) <= 25 && (c.fair / 100 * dec(c.price) - 1) * 100 >= (c.prop ? 3 : 1.5))
@@ -81,11 +88,15 @@ console.log('-- 2 PM Pacific, Oct 27 --');
 const p = await get('/api/picks');
 const E = p.evBets || [];
 for (const b of E) console.log(`  ${b.label} (${b.sub}) ${b.price} ${b.book}: fair ${b.fair}% -> edge +${b.ev}%, quarter Kelly ${b.stake}%, bet at ${b.betAt} or better, priced ${b.asOf}`);
-ok(E.length === want.length && E.map((b) => b.ev).join() === want.join() && want.length >= 2,
+ok(E.length === want.length && E.map((b) => b.ev).join() === want.join() && want.length >= 1,
   `every side whose price beats its sharp fair by enough, best first: ${E.map((b) => '+' + b.ev + '%').join(', ')}`);
-const cin = E.find((b) => /Cincinnati/.test(b.label));
-ok(cin && cin.price === 410 && cin.fair === 20.7 && cin.ev === 5.6 && cin.stake === 0.3 && cin.betAt === 383,
-  `FC Cincinnati +410 on a 20.7% sharp chance: +${cin && cin.ev}%, a quarter of Kelly's 1.4% (${cin && cin.stake}%), a bet at +${cin && cin.betAt} or better`);
+const tij = E.find((b) => /Tijuana/.test(b.label));
+ok(tij && tij.price === 600 && tij.fair === 14.6 && tij.ev === 2.2 && tij.stake === 0.1 && tij.betAt === 585,
+  `Tijuana +600 on a 14.6% sharp chance: +${tij && tij.ev}%, a quarter of Kelly (${tij && tij.stake}%), a bet at +${tij && tij.betAt} or better`);
+// The card listed FC Cincinnati +410 here until 2026-10-28: its row had kept
+// the 5 AM price after the 1:30 PM read gave its game's lead to another side.
+ok(!E.some((b) => /Cincinnati/.test(b.label)) && readAt(F.gm.find((r) => r.pick === 'FC Cincinnati')) === '2026-10-27T12:05:55.302Z' && latestRead.mls === '2026-10-27T20:30:33.154Z',
+  "FC Cincinnati's +410 is left off: its price was the 5 AM read's, the MLS's latest 1:30 PM");
 ok(!E.some((b) => /Knicks|Lakers/.test(b.label)), 'the Knicks at -155 (+0.5%) and the Lakers at -135 (+0.1%) are under the 1.5% bar');
 ok(E.every((b) => b.asOf && b.commence && b.sub && typeof b.stake === 'number'), 'each says how old its price is');
 ok(!asked.some((u) => u.includes('the-odds-api.com')), `nothing bought (${asked.length} feed reads)`);
@@ -127,7 +138,7 @@ const card = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'stat
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const html = card(p);
 console.log('  ' + text(html).slice(0, 420));
-ok(/Bets with an edge/.test(html) && (html.match(/<li>/g) || []).length === E.length && /FC Cincinnati ML \+5\.6%/.test(text(html)) && /\+410 .*fair 21% \(\+383\) · ¼ Kelly 0\.3%/.test(text(html)),
+ok(/Bets with an edge/.test(html) && (html.match(/<li>/g) || []).length === E.length && /Tijuana ML \+2\.2%/.test(text(html)) && /\+600 .*fair 15% \(\+585\) · ¼ Kelly 0\.1%/.test(text(html)),
   'the card: each bet, its edge, the price and the fair, its stake');
 ok(new RegExp(`¼ Kelly total ${Math.round(E.reduce((s, b) => s + b.stake, 0) * 10) / 10}%`).test(text(html)), "and the day's total stake");
 ok(/No price beats the sharp line/.test(card({ evBets: [] })), 'and says so when nothing does');

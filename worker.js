@@ -8489,6 +8489,9 @@ const EV_MAX = 12;
 // Further out than the list's day: an early price is often the better one,
 // and the moneyline captures read 36 hours ahead.
 const EV_WINDOW_MS = 36 * 3600e3;
+// How far behind its league's latest read a row's may be and still be that
+// read's: one capture writes its rows within a second or two.
+const GM_READ_SLACK_MS = 30 * 60e3;
 // evScan keeps every side it priced (all), as well as those past the bar
 // (bets): the edge-bet log reads each logged bet's closing price and fair
 // from all (2026-10-28). Each side carries how it grades (grade).
@@ -8525,7 +8528,17 @@ async function evScan(env, now) {
   // The NFL, passing TDs and soccer: the sides the boards logged, at their latest read.
   const days = [ptDateOf(now), ptDateOf(now + 86400e3), ptDateOf(now + 2 * 86400e3)];
   const gm = (await env.DB.prepare("SELECT * FROM gmpicks WHERE sport IN ('nfl','nflptd','soccer') AND date IN (?, ?, ?) AND result IS NULL").bind(...days).all()).results || [];
+  // A row's price refreshes only while its side is still the board's lead
+  // (logGamePicks), so a side that lost the lead keeps the price of the read
+  // that last had it: on Oct 28 FC Cincinnati's +410 was from Oct 27 at 5 AM
+  // while the rest of the MLS had been read at 12:20 PM. A side its league's
+  // latest read did not refresh is not priced now, and is left off.
+  const readAt = (r) => r.close_at || r.entry_at || '';
+  const latest = new Map();
+  for (const r of gm) { const k = `${r.sport}:${r.league}`; if (readAt(r) > (latest.get(k) || '')) latest.set(k, readAt(r)); }
+  const current = (r) => Date.parse(readAt(r)) >= Date.parse(latest.get(`${r.sport}:${r.league}`)) - GM_READ_SLACK_MS;
   for (const r of gm) {
+    if (!current(r)) continue;
     const base = { commence: r.commence, fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, book: r.book, fairSrc: r.fair_src, asOf: r.close_at || r.entry_at };
     if (r.sport === 'nfl' && r.market === 'h2h') {
       add({ ...base, key: `nfl:${r.game_id}:${r.pick}`, sport: 'nfl', market: 'ml', label: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`, grade: gmGrade(r) });

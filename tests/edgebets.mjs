@@ -22,14 +22,19 @@
 //     likeliest legs; the stakes read in dollars against a bankroll, and the
 //     day's sportsbook bets together keep to its daily cap
 //
-// Real data: production at 1:50 PM Pacific on Oct 27 (tests/fixtures/
-// evbets-20261027.json: the NBA and NHL boards, the soccer and NBA props logs)
-// and its Oct 27 finals with their closing fairs and prices (tests/fixtures/
-// edgebets-finals-20261027.json). FC Cincinnati +410 and Tijuana +600 are the
-// card's own bets that day; they play later. The four graded here are real
-// games at prices raised to clear the bar -- had a book posted the Blazers at
-// +400, the Canucks at +300, Como at +150 and the Torino-Como draw at +400 --
-// read at 9 AM, before the Serie A kickoffs. A closing read keeps the
+//   - a soccer side whose row its league's latest read did not refresh (its
+//     side lost the board's lead, so its price is the old read's) is left off
+//
+// Real data: production on Oct 27 (tests/fixtures/evbets-20261027.json: the
+// NBA and NHL boards of the 7 AM UTC captures, the soccer rows at 1:50 PM
+// Pacific, the NBA props legs), its Oct 27 finals with their closing fairs and
+// prices (tests/fixtures/edgebets-finals-20261027.json), and its MLS rows at
+// 12:45 PM on Oct 28 (tests/fixtures/gm-mls-20261028.json). Each read sees
+// only what production had read by then. Tijuana +600 is the card's own bet
+// that day; it plays later. The four graded are real games at prices raised
+// to clear the bar -- had a book posted the Blazers at +400, the Canucks at
+// +300, Sassuolo at +400 and Lazio at +150 -- the Serie A pair read at 10:21
+// AM, a minute after production's last read of them. A closing read keeps an
 // underdog's 7 AM price, which the export does not carry. Real SQLite and the
 // real worker.
 import fs from 'node:fs';
@@ -39,8 +44,9 @@ const BOARD = path.join(import.meta.dirname, '..');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
 const F = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'evbets-20261027.json'), 'utf8'));
 const FIN = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'edgebets-finals-20261027.json'), 'utf8')).rows;
+const MLS = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'gm-mls-20261028.json'), 'utf8')).rows;
 const RealDate = Date;
-let NOW = RealDate.parse('2026-10-27T16:00:00Z');
+let NOW = RealDate.parse('2026-10-27T17:21:00Z');
 globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } };
 globalThis.fetch = async () => new Response('{}', { status: 404 });
 const sq = new DatabaseSync(':memory:');
@@ -61,7 +67,7 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
 const dec = (am) => (am > 0 ? 1 + am / 100 : 1 + 100 / -am);
 const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100;
 
-// ---- the logs at 9 AM, with the four prices raised ------------------------------------------
+// ---- 10:21 AM: the 7 AM boards and the Serie A pair, four prices raised ------------------------
 await get('/api/gmpicks-export'); await get('/api/nba-pp'); await get('/api/picks');      // the tables
 const board = (b, fix) => ({ ...b, games: b.games.map((g) => fix(g) || g) });
 const putBoard = (k, b) => sq.prepare('INSERT OR REPLACE INTO feed_cache (key, data, updated_at, claimed_until) VALUES (?, ?, ?, 0)').run(k, JSON.stringify(b), RealDate.parse(b.asOf));
@@ -70,11 +76,9 @@ putBoard('nba_board:reg', board(F.nbaBoard, (g) => g.id.startsWith(LAL) && { ...
 putBoard('nhl_board:reg', board(F.nhlBoard, (g) => g.id.startsWith(ANA) && { ...g, awayPrice: 300, awayBook: 'draftkings' }));
 const gcols = Object.keys(F.gm[0]);
 const gins = sq.prepare(`INSERT OR IGNORE INTO gmpicks (${gcols.join(',')}) VALUES (${gcols.map(() => '?').join(',')})`);
-for (const r of F.gm) gins.run(...gcols.map((k) => r[k]));
-const TOR = F.gm.find((r) => r.home === 'Torino').game_id;
-sq.prepare("UPDATE gmpicks SET close_price = 150 WHERE game_id = ? AND market = 'fav'").run(TOR);
-sq.prepare("UPDATE gmpicks SET close_price = 400 WHERE game_id = ? AND market = 'h2h'").run(TOR);
-// The NBA, NHL and soccer rows the finals export grades: the boards' own logs.
+const readAt = (r) => r.close_at || r.entry_at;
+const SAS = F.gm.find((r) => r.home === 'Sassuolo').game_id;
+for (const r of F.gm.filter((x) => x.game_id === SAS)) gins.run(...gcols.map((k) => (k === 'close_price' ? (r.market === 'h2h' ? 400 : 150) : r[k])));
 for (const f of FIN.filter((x) => x.sport !== 'soccer')) {
   const g = [...F.nbaBoard.games, ...F.nhlBoard.games].find((x) => x.id === f.game_id);
   sq.prepare(`INSERT OR IGNORE INTO gmpicks (sport, date, market, league, commence, away, home, side, pick, win_prob, entry_price, close_price, game_id, model_ver)
@@ -82,34 +86,39 @@ for (const f of FIN.filter((x) => x.sport !== 'soccer')) {
     f.side === 'home' ? g.homeFair : g.awayFair, f.side === 'home' ? g.homePrice : g.awayPrice, f.side === 'home' ? g.homePrice : g.awayPrice, f.game_id);
 }
 
-console.log('-- 9 AM Pacific, Oct 27 --');
+console.log('-- 10:21 AM Pacific, Oct 27 --');
 let p = await get('/api/picks');
 for (const b of p.evBets) console.log(`  ${b.label} ${b.price}: fair ${b.fair}% -> +${b.ev}%, stake ${b.stake}%`);
 const log = () => sq.prepare('SELECT * FROM edgebets ORDER BY first_ev DESC').all();
 let rows = log();
 const row = (re) => rows.find((r) => re.test(r.label)) || {};
-const want = ['Blazers ML', 'Canucks ML', 'Como ML', 'Draw', 'FC Cincinnati ML', 'Tijuana ML'];
-ok(rows.length === p.evBets.length && want.every((w) => rows.some((r) => r.label === w)) && p.evBets.every((b) => rows.some((r) => r.label === b.label && r.first_price === b.price && r.first_fair === b.fair && r.first_ev === b.ev && r.first_stake === b.stake)),
+const same = (b) => rows.some((r) => r.label === b.label && r.first_price === b.price && r.first_fair === b.fair && r.first_ev === b.ev && r.first_stake === b.stake);
+ok(rows.length === 4 && ['Blazers ML', 'Canucks ML', 'Sassuolo ML', 'Lazio ML'].every((w) => rows.some((r) => r.label === w)) && p.evBets.length === 4 && p.evBets.every(same),
   `each bet on the card is logged at the price, fair, EV and stake it showed (${rows.map((r) => r.label).join(', ')})`);
-const cin = row(/FC Cincinnati/), tij = row(/Tijuana/);
-ok(cin.first_price === 410 && cin.first_fair === 20.7 && cin.first_ev === 5.6 && tij.first_price === 600 && tij.first_fair === 14.6,
-  "the card's own bets that day, as production priced them: FC Cincinnati +410 on 20.7%, Tijuana +600 on 14.6%");
 ok(!('key' in p.evBets[0]) && !('grade' in p.evBets[0]), 'the page is sent the bets, not how they grade');
 
 const before = JSON.stringify(rows.map((r) => [r.last_at, r.close_at]));
-NOW = RealDate.parse('2026-10-27T16:15:00Z');
+NOW = RealDate.parse('2026-10-27T17:26:00Z');
 await get('/api/picks');
 rows = log();
-ok(JSON.stringify(rows.map((r) => [r.last_at, r.close_at])) === before, 'a read a quarter-hour later with nothing changed writes nothing');
+ok(JSON.stringify(rows.map((r) => [r.last_at, r.close_at])) === before, 'a read five minutes later with nothing changed writes nothing');
+
+// ---- 1:50 PM: the rest of the day's soccer rows as production had them ------------------------
+console.log('\n-- 2 PM Pacific --');
+NOW = RealDate.parse('2026-10-27T21:00:00Z');
+for (const r of F.gm.filter((x) => x.game_id !== SAS)) gins.run(...gcols.map((k) => r[k]));
+p = await get('/api/picks');
+rows = log();
+for (const b of p.evBets) console.log(`  ${b.label} ${b.price}: fair ${b.fair}% -> +${b.ev}%`);
+const tij = row(/Tijuana/), cinRow = F.gm.find((r) => r.pick === 'FC Cincinnati');
+ok(tij.first_price === 600 && tij.first_fair === 14.6 && tij.first_ev === 2.2 && p.evBets.filter((b) => b.sport === 'soccer').map((b) => b.label).join() === 'Tijuana ML',
+  "the card's own soccer bet that afternoon, as production priced it: Tijuana +600 on 14.6%");
+ok(!rows.some((r) => /Cincinnati/.test(r.label)) && readAt(cinRow) === '2026-10-27T12:05:55.302Z'
+  && F.gm.filter((r) => r.league === 'mls').some((r) => readAt(r) === '2026-10-27T20:30:33.154Z'),
+  "FC Cincinnati's +410 is left off: its row kept the 5 AM price after the 1:30 PM read gave its game's lead to another side");
 
 // ---- the closes ---------------------------------------------------------------------------------
 console.log('\n-- the closing reads --');
-// Before the Serie A kickoffs: the rows as the export left them.
-NOW = RealDate.parse('2026-10-27T17:20:00Z');
-for (const f of FIN.filter((x) => x.sport === 'soccer')) {
-  sq.prepare('UPDATE gmpicks SET win_prob = ?, close_price = ?, close_at = ? WHERE game_id = ? AND market = ? AND pick = ?').run(f.win_prob, f.close_price, f.close_at, f.game_id, f.market, f.pick);
-}
-await get('/api/picks');
 // Before the NHL and NBA late games: each game's closing fair from its row,
 // the favourite's closing price, the underdog's 7 AM one.
 NOW = RealDate.parse('2026-10-28T01:30:00Z');
@@ -127,9 +136,9 @@ for (const r of rows) console.log(`  ${r.label}: first ${r.first_price} on ${r.f
 const fin = (re, mk) => FIN.find((x) => re.test(`${x.away} @ ${x.home}`) && (!mk || x.market === mk));
 ok(row(/Blazers/).close_fair === r1(100 - fin(/Lakers/).win_prob) && row(/Blazers/).close_price === 122 && row(/Canucks/).close_fair === r1(100 - fin(/Ducks/).win_prob),
   `the close is the last read of the side, off the card or not: the Blazers closed on ${row(/Blazers/).close_fair}% (the Lakers ${fin(/Lakers/).win_prob}%), the Canucks on ${row(/Canucks/).close_fair}%`);
-ok(row(/Como ML/).close_fair === fin(/Torino/, 'fav').win_prob && row(/Como ML/).close_price === fin(/Torino/, 'fav').close_price && row(/^Draw$/).close_fair === fin(/Torino/, 'h2h').win_prob,
-  'and a soccer side closes at its row\'s last read, before its kickoff');
-ok(!p.evBets.some((b) => /Canucks|Como|Draw/.test(b.label)) && row(/Canucks/).first_price === 300, 'off the card by then, the first read still stands as the bet');
+ok(row(/Lazio/).close_fair === fin(/Sassuolo/, 'fav').win_prob && row(/Sassuolo/).close_fair === fin(/Sassuolo/, 'h2h').win_prob && row(/Lazio/).close_price === 150,
+  "and a soccer side's close is its last read before its kickoff (production's 10:20 AM read, unchanged since)");
+ok(!p.evBets.some((b) => /Canucks|Lazio|Sassuolo/.test(b.label)) && row(/Canucks/).first_price === 300, 'off the card by then, the first read still stands as the bet');
 
 // ---- graded, the next morning -----------------------------------------------------------------
 console.log('\n-- Oct 28, graded --');
@@ -143,8 +152,8 @@ rows = log();
 for (const r of rows) console.log(`  ${r.label}: ${r.result}`);
 ok(row(/Blazers/).result === 'hit' && row(/Canucks/).result === 'hit',
   "the underdogs by the favourites' rows: the Lakers lost 136-129 and the Ducks 6-5, so the Blazers and the Canucks landed");
-ok(row(/Como ML/).result === 'hit' && row(/^Draw$/).result === 'miss', 'soccer by the score, three ways: Como won 3-1 at Torino, so the draw missed');
-ok(row(/FC Cincinnati/).result == null && row(/Tijuana/).result == null, 'the two still to play stay open');
+ok(row(/Lazio/).result === 'hit' && row(/Sassuolo/).result === 'miss', 'soccer by the score: Lazio won 6-2 at Sassuolo');
+ok(row(/Tijuana/).result == null, 'the bet still to play stays open');
 
 const graded = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
 const flat = r2(graded.reduce((s, r) => s + (r.result === 'hit' ? dec(r.first_price) - 1 : -1), 0));
@@ -200,22 +209,40 @@ const P = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'state',
 ok(text(P.edgeRecordHtml(R)) === `These bets since Oct 27: 3 of 4 won · +${flat.toFixed(2)}u at 1 unit each · beat the closing line ${R.clv.beat} of 4 (average ${R.clv.avg > 0 ? '+' : ''}${R.clv.avg}%)`,
   `the card's record line: "${text(P.edgeRecordHtml(R))}"`);
 ok(/Logged from Oct 28/.test(P.edgeRecordHtml({ n: 0, clv: { n: 0 } })), 'and before any has graded, that they are being kept');
-// The four at 9 AM, as the card showed them, against a $500 bankroll.
-NOW = RealDate.parse('2026-10-27T16:00:00Z');
-const nine = log().map((r) => ({ label: r.label, sub: r.sub, sport: r.sport, commence: r.commence, price: r.first_price, fair: r.first_fair, ev: r.first_ev, stake: r.first_stake, betAt: 0, book: r.book }));
+// The card at 10:21 AM, as it showed them, against a $500 bankroll.
+NOW = RealDate.parse('2026-10-27T17:21:00Z');
+const nine = log().map((r) => ({ label: r.label, sub: r.sub, sport: r.sport, commence: r.commence, price: r.first_price, fair: r.first_fair, ev: r.first_ev, stake: r.first_stake, betAt: 0, book: r.book }))
+  .filter((b) => RealDate.parse(b.commence) > NOW);
 const raw = nine.reduce((s, b) => s + b.stake, 0);
 ui.bank = { amount: 500, cap: 5 };
 const h = text(P.evBetsHtml({ evBets: nine, edgeRecord: R }));
 console.log('  ' + h.slice(0, 900));
 const scale = 5 / raw, blz = nine.find((b) => /Blazers/.test(b.label));
 const blzStake = Math.round(blz.stake * scale * 100) / 100;
-const blzUsd = (500 * blzStake / 100).toFixed(2);   // under $10, to the cent
+const usd = (v) => (v >= 10 ? String(Math.round(v)) : v.toFixed(2));   // whole dollars from $10, cents under
+const blzUsd = usd(500 * blzStake / 100);
 ok(raw > 5 && new RegExp(`Held to your 5% daily cap: each stake is ${Math.round(scale * 100)}% of its Kelly`).test(h)
   && h.includes(`¼ Kelly $${blzUsd} (${blzStake}%)`) && /¼ Kelly total \$25 \(5%\)/.test(h),
   `the day's bets together (${r1(raw)}% of Kelly) held to the 5% cap, each in dollars: the Blazers $${blzUsd}, $25 in all`);
 ok(/Bankroll <b>\$500<\/b> · daily cap 5% \(\$25\)/.test(P.bankHtml()) && /data-action="bank-amount"/.test(P.bankHtml()), 'the bankroll and its cap fold above the cards');
 ui.bank = { amount: null, cap: 5 };
-ok(/Set your bankroll to see each stake in dollars/.test(P.bankHtml()) && /¼ Kelly \d+(\.\d+)?%/.test(text(P.evBetsHtml({ evBets: [nine[4]] }))), 'without one, a stake reads as a share');
+ok(/Set your bankroll to see each stake in dollars/.test(P.bankHtml()) && /¼ Kelly \d+(\.\d+)?%/.test(text(P.evBetsHtml({ evBets: [nine[0]] }))), 'without one, a stake reads as a share');
+
+// ---- a side that lost its game's lead, Oct 28 -----------------------------------------------------
+console.log('\n-- 12:45 PM Pacific, Oct 28: the MLS --');
+NOW = RealDate.parse('2026-10-28T19:45:00Z');
+const mcols = Object.keys(MLS[0]).filter((k) => gcols.includes(k));
+const mins = sq.prepare(`INSERT OR REPLACE INTO gmpicks (${mcols.join(',')}) VALUES (${mcols.map(() => '?').join(',')})`);
+for (const r of MLS) mins.run(...mcols.map((k) => r[k]));
+p = await get('/api/picks');
+const mls = p.evBets.filter((b) => / · MLS$/.test(b.sub));
+console.log('  ' + mls.map((b) => `${b.label} ${b.price} +${b.ev}%`).join(' | '));
+const stale = MLS.filter((r) => readAt(r) < '2026-10-28T19:00:00Z');
+console.log(`  not read at 12:20 PM: ${stale.map((r) => `${r.pick} (${r.market}, ${readAt(r)})`).join(', ')}`);
+ok(mls.map((b) => b.label).join() === 'CF Montreal ML,Draw' && mls[1].sub.startsWith('Portland Timbers @ St. Louis City SC'),
+  'the MLS bets are the sides the 12:20 PM read priced: CF Montreal +450 and the Portland-St. Louis draw +330, as production listed them');
+ok(!p.evBets.some((b) => /Cincinnati/.test(b.label)) && stale.some((r) => r.pick === 'FC Cincinnati'),
+  'and not FC Cincinnati +410, which production listed on its Oct 27 5 AM price');
 const rp = alift('renderPicks');
 ok(/grid\.innerHTML = bankHtml\(\) \+ ppCard \+ evBetsHtml\(d\) \+ listCard \+ after;/.test(rp) && /<span class="tc-title">Your PrizePicks entry<\/span>/.test(rp) && /<span class="tc-title">Most likely to land<\/span>/.test(rp),
   'Picks leads with the PrizePicks entry, then the sportsbook bets, then the likeliest legs');
