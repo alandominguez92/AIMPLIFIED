@@ -2935,6 +2935,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-lr.pk-miss { color:var(--caution); }
 .pk-lr.pk-void, .pk-lr.pk-open { color:var(--textFaint); font-weight:400; }
 .pk-lp { font-family:var(--mono); font-size:12px; color:var(--textDim); }
+/* The MLB board's projection bar under each player leg (2026-10-28). */
+.pp-projbar { display:block; max-width:300px; }
+.pp-projbar .bmini { margin-top:6px; margin-bottom:4px; }
+.hero-leg .pp-projbar { grid-column:1 / -1; margin-top:4px; }
 /* NBA blocks More (2026-10-27): its own section under the unders. */
 .pp-more-head { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
 /* Legs dropped before their start (2026-10-27): dimmed, the reason under. */

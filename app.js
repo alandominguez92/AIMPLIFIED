@@ -325,6 +325,20 @@
       + (tick != null ? `<span class="tick" style="left:${c(tick)}%"></span>` : '')
       + '</span>';
   }
+  // The MLB board's bar under a player, for every sport's player legs
+  // (2026-10-28): the fill runs to his projection, the tick marks the line, on
+  // the batter board's own axis, and the line under it names the two and the
+  // cushion between -- for an Under, the line above the projection; for an
+  // Over (a More), the projection above the line.
+  function projLineHtml(proj, line, side) {
+    if (typeof proj !== 'number' || typeof line !== 'number') return '';
+    const axisMax = line <= 1 ? 2 : Math.max(4, Math.ceil(line + 1.5));
+    const over = side === 'Over' || side === 'More';
+    const cushion = Math.round((over ? proj - line : line - proj) * 100) / 100;
+    const gap = cushion > 0 ? `<b class="u">${cushion} cushion</b>`
+      : cushion < 0 ? `<b class="o">${Math.abs(cushion)} ${over ? 'short of' : 'over'} the line</b>` : 'right on the line';
+    return `<span class="pp-projbar">${miniBar(proj, line, (v) => v / axisMax * 100)}<span class="bw-cush">proj <b>${esc(String(proj))}</b> · line ${esc(String(line))} · ${gap}</span></span>`;
+  }
 
   // ---------------------------------------------------------------------
   // DOM refs
@@ -5919,7 +5933,9 @@
       + `</div>`
       + `<div class="hl-p${good ? ' good' : ''}"><span class="hl-pct">${pct0(x.p)}</span><span class="hl-pk">chance</span></div>`
       // The game on its own line, so a long matchup never squeezes the name.
-      + `<span class="hl-game">${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span></div>`
+      + `<span class="hl-game">${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span>`
+      // A player leg's projection against its line, as the MLB board draws it.
+      + `${s.pp ? projLineHtml(x.proj, s.pp.line, s.side) : ''}</div>`
       + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
       + (typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
       + `<div class="hl-actions"><button type="button" class="hl-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? '★ In your slip' : '☆ Add to slip'}</button>`
@@ -6074,7 +6090,9 @@
         + `<span class="tc-l1"><b>${esc(x.title)}</b><span class="tc-p">${pct0(x.p)}</span></span>`
         // A soccer leg's league says the sport; the others name it.
         + `<span class="tc-l2"><span><span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
-        + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${pickEdgeHtml(x)}</span>` : ''}</span>`
+        + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${pickEdgeHtml(x)}</span>` : ''}`
+        // A player leg's projection against its line, as the MLB board draws it.
+        + `${x.spec && x.spec.pp ? projLineHtml(x.proj, x.spec.pp.line, x.spec.side) : ''}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     }).join('');
@@ -6312,10 +6330,12 @@
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
       const face = avatarHtml({ sport, playerId: x.player_id, team: x.team, name: x.player });
-      const per = x.proj == null ? '' : sport === 'nhl' ? ` · ${esc(String(x.proj))} a game` : ` · proj ${esc(String(x.proj))}`;
+      // His projection against the line as a bar, as the MLB board draws it
+      // (projLineHtml, 2026-10-28) -- an NHL skater's is points a game.
       return `<li>${star}<div class="tc-leg has-hs">${face}`
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(ppMoreP(x))}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))}${per} · ${esc(soccerKick(x.commence))}${same}</span></span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${same}</span>`
+        + `${projLineHtml(x.proj, x.point, 'Over')}</span>`
         + `</div></li>`;
     }).join('')}</ol>`;
   }
@@ -6370,8 +6390,9 @@
         // The team code leads line two: beside the face on line one it cut
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · proj ${esc(String(x.proj))} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
-        + `${ppBookLine(x)}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
+        // His projection against PrizePicks' line, as the MLB board draws it.
+        + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x)}</span>`
         + `</div></li>`;
     }).join('')}</ol>${nbaBlkMoreHtml(d, rot)}</div>`;
   }
@@ -6716,7 +6737,9 @@
       + `<div class="tc-leg">`
       + `<button type="button" class="sp-tap" data-action="socp-row" data-key="${esc(key)}" aria-expanded="${open}">`
       + `<span class="tc-l1"><b>${esc(r.player)}</b><span class="pk-sport">${esc(r.team || '')}</span><span class="tc-p${l.p >= 60 ? ' sp-strong' : ''}">${pct0(l.p)}</span></span>`
-      + `<span class="tc-l2"><span>${l.side} ${esc(String(l.line))} ${esc(socStatWords(r.stat))} · proj ${esc(String(r.proj))}${pos ? ' · ' + esc(pos) : ''}${tags.length ? ' ' + tags.join(' ') : ''}</span></span>`
+      + `<span class="tc-l2"><span>${l.side} ${esc(String(l.line))} ${esc(socStatWords(r.stat))}${pos ? ' · ' + esc(pos) : ''}${tags.length ? ' ' + tags.join(' ') : ''}</span>`
+      // His projection against the line, as the MLB board draws it (2026-10-28).
+      + `${projLineHtml(r.proj, l.line, l.side)}</span>`
       + `</button>`
       // Both sides at the line (a whole-number line also pushes), then the
       // stepper on a row of its own: with its label it ran 17px past a 375px

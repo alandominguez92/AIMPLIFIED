@@ -88,7 +88,7 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const NAMES = ['SOC_STAT', 'nbCdf', 'socChanceAt', 'socKey', 'socLineOf', 'socLean', 'socStatWords', 'SOC_POS', 'socPosWords', 'ptDayOf', 'pct1', 'pct0',
-  'LEG_OFFERS', 'offerLeg', 'socpLeg', 'socSaveHtml', 'socRecB', 'socPropRow', 'SOC_BEST_N', 'socRankP', 'socSideLineHtml', 'socPropsCardHtml',
+  'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'socpLeg', 'socSaveHtml', 'socRecB', 'socPropRow', 'SOC_BEST_N', 'socRankP', 'socSideLineHtml', 'socPropsCardHtml',
   'socWeakStat', 'socBestByStat', 'socBestStripHtml', 'initialsOf', 'headshotUrl', 'avatarHtml'];
 const state = { socProps: board, socLines: {}, socSaved: {}, socSaving: {}, socOpen: {}, slip: {}, soccerLeague: 'all', socStat: 'best', socQuery: '' };
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -134,7 +134,10 @@ ok(!/\b(Tkl|SOT|ShAst|Clr|Crs|Pass \d|G\+A|GA \d)\b/.test(t), 'no stat abbreviat
 ok(codes.every((c) => F.socPosWords(c)) && F.socPosWords('CD-L') === 'centre back' && F.socPosWords('G') === 'goalkeeper', 'every position on the lineup has words');
 const first = rows[0].r;
 ok(new RegExp(`${leanOf(first).side} ${first.line} ${String(board.matches[0].rows.find((r) => r === first).stat === 'sot' ? 'shots on target' : '')}`).test(t)
-  && /(Under|Over) \d+(\.5)? [a-z +]+ · proj [\d.]+ · [a-z -]+/.test(t), `a row reads "${(t.match(/(Under|Over) \d+(\.5)? [a-z +]+ · proj [\d.]+ · [a-z -]+/) || [''])[0].trim()}"`);
+  // Since 2026-10-28 the projection sits on the MLB board's bar under the row
+  // (projLineHtml): "proj 1.9 · line 2.5 · 0.6 cushion".
+  && /(Under|Over) \d+(\.5)? [a-z +]+ · [a-z -]+ proj [\d.]+ · line \d+(\.5)? · /.test(t), `a row reads "${(t.match(/(Under|Over) \d+(\.5)? [a-z +]+ · [a-z -]+ proj [\d.]+ · line \d+(\.5)? · [^·]{0,22}/) || [''])[0].trim()}"`);
+ok((h.match(/class="bmini"/g) || []).length === rowsOf(h).length, 'and every row has the bar');
 
 console.log('\n-- the line setter, on a tap --');
 ok(!/class="sp-in"/.test(h), 'no stepper until a row is tapped');

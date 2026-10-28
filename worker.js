@@ -8837,7 +8837,7 @@ async function picksCandidates(env, now) {
     if (!soon(r.commence) || r.model_under == null || r.model_under < PICK_KINDS.nba_pp.min) continue;
     if (!(r.min_proj >= NBA_ROTATION_MIN) || ppBelowBook(r)) continue;
     const p = r.sharp_under != null ? round1(NBA_PICK_MODEL_W * r.model_under + (1 - NBA_PICK_MODEL_W) * r.sharp_under) : r.model_under;
-    legs.push({ kind: 'nba_pp', gameKey: 'nba:' + r.game_id, p, modelP: r.model_under, commence: r.commence, odds: null,
+    legs.push({ kind: 'nba_pp', gameKey: 'nba:' + r.game_id, p, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null,
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
       title: `${r.player} Under ${r.point} ${PICKS_NBA_MK[r.market] || r.market}`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
@@ -9177,6 +9177,8 @@ async function picksBoard(env) {
       // a prop's capped at PROP_STAKE_CAP.
       ...legStake(l.p, l.odds, kinds[l.kind], PROP_KINDS.has(l.kind) ? PROP_STAKE_CAP : null),
       ...(l.modelP != null ? { modelP: l.modelP } : {}),
+      // His projection, for the bar under a player leg (2026-10-28).
+      ...(l.proj != null ? { proj: l.proj } : {}),
     }));
     // The entry read: the top two as a 2-pick power (both have to land), and
     // the average leg of the top three to six against the flex break-even --
