@@ -5299,7 +5299,7 @@ const REC_SOURCES = {
   // trackRecordMlb: the track record's MLB half, every row of six tables.
   'track-mlb': [['picks'], ['bpicks'], ['mlpicks'], ['rlpicks'], ['totpicks'], ['pppicks']],
   // pickKindRecords: graded rows only (each read is `result IN (...)`).
-  'pick-kinds': [['mlpicks', REC_GRADED], ['pppicks', REC_GRADED], ['gmpicks', REC_GRADED], ['nbapp', REC_GRADED]],
+  'pick-kinds': [['mlpicks', REC_GRADED], ['pppicks', REC_GRADED], ['gmpicks', REC_GRADED], ['nbapp', REC_GRADED], ['nhlpp', REC_GRADED]],
   // socPropsBoard's record at the default lines.
   'soc-record': [['socprops', REC_GRADED]],
   // nbaPpBoard's record, and the NBA moneylines its byGame split reads.
@@ -8383,6 +8383,11 @@ const PICK_KINDS = {
   mlb_pp: { sport: 'mlb', label: 'MLB PrizePicks under (TB, H+R+RBI)', min: 70 },
   nba_ml: { sport: 'nba', label: 'NBA moneyline favourite', min: 65 },
   nba_pp: { sport: 'nba', label: 'NBA PrizePicks under (3PM, AST; PP line not below the book)', min: 70 },
+  // PrizePicks Mores from 2026-10-28, the owner's call: the two markets whose
+  // More side had landed where the model leaned More -- NBA blocks 17 of 24
+  // and NHL points and assists 20 of 29 at 55%+ through Oct 27 (the cards'
+  // blkMore and more records). PrizePicks legs, so they widen its entries.
+  nba_blk_more: { sport: 'nba', label: 'NBA blocks More (PrizePicks)', min: 55 },
   // NFL at 75%+ from 2026-10-26, on the owner's call ("too many losses"):
   // through Week 7 the log's favourites at 75%+ won 11 of 14 (78.5% stated)
   // and those at 65-75% 6 of 12 (about 70% stated) -- the Texans at 80.9% and
@@ -8399,6 +8404,7 @@ const PICK_KINDS = {
   // stated 69.1%), from /api/hist-backtest?job=nhl. Overtime and the shootout
   // count, as in the price.
   nhl_ml: { sport: 'nhl', label: 'NHL moneyline favourite', min: 65 },
+  nhl_more: { sport: 'nhl', label: 'NHL points/assists More (PrizePicks)', min: 55 },
   soccer_fav: { sport: 'soccer', label: 'Soccer favourite to win', min: 65 },
 };
 // ---- Edge and stake (2026-10-27, the owner's call: quarter Kelly) -----------
@@ -8421,7 +8427,7 @@ const KELLY_PRIOR_N = 20;
 // The first PrizePicks entry priced this way asked 5.4% on two model unders.
 const PROP_STAKE_CAP = 1;
 const ENTRY_STAKE_CAP = 2;
-const PROP_KINDS = new Set(['mlb_pp', 'nba_pp', 'nfl_ptd']);
+const PROP_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nhl_more', 'nfl_ptd']);
 const capStake = (s, cap) => (cap != null && s > cap ? { stake: cap, capped: true } : { stake: s });
 const decOf = (am) => (am > 0 ? 1 + am / 100 : 1 + 100 / -am);
 const amOfChance = (p) => (p >= 0.5 ? -Math.round(p / (1 - p) * 100) : Math.round((1 - p) / p * 100));
@@ -8461,7 +8467,7 @@ function entryStake(ps, type) {              // ps: chances 0-1
 // winner"), one an entry. The NBA, NHL, soccer and MLB moneylines are
 // sportsbook bets; priced at PrizePicks' payouts they made a 2-pick Power read
 // +62% and stake 7.8% of a bankroll, on an entry that could not be placed.
-const PP_ENTRY_KINDS = new Set(['mlb_pp', 'nba_pp', 'nfl_ptd']);
+const PP_ENTRY_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nhl_more', 'nfl_ptd']);
 
 // ---- Bets with an edge (2026-10-27) -------------------------------------------
 // The list ranks by how likely a leg is to land; sharp betting asks where a
@@ -8571,6 +8577,12 @@ async function pickemEdges(env, now) {
 // power; 3 to 6, flex). The same table the slip's parlay read uses.
 const PICKS_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 4: ['4-pick flex', 56.9], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
 const PICKS_MLB_MK = { tb: 'TB', hrr: 'H+R+RBI' };
+const PICKS_NHL_MK = { pts: 'PTS', ast: 'AST' };
+// A More's chance as the list states it (2026-10-28): the model's, blended
+// with the sharp books' where they priced the line, as an NBA under's is
+// (NBA_PICK_MODEL_W). The NHL log has no sharp read, so its is the model's.
+const ppMoreChance = (r) => (r.sharp_under != null
+  ? round1(NBA_PICK_MODEL_W * (100 - r.model_under) + (1 - NBA_PICK_MODEL_W) * (100 - r.sharp_under)) : round1(100 - r.model_under));
 // The chance an NBA under is ranked and staked on (2026-10-27): where the
 // sharp books priced him, a quarter the model's and three quarters theirs.
 // Unabated blends a market-based projection into its own at 10-20%; this
@@ -8852,6 +8864,36 @@ async function picksCandidates(env, now) {
       // The sharp books' chance of the under at the line shown (2026-10-25).
       sharp: r.sharp_under == null ? null : r.sharp_under });
   }
+
+  // The PrizePicks Mores (2026-10-28): NBA blocks, rotation players, and the
+  // NHL's points and assists, at a More chance of 55%+ by the model, as their
+  // cards list them. A blocks leg the sharp books priced blends as the unders
+  // do (ppMoreChance), and the chance the list states has to clear the bar as
+  // well: 55% is near PrizePicks' break-even, and on Oct 26 Zach Edey's 55.8
+  // More read 45.8 with the sharp books' 42.5 in it.
+  const moreLeg = (sport, r, p, mk) => ({ kind: sport === 'nba' ? 'nba_blk_more' : 'nhl_more', gameKey: `${sport}:${r.game_id}`, p,
+    modelP: round1(100 - r.model_under), proj: r.proj, commence: r.commence, odds: null,
+    legId: `${sport}pp:${r.game_id}:${r.player}:${r.market}:over`, title: `${r.player} Over ${r.point} ${mk}`,
+    sub: sport === 'nhl' ? `${nhlNick(r.away)} @ ${nhlNick(r.home)}` : `${lastWord(r.away)} @ ${lastWord(r.home)}`,
+    src: { date: r.date, game_id: r.game_id, player_key: r.player, market: r.market, team: r.team },
+    spec: { sport, date: ptDateOf(Date.parse(r.commence)), gamePk: r.game_id, playerId: r.player_id || null, player: r.player, team: r.team || null,
+      market: r.market, side: 'Over', book: { line: r.book_line != null ? r.book_line : null, price: null, under: null }, pp: { line: r.point, under: round1(100 - p) } } });
+  const blk = (await db.prepare("SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL AND market = 'blk'").bind(...days).all()).results || [];
+  for (const row of ppStanding(blk)) {
+    const r = ppCurrent(row);
+    if (!soon(r.commence) || r.model_under == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
+    const p = ppMoreChance(r);
+    if (100 - r.model_under < PICK_KINDS.nba_blk_more.min || p < PICK_KINDS.nba_blk_more.min) continue;
+    legs.push({ ...moreLeg('nba', r, p, 'BLK'), sharp: r.sharp_under == null ? null : round1(100 - r.sharp_under) });
+  }
+  await ensureNhlPpSchema(db);
+  const nhl = (await db.prepare('SELECT * FROM nhlpp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
+  for (const row of ppStanding(nhl)) {
+    const r = ppCurrent(row);
+    if (!soon(r.commence) || r.model_under == null) continue;
+    if (100 - r.model_under < PICK_KINDS.nhl_more.min) continue;
+    legs.push(moreLeg('nhl', r, ppMoreChance(r), PICKS_NHL_MK[r.market] || r.market));
+  }
   return { legs, unavailable };
 }
 
@@ -8900,10 +8942,11 @@ const PICK_GM_SPORT = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', nfl_ptd: 'n
 // line grades at that line, and the label carries the number it showed
 // ("... Under 6.5 REB").
 function ppShownResult(m, label) {
-  const shown = Number((String(label || '').match(/ Under (\d+(?:\.\d+)?) /) || [])[1]);
+  const shown = Number((String(label || '').match(/ (?:Under|Over) (\d+(?:\.\d+)?) /) || [])[1]);
   return m && (m.close_point != null && m.close_point !== m.point && shown === m.close_point ? m.close_result : m.result);
 }
 const ppLegResult = (res) => (res === 'under' ? 'hit' : res === 'over' ? 'miss' : res === 'push' ? 'push' : res === 'void' ? 'void' : null);
+const ppMoreResult = (res) => (res === 'over' ? 'hit' : res === 'under' ? 'miss' : res === 'push' ? 'push' : res === 'void' ? 'void' : null);
 // A listed leg's result, read from the log it came from. hit / miss / push /
 // void, or null while that log has not graded it.
 async function dayPickResult(db, r) {
@@ -8918,6 +8961,12 @@ async function dayPickResult(db, r) {
       ? await one('SELECT result FROM pppicks WHERE date = ? AND game_id = ? AND player_id = ? AND market = ?', r.src_date, r.game_id, Number(r.player_key), r.market)
       : await one('SELECT result, point, close_point, close_result FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', r.src_date, r.game_id, r.player_key, r.market);
     return ppLegResult(ppShownResult(m, r.label));
+  }
+  // A More (2026-10-28) lands on the over, at the line the list showed.
+  if (r.kind === 'nba_blk_more' || r.kind === 'nhl_more') {
+    const m = await one(`SELECT result, point, close_point, close_result FROM ${r.kind === 'nhl_more' ? 'nhlpp' : 'nbapp'} WHERE date = ? AND game_id = ? AND player = ? AND market = ?`,
+      r.src_date, r.game_id, r.player_key, r.market);
+    return ppMoreResult(ppShownResult(m, r.label));
   }
   const sport = PICK_GM_SPORT[r.kind];
   if (!sport) return null;
@@ -8950,15 +8999,20 @@ const PICK_DROP_MAX = 30;
 const dropOutranked = (o) => `${o.label} (${Math.round(o.p)}%) took its game's place`;
 // An NBA under, as the pre-tip read left it (ppStanding, ppCurrent): taken
 // down, moved, under the bar, below the books' line -- or still good, and
-// beaten in its game by the leg that held the place at tip (other).
-function ppDropWhy(m, reread, other) {
+// beaten in its game by the leg that held the place at tip (other). A More
+// (2026-10-28) reads its own side's chance against its own bar; a line below
+// the books' is no reason to leave it.
+function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   if (!m) return null;
-  if (reread && m.close_point == null) return 'PrizePicks took the line down before tip, most often a player ruled out';
-  const cur = ppCurrent(m), min = PICK_KINDS.nba_pp.min;
+  if (reread && m.close_point == null) return `PrizePicks took the line down before ${kind === 'nhl_more' ? 'puck drop' : 'tip'}, most often a player ruled out`;
+  if (!PICK_KINDS[kind]) kind = 'nba_pp';
+  const cur = ppCurrent(m), min = PICK_KINDS[kind].min, more = kind !== 'nba_pp';
+  const p = cur.model_under == null ? null : more ? 100 - cur.model_under : cur.model_under;
   const why = [];
   if (cur.point !== m.point) why.push(`PrizePicks moved the line from ${m.point} to ${cur.point}`);
-  if (!(cur.model_under >= min)) why.push(cur.model_under == null ? `no chance was read at ${cur.point}` : `the chance at ${cur.point} was ${round1(cur.model_under)}%, under the ${min}% bar`);
-  else if (ppBelowBook(cur)) why.push(`PrizePicks' ${cur.point} sat below the books' ${cur.book_line}`);
+  if (!(p >= min)) why.push(p == null ? `no chance was read at ${cur.point}` : `the chance at ${cur.point} was ${round1(p)}%, under the ${min}% bar`);
+  else if (more && ppMoreChance(cur) < min) why.push(`the sharp books had it at ${round1(100 - cur.sharp_under)}%, ${ppMoreChance(cur)}% with the model's, under the ${min}% bar`);
+  else if (!more && ppBelowBook(cur)) why.push(`PrizePicks' ${cur.point} sat below the books' ${cur.book_line}`);
   else if (other) why.push(dropOutranked(other));
   return why.length ? why.join('; ') : null;
 }
@@ -8980,11 +9034,13 @@ async function dayPickDrops(db, now, listed) {
   return Promise.all(off.map(async (r) => {
     const other = listed.find((x) => x.date === r.date && String(x.game_id) === String(r.game_id)) || null;
     let why = null, result = null, actual = null;
-    if (r.kind === 'nba_pp') {
-      const m = await one('SELECT * FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', r.src_date, r.game_id, r.player_key, r.market);
-      const reread = !!(m && (m.close_at || await one('SELECT 1 AS x FROM nbapp WHERE date = ? AND game_id = ? AND close_at IS NOT NULL LIMIT 1', r.src_date, r.game_id)));
-      why = ppDropWhy(m, reread, other);
-      result = ppLegResult(ppShownResult(m, r.label));
+    if (r.kind === 'nba_pp' || r.kind === 'nba_blk_more' || r.kind === 'nhl_more') {
+      const tbl = r.kind === 'nhl_more' ? 'nhlpp' : 'nbapp';
+      const m = await one(`SELECT * FROM ${tbl} WHERE date = ? AND game_id = ? AND player = ? AND market = ?`, r.src_date, r.game_id, r.player_key, r.market);
+      const reread = !!(m && (m.close_at || await one(`SELECT 1 AS x FROM ${tbl} WHERE date = ? AND game_id = ? AND close_at IS NOT NULL LIMIT 1`, r.src_date, r.game_id)));
+      why = ppDropWhy(m, reread, other, r.kind);
+      const res = ppShownResult(m, r.label);
+      result = r.kind === 'nba_pp' ? ppLegResult(res) : ppMoreResult(res);
       if (m && m.actual != null) actual = m.actual;
     } else if (PICK_GM_SPORT[r.kind]) {
       const g = await one('SELECT pick, win_prob, result FROM gmpicks WHERE sport = ? AND date = ? AND game_id = ? AND market = ?', PICK_GM_SPORT[r.kind], r.src_date, r.game_id, r.market);
@@ -9002,7 +9058,7 @@ async function dayPickDrops(db, now, listed) {
 // Graded rows only, so kept until one is graded (recordCached).
 async function pickKindRecords(env) {
   const db = env.DB;
-  await ensureMlPickSchema(db); await ensurePpSchema(db); await ensureGamePickSchema(db); await ensureNbaSchema(db);
+  await ensureMlPickSchema(db); await ensurePpSchema(db); await ensureGamePickSchema(db); await ensureNbaSchema(db); await ensureNhlPpSchema(db);
   return recordCached(env, 'pick-kinds', async () => ({ data: await pickKindBuild(db), complete: true }));
 }
 async function pickKindBuild(db) {
@@ -9031,6 +9087,14 @@ async function pickKindBuild(db) {
   for (const r of ((await db.prepare(`SELECT model_under, min_proj, point, book_line, result FROM nbapp WHERE result IN ('under','over') AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
     .bind(...NBA_PICK_MARKETS).all()).results || [])) {
     if (r.min_proj >= NBA_ROTATION_MIN && r.model_under >= PICK_KINDS.nba_pp.min && !ppBelowBook(r)) add('nba_pp', r.result === 'under');
+  }
+  // The Mores (2026-10-28): graded at the first line, the More side, as the
+  // cards' blkMore and more records count them.
+  for (const r of ((await db.prepare("SELECT model_under, min_proj, result FROM nbapp WHERE result IN ('under','over') AND market = 'blk'").all()).results || [])) {
+    if (r.min_proj >= NBA_ROTATION_MIN && r.model_under != null && 100 - r.model_under >= PICK_KINDS.nba_blk_more.min) add('nba_blk_more', r.result === 'over');
+  }
+  for (const r of ((await db.prepare("SELECT model_under, result FROM nhlpp WHERE result IN ('under','over')").all()).results || [])) {
+    if (r.model_under != null && 100 - r.model_under >= PICK_KINDS.nhl_more.min) add('nhl_more', r.result === 'over');
   }
   for (const v of Object.values(rec)) {
     v.hitRate = v.n ? round1(v.hit / v.n * 100) : null;
@@ -9165,7 +9229,7 @@ async function picksBoard(env) {
         for (const r of fr) if (r.first_p != null) firsts.set(r.leg_id, r);
       }
     } catch (e) { /* the list stands without it */ }
-    out.legs = list.map((l, i) => ({
+    const shown = (l, i) => ({
       rank: i + 1, kind: l.kind, sport: PICK_KINDS[l.kind].sport, kindLabel: PICK_KINDS[l.kind].label,
       p: round1(l.p), title: l.title, sub: l.sub, commence: l.commence, odds: l.odds == null ? null : l.odds,
       lineup: l.lineup || null, vsBook: l.vsBook == null ? null : l.vsBook, league: l.league || null,
@@ -9179,17 +9243,30 @@ async function picksBoard(env) {
       ...(l.modelP != null ? { modelP: l.modelP } : {}),
       // His projection, for the bar under a player leg (2026-10-28).
       ...(l.proj != null ? { proj: l.proj } : {}),
-    }));
+    });
+    out.legs = list.map(shown);
+    // The PrizePicks entry's own pool (2026-10-28): the best leg of each game
+    // among the kinds PrizePicks takes (PP_ENTRY_KINDS), and the first NFL
+    // moneyline as the entry's one team pick, from everything that qualifies
+    // -- not only the list's six, where the moneylines crowded its player
+    // picks out (Oct 28: four moneylines on the list, two PrizePicks legs).
+    const pool = [], poolGames = new Set();
+    let teamPick = false;
+    for (const l of [...legs].sort((a, b) => b.p - a.p || Date.parse(a.commence) - Date.parse(b.commence))) {
+      if (pool.length >= PICKS_N || poolGames.has(l.gameKey)) continue;
+      const team = l.kind === 'nfl_ml';
+      if (!PP_ENTRY_KINDS.has(l.kind) && !(team && !teamPick)) continue;
+      if (team) teamPick = true;
+      poolGames.add(l.gameKey);
+      pool.push(l);
+    }
+    out.ppPool = pool.map(shown);
+    const inPool = new Set(pool.map((l) => l.legId));
+    for (const l of out.legs) l.ppOk = inPool.has(l.legId);
     // The entry read: the top two as a 2-pick power (both have to land), and
     // the average leg of the top three to six against the flex break-even --
-    // over the legs PrizePicks takes (PP_ENTRY_KINDS, and the first NFL
-    // moneyline as the entry's one team pick), each marked ppOk.
-    let teamPick = false;
-    for (const l of out.legs) {
-      l.ppOk = PP_ENTRY_KINDS.has(l.kind);
-      if (!l.ppOk && l.kind === 'nfl_ml' && !teamPick) { l.ppOk = true; teamPick = true; }
-    }
-    const ppLegs = out.legs.filter((l) => l.ppOk);
+    // over that pool.
+    const ppLegs = out.ppPool;
     for (let n = 2; n <= ppLegs.length; n++) {
       const top = ppLegs.slice(0, n);
       const [name, be] = PICKS_BREAK_EVEN[n];
@@ -11734,10 +11811,11 @@ async function nbaPpDay(env, day) {
   const byId = new Map(dp.map((r) => [r.leg_id, r]));
   const reread = new Set(rows.filter((r) => r.close_at).map((r) => r.game_id));
   const legs = rows.map((m) => {
-    const d = byId.get(`nbapp:${m.game_id}:${m.player}:${m.market}`);
+    // A blocks More is its own leg on the list (2026-10-28), the line's Over.
+    const d = byId.get(`nbapp:${m.game_id}:${m.player}:${m.market}`) || byId.get(`nbapp:${m.game_id}:${m.player}:${m.market}:over`);
     const other = onList.find((x) => String(x.game_id) === String(m.game_id)) || null;
-    const picks = !d ? null : d.on_list === 1 ? { on: true, p: d.p, result: d.result }
-      : { on: false, p: d.p, lastOn: d.seen_at, why: ppDropWhy(m, reread.has(m.game_id), other) || (other ? dropOutranked(other) : 'off the list before its start') };
+    const picks = !d ? null : d.on_list === 1 ? { on: true, p: d.p, result: d.result, ...(d.kind !== 'nba_pp' ? { side: 'Over' } : {}) }
+      : { on: false, p: d.p, lastOn: d.seen_at, why: ppDropWhy(m, reread.has(m.game_id), other, d.kind) || (other ? dropOutranked(other) : 'off the list before its start') };
     return { game: `${m.away} @ ${m.home}`, game_id: m.game_id, commence: m.commence, player: m.player, team: m.team, market: m.market, min_proj: m.min_proj, proj: m.proj,
       first: { line: m.point, under: m.model_under, book: m.book_line, book_under: m.book_under, sharp: m.sharp_under, at: m.captured_at },
       tip: m.close_at ? { line: m.close_point, under: m.close_under, book: m.close_book_line, book_under: m.close_book_under, sharp: m.close_sharp_under, at: m.close_at } : null,
@@ -11839,7 +11917,8 @@ async function nbaPpBoard(env) {
         // Blocks More (2026-10-27, the user's call): the one NBA market whose
         // More side has landed -- 26 of 41 where the model leaned More through
         // Oct 26, 16 of 23 at 55%+, against 42-45% for threes and assists
-        // Mores. Listed on the card, logged; not on Picks of the day.
+        // Mores. Listed on the card, and on Picks of the day from Oct 28
+        // (PICK_KINDS.nba_blk_more).
         blkMore: ppMoreRecord(lean.filter((g) => g.market === 'blk')),
         ...ppCloseRecord(graded),
         sharp: ppSharpRecord(graded),

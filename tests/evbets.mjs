@@ -126,7 +126,7 @@ ok(/Bets with an edge/.test(html) && (html.match(/<li>/g) || []).length === E.le
   'the card: each bet, its edge, the price and the fair, its stake');
 ok(new RegExp(`¼ Kelly total ${Math.round(E.reduce((s, b) => s + b.stake, 0) * 10) / 10}%`).test(text(html)), "and the day's total stake");
 ok(/No price beats the sharp line/.test(card({ evBets: [] })), 'and says so when nothing does');
-ok(/evBetsHtml\(d\) \+ after;/.test(app) && /As a PrizePicks entry/.test(app) && /const ppLegs = legs\.filter\(\(x\) => x\.ppOk\);/.test(app),
+ok(/evBetsHtml\(d\) \+ after;/.test(app) && /As a PrizePicks entry/.test(app) && /const ppLegs = allPool\.filter\(\(x\) => Date\.parse\(x\.commence\) > Date\.now\(\)\);/.test(app),
   'on the Picks tab under the list, with the entry table on the legs PrizePicks takes');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');

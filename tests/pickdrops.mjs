@@ -62,7 +62,10 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
 await get('/api/picks'); await get('/api/nba-pp'); await get('/api/gmpicks-export');   // the tables
 const leg = sq.prepare(`INSERT INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent,
   min_proj, book_line, book_under, captured_at, ud_line, p6_line, sharp_under, sharp_src, l10_n, l10_under, model_ver) VALUES (${Array(25).fill('?').join(',')})`);
-for (const l of F.board) {
+// The blocks legs stay out: blocks Mores joined the list on Oct 28, after
+// this day, and the test is the list as production had it (2026-10-28).
+const BOARD_LEGS = F.board.filter((l) => l.market !== 'blk');
+for (const l of BOARD_LEGS) {
   const [away, home] = l.game.split(' @ ');
   leg.run('2026-10-26', l.game_id, l.player, l.market, l.league, l.commence, home, away, l.team, l.player_id, l.point, l.proj, l.model_under, l.n_recent,
     l.min_proj, l.book_line, typeof l.book_under === 'number' ? l.book_under : null, l.first_at, l.ud_line, l.p6_line, l.sharp_under, l.sharp_src, l.l10_n, l.l10_under, 'nbapp-v1');
@@ -149,7 +152,7 @@ const v = await get('/api/nba-pp?day=2026-10-26');
 const vl = (who, mk) => (v.legs || []).find((l) => l.player === who && l.market === mk) || {};
 const vs = vl('Sion James', 'threes'), vd = vl('Dennis Schroder', 'threes'), vf = vl('Cooper Flagg', 'ast');
 console.log(`  ${v.n} legs, ${v.onPicks} on the list at tip, ${v.dropped} off before`);
-ok(v.n === F.board.filter((l) => l.commence < '2026-10-27T07:00:00Z').length + 1 && v.onPicks === 2 && v.dropped === 1, 'every leg of the day, two on the list at tip and one off before');
+ok(v.n === BOARD_LEGS.filter((l) => l.commence < '2026-10-27T07:00:00Z').length + 1 && v.onPicks === 2 && v.dropped === 1, 'every leg of the day, two on the list at tip and one off before');
 ok(vs.pulled === true && vs.tip === null && vs.first.line === 1.5 && vs.first.under === 77.9 && vs.actual === 1 && vs.result === 'under'
   && vs.picks && vs.picks.on === false && /^PrizePicks took the line down/.test(vs.picks.why), "Sion James's: first read, taken down, one three, off the list and why");
 ok(vd.picks && vd.picks.on === true && vd.picks.result === 'hit' && vd.tip && vd.tip.line === 1.5, "Schroder's: read at tip, on the list, landed");

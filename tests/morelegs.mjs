@@ -5,7 +5,8 @@
 // 16 of 23 at a More chance of 55%+ (threes and assists Mores 42-45%), and
 // NHL points and assists 29 of 51. The NHL's reads had been paused on Oct 25
 // for its unders (39 of 84). The owner's call: list both Mores, logged, not
-// on Picks of the day, and read the NHL again. What has to hold:
+// on Picks of the day, and read the NHL again. (On Oct 28 both joined Picks
+// of the day at 55%+: tests/morepicks.mjs.) What has to hold:
 //   - the NBA record carries blocks' More: every leg the model leaned More on,
 //     and those at 55%+
 //   - the NBA card lists the best three blocks Mores to come, at 55%+, one a
@@ -112,7 +113,7 @@ const want = [...new Map(mon.map((l) => [l.player, l])).values()].slice(0, 3);
 console.log('  ' + text(more).slice(0, 360));
 ok(want.length === 3 && want.every((l) => more.includes(`<b>${l.player}</b><span class="tc-p">${Math.round(100 - l.first.under)}%</span>`))
   && (more.match(/<li>/g) || []).length === 3, `Monday's best three blocks Mores at 55%+: ${want.map((l) => `${l.player} ${Math.round(100 - l.first.under)}%`).join(', ')}`);
-ok(/Blocks: where the model leaned More <b>\d+ of \d+<\/b> · at 55%\+ <b>\d+ of \d+<\/b>/.test(more) && /Logged, not on Picks of the day/.test(more), 'with its record, logged');
+ok(/Blocks: where the model leaned More <b>\d+ of \d+<\/b> · at 55%\+ <b>\d+ of \d+<\/b>/.test(more) && /On Picks of the day too, since Oct 28/.test(more), 'with its record (on Picks of the day since Oct 28)');
 ok(!/null|undefined/.test(text(more)), 'and no leg prints a projection it does not have (the day view carries none)');
 const top = want[0];
 const lg = C.LEG_OFFERS.get(`nbapp:${top.game_id}:${top.player}:blk:over`);

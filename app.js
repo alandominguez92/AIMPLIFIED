@@ -5821,7 +5821,7 @@
   // question. /api/picks builds the list from the logs, admits only kinds of leg
   // whose stated chance has held up, and logs what it shows so the list earns a
   // record of its own. Each star takes the leg under the id its own board uses.
-  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nhl_ml: 'NHL ML', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
+  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nba_blk_more: 'PrizePicks', nhl_ml: 'NHL ML', nhl_more: 'PrizePicks', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
   const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL', nfl: 'NFL', soccer: 'Soccer' };
   // Placeholder legs while the list loads (2026-10-12): the section was a
   // blank area for the seconds /api/picks takes on first open.
@@ -6065,7 +6065,8 @@
     }
     // The first leg is the night's best, drawn large; the rest follow.
     const hero = heroLegHtml(legs[0], { size: 52 });
-    const items = legs.slice(1).map((x) => {
+    // One leg's row: the list's, and the PrizePicks pool's (2026-10-28).
+    const itemHtml = (x) => {
       const lg = pickLeg(x);
       const on = !!state.slip[offerLeg(lg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
@@ -6095,17 +6096,23 @@
         + `${x.spec && x.spec.pp ? projLineHtml(x.proj, x.spec.pp.line, x.spec.side) : ''}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
-    }).join('');
+    };
+    const items = legs.slice(1).map(itemHtml).join('');
     // Entry math over the legs still to come: the top two as a 2-pick power,
     // and the average leg of three to six against the flex break-even.
     const ent = [];
     // An entry is built from the legs PrizePicks takes (2026-10-27): its
-    // player picks and one NFL team pick, which the worker marks ppOk. Each
-    // entry's EV at PrizePicks' payouts and its quarter-Kelly stake are the
-    // worker's entryStake -- while the list is the one it priced (no leg of it
-    // under way yet).
-    const ppLegs = legs.filter((x) => x.ppOk);
-    const whole = ppLegs.length === (d.legs || []).filter((x) => x.ppOk).length;
+    // player picks and one NFL team pick -- since 2026-10-28 the worker's own
+    // pool of them (ppPool), from everything that qualifies, not only the
+    // list's six. Each entry's EV at PrizePicks' payouts and its quarter-Kelly
+    // stake are the worker's entryStake -- while the pool is the one it priced
+    // (no leg of it under way yet).
+    const allPool = d.ppPool || [];
+    const ppLegs = allPool.filter((x) => Date.parse(x.commence) > Date.now());
+    const whole = ppLegs.length === allPool.length;
+    // The pool's legs the list does not show, listed under the entry table.
+    const onList = new Set(legs.map((x) => x.legId));
+    const poolOnly = ppLegs.filter((x) => !onList.has(x.legId));
     const evOf = (n) => {
       const w = whole && (d.entries || []).find((e) => e.legs === n);
       if (!w || typeof w.ev !== 'number') return '<span class="pk-ev"></span>';
@@ -6141,8 +6148,11 @@
       + hero
       + (items ? `<ol class="tc-legs">${items}</ol>` : '')
       + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As a PrizePicks entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>`
-        : (legs.length ? `<div class="tc-sub pk-noentry">Fewer than two of these legs are ones PrizePicks takes (its player picks, and one NFL team pick an entry): the rest are sportsbook bets.</div>` : ''))
-      + (ent.length && ppLegs.length < legs.length ? `<div class="tc-sub pk-noentry">Entries use the ${ppLegs.length} legs PrizePicks takes; the other moneylines are sportsbook bets.</div>` : '')
+        : (legs.length ? `<div class="tc-sub pk-noentry">Fewer than two legs PrizePicks takes qualify today (its player picks, and one NFL team pick an entry): the moneylines are sportsbook bets.</div>` : ''))
+      // The entry's legs, best first, when it reaches past the list's six.
+      + (ent.length && poolOnly.length ? `<div class="tc-sub pk-noentry">The PrizePicks entry, best first: the legs PrizePicks takes, one a game, from everything that qualifies (${poolOnly.length} not on the list above).</div>`
+        + `<ol class="tc-legs pk-pool">${ppLegs.map(itemHtml).join('')}</ol>`
+        : (ent.length && ppLegs.length < legs.length ? `<div class="tc-sub pk-noentry">Entries use the ${ppLegs.length} legs PrizePicks takes; the other moneylines are sportsbook bets.</div>` : ''))
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
   }
   // Bets with an edge (2026-10-27): prices that beat the sharp line, from the
@@ -6402,7 +6412,7 @@
     const top = ppMoreTop(rot, (x) => x.market === 'blk', 3);
     if (!top.length && !(m && m.leaned && m.leaned.n)) return '';
     return `<div class="tc-head pp-more-head"><span class="tc-title">Blocks: More</span></div>`
-      + `<div class="tc-sub">The other side of the same blocks lines, at ${PP_MORE_MIN}%+: the one NBA market where the model's More has landed. Logged, not on Picks of the day.</div>`
+      + `<div class="tc-sub">The other side of the same blocks lines, at ${PP_MORE_MIN}%+: the one NBA market where the model's More has landed. On Picks of the day too, since Oct 28.</div>`
       + ppMoreLineHtml(m, 'Blocks')
       + (top.length ? ppMoreListHtml(top, 'nba') : `<div class="tc-wait-note">No blocks More at ${PP_MORE_MIN}%+ in the next games yet.</div>`);
   }
@@ -6538,7 +6548,7 @@
     const top = ppMoreTop(d.legs, () => true, 5);
     const unders = r.graded ? `<div class="tc-sub tc-rec-line">Unders, no longer listed: <b>${r.hit} of ${r.graded}</b> landed</div>` : '';
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks: More</span></div>`
-      + `<div class="tc-sub">The chance the skater gets past PrizePicks' line, a point or an assist, from his scoring rate this season and last. Regulars (15+ minutes), at ${PP_MORE_MIN}%+. Read when PrizePicks posts and again before puck drop. Logged, not posted.</div>`
+      + `<div class="tc-sub">The chance the skater gets past PrizePicks' line, a point or an assist, from his scoring rate this season and last. Regulars (15+ minutes), at ${PP_MORE_MIN}%+. Read when PrizePicks posts and again before puck drop. On Picks of the day too, since Oct 28.</div>`
       + ppMoreLineHtml(r.more, 'More') + unders;
     if (!top.length) {
       const any = (d.legs || []).some((x) => Date.parse(x.commence) > Date.now());
