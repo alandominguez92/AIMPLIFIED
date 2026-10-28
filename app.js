@@ -339,6 +339,24 @@
       : cushion < 0 ? `<b class="o">${Math.abs(cushion)} ${over ? 'short of' : 'over'} the line</b>` : 'right on the line';
     return `<span class="pp-projbar">${miniBar(proj, line, (v) => v / axisMax * 100)}<span class="bw-cush">proj <b>${esc(String(proj))}</b> · line ${esc(String(line))} · ${gap}</span></span>`;
   }
+  // The same bar under a moneyline on Picks of the day (2026-10-28, the
+  // owner's call): the boards' fair-against-price bar, the fill the chance the
+  // leg's stake is built on (kellyP: its chance brought toward how legs like it
+  // have landed), the tick the chance its best price needs to break even, and
+  // the gap between them named as the player bar names its cushion -- the edge
+  // in points.
+  function mlChanceLineHtml(x) {
+    if (typeof x.odds !== 'number') return '';
+    const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
+    const p = typeof x.kellyP === 'number' ? x.kellyP : x.p;
+    if (typeof p !== 'number') return '';
+    const gap = Math.round((p - need) * 10) / 10;
+    const g = gap > 0 ? `<b class="u">${gap} points of edge</b>` : gap < 0 ? `<b class="o">${Math.abs(gap)} points short</b>` : 'right on the price';
+    const onRec = typeof x.kellyP === 'number' && typeof x.p === 'number' && x.kellyP < x.p - 0.5;
+    const odds = x.odds > 0 ? `+${x.odds}` : String(x.odds);
+    return `<span class="pp-projbar"${onRec ? ` title="${esc(`${Math.round(x.p)}% as listed, brought toward how legs like it have landed`)}"` : ''}>${miniBar(p, need, (v) => v)}`
+      + `<span class="bw-cush">chance <b>${Math.round(p * 10) / 10}%</b>${onRec ? ' on its record' : ''} · ${esc(odds)} needs <b>${Math.round(need * 10) / 10}%</b> · ${g}</span></span>`;
+  }
 
   // ---------------------------------------------------------------------
   // DOM refs
@@ -5863,6 +5881,9 @@
   const pct0 = (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—');
   // A Picks leg's face: the player for a prop, the club for a moneyline.
   const pickIsTeam = (x) => ((x.spec || {}).market === 'ml') || /_(ml|fav)$/.test(x.kind || '');
+  // Under a Picks leg: a player's projection against his line, a team's chance
+  // against its price (2026-10-28).
+  const pickBarHtml = (x, s) => (s && s.pp ? projLineHtml(x.proj, s.pp.line, s.side) : pickIsTeam(x) ? mlChanceLineHtml(x) : '');
   function pickFace(x, size) {
     const s = x.spec || {};
     const team = pickIsTeam(x);
@@ -5934,8 +5955,9 @@
       + `<div class="hl-p${good ? ' good' : ''}"><span class="hl-pct">${pct0(x.p)}</span><span class="hl-pk">chance</span></div>`
       // The game on its own line, so a long matchup never squeezes the name.
       + `<span class="hl-game">${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span>`
-      // A player leg's projection against its line, as the MLB board draws it.
-      + `${s.pp ? projLineHtml(x.proj, s.pp.line, s.side) : ''}</div>`
+      // A player leg's projection against its line, as the MLB board draws it;
+      // a team's chance against its price.
+      + `${pickBarHtml(x, s)}</div>`
       + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
       + (typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
       + `<div class="hl-actions"><button type="button" class="hl-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? '★ In your slip' : '☆ Add to slip'}</button>`
@@ -6105,8 +6127,9 @@
         // A soccer leg's league says the sport; the others name it.
         + `<span class="tc-l2"><span><span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
         + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${pickEdgeHtml(x)}</span>` : ''}`
-        // A player leg's projection against its line, as the MLB board draws it.
-        + `${x.spec && x.spec.pp ? projLineHtml(x.proj, x.spec.pp.line, x.spec.side) : ''}</span>`
+        // A player leg's projection against its line, as the MLB board draws it;
+        // a team's chance against its price.
+        + `${pickBarHtml(x, x.spec)}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     };

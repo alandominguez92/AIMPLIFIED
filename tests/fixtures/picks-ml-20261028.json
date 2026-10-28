@@ -1,0 +1,570 @@
+{
+ "_recorded": "Production /api/picks at 2026-10-28T08:50:05.252Z (1:50 AM Pacific, Oct 28): the list and the PrizePicks pool as served, every field of each leg.",
+ "asOf": "2026-10-28T08:50:05.252Z",
+ "legs": [
+  {
+   "rank": 1,
+   "kind": "nba_ml",
+   "sport": "nba",
+   "kindLabel": "NBA moneyline favourite",
+   "p": 82.9,
+   "title": "Spurs ML",
+   "sub": "Spurs @ Jazz",
+   "commence": "2026-10-29T01:10:00Z",
+   "odds": -520,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": 83.5,
+   "firstAt": "2026-10-28T02:00:31.247Z",
+   "record": {
+    "n": 20,
+    "hit": 16,
+    "hitRate": 80,
+    "proven": false
+   },
+   "legId": "nba:ml:e74d54621abaed183e569394f935c362:away",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "e74d54621abaed183e569394f935c362",
+    "player": "San Antonio Spurs",
+    "team": "Spurs",
+    "market": "ml",
+    "side": "away",
+    "logo": "nba/500/sa.png",
+    "book": {
+     "line": null,
+     "price": -520,
+     "win": 82.9
+    },
+    "pp": null
+   },
+   "kellyP": 81.5,
+   "betAt": -439,
+   "ev": -2.9,
+   "stake": 0,
+   "ppOk": false
+  },
+  {
+   "rank": 2,
+   "kind": "nba_pp",
+   "sport": "nba",
+   "kindLabel": "NBA PrizePicks under (3PM, AST; PP line not below the book)",
+   "p": 76.8,
+   "title": "Wendell Carter Jr Under 2.5 AST",
+   "sub": "Magic @ Raptors",
+   "commence": "2026-10-28T23:40:00Z",
+   "odds": null,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": 76.8,
+   "firstAt": "2026-10-28T00:30:30.310Z",
+   "record": {
+    "n": 16,
+    "hit": 10,
+    "hitRate": 62.5,
+    "proven": false
+   },
+   "legId": "nbapp:67550840fbe9bb9c550d3d4958e259ea:Wendell Carter Jr:ast",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "67550840fbe9bb9c550d3d4958e259ea",
+    "playerId": "4277847",
+    "player": "Wendell Carter Jr",
+    "team": "ORL",
+    "market": "ast",
+    "side": "Under",
+    "book": {
+     "line": null,
+     "price": null,
+     "under": null
+    },
+    "pp": {
+     "line": 2.5,
+     "under": 76.8
+    }
+   },
+   "dfs": {
+    "ud": null,
+    "p6": null
+   },
+   "kellyP": 70.4,
+   "betAt": -238,
+   "modelP": 76.8,
+   "proj": 1.6,
+   "ppOk": true
+  },
+  {
+   "rank": 3,
+   "kind": "nba_ml",
+   "sport": "nba",
+   "kindLabel": "NBA moneyline favourite",
+   "p": 76.6,
+   "title": "Cavaliers ML",
+   "sub": "Wizards @ Cavaliers",
+   "commence": "2026-10-28T23:10:00Z",
+   "odds": -370,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": 77.6,
+   "firstAt": "2026-10-28T02:00:31.247Z",
+   "record": {
+    "n": 20,
+    "hit": 16,
+    "hitRate": 80,
+    "proven": false
+   },
+   "legId": "nba:ml:f2a1271ffcfd7c85f51640ebff3b7ddd:home",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "f2a1271ffcfd7c85f51640ebff3b7ddd",
+    "player": "Cleveland Cavaliers",
+    "team": "Cavaliers",
+    "market": "ml",
+    "side": "home",
+    "logo": "nba/500/cle.png",
+    "book": {
+     "line": null,
+     "price": -370,
+     "win": 76.6
+    },
+    "pp": null
+   },
+   "kellyP": 76.6,
+   "betAt": -327,
+   "ev": -2.7,
+   "stake": 0,
+   "ppOk": false
+  },
+  {
+   "rank": 4,
+   "kind": "nba_ml",
+   "sport": "nba",
+   "kindLabel": "NBA moneyline favourite",
+   "p": 75.6,
+   "title": "Rockets ML",
+   "sub": "Rockets @ Bucks",
+   "commence": "2026-10-29T00:10:00Z",
+   "odds": -305,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": 73.7,
+   "firstAt": "2026-10-28T02:00:31.247Z",
+   "record": {
+    "n": 20,
+    "hit": 16,
+    "hitRate": 80,
+    "proven": false
+   },
+   "legId": "nba:ml:83ca338f605b5664b7b1da34c19a0222:away",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "83ca338f605b5664b7b1da34c19a0222",
+    "player": "Houston Rockets",
+    "team": "Rockets",
+    "market": "ml",
+    "side": "away",
+    "logo": "nba/500/hou.png",
+    "book": {
+     "line": null,
+     "price": -305,
+     "win": 75.6
+    },
+    "pp": null
+   },
+   "kellyP": 75.6,
+   "betAt": -310,
+   "ev": 0.4,
+   "stake": 0.3,
+   "ppOk": false
+  },
+  {
+   "rank": 5,
+   "kind": "nba_pp",
+   "sport": "nba",
+   "kindLabel": "NBA PrizePicks under (3PM, AST; PP line not below the book)",
+   "p": 72.2,
+   "title": "Cooper Flagg Under 6.5 AST",
+   "sub": "Thunder @ Mavericks",
+   "commence": "2026-10-29T01:40:00Z",
+   "odds": null,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": 72.2,
+   "firstAt": "2026-10-28T04:30:30.520Z",
+   "record": {
+    "n": 16,
+    "hit": 10,
+    "hitRate": 62.5,
+    "proven": false
+   },
+   "legId": "nbapp:1e3ca91e27ded6e4b4bb35aabb67b505:Cooper Flagg:ast",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "1e3ca91e27ded6e4b4bb35aabb67b505",
+    "playerId": "5041939",
+    "player": "Cooper Flagg",
+    "team": "DAL",
+    "market": "ast",
+    "side": "Under",
+    "book": {
+     "line": null,
+     "price": null,
+     "under": null
+    },
+    "pp": {
+     "line": 6.5,
+     "under": 72.2
+    }
+   },
+   "dfs": {
+    "ud": null,
+    "p6": null
+   },
+   "kellyP": 67.9,
+   "betAt": -211,
+   "modelP": 72.2,
+   "proj": 5.2,
+   "ppOk": true
+  },
+  {
+   "rank": 6,
+   "kind": "nba_ml",
+   "sport": "nba",
+   "kindLabel": "NBA moneyline favourite",
+   "p": 70.6,
+   "title": "Knicks ML",
+   "sub": "Knicks @ Bulls",
+   "commence": "2026-10-29T00:10:00Z",
+   "odds": -250,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": 70.6,
+   "firstAt": "2026-10-28T07:15:29.692Z",
+   "record": {
+    "n": 20,
+    "hit": 16,
+    "hitRate": 80,
+    "proven": false
+   },
+   "legId": "nba:ml:7b9e02686c886a54c9a91dd3f3879326:away",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "7b9e02686c886a54c9a91dd3f3879326",
+    "player": "New York Knicks",
+    "team": "Knicks",
+    "market": "ml",
+    "side": "away",
+    "logo": "nba/500/ny.png",
+    "book": {
+     "line": null,
+     "price": -250,
+     "win": 70.6
+    },
+    "pp": null
+   },
+   "kellyP": 70.6,
+   "betAt": -240,
+   "ev": -1.2,
+   "stake": 0,
+   "ppOk": false
+  }
+ ],
+ "ppPool": [
+  {
+   "rank": 1,
+   "kind": "nba_pp",
+   "sport": "nba",
+   "kindLabel": "NBA PrizePicks under (3PM, AST; PP line not below the book)",
+   "p": 76.8,
+   "title": "Wendell Carter Jr Under 2.5 AST",
+   "sub": "Magic @ Raptors",
+   "commence": "2026-10-28T23:40:00Z",
+   "odds": null,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": 76.8,
+   "firstAt": "2026-10-28T00:30:30.310Z",
+   "record": {
+    "n": 16,
+    "hit": 10,
+    "hitRate": 62.5,
+    "proven": false
+   },
+   "legId": "nbapp:67550840fbe9bb9c550d3d4958e259ea:Wendell Carter Jr:ast",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "67550840fbe9bb9c550d3d4958e259ea",
+    "playerId": "4277847",
+    "player": "Wendell Carter Jr",
+    "team": "ORL",
+    "market": "ast",
+    "side": "Under",
+    "book": {
+     "line": null,
+     "price": null,
+     "under": null
+    },
+    "pp": {
+     "line": 2.5,
+     "under": 76.8
+    }
+   },
+   "dfs": {
+    "ud": null,
+    "p6": null
+   },
+   "kellyP": 70.4,
+   "betAt": -238,
+   "modelP": 76.8,
+   "proj": 1.6
+  },
+  {
+   "rank": 2,
+   "kind": "nba_pp",
+   "sport": "nba",
+   "kindLabel": "NBA PrizePicks under (3PM, AST; PP line not below the book)",
+   "p": 72.2,
+   "title": "Cooper Flagg Under 6.5 AST",
+   "sub": "Thunder @ Mavericks",
+   "commence": "2026-10-29T01:40:00Z",
+   "odds": null,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": 72.2,
+   "firstAt": "2026-10-28T04:30:30.520Z",
+   "record": {
+    "n": 16,
+    "hit": 10,
+    "hitRate": 62.5,
+    "proven": false
+   },
+   "legId": "nbapp:1e3ca91e27ded6e4b4bb35aabb67b505:Cooper Flagg:ast",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "1e3ca91e27ded6e4b4bb35aabb67b505",
+    "playerId": "5041939",
+    "player": "Cooper Flagg",
+    "team": "DAL",
+    "market": "ast",
+    "side": "Under",
+    "book": {
+     "line": null,
+     "price": null,
+     "under": null
+    },
+    "pp": {
+     "line": 6.5,
+     "under": 72.2
+    }
+   },
+   "dfs": {
+    "ud": null,
+    "p6": null
+   },
+   "kellyP": 67.9,
+   "betAt": -211,
+   "modelP": 72.2,
+   "proj": 5.2
+  },
+  {
+   "rank": 3,
+   "kind": "nba_blk_more",
+   "sport": "nba",
+   "kindLabel": "NBA blocks More (PrizePicks)",
+   "p": 66.3,
+   "title": "Kyshawn George Over 0.5 BLK",
+   "sub": "Wizards @ Cavaliers",
+   "commence": "2026-10-28T23:10:00Z",
+   "odds": null,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": null,
+   "firstAt": null,
+   "record": {
+    "n": 24,
+    "hit": 17,
+    "hitRate": 70.8,
+    "proven": false
+   },
+   "legId": "nbapp:f2a1271ffcfd7c85f51640ebff3b7ddd:Kyshawn George:blk:over",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "f2a1271ffcfd7c85f51640ebff3b7ddd",
+    "playerId": "5174563",
+    "player": "Kyshawn George",
+    "team": "WSH",
+    "market": "blk",
+    "side": "Over",
+    "book": {
+     "line": null,
+     "price": null,
+     "under": null
+    },
+    "pp": {
+     "line": 0.5,
+     "under": 33.7
+    }
+   },
+   "kellyP": 66.3,
+   "betAt": -197,
+   "modelP": 66.3,
+   "proj": 1.2
+  },
+  {
+   "rank": 4,
+   "kind": "nba_blk_more",
+   "sport": "nba",
+   "kindLabel": "NBA blocks More (PrizePicks)",
+   "p": 60.6,
+   "title": "Myles Turner Over 1.5 BLK",
+   "sub": "Rockets @ Bucks",
+   "commence": "2026-10-29T00:10:00Z",
+   "odds": null,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": null,
+   "firstAt": null,
+   "record": {
+    "n": 24,
+    "hit": 17,
+    "hitRate": 70.8,
+    "proven": false
+   },
+   "legId": "nbapp:83ca338f605b5664b7b1da34c19a0222:Myles Turner:blk:over",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "83ca338f605b5664b7b1da34c19a0222",
+    "playerId": "3133628",
+    "player": "Myles Turner",
+    "team": "MIL",
+    "market": "blk",
+    "side": "Over",
+    "book": {
+     "line": null,
+     "price": null,
+     "under": null
+    },
+    "pp": {
+     "line": 1.5,
+     "under": 39.4
+    }
+   },
+   "kellyP": 60.6,
+   "betAt": -154,
+   "modelP": 60.6,
+   "proj": 2.1
+  },
+  {
+   "rank": 5,
+   "kind": "nhl_more",
+   "sport": "nhl",
+   "kindLabel": "NHL points/assists More (PrizePicks)",
+   "p": 59.4,
+   "title": "Jesper Bratt Over 0.5 PTS",
+   "sub": "Devils @ Avalanche",
+   "commence": "2026-10-29T01:10:00Z",
+   "odds": null,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": null,
+   "firstAt": null,
+   "record": {
+    "n": 41,
+    "hit": 27,
+    "hitRate": 65.9,
+    "proven": true
+   },
+   "legId": "nhlpp:dad41ac378a6c36e1be03122f7f34470:Jesper Bratt:pts:over",
+   "spec": {
+    "sport": "nhl",
+    "date": "2026-10-28",
+    "gamePk": "dad41ac378a6c36e1be03122f7f34470",
+    "playerId": "8479407",
+    "player": "Jesper Bratt",
+    "team": "NJD",
+    "market": "pts",
+    "side": "Over",
+    "book": {
+     "line": null,
+     "price": null,
+     "under": null
+    },
+    "pp": {
+     "line": 0.5,
+     "under": 40.6
+    }
+   },
+   "kellyP": 59.4,
+   "betAt": -146,
+   "modelP": 59.4,
+   "proj": 0.9
+  },
+  {
+   "rank": 6,
+   "kind": "nba_blk_more",
+   "sport": "nba",
+   "kindLabel": "NBA blocks More (PrizePicks)",
+   "p": 58.1,
+   "title": "Brandon Miller Over 0.5 BLK",
+   "sub": "Hornets @ Pistons",
+   "commence": "2026-10-28T23:10:00Z",
+   "odds": null,
+   "lineup": null,
+   "vsBook": null,
+   "league": null,
+   "firstP": null,
+   "firstAt": null,
+   "record": {
+    "n": 24,
+    "hit": 17,
+    "hitRate": 70.8,
+    "proven": false
+   },
+   "legId": "nbapp:7f5287957f506fbf705e198215fa952b:Brandon Miller:blk:over",
+   "spec": {
+    "sport": "nba",
+    "date": "2026-10-28",
+    "gamePk": "7f5287957f506fbf705e198215fa952b",
+    "playerId": "4433287",
+    "player": "Brandon Miller",
+    "team": "CHA",
+    "market": "blk",
+    "side": "Over",
+    "book": {
+     "line": null,
+     "price": null,
+     "under": null
+    },
+    "pp": {
+     "line": 0.5,
+     "under": 41.9
+    }
+   },
+   "kellyP": 58.1,
+   "betAt": -139,
+   "modelP": 58.1,
+   "proj": 0.9
+  }
+ ]
+}
