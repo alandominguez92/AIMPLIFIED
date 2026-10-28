@@ -158,7 +158,10 @@ ok(/const top = document\.getElementById\('topCard'\);\s*if \(top && state\.spor
 ok(/queueMicrotask\(\(\) => \{\s*state\.sport = null;\s*setSport\(START_SPORT\);\s*\}\);/.test(src)
   && /if \(TOP_HOST\[s\] && \(!state\.picks \|\| Date\.now\(\) - \(state\.picksAt \|\| 0\) > 120e3\)\) refreshPicks\(\);/.test(src),
   'loaded with the page, after the script, and read by whichever tab opens');
-ok(/const hero = heroLegHtml\(legs\[0\], \{ size: 52 \}\);[\s\S]*?legs\.slice\(1\)\.map/.test(lift('renderPicks')), 'on the Picks tab it is the list\'s first leg, and the rest follow');
+// Since 2026-10-28 the Picks tab leads with the PrizePicks entry, so the hero
+// is its first leg (tests/edgebets.mjs).
+ok(/const hero = ppLegs\.length \? heroLegHtml\(ppLegs\[0\], \{ size: 52 \}\) : '';[\s\S]*?ppLegs\.slice\(1\)\.map\(itemHtml\)/.test(lift('renderPicks')),
+  'on the Picks tab it is the PrizePicks entry\'s first leg, and the rest follow');
 
 // ---- the worker: which logo a moneyline leg carries (2026-10-14) ----------------------
 // ESPN's file names are its own codes. Guessed ones fail quietly: uta.png and

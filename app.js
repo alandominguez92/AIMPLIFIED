@@ -292,6 +292,14 @@
     const savedTheme = localStorage.getItem('aimplified_theme');
     if (savedTheme === 'dark' || savedTheme === 'light') state.theme = savedTheme;
   } catch (e) {}
+  // The bankroll the Picks tab's stakes are read against (2026-10-28), and
+  // the most of it the day's sportsbook bets may take together.
+  state.bank = { amount: null, cap: 5 };
+  try {
+    const b = JSON.parse(localStorage.getItem('aimplified_bankroll') || 'null');
+    if (b && b.amount > 0) state.bank.amount = Number(b.amount);
+    if (b && b.cap > 0) state.bank.cap = Number(b.cap);
+  } catch (e) {}
 
   function esc(str) {
     return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -4951,6 +4959,14 @@
     const t = e.target;
     if (!t || !t.dataset) return;
     if (t.dataset.action === 'log-stake') state.logStake = t.value;
+    // The bankroll and its daily cap (2026-10-28): kept on this device.
+    if (t.dataset.action === 'bank-amount' || t.dataset.action === 'bank-cap') {
+      const v = Number(String(t.value).replace(/[$,\s]/g, ''));
+      if (t.dataset.action === 'bank-amount') state.bank.amount = v > 0 ? v : null;
+      else state.bank.cap = v > 0 && v <= 100 ? v : 5;
+      try { localStorage.setItem('aimplified_bankroll', JSON.stringify(state.bank)); } catch (err) {}
+      renderPicks();
+    }
     if (t.dataset.action === 'log-price') { state.logPrices = { ...state.logPrices, [t.dataset.leg]: t.value }; }
     if (t.dataset.action === 'log-line') { state.logLines = { ...state.logLines, [t.dataset.leg]: t.value.trim() }; renderSlip(); }
     // A soccer prop's line typed to PrizePicks' number (48.5 passes is a lot of taps).
@@ -5879,6 +5895,21 @@
       odds: typeof x.odds === 'number' ? x.odds : null, tier: null, edge: null, spec: x.spec };
   }
   const pct0 = (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—');
+  // A stake as a share of the bankroll, and in dollars once one is set
+  // (2026-10-28).
+  const moneyTxt = (v) => (v >= 10 ? `$${Math.round(v)}` : `$${v.toFixed(2)}`);
+  const stakeTxt = (pct) => (state.bank && state.bank.amount > 0 && typeof pct === 'number'
+    ? `${moneyTxt(state.bank.amount * pct / 100)} (${pct}%)` : `${pct}%`);
+  function bankHtml() {
+    const b = state.bank || {};
+    const set = b.amount > 0;
+    return `<details class="pk-bank"><summary>${set
+      ? `Bankroll <b>${esc(moneyTxt(b.amount))}</b> · daily cap ${esc(String(b.cap))}% (${esc(moneyTxt(b.amount * b.cap / 100))})`
+      : 'Set your bankroll to see each stake in dollars'}</summary>`
+      + `<div class="pk-bank-f"><label>Bankroll $ <input type="text" inputmode="decimal" data-action="bank-amount" value="${set ? esc(String(b.amount)) : ''}" placeholder="500" aria-label="Bankroll in dollars"></label>`
+      + `<label>Daily cap <input type="text" inputmode="decimal" data-action="bank-cap" value="${esc(String(b.cap))}" aria-label="Daily cap, percent of the bankroll"> %</label></div>`
+      + `<p>Kept on this device. The cap is the most the day's sportsbook bets take together; past it, each is scaled down to fit. A PrizePicks entry is staked on its own.</p></details>`;
+  }
   // A Picks leg's face: the player for a prop, the club for a moneyline.
   const pickIsTeam = (x) => ((x.spec || {}).market === 'ml') || /_(ml|fav)$/.test(x.kind || '');
   // Under a Picks leg: a player's projection against his line, a team's chance
@@ -5915,7 +5946,7 @@
     if (typeof x.ev !== 'number' || typeof x.betAt !== 'number') return '';
     const fair = ` · fair ${esc(AM(x.betAt))} · EV ${x.ev > 0 ? '+' : ''}${esc(String(x.ev))}%`;
     if (x.ev > 0 && x.stake > 0) {
-      return `<span class="pk-edge up" title="Expected value at this price, on a ${esc(pct0(x.kellyP))} chance; a quarter of the Kelly stake${x.capped ? ', held to the 1% a prop is allowed' : ''}">${fair} · ¼ Kelly ${esc(String(x.stake))}%${x.capped ? ' (cap)' : ''}</span>`;
+      return `<span class="pk-edge up" title="Expected value at this price, on a ${esc(pct0(x.kellyP))} chance; a quarter of the Kelly stake${x.capped ? ', held to the 1% a prop is allowed' : ''}">${fair} · ¼ Kelly ${esc(stakeTxt(x.stake))}${x.capped ? ' (cap)' : ''}</span>`;
     }
     return `<span class="pk-edge" title="At ${esc(AM(x.odds))} this leg is not +EV on a ${esc(pct0(x.kellyP))} chance">${fair} · bet at ${esc(AM(x.betAt))} or better</span>`;
   }
@@ -6098,8 +6129,6 @@
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
       return;
     }
-    // The first leg is the night's best, drawn large; the rest follow.
-    const hero = heroLegHtml(legs[0], { size: 52 });
     // One leg's row: the list's, and the PrizePicks pool's (2026-10-28).
     const itemHtml = (x) => {
       const lg = pickLeg(x);
@@ -6133,7 +6162,6 @@
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     };
-    const items = legs.slice(1).map(itemHtml).join('');
     // Entry math over the legs still to come: the top two as a 2-pick power,
     // and the average leg of three to six against the flex break-even.
     const ent = [];
@@ -6146,14 +6174,12 @@
     const allPool = d.ppPool || [];
     const ppLegs = allPool.filter((x) => Date.parse(x.commence) > Date.now());
     const whole = ppLegs.length === allPool.length;
-    // The pool's legs the list does not show, listed under the entry table.
-    const onList = new Set(legs.map((x) => x.legId));
-    const poolOnly = ppLegs.filter((x) => !onList.has(x.legId));
+    if (count && ppLegs.length) count.textContent = `${ppLegs.length}-leg entry`;
     const evOf = (n) => {
       const w = whole && (d.entries || []).find((e) => e.legs === n);
       if (!w || typeof w.ev !== 'number') return '<span class="pk-ev"></span>';
       return w.ev > 0 && w.stake > 0
-        ? `<span class="pk-ev up" title="Expected value at PrizePicks' payout; a quarter of the Kelly stake${w.capped ? ', held to the 2% an entry is allowed' : ''}">+${esc(String(w.ev))}% · ${esc(String(w.stake))}%${w.capped ? ' cap' : ''}</span>`
+        ? `<span class="pk-ev up" title="Expected value at PrizePicks' payout; a quarter of the Kelly stake${w.capped ? ', held to the 2% an entry is allowed' : ''}">+${esc(String(w.ev))}% · ${esc(stakeTxt(w.stake))}${w.capped ? ' cap' : ''}</span>`
         : '<span class="pk-ev">no edge</span>';
     };
     for (let n = 2; n <= ppLegs.length; n++) {
@@ -6179,34 +6205,70 @@
         ent.push(`<li><span>Top ${n} ${esc(kind)}</span><span class="pk-v"><b>${pct0(avg)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span>${evOf(n)}</li>`);
       }
     }
-    grid.innerHTML = `<div class="nba-pp pk-card">`
-      + `<div class="tc-sub pk-intro">One leg a game, best first. Under each: how legs like it have actually done.</div>`
-      + hero
-      + (items ? `<ol class="tc-legs">${items}</ol>` : '')
+    // The night's questions in the order they are asked (2026-10-28, the
+    // owner's call): what goes in the PrizePicks entry, what to bet at the
+    // sportsbook, and under both, the legs most likely to land of any kind.
+    // The list led with its likeliest leg, which on Oct 28 was the Spurs at
+    // -520: 2.4 points short of its price, and not a leg PrizePicks takes.
+    const hero = ppLegs.length ? heroLegHtml(ppLegs[0], { size: 52 }) : '';
+    const ppCard = `<div class="nba-pp pk-card pk-pp">`
+      + `<div class="tc-head"><span class="tc-title">Your PrizePicks entry</span></div>`
+      + `<div class="tc-sub pk-intro">The best leg PrizePicks takes in each game, best first, from everything that clears its bar. Under each: how legs like it have actually done.</div>`
+      + (ppLegs.length ? hero + (ppLegs.length > 1 ? `<ol class="tc-legs pk-pool">${ppLegs.slice(1).map(itemHtml).join('')}</ol>` : '')
+        : '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>')
       + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As a PrizePicks entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>`
-        : (legs.length ? `<div class="tc-sub pk-noentry">Fewer than two legs PrizePicks takes qualify today (its player picks, and one NFL team pick an entry): the moneylines are sportsbook bets.</div>` : ''))
-      // The entry's legs, best first, when it reaches past the list's six.
-      + (ent.length && poolOnly.length ? `<div class="tc-sub pk-noentry">The PrizePicks entry, best first: the legs PrizePicks takes, one a game, from everything that qualifies (${poolOnly.length} not on the list above).</div>`
-        + `<ol class="tc-legs pk-pool">${ppLegs.map(itemHtml).join('')}</ol>`
-        : (ent.length && ppLegs.length < legs.length ? `<div class="tc-sub pk-noentry">Entries use the ${ppLegs.length} legs PrizePicks takes; the other moneylines are sportsbook bets.</div>` : ''))
-      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
+        : (ppLegs.length ? `<div class="tc-sub pk-noentry">One leg PrizePicks takes clears its bar so far: an entry needs two.</div>` : ''))
+      + ppEntryRecordHtml(d.record && d.record.history)
+      + `</div>`;
+    const listCard = `<div class="nba-pp pk-card pk-likely">`
+      + `<div class="tc-head"><span class="tc-title">Most likely to land</span></div>`
+      + `<div class="tc-sub">Every kind of leg, one a game, best chance first. The moneylines are sportsbook bets: under each, its chance against its price.</div>`
+      + `<ol class="tc-legs">${legs.map(itemHtml).join('')}</ol>`
+      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
+    grid.innerHTML = bankHtml() + ppCard + evBetsHtml(d) + listCard + after;
+  }
+  // The entry's own units since its pool was first logged (2026-10-28), from
+  // "How the list did": the Power and the 3-pick Flex.
+  function ppEntryRecordHtml(h) {
+    if (!h || h.entriesFrom !== 'pool') return '';
+    const u = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
+    const done = (h.entries || []).filter((e) => e.days && /^(p2|f3|f6)$/.test(e.key));
+    return `<div class="tc-sub pk-record">${done.length
+      ? `This entry since ${esc(shortDay(h.poolSince))}: ${done.map((e) => `${esc(e.label)} won <b>${e.won} of ${e.days}</b>, ${u(e.units)}`).join(' · ')}`
+      : `This entry is graded from ${esc(shortDay(h.poolSince))}: none settled yet.`}</div>`;
   }
   // Bets with an edge (2026-10-27): prices that beat the sharp line, from the
   // worker's evBets -- best edge first, each with its quarter-Kelly stake and
   // the price it breaks even at, and how old its price is.
   function evBetsHtml(d) {
     const bets = (d && d.evBets || []).filter((b) => Date.parse(b.commence) > Date.now());
-    const total = bets.reduce((s, b) => s + (b.stake || 0), 0);
-    const head = `<div class="tc-head"><span class="tc-title">Bets with an edge</span>${bets.length ? `<span class="tc-rec">¼ Kelly total <b>${esc(String(Math.round(total * 10) / 10))}%</b></span>` : ''}</div>`
-      + `<div class="tc-sub">Prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check the book before you bet.</div>`;
+    const raw = bets.reduce((s, b) => s + (b.stake || 0), 0);
+    // The day's bets together take no more than the daily cap (2026-10-28):
+    // past it, each stake is scaled down by the same share.
+    const cap = (state.bank && state.bank.cap) || 5;
+    const scale = raw > cap ? cap / raw : 1;
+    const stakeOf = (b) => Math.round((b.stake || 0) * scale * 100) / 100;
+    const total = scale < 1 ? cap : Math.round(raw * 100) / 100;
+    const head = `<div class="tc-head"><span class="tc-title">Bets with an edge</span>${bets.length ? `<span class="tc-rec">¼ Kelly total <b>${esc(stakeTxt(total))}</b></span>` : ''}</div>`
+      + `<div class="tc-sub">At the sportsbook: prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check the book before you bet.</div>`
+      + (scale < 1 ? `<div class="tc-sub pk-capped">Held to your ${esc(String(cap))}% daily cap: each stake is ${Math.round(scale * 100)}% of its Kelly.</div>` : '');
     const list = bets.length ? `<ol class="tc-legs pk-ev-list">${bets.map((b) => `<li><div class="tc-leg">`
       + `<span class="tc-l1"><b>${esc(b.label)}</b><span class="tc-p pk-ev-up">+${esc(String(b.ev))}%</span></span>`
       + `<span class="tc-l2"><span><span class="pk-sport">${esc(PICK_SPORT[b.sport] || b.sport)}</span> · ${esc(b.sub)} · <span class="pk-when">${esc(soccerKick(b.commence))}</span></span></span>`
-      + `<span class="tc-book">${esc(AM(b.price))} ${esc(String(b.book || '').replace(/^draftkings$/, 'DK').replace(/^fanduel$/, 'FD'))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(String(b.stake))}%${b.capped ? ' (cap)' : ''}</span>`
+      + `<span class="tc-book">${esc(AM(b.price))} ${esc(String(b.book || '').replace(/^draftkings$/, 'DK').replace(/^fanduel$/, 'FD'))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(stakeTxt(stakeOf(b)))}${b.capped ? ' (cap)' : ''}</span>`
       + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
       + `</div></li>`).join('')}</ol>`
       : '<div class="tc-wait-note">No price beats the sharp line by enough right now.</div>';
-    return `<div class="nba-pp pk-card pk-ev-card">${head}${list}${pickemHtml(d)}</div>`;
+    return `<div class="nba-pp pk-card pk-ev-card">${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}</div>`;
+  }
+  // The edge bets' own record (2026-10-28): won and lost, units, and how many
+  // beat the closing line.
+  function edgeRecordHtml(r) {
+    if (!r) return '';
+    if (!r.n && !(r.clv && r.clv.n)) return '<div class="tc-sub pk-record">Logged from Oct 28: each bet as first shown, its closing price, and how it went.</div>';
+    const u = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
+    return `<div class="tc-sub pk-record">These bets since ${esc(shortDay(r.since))}: <b>${r.hit} of ${r.n}</b> won · ${u(r.units)} at 1 unit each`
+      + (r.clv && r.clv.n ? ` · beat the closing line <b>${r.clv.beat} of ${r.clv.n}</b> (average ${r.clv.avg > 0 ? '+' : ''}${r.clv.avg}%)` : '') + '</div>';
   }
   // Pick6 lines the market has moved past (2026-10-27), the worker's
   // pickemEdges: the sharp books' chance at Pick6's own number, either side,

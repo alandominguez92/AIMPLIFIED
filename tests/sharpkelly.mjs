@@ -188,7 +188,10 @@ let d = 0, body = '';
 for (let i = app.indexOf('{', at); i < app.length; i++) { if (app[i] === '{') d++; else if (app[i] === '}' && --d === 0) { body = app.slice(at, i + 1); break; } }
 const AM = (o) => (o > 0 ? '+' + o : String(o));
 const pct0 = (v) => `${Math.round(v)}%`;
-const edge = new Function('esc', 'AM', 'pct0', body + '\nreturn pickEdgeHtml;')((s) => String(s), AM, pct0);
+// A stake reads in dollars once a bankroll is set (2026-10-28,
+// tests/edgebets.mjs); none here, so as a share.
+const stakeTxt = (v) => `${v}%`;
+const edge = new Function('esc', 'AM', 'pct0', 'stakeTxt', body + '\nreturn pickEdgeHtml;')((s) => String(s), AM, pct0, stakeTxt);
 const txt = (h) => h.replace(/<[^>]+>/g, '');
 // Every priced leg: its fair price and EV beside the best price; the stake
 // when it has an edge, the price to beat when it does not.

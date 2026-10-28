@@ -258,8 +258,10 @@ ok(vw.picks && vw.picks.on === wilOn && (wilOn ? vw.picks.side === 'Over' : type
 // ---- the page ---------------------------------------------------------------------------------
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
-ok(/const allPool = d\.ppPool \|\| \[\];/.test(app) && /<ol class="tc-legs pk-pool">\$\{ppLegs\.map\(itemHtml\)\.join\(''\)\}<\/ol>/.test(app)
-  && /ent\.length && poolOnly\.length \?/.test(app), "the entry table reads the pool, and lists the pool's legs when it reaches past the list");
+// Since 2026-10-28 the pool is the Picks tab's first card, its legs under
+// its hero (tests/edgebets.mjs).
+ok(/const allPool = d\.ppPool \|\| \[\];/.test(app) && /<ol class="tc-legs pk-pool">\$\{ppLegs\.slice\(1\)\.map\(itemHtml\)\.join\(''\)\}<\/ol>/.test(app),
+  "the entry table reads the pool, and the entry's card lists its legs");
 ok(/nba_blk_more: 'PrizePicks'/.test(app) && /nhl_more: 'PrizePicks'/.test(app), 'a More starred from the list goes on the slip as a PrizePicks leg');
 ok(/On Picks of the day too, since Oct 28/.test(app) && !/Logged, not on Picks of the day/.test(app), 'the cards say the Mores are on the list now');
 function lift(name) {

@@ -5300,6 +5300,8 @@ const REC_SOURCES = {
   'track-mlb': [['picks'], ['bpicks'], ['mlpicks'], ['rlpicks'], ['totpicks'], ['pppicks']],
   // pickKindRecords: graded rows only (each read is `result IN (...)`).
   'pick-kinds': [['mlpicks', REC_GRADED], ['pppicks', REC_GRADED], ['gmpicks', REC_GRADED], ['nbapp', REC_GRADED], ['nhlpp', REC_GRADED]],
+  // edgeBetRecord: the edge bets once graded.
+  'edge-bets': [['edgebets', REC_GRADED]],
   // socPropsBoard's record at the default lines.
   'soc-record': [['socprops', REC_GRADED]],
   // nbaPpBoard's record, and the NBA moneylines its byGame split reads.
@@ -8487,19 +8489,24 @@ const EV_MAX = 12;
 // Further out than the list's day: an early price is often the better one,
 // and the moneyline captures read 36 hours ahead.
 const EV_WINDOW_MS = 36 * 3600e3;
-async function evBets(env, now) {
-  const out = [];
+// evScan keeps every side it priced (all), as well as those past the bar
+// (bets): the edge-bet log reads each logged bet's closing price and fair
+// from all (2026-10-28). Each side carries how it grades (grade).
+const evShown = (b) => { const { key, grade, league, ...rest } = b; return rest; };
+async function evBets(env, now) { return (await evScan(env, now)).bets.map(evShown); }
+async function evScan(env, now) {
+  const out = [], all = [];
   const seen = new Set();
   const add = (o) => {
     const t = Date.parse(o.commence);
     if (!(t > now && t - now <= EV_WINDOW_MS) || o.fair == null || typeof o.price !== 'number' || seen.has(o.key)) return;
     const p = o.fair / 100;
     if (!(p > 0 && p < 1) || !mlPriceSane(o.price, o.fair)) return;
+    seen.add(o.key);
+    all.push(o);
     const d = decOf(o.price), ev = p * d - 1;
     if (ev * 100 < (o.prop ? EV_MIN_PROP : EV_MIN_LINE)) return;
-    seen.add(o.key);
-    const { key, ...rest } = o;
-    out.push({ ...rest, fair: round1(o.fair), ev: round1(ev * 100), ...capStake(round1(ev / (d - 1) * KELLY_FRACTION * 100), o.prop ? PROP_STAKE_CAP : null), betAt: amOfChance(p) });
+    out.push({ ...o, fair: round1(o.fair), ev: round1(ev * 100), ...capStake(round1(ev / (d - 1) * KELLY_FRACTION * 100), o.prop ? PROP_STAKE_CAP : null), betAt: amOfChance(p) });
   };
   // NBA and NHL: both sides of every game, as the last capture priced them.
   for (const sport of ['nba', 'nhl']) {
@@ -8511,7 +8518,7 @@ async function evBets(env, now) {
       const sub = `${nick(g.away)} @ ${nick(g.home)}`;
       for (const [side, team, fair, price, book] of [['home', g.home, g.homeFair, g.homePrice, g.homeBook], ['away', g.away, g.awayFair, g.awayPrice, g.awayBook]]) {
         add({ key: `${sport}:${g.id}:${side}`, sport, market: 'ml', label: `${nick(team)} ML`, sub, commence: g.commence,
-          fair, price, book, fairSrc: g.fairSrc, asOf: snap.asOf });
+          fair, price, book, fairSrc: g.fairSrc, asOf: snap.asOf, league: 'reg', grade: { t: 'side', sport, game_id: g.id, side } });
       }
     }
   }
@@ -8521,16 +8528,16 @@ async function evBets(env, now) {
   for (const r of gm) {
     const base = { commence: r.commence, fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, book: r.book, fairSrc: r.fair_src, asOf: r.close_at || r.entry_at };
     if (r.sport === 'nfl' && r.market === 'h2h') {
-      add({ ...base, key: `nfl:${r.game_id}:${r.pick}`, sport: 'nfl', market: 'ml', label: `${r.pick} ML`, sub: `${r.away} @ ${r.home}` });
+      add({ ...base, key: `nfl:${r.game_id}:${r.pick}`, sport: 'nfl', market: 'ml', label: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`, grade: gmGrade(r) });
     } else if (r.sport === 'nflptd') {
       const [, player] = String(r.game_id).split('|');
       add({ ...base, key: `ptd:${r.game_id}`, sport: 'nfl', market: 'pass_tds', prop: true, label: `${player} Under ${r.point} Pass TDs`,
-        sub: `${NFL_ABBR[r.away] || r.away} @ ${NFL_ABBR[r.home] || r.home}` });
+        sub: `${NFL_ABBR[r.away] || r.away} @ ${NFL_ABBR[r.home] || r.home}`, grade: gmGrade(r) });
     } else if (r.sport === 'soccer') {
       const league = (SOCCER_LEAGUES[r.league] && SOCCER_LEAGUES[r.league].label) || r.league || '';
       const label = r.market === 'totals' ? `${r.pick} goals` : r.side === 'draw' ? 'Draw' : `${r.pick} ML`;
       add({ ...base, key: `soc:${r.game_id}:${r.market === 'totals' ? 'tot' : 'res'}:${r.pick}`, sport: 'soccer', market: r.market === 'totals' ? 'totals' : 'ml',
-        label, sub: `${r.away} @ ${r.home}${league ? ' · ' + league : ''}` });
+        label, sub: `${r.away} @ ${r.home}${league ? ' · ' + league : ''}`, league: r.league, grade: gmGrade(r) });
     }
   }
   // NBA unders at the book's own line, where the sharp books priced him.
@@ -8541,9 +8548,121 @@ async function evBets(env, now) {
     if (r.book_line == null || r.book_line !== r.point || typeof r.book_under !== 'number' || r.sharp_under == null) continue;
     add({ key: `nbapp:${r.game_id}:${r.player}:${r.market}`, sport: 'nba', market: r.market, prop: true,
       label: `${r.player} Under ${r.point} ${PICKS_NBA_MK[r.market] || r.market}`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
-      commence: r.commence, fair: r.sharp_under, price: r.book_under, book: 'DK/FD', fairSrc: 'sharp books', asOf: r.close_at || r.captured_at });
+      commence: r.commence, fair: r.sharp_under, price: r.book_under, book: 'DK/FD', fairSrc: 'sharp books', asOf: r.close_at || r.captured_at,
+      grade: { t: 'under', date: r.date, game_id: r.game_id, player: r.player, market: r.market, line: r.point } });
   }
-  return out.sort((a, b) => b.ev - a.ev).slice(0, EV_MAX);
+  return { bets: out.sort((a, b) => b.ev - a.ev).slice(0, EV_MAX), all };
+}
+// How a side from the game-line log grades: a moneyline or 1X2 side by the
+// game's final (the row's own pick can flip before the start), a goals total
+// by the score, a passing-TD under as its row does.
+const gmGrade = (r) => (r.market === 'h2h' || r.market === 'fav' ? { t: 'side', sport: r.sport, game_id: r.game_id, side: r.side }
+  : r.market === 'totals' ? { t: 'total', sport: r.sport, game_id: r.game_id, over: /^over/i.test(String(r.side || r.pick || '')), point: r.point }
+    : { t: 'row', sport: r.sport, game_id: r.game_id, market: r.market, pick: r.pick });
+
+// ---- The edge bets' own record (2026-10-28, the owner's call) ---------------
+// "Bets with an edge" named bets and kept nothing, so nobody could say
+// whether its edges were real. Each bet is logged the first time the card
+// shows it, at that price and fair; its closing price and fair are the last
+// read of the same side before its start, whether or not it still clears the
+// bar; and it is graded from the log its side came from. Closing-line value
+// is the bet's EV at its first price on the closing fair -- the sharp
+// market's last word -- the quickest sign an edge was real, long before the
+// results are enough to say.
+async function ensureEdgeBetSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS edgebets (
+    date TEXT NOT NULL, key TEXT NOT NULL, sport TEXT, market TEXT, label TEXT, sub TEXT, commence TEXT,
+    book TEXT, fair_src TEXT, prop INTEGER, grade TEXT,
+    first_at TEXT, first_price INTEGER, first_fair REAL, first_ev REAL, first_stake REAL,
+    last_at TEXT, last_price INTEGER, last_fair REAL, last_ev REAL,
+    close_at TEXT, close_price INTEGER, close_fair REAL,
+    result TEXT, graded_at TEXT,
+    PRIMARY KEY (date, key)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS edgebets_open ON edgebets (date) WHERE result IS NULL').run();
+}
+// scan: evScan's. Writes only what changed, so an unchanged read costs nothing.
+async function logEdgeBets(db, scan, now) {
+  await ensureEdgeBetSchema(db);
+  const nowIso = new Date(now).toISOString();
+  const stmts = scan.bets.map((b) => db.prepare(
+    `INSERT INTO edgebets (date, key, sport, market, label, sub, commence, book, fair_src, prop, grade,
+       first_at, first_price, first_fair, first_ev, first_stake, last_at, last_price, last_fair, last_ev, close_at, close_price, close_fair)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(date, key) DO UPDATE SET last_at = excluded.last_at, last_price = excluded.last_price, last_fair = excluded.last_fair, last_ev = excluded.last_ev
+     WHERE julianday(edgebets.commence) > julianday(?) AND (edgebets.last_price IS NOT excluded.last_price OR edgebets.last_fair IS NOT excluded.last_fair)`
+  ).bind(ptDateOf(Date.parse(b.commence)), b.key, b.sport, b.market, b.label, b.sub, b.commence, b.book || null, b.fairSrc || null, b.prop ? 1 : 0,
+    JSON.stringify(b.grade || null), nowIso, b.price, b.fair, b.ev, b.stake, nowIso, b.price, b.fair, b.ev, nowIso, b.price, b.fair, nowIso));
+  // The close: every logged bet still to start, at this read of its side.
+  const open = (await db.prepare('SELECT date, key, commence FROM edgebets WHERE result IS NULL').all()).results || [];
+  const byKey = new Map(scan.all.map((o) => [o.key, o]));
+  for (const r of open) {
+    const o = byKey.get(r.key);
+    if (!o || !(Date.parse(r.commence) > now)) continue;
+    stmts.push(db.prepare(`UPDATE edgebets SET close_at = ?, close_price = ?, close_fair = ? WHERE date = ? AND key = ?
+      AND julianday(commence) > julianday(?) AND (close_price IS NOT ? OR close_fair IS NOT ?)`)
+      .bind(nowIso, o.price, round1(o.fair), r.date, r.key, nowIso, o.price, round1(o.fair)));
+  }
+  if (stmts.length) await db.batch(stmts);
+}
+const EDGE_WL = { win: 'hit', loss: 'miss', push: 'push', void: 'void' };
+async function edgeBetResult(db, g) {
+  const one = (sql, ...a) => db.prepare(sql).bind(...a).first();
+  if (!g) return null;
+  if (g.t === 'under') {
+    const m = await one('SELECT actual, result FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', g.date, g.game_id, g.player, g.market);
+    if (!m || m.result == null) return null;
+    if (m.result === 'void') return 'void';
+    return m.actual == null ? null : m.actual < g.line ? 'hit' : m.actual > g.line ? 'miss' : 'push';
+  }
+  if (g.t === 'row') {
+    const m = await one('SELECT result FROM gmpicks WHERE sport = ? AND game_id = ? AND market = ? AND pick = ?', g.sport, g.game_id, g.market, g.pick);
+    return (m && EDGE_WL[m.result]) || null;
+  }
+  // The game's own row (soccer's favourite row carries the score as well).
+  const m = await one("SELECT side, result, home_score, away_score FROM gmpicks WHERE sport = ? AND game_id = ? AND market IN ('h2h', 'fav') AND result IS NOT NULL ORDER BY market = 'h2h' DESC", g.sport, g.game_id);
+  if (!m || !EDGE_WL[m.result]) return null;
+  if (m.result === 'void') return 'void';
+  const hs = m.home_score, as = m.away_score, scored = typeof hs === 'number' && typeof as === 'number';
+  if (g.t === 'total') return !scored ? null : hs + as > g.point ? (g.over ? 'hit' : 'miss') : hs + as < g.point ? (g.over ? 'miss' : 'hit') : 'push';
+  if (m.side === g.side) return EDGE_WL[m.result];
+  // Soccer's three ways by the score; a two-way game is the logged side's
+  // other half, as its grader judged it (overtime and shootouts included).
+  if (g.sport === 'soccer') return !scored ? null : (hs > as ? 'home' : as > hs ? 'away' : 'draw') === g.side ? 'hit' : 'miss';
+  return m.result === 'win' ? 'miss' : m.result === 'loss' ? 'hit' : 'push';
+}
+async function gradeEdgeBets(db, now) {
+  await ensureEdgeBetSchema(db);
+  const open = (await db.prepare('SELECT date, key, commence, grade FROM edgebets WHERE result IS NULL').all()).results || [];
+  const ups = [];
+  for (const r of open.filter((x) => Date.parse(x.commence) < now - 3 * 3600e3).slice(0, 40)) {
+    let g = null;
+    try { g = JSON.parse(r.grade); } catch (e) { /* ungradable */ }
+    let res = await edgeBetResult(db, g);
+    // A side its log never grades (a game dropped from the feed) stops being
+    // asked after three days.
+    if (!res && Date.parse(r.commence) < now - 3 * 86400e3) res = 'void';
+    if (res) ups.push(db.prepare('UPDATE edgebets SET result = ?, graded_at = ? WHERE date = ? AND key = ?').bind(res, new Date(now).toISOString(), r.date, r.key));
+  }
+  if (ups.length) await db.batch(ups);
+}
+// The record: won and lost, units flat and at the quarter-Kelly stake each was
+// shown with (as a share of the bankroll), and how many beat the close.
+async function edgeBetRecord(env) {
+  await ensureEdgeBetSchema(env.DB);
+  return recordCached(env, 'edge-bets', async () => {
+    const rows = (await env.DB.prepare("SELECT date, first_price, first_fair, first_stake, close_fair, result FROM edgebets WHERE result IS NOT NULL").all()).results || [];
+    const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
+    let flat = 0, kelly = 0;
+    for (const r of dec) { const d = decOf(r.first_price); flat += r.result === 'hit' ? d - 1 : -1; kelly += (r.first_stake || 0) * (r.result === 'hit' ? d - 1 : -1); }
+    const clv = rows.filter((r) => r.close_fair != null && r.result !== 'void').map((r) => (r.close_fair / 100 * decOf(r.first_price) - 1) * 100);
+    return { data: {
+      since: rows.length ? rows.map((r) => r.date).sort()[0] : null,
+      n: dec.length, hit: dec.filter((r) => r.result === 'hit').length, push: rows.filter((r) => r.result === 'push').length, void: rows.filter((r) => r.result === 'void').length,
+      units: round2(flat), kellyUnits: round2(kelly), roi: dec.length ? round1(flat / dec.length * 100) : null,
+      clv: { n: clv.length, beat: clv.filter((v) => v > 0).length, avg: clv.length ? round1(clv.reduce((a, v) => a + v, 0) / clv.length) : null },
+    }, complete: true };
+  });
 }
 
 // ---- Pick6 lines the market has moved past (2026-10-27) -----------------------
@@ -9258,7 +9377,54 @@ async function dayPicksTick(env) {
   const { legs, unavailable } = await picksCandidates(env, now);
   await logDayPicks(env.DB, pickList(legs), unavailable, now, ppPoolOf(legs));
   await gradeDayPicks(env.DB, now);
+  // The edge bets (2026-10-28): their log and grades, and a fresh read of the
+  // prices behind any shown on an old one.
+  try {
+    const scan = await evScan(env, now);
+    await logEdgeBets(env.DB, scan, now);
+    await gradeEdgeBets(env.DB, now);
+    await refreshEdgePrices(env, scan, now);
+  } catch (e) { /* next tick */ }
   return null;
+}
+
+// Fresh prices behind the edge bets (2026-10-28). The captures read each
+// league twice a day and 75 and 25 minutes before each start; a bet shown the
+// night before rode the last of those for hours (FC Cincinnati's +410 was 21
+// hours old). A bet whose price is over EDGE_STALE_MS old buys one read of its
+// league -- 1 credit for the NBA or NHL, 2 for a soccer league, 3 for the NFL
+// -- at most once per league per EDGE_REFRESH_GAP_MS and EDGE_REFRESH_MAX a
+// day. Props are left to their own reads.
+const EDGE_STALE_MS = 4 * 3600e3;
+const EDGE_REFRESH_GAP_MS = 3 * 3600e3;
+const EDGE_REFRESH_MAX = 8;
+async function refreshEdgePrices(env, scan, now) {
+  if (!env.ODDS_API_KEY) return [];
+  const due = new Map();
+  for (const b of scan.bets) {
+    if (b.prop || !b.asOf || now - Date.parse(b.asOf) < EDGE_STALE_MS) continue;
+    const lg = b.sport === 'soccer' ? b.league : b.sport;
+    if (lg) due.set(`${b.sport}:${lg}`, { sport: b.sport, lg });
+  }
+  if (!due.size) return [];
+  const key = `edge_fresh:${ptDateOf(now)}`;
+  const hit = await loadFeedCache(env.DB, key);
+  const st = (hit.present && hit.data) || { n: 0, last: {} };
+  const done = [];
+  for (const [k, x] of due) {
+    if (st.n >= EDGE_REFRESH_MAX || (st.last[k] && now - st.last[k] < EDGE_REFRESH_GAP_MS)) continue;
+    if (x.sport === 'soccer' && !SOCCER_LEAGUES[x.lg]) continue;
+    st.n++; st.last[k] = now;
+    await saveFeedCache(env.DB, key, st);   // before the read: a failed one is not retried every tick
+    try {
+      if (x.sport === 'nba') await h2hCapture(env, NBA_ML, 'reg');
+      else if (x.sport === 'nhl') await h2hCapture(env, NHL_ML, 'reg');
+      else if (x.sport === 'soccer') await soccerIngest(env, new URL(`https://x/api/soccer-ingest?league=${x.lg}`));
+      else if (x.sport === 'nfl') { await ingestNflLines(env, { sport: 'nfl' }); await nflBoardData(env, null); }
+      done.push(k);
+    } catch (e) { /* counted; the next window tries again */ }
+  }
+  return done;
 }
 
 async function picksBoard(env) {
@@ -9333,7 +9499,13 @@ async function picksBoard(env) {
     }
     // Prices that beat the sharp line, wherever they are (evBets), and Pick6
     // lines the market has moved past (pickemEdges).
-    try { out.evBets = await evBets(env, now); } catch (e) { out.evBets = []; out.evError = String((e && e.message) || e); }
+    // Logged as shown, graded, and their record beside them (2026-10-28).
+    try {
+      const scan = await evScan(env, now);
+      out.evBets = scan.bets.map(evShown);
+      try { await logEdgeBets(env.DB, scan, now); await gradeEdgeBets(env.DB, now); } catch (e) { out.logError = String((e && e.message) || e); }
+    } catch (e) { out.evBets = []; out.evError = String((e && e.message) || e); }
+    try { out.edgeRecord = await edgeBetRecord(env); } catch (e) { out.recordError = String((e && e.message) || e); }
     try { out.pickemEdges = await pickemEdges(env, now); } catch (e) { out.pickemEdges = []; out.evError = String((e && e.message) || e); }
     try { out.record = await dayPickRecord(env.DB); } catch (e) { out.recordError = String((e && e.message) || e); }
   } catch (e) { out.error = String((e && e.message) || e); }
