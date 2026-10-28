@@ -133,7 +133,7 @@ const AM = (o) => (o > 0 ? '+' + o : String(o));
 // (tests/edgebets.mjs); none set here, so a stake reads as a share.
 const liftConst = (name) => { const at = app.indexOf(`const ${name} =`); return app.slice(at, app.indexOf(';\n', at) + 1); };
 const card = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'state', 'shortDay',
-  [liftConst('moneyTxt'), liftConst('stakeTxt'), lift('evBetsHtml'), lift('edgeRecordHtml'), lift('pickemHtml')].join('\n') + '\nreturn evBetsHtml;')((s) => String(s), AM, (v) => `${Math.round(v)}%`, (t) => t,
+  [liftConst('BOOK_LABEL'), liftConst('bkLabel'), liftConst('moneyTxt'), liftConst('stakeTxt'), lift('evBetsHtml'), lift('edgeRecordHtml'), lift('pickemHtml')].join('\n') + '\nreturn evBetsHtml;')((s) => String(s), AM, (v) => `${Math.round(v)}%`, (t) => t,
   { nba: 'NBA', nhl: 'NHL', soccer: 'Soccer', nfl: 'NFL' }, { bank: { amount: null, cap: 5 } }, (d) => d);
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const html = card(p);
@@ -142,6 +142,9 @@ ok(/Bets with an edge/.test(html) && (html.match(/<li>/g) || []).length === E.le
   'the card: each bet, its edge, the price and the fair, its stake');
 ok(new RegExp(`¼ Kelly total ${Math.round(E.reduce((s, b) => s + b.stake, 0) * 10) / 10}%`).test(text(html)), "and the day's total stake");
 ok(/No price beats the sharp line/.test(card({ evBets: [] })), 'and says so when nothing does');
+// The boards' book names (2026-10-28): Pelicans +165 printed "betmgm".
+ok(/\+600 MGM · fair/.test(text(card({ evBets: E.map((b) => ({ ...b, book: 'betmgm' })) }))) && /\+600 CZR · fair/.test(text(card({ evBets: E.map((b) => ({ ...b, book: 'williamhill_us' })) }))),
+  'each book by the name the boards use: MGM, CZR');
 ok(/evBetsHtml\(d\) \+ after;/.test(app) && /As a PrizePicks entry/.test(app) && /const ppLegs = allPool\.filter\(\(x\) => Date\.parse\(x\.commence\) > Date\.now\(\)\);/.test(app),
   'on the Picks tab under the list, with the entry table on the legs PrizePicks takes');
 

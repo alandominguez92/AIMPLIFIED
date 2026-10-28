@@ -6255,7 +6255,8 @@
     const list = bets.length ? `<ol class="tc-legs pk-ev-list">${bets.map((b) => `<li><div class="tc-leg">`
       + `<span class="tc-l1"><b>${esc(b.label)}</b><span class="tc-p pk-ev-up">+${esc(String(b.ev))}%</span></span>`
       + `<span class="tc-l2"><span><span class="pk-sport">${esc(PICK_SPORT[b.sport] || b.sport)}</span> · ${esc(b.sub)} · <span class="pk-when">${esc(soccerKick(b.commence))}</span></span></span>`
-      + `<span class="tc-book">${esc(AM(b.price))} ${esc(String(b.book || '').replace(/^draftkings$/, 'DK').replace(/^fanduel$/, 'FD'))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(stakeTxt(stakeOf(b)))}${b.capped ? ' (cap)' : ''}</span>`
+      // The boards' own book names (2026-10-28): "betmgm" printed as it came.
+      + `<span class="tc-book">${esc(AM(b.price))} ${esc(bkLabel(b.book))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(stakeTxt(stakeOf(b)))}${b.capped ? ' (cap)' : ''}</span>`
       + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
       + `</div></li>`).join('')}</ol>`
       : '<div class="tc-wait-note">No price beats the sharp line by enough right now.</div>';
