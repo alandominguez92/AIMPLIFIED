@@ -118,7 +118,7 @@ const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 const lift = (name) => { const at = app.indexOf(`function ${name}(`); let d = 0;
   for (let i = app.indexOf('{', at); i < app.length; i++) { if (app[i] === '{') d++; else if (app[i] === '}' && --d === 0) return app.slice(at, i + 1); } };
 const AM = (o) => (o > 0 ? '+' + o : String(o));
-const card = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', lift('evBetsHtml') + '\nreturn evBetsHtml;')((s) => String(s), AM, (v) => `${Math.round(v)}%`, (t) => t, { nba: 'NBA', nhl: 'NHL', soccer: 'Soccer', nfl: 'NFL' });
+const card = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', lift('evBetsHtml') + '\n' + lift('pickemHtml') + '\nreturn evBetsHtml;')((s) => String(s), AM, (v) => `${Math.round(v)}%`, (t) => t, { nba: 'NBA', nhl: 'NHL', soccer: 'Soccer', nfl: 'NFL' });
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const html = card(p);
 console.log('  ' + text(html).slice(0, 420));

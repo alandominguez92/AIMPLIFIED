@@ -52,7 +52,7 @@ const names = ['amProb', 'shinDevig', 'round1', 'median', 'sharpFair', 'bookFair
   'NFL_PASS_TD_LINE', 'NFL_PASS_TD_BASE', 'PTD_SHARP', 'PTD_EXEC', 'passTdEntries',
   'NBA_SHARP', 'NBA_PROP_SHARP', 'poissonCdf', 'negBinomCdf', 'normName', 'NFL_NAME_SUFFIX', 'nflBaseName', 'nbaBaseName',
   'NBA_NAME_ALIAS', 'NBA_ALIAS', 'nbaName', 'nhlName', 'nbaSharpUnder', 'DFS_BOOKS', 'bookUndersJson', 'NBA_DISP',
-  'PP_POWER', 'PP_FLEX', 'KELLY_FRACTION', 'KELLY_PRIOR_N', 'decOf', 'amOfChance', 'kellyChance', 'legStake', 'entryStake'];
+  'PP_POWER', 'PP_FLEX', 'KELLY_FRACTION', 'KELLY_PRIOR_N', 'PROP_STAKE_CAP', 'ENTRY_STAKE_CAP', 'capStake', 'decOf', 'amOfChance', 'kellyChance', 'legStake', 'entryStake'];
 let W;
 try {
   W = new Function(names.map((n) => lift(n, worker)).join('\n') + `\nreturn { ${names.join(', ')} };`)();
@@ -130,12 +130,19 @@ ok(sCel.ev === -1.4 && sCel.stake === 0 && sCel.betAt === -525, `the Celtics at 
 ok(W.kellyChance(72, { n: 15, hit: 9 }) === Math.min(72, (900 + 20 * 72) / 35) && Math.abs(W.kellyChance(67, { n: 7, hit: 3 }) - 60.74) < 0.01 && W.kellyChance(64, { n: 37, hit: 26 }) === 64,
   'the chance is pulled toward its kind (72% on 9 of 15 -> 66.9%; 67% on 3 of 7 -> 60.7%), and never above the stated one (64% on 26 of 37 stays 64%)');
 const pw = W.entryStake([0.7, 0.7], 'power');
-ok(pw.ev === 47 && pw.stake === 5.9, `a 2-pick Power at 70% a leg: +${pw.ev}% at 3x; Kelly (2 x 0.49 - 0.51) / 2 = 23.5%, a quarter ${pw.stake}%`);
+// A quarter of Kelly's 23.5% is 5.9%; since 2026-10-27 an entry stakes at most
+// 2% (ENTRY_STAKE_CAP), whatever Kelly says.
+ok(pw.ev === 47 && pw.stake === 2 && pw.capped === true, `a 2-pick Power at 70% a leg: +${pw.ev}% at 3x; Kelly (2 x 0.49 - 0.51) / 2 = 23.5%, a quarter 5.9%, held to ${pw.stake}%`);
 const fx = W.entryStake([0.8, 0.8, 0.8], 'flex');
 let best = 0, bestG = -1;
 const dist = [0.008, 0.096, 0.384, 0.512], pay = [0, 0, 1.25, 2.25];
 for (let f = 0; f < 1; f += 0.0005) { const g = dist.reduce((s, v, k) => s + v * Math.log(1 + f * (pay[k] - 1)), 0); if (g > bestG) { bestG = g; best = f; } }
-ok(fx.ev === 63.2 && Math.abs(fx.stake - best * 25) < 0.15, `a 3-pick Flex at 80%: +${fx.ev}%, the growth-maximising stake ${(best * 100).toFixed(1)}%, a quarter ${fx.stake}%`);
+ok(fx.ev === 63.2 && best * 25 > 2 && fx.stake === 2 && fx.capped === true,
+  `a 3-pick Flex at 80%: +${fx.ev}%, the growth-maximising stake ${(best * 100).toFixed(1)}%, a quarter ${(best * 25).toFixed(1)}%, held to ${fx.stake}%`);
+const small = W.entryStake([0.6, 0.6, 0.6], 'flex');
+ok(small.stake > 0 && small.stake < 2 && !small.capped, `under the cap, the quarter-Kelly stake itself (3-pick Flex at 60%: ${small.ev}%, ${small.stake}%)`);
+ok(W.legStake(64, -150, null, 1).stake === 1 && W.legStake(64, -150, null, 1).capped === true && W.legStake(64, -150, null).stake > 1,
+  `a prop at a price stakes at most 1% (64% at -150: ${W.legStake(64, -150, null).stake}% uncapped)`);
 ok(W.entryStake([0.55, 0.55], 'power').stake === 0, 'a Power at 55% a leg (needs 57.7%): no stake');
 
 // ---- on the list ---------------------------------------------------------------------------------------

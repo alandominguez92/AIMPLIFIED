@@ -5880,7 +5880,7 @@
     if (typeof x.ev !== 'number' || typeof x.betAt !== 'number') return '';
     const fair = ` · fair ${esc(AM(x.betAt))} · EV ${x.ev > 0 ? '+' : ''}${esc(String(x.ev))}%`;
     if (x.ev > 0 && x.stake > 0) {
-      return `<span class="pk-edge up" title="Expected value at this price, on a ${esc(pct0(x.kellyP))} chance; a quarter of the Kelly stake">${fair} · ¼ Kelly ${esc(String(x.stake))}%</span>`;
+      return `<span class="pk-edge up" title="Expected value at this price, on a ${esc(pct0(x.kellyP))} chance; a quarter of the Kelly stake${x.capped ? ', held to the 1% a prop is allowed' : ''}">${fair} · ¼ Kelly ${esc(String(x.stake))}%${x.capped ? ' (cap)' : ''}</span>`;
     }
     return `<span class="pk-edge" title="At ${esc(AM(x.odds))} this leg is not +EV on a ${esc(pct0(x.kellyP))} chance">${fair} · bet at ${esc(AM(x.betAt))} or better</span>`;
   }
@@ -6058,8 +6058,10 @@
       if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
       // Underdog or Pick6 above PrizePicks on the same under (2026-10-25).
       if (x.dfs && x.spec && x.spec.pp) { const t = dfsLinesHtml(x.spec.pp.line, x.dfs.ud, x.dfs.p6).trim(); if (t) tags.push(t); }
-      // The sharp books' chance at the line shown (2026-10-25).
+      // The sharp books' chance at the line shown (2026-10-25), and the
+      // model's own beside the chance shown, which blends the two (2026-10-27).
       if (typeof x.sharp === 'number') tags.push(sharpTag(x.sharp, null, true));
+      if (typeof x.modelP === 'number' && x.modelP !== x.p) tags.push(`<span class="tc-wait" title="The chance shown is a quarter the model's and three quarters the sharp books'">model ${esc(pct0(x.modelP))}</span>`);
       if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
       if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
       const mv = pickMoved(x);
@@ -6090,7 +6092,7 @@
       const w = whole && (d.entries || []).find((e) => e.legs === n);
       if (!w || typeof w.ev !== 'number') return '<span class="pk-ev"></span>';
       return w.ev > 0 && w.stake > 0
-        ? `<span class="pk-ev up" title="Expected value at PrizePicks' payout; a quarter of the Kelly stake">+${esc(String(w.ev))}% · ${esc(String(w.stake))}%</span>`
+        ? `<span class="pk-ev up" title="Expected value at PrizePicks' payout; a quarter of the Kelly stake${w.capped ? ', held to the 2% an entry is allowed' : ''}">+${esc(String(w.ev))}% · ${esc(String(w.stake))}%${w.capped ? ' cap' : ''}</span>`
         : '<span class="pk-ev">no edge</span>';
     };
     for (let n = 2; n <= ppLegs.length; n++) {
@@ -6133,13 +6135,29 @@
     const total = bets.reduce((s, b) => s + (b.stake || 0), 0);
     const head = `<div class="tc-head"><span class="tc-title">Bets with an edge</span>${bets.length ? `<span class="tc-rec">¼ Kelly total <b>${esc(String(Math.round(total * 10) / 10))}%</b></span>` : ''}</div>`
       + `<div class="tc-sub">Prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check the book before you bet.</div>`;
-    if (!bets.length) return `<div class="nba-pp pk-card pk-ev-card">${head}<div class="tc-wait-note">No price beats the sharp line by enough right now.</div></div>`;
-    return `<div class="nba-pp pk-card pk-ev-card">${head}<ol class="tc-legs pk-ev-list">${bets.map((b) => `<li><div class="tc-leg">`
+    const list = bets.length ? `<ol class="tc-legs pk-ev-list">${bets.map((b) => `<li><div class="tc-leg">`
       + `<span class="tc-l1"><b>${esc(b.label)}</b><span class="tc-p pk-ev-up">+${esc(String(b.ev))}%</span></span>`
       + `<span class="tc-l2"><span><span class="pk-sport">${esc(PICK_SPORT[b.sport] || b.sport)}</span> · ${esc(b.sub)} · <span class="pk-when">${esc(soccerKick(b.commence))}</span></span></span>`
-      + `<span class="tc-book">${esc(AM(b.price))} ${esc(String(b.book || '').replace(/^draftkings$/, 'DK').replace(/^fanduel$/, 'FD'))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(String(b.stake))}%</span>`
+      + `<span class="tc-book">${esc(AM(b.price))} ${esc(String(b.book || '').replace(/^draftkings$/, 'DK').replace(/^fanduel$/, 'FD'))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(String(b.stake))}%${b.capped ? ' (cap)' : ''}</span>`
       + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
-      + `</div></li>`).join('')}</ol></div>`;
+      + `</div></li>`).join('')}</ol>`
+      : '<div class="tc-wait-note">No price beats the sharp line by enough right now.</div>';
+    return `<div class="nba-pp pk-card pk-ev-card">${head}${list}${pickemHtml(d)}</div>`;
+  }
+  // Pick6 lines the market has moved past (2026-10-27), the worker's
+  // pickemEdges: the sharp books' chance at Pick6's own number, either side,
+  // against a 2-pick's 57.7% a leg.
+  function pickemHtml(d) {
+    const legs = (d && d.pickemEdges || []).filter((x) => Date.parse(x.commence) > Date.now());
+    if (!legs.length) return '';
+    return `<div class="tc-head pp-more-head"><span class="tc-title">Pick6 lines off the market</span></div>`
+      + `<div class="tc-sub">DraftKings Pick6 seldom moves a line once it posts it. Where the books have moved since, its number is stale: the sharp books' chance at Pick6's own line. A 2-pick needs 57.7% a leg.</div>`
+      + `<ol class="tc-legs pk-ev-list">${legs.map((x) => `<li><div class="tc-leg">`
+      + `<span class="tc-l1"><b>${esc(x.label)}</b><span class="tc-p pk-ev-up">${esc(pct0(x.chance))}</span></span>`
+      + `<span class="tc-l2"><span><span class="pk-sport">Pick6</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span></span>`
+      + `<span class="tc-book">sharp ${esc(String(x.chance))}% · +${esc(String(x.edge))} over 57.7%${x.ppLine != null && x.ppLine !== x.line ? ` · PrizePicks ${esc(String(x.ppLine))}` : ''}`
+      + `${x.asOf ? ` · <span class="pk-asof">read ${esc(soccerKick(x.asOf))}</span>` : ''}</span>`
+      + `</div></li>`).join('')}</ol>`;
   }
 
   function applySportChrome(sport) {

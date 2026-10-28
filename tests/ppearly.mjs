@@ -220,10 +220,14 @@ const np = (picks.legs || []).filter((x) => x.kind === 'nba_pp');
 console.log('  ' + np.map((x) => `${x.title} ${x.p}%`).join(' | '));
 const cur = (x) => b.legs.find((l) => `${l.player} Under ${l.point} ` === x.title.slice(0, `${l.player} Under ${l.point} `.length));
 const ta = np.find((x) => /^Jayson Tatum Under /.test(x.title));
-ok(ta && ta.title === 'Jayson Tatum Under 7.5 AST' && ta.p === bl('Jayson Tatum', 'ast').model_under && ta.p >= 70,
-  `Tatum's assists, raised to 7.5, clear the bar and are listed at 7.5 (${ta && ta.title} ${ta && ta.p}%; ${row('Jayson Tatum', 'ast').model_under}% at 5.5)`);
-ok(np.length > 0 && np.every((x) => cur(x) && x.p === cur(x).model_under && x.spec.pp.line === cur(x).point),
-  `every NBA leg on Picks is at the line and chance the card shows (${np.length})`);
+// Since 2026-10-27 the chance shown blends the model's with the sharp books'
+// where they priced him (a quarter and three quarters); qualifying is still the
+// model's 70%+.
+const shown = (l) => (l.sharp_under != null ? Math.round((0.25 * l.model_under + 0.75 * l.sharp_under) * 10) / 10 : l.model_under);
+ok(ta && ta.title === 'Jayson Tatum Under 7.5 AST' && ta.modelP === bl('Jayson Tatum', 'ast').model_under && ta.modelP >= 70 && ta.p === shown(bl('Jayson Tatum', 'ast')),
+  `Tatum's assists, raised to 7.5, clear the bar and are listed at 7.5 (${ta && ta.title} ${ta && ta.p}%, model ${ta && ta.modelP}%; ${row('Jayson Tatum', 'ast').model_under}% at 5.5)`);
+ok(np.length > 0 && np.every((x) => cur(x) && x.modelP === cur(x).model_under && x.p === shown(cur(x)) && x.spec.pp.line === cur(x).point),
+  `every NBA leg on Picks is at the line the card shows, its chance the card's blended with the sharp books' (${np.length})`);
 ok(!np.some((x) => /^Ausar Thompson/.test(x.title)), 'and the 80% leg PrizePicks took down is not on it');
 
 // ---- the card --------------------------------------------------------------------------------
