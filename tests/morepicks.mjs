@@ -17,6 +17,10 @@
 //   - a More grades on the over, and a More that leaves the list says why on
 //     its own side and bar
 //   - the page lists the pool's legs when it reaches past the list
+//   - and the day record's Power and Flex units grade that pool, as it stood
+//     at each start, from its first logged day; the list's own top-two count
+//     stays the list's, and its units from before the pool stay as a line
+//     (2026-10-28, the owner's call)
 //
 // Real data: production on Monday Oct 26 -- the NBA unders at 1:31 PM and the
 // moneyline log then (tests/fixtures/picks-drops-20261026.json), every NBA
@@ -100,6 +104,7 @@ for (const r of D.gm1331) gins.run(...gcols.map((k) => r[k]));
 
 console.log('-- 1:31 PM --');
 p = await get('/api/picks');
+const reads = [{ at: NOW, pool: p.ppPool }];              // each read's pool, for the record below
 console.log('  list: ' + titles(p.legs).join(' | '));
 console.log('  pool: ' + titles(p.ppPool).join(' | '));
 ok(p.rules.nba_blk_more === 'NBA blocks More (PrizePicks), 55%+' && p.rules.nhl_more === 'NHL points/assists More (PrizePicks), 55%+',
@@ -143,6 +148,7 @@ const tipRead = () => {
 };
 seedBlocks(); tipRead();
 p = await get('/api/picks');
+reads.push({ at: NOW, pool: p.ppPool });
 console.log('  list: ' + titles(p.legs).join(' | '));
 const wil2 = [...p.legs, ...p.ppPool].find((x) => /Caleb Wilson/.test(x.title));
 ok(wil2 && wil2.p === 56.2 && wil2.sharp === 51.2 && wil2.modelP === 71.1,
@@ -154,6 +160,7 @@ console.log('\n-- 6 PM: Red Wings at Oilers to come --');
 NOW = RealDate.parse('2026-10-27T01:00:00Z');
 seedBlocks(); tipRead();
 p = await get('/api/picks');
+reads.push({ at: NOW, pool: p.ppPool });
 console.log('  list: ' + titles(p.legs).join(' | '));
 console.log('  pool: ' + titles(p.ppPool).join(' | '));
 const pod = [...p.legs, ...p.ppPool].find((x) => /Podkolzin/.test(x.title));
@@ -197,6 +204,38 @@ ok(wd && wd.result === 'hit', `Caleb Wilson had two blocks against 0.5: ${wd && 
 ok(p.kinds.nba_blk_more.record.hit === 16 && p.kinds.nba_blk_more.record.n === 23 && p.kinds.nhl_more.record.hit === 2 && p.kinds.nhl_more.record.n === 3,
   `the records through Oct 26, as the cards count them: blocks ${p.kinds.nba_blk_more.record.hit} of ${p.kinds.nba_blk_more.record.n}, NHL ${p.kinds.nhl_more.record.hit} of ${p.kinds.nhl_more.record.n}`);
 
+// ---- the entry's record (2026-10-28) ---------------------------------------------------------
+// The units are the pool's at each start: each leg as the last read before
+// its game had it, ranked by that chance.
+console.log('\n-- the entry, graded --');
+const wantPool = [];
+for (const id of new Set(reads.flatMap((r) => r.pool.map((x) => x.legId)))) {
+  const start = Date.parse(reads.flatMap((r) => r.pool).find((x) => x.legId === id).commence);
+  const last = reads.filter((r) => r.at < start).pop();
+  const x = last && last.pool.find((y) => y.legId === id);
+  if (x) wantPool.push({ label: x.title, p: x.p });
+}
+wantPool.sort((a, b) => b.p - a.p);
+const h = p.record.history;
+console.log('  pool at each start: ' + (day.pool || []).map((x) => `${x.label} ${x.p} ${x.result}`).join(', '));
+console.log('  units: ' + h.entries.filter((e) => e.days || e.refunds).map((e) => `${e.label} ${e.units} (${e.won} of ${e.days}, ${e.refunds} refunds)`).join(' | '));
+ok(h.entriesFrom === 'pool' && h.poolSince === '2026-10-26' && (day.pool || []).map((x) => `${x.label} ${x.p}`).join() === wantPool.map((x) => `${x.label} ${x.p}`).join(),
+  `the day's entry is the pool at each start, best first (${wantPool.length} legs)`);
+// Each graded from its own log, against the box scores: James one three,
+// Flagg eleven assists, Holmgren did not play, Wilson two blocks, Podkolzin and
+// Roslovic a point each.
+const blkRes = (who) => ({ over: 'hit', under: 'miss', void: 'void' })[M.nbaBlk.find((l) => l.day === '2026-10-26' && l.player === who).result];
+const truth = { 'Sion James Under 1.5 3PM': D.box['Sion James'].threes < 1.5 ? 'hit' : 'miss', 'Cooper Flagg Under 5.5 AST': D.box['Cooper Flagg'].ast < 5.5 ? 'hit' : 'miss',
+  'Chet Holmgren Over 1.5 BLK': blkRes('Chet Holmgren'), 'Caleb Wilson Over 0.5 BLK': blkRes('Caleb Wilson'),
+  'Vasily Podkolzin Over 0.5 PTS': M.nhlActual['Vasily Podkolzin:pts'] > 0.5 ? 'hit' : 'miss', 'Jack Roslovic Over 0.5 PTS': M.nhlActual['Jack Roslovic:pts'] > 0.5 ? 'hit' : 'miss' };
+ok((day.pool || []).length === 6 && day.pool.every((x) => truth[x.label] === x.result), 'every leg of it graded, its pool-only legs too, as the box scores had them');
+const pe = (k) => h.entries.find((e) => e.key === k) || {};
+ok(day.entries.p2 && day.entries.p2.net === -1 && pe('p2').days === 1 && pe('p2').units === -1 && day.entries.f3.refund === true && pe('f6').refunds === 1 && pe('f6').days === 0,
+  "the units are the entry's: the top two (James landed, Flagg missed) lost the Power; Holmgren's void made each Flex a refund");
+const lp2 = h.listTotals.find((e) => e.key === 'p2');
+ok(p.record.top2.days === 1 && p.record.top2.bothHit === 1 && lp2.units === 2 && (h.listEntries || []).every((e) => !e.days),
+  "and the list's own top two (James and the Thunder, both landed) stay the list's count; no list days before the pool");
+
 // A More that leaves the list says why on its own side and bar: had the
 // pre-tip read put his More at 47%.
 sq.prepare("UPDATE daypicks SET on_list = 0 WHERE label LIKE 'Vasily Podkolzin%'").run();
@@ -223,6 +262,30 @@ ok(/const allPool = d\.ppPool \|\| \[\];/.test(app) && /<ol class="tc-legs pk-po
   && /ent\.length && poolOnly\.length \?/.test(app), "the entry table reads the pool, and lists the pool's legs when it reaches past the list");
 ok(/nba_blk_more: 'PrizePicks'/.test(app) && /nhl_more: 'PrizePicks'/.test(app), 'a More starred from the list goes on the slip as a PrizePicks leg');
 ok(/On Picks of the day too, since Oct 28/.test(app) && !/Logged, not on Picks of the day/.test(app), 'the cards say the Mores are on the list now');
+function lift(name) {
+  let at = app.indexOf(`function ${name}(`);
+  const isConst = at < 0;
+  if (isConst) at = app.indexOf(`const ${name} =`);
+  if (at < 0) throw new Error(`app.js has no ${name}`);
+  let depth = 0;
+  for (let i = at; i < app.length; i++) {
+    const c = app[i];
+    if (c === '{' || c === '(' || c === '[') depth++;
+    else if (c === '}' || c === ')' || c === ']') { depth--; if (!isConst && c === '}' && depth === 0) return app.slice(at, i + 1); }
+    else if (isConst && c === ';' && depth === 0 && app[i + 1] === '\n') return app.slice(at, i + 1);
+  }
+  throw new Error(`could not lift ${name}`);
+}
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const hist = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'movedLineHtml', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
+const txt = (x) => x.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const hh = txt(hist(h));
+console.log('  ' + hh.slice(0, 520));
+ok(/What the PrizePicks entry would have paid, since Oct 26/.test(hh) && /Oct 26 .*Top 2 Power −1\.00u Top 3 Flex refund/.test(hh)
+  && /The PrizePicks entry, best first ✓ Sion James Under 1\.5 3PM 78% ✗ Cooper Flagg Under 5\.5 AST 72% void Chet Holmgren Over 1\.5 BLK 65%/.test(hh),
+  "the card: the entry's units, and under the day its legs at each start");
+ok(/Before Oct 26, from the list's own top legs, moneylines included: Top 2 Power won 1 of 1, \+2\.00u/.test(txt(hist({ ...h, listEntries: h.listTotals }))) && !/Before Oct/.test(hh),
+  "the list's own units from before the pool, as a line, when there are any");
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

@@ -5999,12 +5999,16 @@
       }).filter(Boolean).join('');
       const count = d.decided ? `${d.hit} of ${d.decided} landed` : '';
       const playing = d.pending ? `${d.pending} still to play` : '';
-      const legs = d.legs.map((x) => {
+      const legRow = (x) => {
         const m = mark[x.result] || ['·', 'pk-open'];
         const mv = typeof x.first === 'number' ? Math.round(x.p - x.first) : 0;
         const mvTxt = Math.abs(mv) >= 1 ? ` <span class="pk-lm${tone(mv)}" title="It joined the list at ${esc(pct0(x.first))}">${mv > 0 ? '▲' : '▼'}${Math.abs(mv)}</span>` : '';
         return `<li><span class="pk-lr ${m[1]}">${m[0]}</span><span class="pk-ll">${esc(x.label)}</span><span class="pk-lp">${pct0(x.p)}${mvTxt}</span></li>`;
-      }).join('');
+      };
+      const legs = d.legs.map(legRow).join('');
+      // The PrizePicks entry's legs at each start (2026-10-28): the day's
+      // Power and Flex units are theirs.
+      const pool = (d.pool || []).length ? `<li class="pk-offh">The PrizePicks entry, best first</li>${d.pool.map(legRow).join('')}` : '';
       // Legs the list showed and dropped before their start (2026-10-27), with
       // why and how each went. Not in the day's count: the list is judged on
       // what it showed at each start.
@@ -6014,12 +6018,21 @@
         + `<span class="pk-lp">${pct0(x.p)}</span></li>`).join('');
       const offN = (d.dropped || []).length ? `${d.dropped.length} off before the start` : '';
       return `<details class="pk-day"><summary><span class="pk-dd"><b>${esc(shortDay(d.date))}</b> ${[count, playing, offN].filter(Boolean).join(' · ')}</span>`
-        + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}${off ? `<li class="pk-offh">Off the list before the start</li>${off}` : ''}</ul></details>`;
+        + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}${pool}${off ? `<li class="pk-offh">Off the list before the start</li>${off}` : ''}</ul></details>`;
     }).join('');
+    // From the pool's first day the units are the PrizePicks entry's; the list's
+    // own, from the days before, stay as a line.
+    const fromPool = h.entriesFrom === 'pool';
+    const old = fromPool ? (h.listEntries || []).filter((e) => e.days && /^(p2|f3)$/.test(e.key))
+      .map((e) => `${esc(e.label)} won ${e.won} of ${e.days}, ${units(e.units)}`).join(' · ') : '';
+    const what = fromPool
+      ? `What the PrizePicks entry would have paid, since ${esc(shortDay(h.poolSince))}: its legs, the best PrizePicks takes in each game, 1 unit an entry at its standard payouts, ranked by the chance each showed when its game started.`
+      : "What the list's legs would have paid: 1 unit an entry at PrizePicks' standard payouts, ranked by the chance each showed when its game started.";
     return `<div class="nba-pp pk-card pk-hist">`
       + `<div class="tc-head"><span class="tc-title">How the list did</span>${h.since ? `<span class="tc-rec">since ${esc(shortDay(h.since))}</span>` : ''}</div>`
-      + `<div class="tc-sub">What the list's legs would have paid: 1 unit an entry at PrizePicks' standard payouts, ranked by the chance each showed when its game started. Goblins, demons and boosts pay differently. Your own entries are on the Entries tab.</div>`
+      + `<div class="tc-sub">${what} Goblins, demons and boosts pay differently. Your own entries are on the Entries tab.</div>`
       + (sum ? `<ul class="pk-entries pk-hist-sum"><li class="pk-eh"><span>Entry</span><span>days</span><span>units</span><span>return</span></li>${sum}</ul>` : '')
+      + (old ? `<div class="tc-sub pk-hist-old">Before ${esc(shortDay(h.poolSince))}, from the list's own top legs, moneylines included: ${old}.</div>` : '')
       + movedLineHtml(h.moved)
       + `<div class="pk-days">${days}</div></div>`;
   }
