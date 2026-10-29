@@ -6447,7 +6447,10 @@
     const pts = (Array.isArray(hist) ? hist : []).filter((p) => Array.isArray(p) && typeof p[1] === 'number' && typeof p[2] === 'number' && Date.parse(p[0]));
     if (pts.length < 2) return '';
     const W = 120, H = 30;
-    const t0 = Date.parse(pts[0][0]), tn = Math.max(Date.now(), Date.parse(pts[pts.length - 1][0]) + 1);
+    // Out to now, and a little past the latest read, so a move on the read
+    // just taken shows as a step rather than the line's edge.
+    const t0 = Date.parse(pts[0][0]), tl = Date.parse(pts[pts.length - 1][0]);
+    const tn = Math.max(Date.now(), tl + Math.max(60e3, (tl - t0) * 0.15));
     const ys = pts.flatMap((p) => [p[1], impPct(p[2])]);
     let lo = Math.min(...ys), hi = Math.max(...ys);
     if (hi - lo < 3) { const m = (hi + lo) / 2; lo = m - 1.5; hi = m + 1.5; }

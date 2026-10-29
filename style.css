@@ -2976,7 +2976,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tr-bars { position:relative; display:flex; align-items:flex-end; gap:3px; width:max-content; height:32px; margin-bottom:3px; }
 .tr-bars i { flex:none; width:14px; border-radius:2px 2px 0 0; background:var(--textFaint); opacity:.45; }
 .tr-bars i.h { background:var(--positive); opacity:1; }
-.tr-line { position:absolute; left:-2px; right:-2px; height:0; border-top:1px dashed var(--text); }
+/* The line in the bar tick's ink, with a card-coloured edge so it reads across the teal. */
+.tr-line { position:absolute; left:-3px; right:-3px; height:0; border-top:2px solid var(--text); box-shadow:0 1px 0 var(--card), 0 -1px 0 var(--card); }
 /* NBA blocks More (2026-10-27): its own section under the unders. */
 .pp-more-head { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
 /* Legs dropped before their start (2026-10-27): dimmed, the reason under. */
