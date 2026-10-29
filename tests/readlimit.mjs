@@ -338,7 +338,7 @@ const exists = ran(/FROM nfl_lines WHERE season_type='REG'/);
 ok(!!exists && !!ref.prepare(exists.sql).get(...exists.args) === (runOld("SELECT COUNT(*) AS n FROM nfl_lines WHERE season_type='REG' AND commence > ?", exists.args)[0].n > 0),
   'the season-type check answers as the count did');
 same('soccer board', /FROM soccer_lines WHERE league IN/,
-  `SELECT league, event_id, commence, home, away, market, selection, point, book, price, captured_at
+  `SELECT league, event_id, commence, home, away, market, selection, point, book, price, link, captured_at
      FROM soccer_lines WHERE commence > ? ORDER BY captured_at ASC`);
 same('entry legs: their games in the log', /FROM gmpicks WHERE \+sport IN/,
   "SELECT sport, game_id, result, home_score, away_score FROM gmpicks WHERE sport IN ('soccer','nba','nhl') AND result IS NOT NULL AND game_id IN (?,?)");

@@ -70,7 +70,8 @@ console.log('\n-- the player legs --');
 const carter = leg(/^Wendell Carter/);
 ok(text(B.pickBarHtml(carter, carter.spec)) === 'proj 1.6 · line 2.5 · 0.9 cushion', "Carter's under keeps his projection bar");
 ok(B.pickBarHtml({ ...spurs, odds: null }, spurs.spec) === '', 'a moneyline with no price draws none');
-ok(/\$\{pickBarHtml\(x, x\.spec\)\}<\/span>/.test(app) && /\$\{pickBarHtml\(x, s\)\}<\/div>/.test(lift('heroLegHtml')), "on the list's rows and the hero");
+// The trend bars, price line and bet link follow it since 2026-10-29.
+ok(/\$\{pickBarHtml\(x, x\.spec\)\}\$\{trendBarsHtml\(x\.trend\)\}/.test(app) && /\$\{pickBarHtml\(x, s\)\}\$\{trendBarsHtml\(x\.trend\)\}/.test(lift('heroLegHtml')), "on the list's rows and the hero");
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

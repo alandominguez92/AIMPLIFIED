@@ -110,8 +110,8 @@ const tot = sq.prepare("SELECT * FROM gmpicks WHERE market = 'totals' AND game_i
 ok(t.point !== 2.5 && tot.close_price === 100 && tot.close_at === '2026-10-28T19:00:00.000Z', `an Over 2.5 row is not priced from a read of the ${t.point} line`);
 
 // ---- every capture hands over its quotes ----------------------------------------------------------
-ok((fnOf('soccerBoardData').match(/quotes: soc1x2Quotes\(g\)/g) || []).length === 2 && /quotes: \{ over: \{ price: t\.overPrice, fair: t\.overFair \}, under: \{ price: t\.underPrice, fair: t\.underFair \} \}/.test(fnOf('soccerBoardData'))
-  && /quotes: \{ home: \{ price: g\.homePrice, fair: g\.homeFair \}, away: \{ price: g\.awayPrice, fair: g\.awayFair \} \}/.test(fnOf('h2hEntries'))
+ok((fnOf('soccerBoardData').match(/quotes: soc1x2Quotes\(g\)/g) || []).length === 2 && /quotes: \{ over: \{ price: t\.overPrice, fair: t\.overFair, link: t\.overLink \}, under: \{ price: t\.underPrice, fair: t\.underFair, link: t\.underLink \} \}/.test(fnOf('soccerBoardData'))
+  && /quotes: \{ home: \{ price: g\.homePrice, fair: g\.homeFair, link: g\.homeLink \}, away: \{ price: g\.awayPrice, fair: g\.awayFair, link: g\.awayLink \} \}/.test(fnOf('h2hEntries'))
   && /quotes: \{ home: \{ price: g\.home_price, fair: g\.home_fair \}, away: \{ price: g\.away_price, fair: g\.away_fair \} \}/.test(fnOf('nflBoardData')),
   "soccer's three ways and goals sides, and the NBA's, NHL's and NFL's two clubs");
 

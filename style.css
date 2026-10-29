@@ -2960,6 +2960,23 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pp-projbar { display:block; max-width:300px; }
 .pp-projbar .bmini { margin-top:6px; margin-bottom:4px; }
 .hero-leg .pp-projbar { grid-column:1 / -1; margin-top:4px; }
+/* The book's own bet slip, how a price moved, and a player's last games
+   (2026-10-29). */
+.bet-at { display:inline-flex; align-items:center; min-height:36px; margin-top:8px; padding:0 12px; border-radius:8px; border:1px solid var(--positive);
+  background:transparent; color:var(--positive); font-family:var(--sans); font-size:13px; font-weight:600; text-decoration:none; cursor:pointer; }
+.bet-at:hover, .bet-at:focus-visible { background:var(--board2); }
+.bet-at.need { border-color:var(--border); color:var(--textDim); font-weight:500; }
+.hl-actions .bet-at { margin-top:0; min-height:44px; }
+.pk-spark, .pk-trend { display:block; max-width:300px; margin-top:6px; }
+.hero-leg .pk-spark, .hero-leg .pk-trend { grid-column:1 / -1; }
+.pk-spark svg { display:block; width:100%; height:30px; margin-bottom:2px; }
+.pk-spark path { fill:none; stroke-width:1.75; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
+.pk-spark .sp-px { stroke:var(--accentFill); }
+.pk-spark .sp-fair { stroke:var(--positive); }
+.tr-bars { position:relative; display:flex; align-items:flex-end; gap:3px; width:max-content; height:32px; margin-bottom:3px; }
+.tr-bars i { flex:none; width:14px; border-radius:2px 2px 0 0; background:var(--textFaint); opacity:.45; }
+.tr-bars i.h { background:var(--positive); opacity:1; }
+.tr-line { position:absolute; left:-2px; right:-2px; height:0; border-top:1px dashed var(--text); }
 /* NBA blocks More (2026-10-27): its own section under the unders. */
 .pp-more-head { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
 /* Legs dropped before their start (2026-10-27): dimmed, the reason under. */

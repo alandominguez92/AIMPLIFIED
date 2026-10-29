@@ -104,10 +104,12 @@ const run = (sql, a) => {
     const k = gmKey([row.sport, row.date, row.game_id, row.market]);
     if (!gm.has(k)) gm.set(k, { ...row, result: null, home_score: null, away_score: null });
   } else if (/^\s*UPDATE gmpicks SET close_price/i.test(sql)) {
-    // close_at (2026-10-11), then book_fairs (2026-10-27), ride between the
-    // latest read and the key.
-    const [cp, edge, wp, imp, sport, date, gid, mkt, side] = /book_fairs/.test(sql) ? [...a.slice(0, 4), ...a.slice(6)]
-      : /close_at/.test(sql) ? [...a.slice(0, 4), ...a.slice(5)] : a;
+    // close_at (2026-10-11), book_fairs (2026-10-27) and link (2026-10-29)
+    // ride between the latest read and the key: the key follows the SET's
+    // own marks. A quoted side's update sets its chance before its edge.
+    const nSet = (sql.split(/\bWHERE\b/i)[0].match(/\?/g) || []).length;
+    const [cp, edge, wp, imp] = /SET close_price=\?, edge=\?/.test(sql) ? a.slice(0, 4) : [a[0], a[3], a[1], a[2]];
+    const [sport, date, gid, mkt, side] = a.slice(nSet);
     const r = gm.get(gmKey([sport, date, gid, mkt]));
     if (r && r.side === side) { r.close_price = cp; r.edge = edge; r.win_prob = wp; r.implied = imp; }
   } else if (/^\s*UPDATE gmpicks SET result=\?, home_score=\?, away_score=\?/i.test(sql)) {

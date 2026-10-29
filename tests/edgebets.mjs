@@ -207,7 +207,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const ui = { bank: { amount: null, cap: 5 } };
 const P = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'state', 'shortDay',
-  [aconst('BOOK_LABEL'), aconst('bkLabel'), aconst('moneyTxt'), aconst('stakeTxt'), alift('bankHtml'), alift('evBetsHtml'), alift('edgeRecordHtml'), alift('pickemHtml')].join('\n') + '\nreturn { evBetsHtml, edgeRecordHtml, bankHtml };')(
+  [aconst('BOOK_LABEL'), aconst('bkLabel'), aconst('moneyTxt'), aconst('stakeTxt'), alift('bankHtml'), aconst('LINK_BOOK'), aconst('STATE_SLOT'), alift('betLinkHtml'), aconst('impPct'), alift('priceSparkHtml'), alift('evBetsHtml'), alift('edgeRecordHtml'), alift('pickemHtml')].join('\n') + '\nreturn { evBetsHtml, edgeRecordHtml, bankHtml };')(
   esc, (o) => (o > 0 ? '+' + o : String(o)), (v) => `${Math.round(v)}%`, (t) => t, { nba: 'NBA', nhl: 'NHL', soccer: 'Soccer', nfl: 'NFL' }, ui,
   (d) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new RealDate(d + 'T12:00:00Z')));
 ok(text(P.edgeRecordHtml(R)) === `These bets since Oct 27: 3 of 4 won · +${flat.toFixed(2)}u at 1 unit each · beat the closing line ${R.clv.beat} of 4 (average ${R.clv.avg > 0 ? '+' : ''}${R.clv.avg}%)`,
@@ -258,7 +258,8 @@ const rp = alift('renderPicks');
 // (Since later on 2026-10-28 the "Last night" recap leads: tests/flashy.mjs.)
 ok(/grid\.innerHTML = recapHtml\(d\.record && d\.record\.history, d\.edgeRecord\) \+ bankHtml\(\) \+ ppCard \+ evBetsHtml\(d\) \+ listCard \+ after;/.test(rp) && /<span class="tc-title">Your PrizePicks entry<\/span>/.test(rp) && /<span class="tc-title">Most likely to land<\/span>/.test(rp),
   'Picks leads with the PrizePicks entry, then the sportsbook bets, then the likeliest legs');
-ok(/if \(t\.dataset\.action === 'bank-amount' \|\| t\.dataset\.action === 'bank-cap'\)/.test(app) && /localStorage\.setItem\('aimplified_bankroll'/.test(app), 'the bankroll is kept on the device');
+// (The state the books' links name rides with them since 2026-10-29: tests/betlinks.mjs.)
+ok(/if \(t\.dataset\.action === 'bank-amount' \|\| t\.dataset\.action === 'bank-cap'( \|\| t\.dataset\.action === 'bank-state')?\)/.test(app) && /localStorage\.setItem\('aimplified_bankroll'/.test(app), 'the bankroll is kept on the device');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

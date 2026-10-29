@@ -299,6 +299,8 @@
     const b = JSON.parse(localStorage.getItem('aimplified_bankroll') || 'null');
     if (b && b.amount > 0) state.bank.amount = Number(b.amount);
     if (b && b.cap > 0) state.bank.cap = Number(b.cap);
+    // The state a book's link names (2026-10-29): BetMGM, Caesars, BetRivers.
+    if (b && /^[a-z]{2}$/.test(String(b.state || ''))) state.bank.state = b.state;
   } catch (e) {}
 
   function esc(str) {
@@ -4841,6 +4843,12 @@
       // The entry ticket (2026-10-28): how many legs, and a picture of it.
       case 'ticket-n': state.ticketN = Number(target.dataset.n) || 3; renderPicks(); break;
       case 'ticket-save': saveTicketImage(); break;
+      // A book's link that needs the state: open the bankroll fold at it.
+      case 'bank-open': {
+        const f = document.querySelector('.pk-bank');
+        if (f) { f.open = true; f.scrollIntoView({ block: 'center', behavior: 'smooth' }); const i = f.querySelector('[data-action="bank-state"]'); if (i) i.focus({ preventScroll: true }); }
+        break;
+      }
       case 'today-jump': jumpToLeg(target.dataset.view, target.dataset.id); break;
       case 'today-add': {
         if (e) e.stopPropagation();
@@ -4963,9 +4971,11 @@
     if (!t || !t.dataset) return;
     if (t.dataset.action === 'log-stake') state.logStake = t.value;
     // The bankroll and its daily cap (2026-10-28): kept on this device.
-    if (t.dataset.action === 'bank-amount' || t.dataset.action === 'bank-cap') {
+    if (t.dataset.action === 'bank-amount' || t.dataset.action === 'bank-cap' || t.dataset.action === 'bank-state') {
       const v = Number(String(t.value).replace(/[$,\s]/g, ''));
+      const st = String(t.value).trim().toLowerCase();
       if (t.dataset.action === 'bank-amount') state.bank.amount = v > 0 ? v : null;
+      else if (t.dataset.action === 'bank-state') state.bank.state = /^[a-z]{2}$/.test(st) ? st : null;
       else state.bank.cap = v > 0 && v <= 100 ? v : 5;
       try { localStorage.setItem('aimplified_bankroll', JSON.stringify(state.bank)); } catch (err) {}
       renderPicks();
@@ -5910,8 +5920,9 @@
       ? `Bankroll <b>${esc(moneyTxt(b.amount))}</b> · daily cap ${esc(String(b.cap))}% (${esc(moneyTxt(b.amount * b.cap / 100))})`
       : 'Set your bankroll to see each stake in dollars'}</summary>`
       + `<div class="pk-bank-f"><label>Bankroll $ <input type="text" inputmode="decimal" data-action="bank-amount" value="${set ? esc(String(b.amount)) : ''}" placeholder="500" aria-label="Bankroll in dollars"></label>`
-      + `<label>Daily cap <input type="text" inputmode="decimal" data-action="bank-cap" value="${esc(String(b.cap))}" aria-label="Daily cap, percent of the bankroll"> %</label></div>`
-      + `<p>Kept on this device. The cap is the most the day's sportsbook bets take together; past it, each is scaled down to fit. A PrizePicks entry is staked on its own.</p></details>`;
+      + `<label>Daily cap <input type="text" inputmode="decimal" data-action="bank-cap" value="${esc(String(b.cap))}" aria-label="Daily cap, percent of the bankroll"> %</label>`
+      + `<label>Your state <input type="text" maxlength="2" autocapitalize="characters" data-action="bank-state" value="${b.state ? esc(b.state.toUpperCase()) : ''}" placeholder="NJ" aria-label="Your state, two letters"></label></div>`
+      + `<p>Kept on this device. The cap is the most the day's sportsbook bets take together; past it, each is scaled down to fit. A PrizePicks entry is staked on its own. The state opens BetMGM, Caesars and BetRivers at their bet slips; DraftKings and FanDuel find it themselves.</p></details>`;
   }
   // A Picks leg's face: the player for a prop, the club for a moneyline.
   const pickIsTeam = (x) => ((x.spec || {}).market === 'ml') || /_(ml|fav)$/.test(x.kind || '');
@@ -6002,10 +6013,11 @@
       + `<span class="hl-game">${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span>`
       // A player leg's projection against its line, as the MLB board draws it;
       // a team's chance against its price.
-      + `${pickBarHtml(x, s)}</div>`
+      + `${pickBarHtml(x, s)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}</div>`
       + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
       + (typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
       + `<div class="hl-actions"><button type="button" class="hl-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? '★ In your slip' : '☆ Add to slip'}</button>`
+      + betLinkHtml(x.link)
       + (opts && opts.link ? `<a href="#" class="hl-all" data-action="set-sport" data-sport="picks">All picks →</a>` : '')
       + `</div></article>`;
   }
@@ -6172,7 +6184,7 @@
         + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${pickEdgeHtml(x)}</span>` : ''}`
         // A player leg's projection against its line, as the MLB board draws it;
         // a team's chance against its price.
-        + `${pickBarHtml(x, x.spec)}</span>`
+        + `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${betLinkHtml(x.link)}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     };
@@ -6405,6 +6417,63 @@
       ? `This entry since ${esc(shortDay(h.poolSince))}: ${done.map((e) => `${esc(e.label)} won <b>${e.won} of ${e.days}</b>, ${u(e.units)}`).join(' · ')}`
       : `This entry is graded from ${esc(shortDay(h.poolSince))}: none settled yet.`}</div>`;
   }
+  // The book's own bet slip, from the odds feed's links (2026-10-29), with the
+  // side already on it. DraftKings' and FanDuel's work as sent; BetMGM's,
+  // Caesars' and BetRivers' name the state in the address, so they wait for
+  // the state set under the bankroll. BetRivers' slip also wants a bet type
+  // and a stake: its event page instead. The placeholders' braces are written
+  // {, \x7b and their pairs, so the function's own braces balance.
+  const LINK_BOOK = [['draftkings', 'DraftKings'], ['fanduel', 'FanDuel'], ['betmgm', 'BetMGM'], ['caesars', 'Caesars'], ['betrivers', 'BetRivers']];
+  const STATE_SLOT = '{state}';
+  function betLinkHtml(u) {
+    if (!u || !/^https:\/\//.test(String(u))) return '';
+    let h = String(u);
+    const bk = (LINK_BOOK.find(([k]) => h.includes(k)) || [null, 'the book'])[1];
+    if (h.includes(STATE_SLOT)) {
+      const st = state.bank && state.bank.state;
+      if (!st) return `<button type="button" class="bet-at need" data-action="bank-open">Set your state to open ${esc(bk)}</button>`;
+      h = h.split(STATE_SLOT).join(st);
+    }
+    h = h.replace(/[?&][^?&#]*\x7b[^\x7d]*\x7d[^&#]*/g, '');
+    if (/[\x7b\x7d]/.test(h)) return '';
+    return `<a class="bet-at" href="${esc(h)}" target="_blank" rel="noopener noreferrer">Bet at ${esc(bk)} ↗</a>`;
+  }
+  // How a side's price and the sharp line moved before the start (2026-10-29):
+  // the chance its price needs and the fair chance, read by read, as steps (a
+  // price holds until the next read moves it), out to now. Where the fair line
+  // runs above the price's, the gap is the edge.
+  const impPct = (am) => (am < 0 ? -am / (-am + 100) : 100 / (am + 100)) * 100;
+  function priceSparkHtml(hist) {
+    const pts = (Array.isArray(hist) ? hist : []).filter((p) => Array.isArray(p) && typeof p[1] === 'number' && typeof p[2] === 'number' && Date.parse(p[0]));
+    if (pts.length < 2) return '';
+    const W = 120, H = 30;
+    const t0 = Date.parse(pts[0][0]), tn = Math.max(Date.now(), Date.parse(pts[pts.length - 1][0]) + 1);
+    const ys = pts.flatMap((p) => [p[1], impPct(p[2])]);
+    let lo = Math.min(...ys), hi = Math.max(...ys);
+    if (hi - lo < 3) { const m = (hi + lo) / 2; lo = m - 1.5; hi = m + 1.5; }
+    const x = (t) => ((t - t0) / (tn - t0) * (W - 4) + 2).toFixed(1);
+    const y = (v) => (H - 3 - (v - lo) / (hi - lo) * (H - 6)).toFixed(1);
+    const step = (f) => pts.map((p, i) => (i ? `H${x(Date.parse(p[0]))}V${y(f(p))}` : `M${x(t0)} ${y(f(p))}`)).join('') + `H${x(tn)}`;
+    const a = pts[0], b = pts[pts.length - 1];
+    const px = a[2] === b[2] ? `<b>${esc(AM(b[2]))}</b> throughout` : `opened <b>${esc(AM(a[2]))}</b> → <b>${esc(AM(b[2]))}</b> now`;
+    const fair = a[1] === b[1] ? `fair <b>${b[1]}%</b>` : `fair ${a[1]}% → <b>${b[1]}%</b>`;
+    return `<span class="pk-spark" title="${esc(`${pts.length} reads since ${soccerKick(a[0])}: the gold line is the chance the price needs, the teal the sharp books' fair chance`)}">`
+      + `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path class="sp-px" d="${step((p) => impPct(p[2]))}"/><path class="sp-fair" d="${step((p) => p[1])}"/></svg>`
+      + `<span class="bw-cush">${px} · ${fair}</span></span>`;
+  }
+  // A player leg's last games against its line (2026-10-29): a bar a game,
+  // oldest first, the line across them, the games that went the pick's way in
+  // its colour. This season's games only, so early on there are fewer than ten.
+  function trendBarsHtml(t) {
+    if (!t || !Array.isArray(t.vals) || !t.vals.length || typeof t.line !== 'number') return '';
+    const under = t.side !== 'over';
+    const top = Math.max(t.line * 1.6, ...t.vals, 1);
+    const h = (v) => Math.max(4, Math.min(100, Math.round(v / top * 100)));
+    const bars = t.vals.map((v) => `<i class="${(under ? v < t.line : v > t.line) ? 'h' : 'm'}" style="height:${h(v)}%"></i>`).join('');
+    const avg = Math.round(t.vals.reduce((s, v) => s + v, 0) / t.vals.length * 10) / 10;
+    return `<span class="pk-trend"><span class="tr-bars" role="img" aria-label="${esc(`Last ${t.vals.length} games: ${t.vals.join(', ')}; line ${t.line}`)}">${bars}<b class="tr-line" style="bottom:${h(t.line)}%"></b></span>`
+      + `<span class="bw-cush">Last ${t.vals.length}: ${under ? 'under' : 'over'} in <b class="u">${t.hit}</b> · avg <b>${avg}</b> · line ${esc(String(t.line))}</span></span>`;
+  }
   // Bets with an edge (2026-10-27): prices that beat the sharp line, from the
   // worker's evBets -- best edge first, each with its quarter-Kelly stake and
   // the price it breaks even at, and how old its price is.
@@ -6426,6 +6495,7 @@
       // The boards' own book names (2026-10-28): "betmgm" printed as it came.
       + `<span class="tc-book">${esc(AM(b.price))} ${esc(bkLabel(b.book))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(stakeTxt(stakeOf(b)))}${b.capped ? ' (cap)' : ''}</span>`
       + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
+      + priceSparkHtml(b.hist) + betLinkHtml(b.link)
       + `</div></li>`).join('')}</ol>`
       : '<div class="tc-wait-note">No price beats the sharp line by enough right now.</div>';
     return `<div class="nba-pp pk-card pk-ev-card">${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}</div>`;

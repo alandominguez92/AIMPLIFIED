@@ -3863,6 +3863,9 @@ async function ensureGamePickSchema(db) {
   // Every book's no-vig chance of the pick, as last read (2026-10-27): which
   // book is sharpest per sport, scored on this site's own games.
   await addColumns(db, 'gmpicks', [['book_fairs', 'TEXT']]);
+  // The best price's own bet-slip link, as last read (2026-10-29): Picks'
+  // and the edge bets' "Bet at" button.
+  await addColumns(db, 'gmpicks', [['link', 'TEXT']]);
 }
 
 // entries: { game_id, league, commence, side, pick, home, away, win_prob,
@@ -3881,19 +3884,19 @@ async function logGamePicks(db, sport, date, entries) {
     const at = new Date().toISOString();
     stmts.push(db.prepare(
       `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,market,league,week,commence,side,point,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver,
-         entry_win_prob,entry_edge,entry_at,close_at,book_fairs)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         entry_win_prob,entry_edge,entry_at,close_at,book_fairs,link)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(sport, date, String(e.game_id), market, e.league || null, e.week == null ? null : e.week,
       e.commence || null, e.side || null,
       e.point == null ? null : e.point, e.pick || null,
       e.home || null, e.away || null, e.win_prob, e.implied == null ? null : e.implied, e.edge == null ? null : e.edge,
       e.price, e.price, e.book || null, e.fair_src || null, e.sharp_n == null ? null : e.sharp_n, GM_MODEL_VER,
-      e.win_prob, e.edge == null ? null : e.edge, at, at, e.book_fairs || null));
+      e.win_prob, e.edge == null ? null : e.edge, at, at, e.book_fairs || null, e.link || null));
     // Close refreshes only while the same side is still the board's lead, so a
     // flip later in the week cannot overwrite the entry side's closing number.
     stmts.push(db.prepare(
-      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=?, close_at=?, book_fairs=COALESCE(?, book_fairs) WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
-    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied, at, e.book_fairs || null,
+      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=?, close_at=?, book_fairs=COALESCE(?, book_fairs), link=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
+    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied, at, e.book_fairs || null, e.link || null,
       sport, date, String(e.game_id), market, e.side || null));
     // A row whose side has lost the board's lead (2026-10-28) keeps its own
     // side's read too, from the same capture's quotes for every side. Its close
@@ -3905,14 +3908,74 @@ async function logGamePicks(db, sport, date, entries) {
     for (const [sd, q] of Object.entries(e.quotes || {})) {
       if (sd === e.side || !q || typeof q.price !== 'number' || q.fair == null || !mlPriceSane(q.price, q.fair)) continue;
       const imp = round1(amProb(q.price) * 100);
-      stmts.push(db.prepare('UPDATE gmpicks SET close_price=?, win_prob=?, implied=?, edge=?, close_at=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=? AND point IS ?')
-        .bind(q.price, q.fair, imp, round1(q.fair - imp), at, sport, date, String(e.game_id), market, sd, e.point == null ? null : e.point));
+      stmts.push(db.prepare('UPDATE gmpicks SET close_price=?, win_prob=?, implied=?, edge=?, close_at=?, link=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=? AND point IS ?')
+        .bind(q.price, q.fair, imp, round1(q.fair - imp), at, q.link || null, sport, date, String(e.game_id), market, sd, e.point == null ? null : e.point));
     }
     logged++;
   }
   if (!stmts.length) return 0;
   await db.batch(stmts);
+  // Every side this read priced, for its price history.
+  try {
+    await logPriceHist(db, sport, entries.flatMap((e) => {
+      if (!e || !e.game_id) return [];
+      const q = { ...(e.quotes || {}) };
+      if (e.side && !q[e.side]) q[e.side] = { price: e.price, fair: e.win_prob };
+      return Object.entries(q).filter(([, v]) => v).map(([sd, v]) => ({ event_id: e.game_id, side: histSide(e.market, sd, e.point), commence: e.commence, fair: v.fair, price: v.price }));
+    }));
+  } catch (err) { /* the log stands without it */ }
   return logged;
+}
+
+// ---- Price history (2026-10-29, the owner's call) ---------------------------
+// Each read's fair and best price for every side the game-line logs price, so
+// an edge bet or a moneyline shows how its line moved before the start --
+// "opened +450, +360 now" -- not only in the next morning's record. A read
+// that moves neither number writes nothing, and each check is two index
+// seeks, not a read of the side's whole history. Kept four days past the start.
+// A side is its 1X2 or moneyline side, or a total's side at its own number:
+// soccer logs its lead and its favourite rows from the same read, and those
+// are the same sides at the same prices.
+const histSide = (market, side, point) => (market === 'totals' ? `tot:${side}:${point}` : market === 'h2h' || market === 'fav' || !market ? `ml:${side}` : `${market}:${side}`);
+async function ensurePriceHistSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS pricehist (
+    sport TEXT NOT NULL, event_id TEXT NOT NULL, side TEXT NOT NULL, at TEXT NOT NULL,
+    commence TEXT, fair REAL, price INTEGER,
+    PRIMARY KEY (sport, event_id, side, at)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS pricehist_commence ON pricehist (commence)').run();
+}
+const PRICE_HIST_KEEP_MS = 4 * 864e5;
+async function logPriceHist(db, sport, sides, now = Date.now()) {
+  const at = new Date(now).toISOString();
+  const seen = new Set();
+  const rows = sides.filter((s) => {
+    if (!s.event_id || s.fair == null || typeof s.price !== 'number') return false;
+    const k = `${s.event_id}|${s.side}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  if (!rows.length) return 0;
+  await ensurePriceHistSchema(db);
+  const stmts = rows.map((s) => db.prepare(`INSERT OR IGNORE INTO pricehist (sport, event_id, side, at, commence, fair, price)
+    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE NOT EXISTS (SELECT 1 FROM pricehist WHERE sport = ?1 AND event_id = ?2 AND side = ?3 AND fair IS ?6 AND price IS ?7
+      AND at = (SELECT MAX(at) FROM pricehist WHERE sport = ?1 AND event_id = ?2 AND side = ?3))`)
+    .bind(sport, String(s.event_id), s.side, at, s.commence || null, round1(s.fair), s.price));
+  stmts.push(db.prepare('DELETE FROM pricehist WHERE commence < ?').bind(new Date(now - PRICE_HIST_KEEP_MS).toISOString()));
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return rows.length;
+}
+// Sides' points, oldest first, at most PRICE_HIST_N each: [[at, fair, price]].
+// hks: [sport, event_id, side]; one round trip for them all.
+const PRICE_HIST_N = 16;
+async function priceHists(db, hks) {
+  if (!hks.length) return [];
+  try {
+    const res = await db.batch(hks.map(([sport, id, side]) => db.prepare('SELECT at, fair, price FROM pricehist WHERE sport = ? AND event_id = ? AND side = ? ORDER BY at DESC LIMIT ?')
+      .bind(sport, String(id), side, PRICE_HIST_N)));
+    return res.map((r) => ((r && r.results) || []).reverse().map((p) => [p.at, p.fair, p.price]));
+  } catch (e) { return hks.map(() => []); }   // no table yet
 }
 
 // ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
@@ -8522,7 +8585,7 @@ const GM_READ_SLACK_MS = 5 * 60e3;
 // evScan keeps every side it priced (all), as well as those past the bar
 // (bets): the edge-bet log reads each logged bet's closing price and fair
 // from all (2026-10-28). Each side carries how it grades (grade).
-const evShown = (b) => { const { key, grade, league, ...rest } = b; return rest; };
+const evShown = (b) => { const { key, grade, league, hk, ...rest } = b; return rest; };
 async function evBets(env, now) { return (await evScan(env, now)).bets.map(evShown); }
 async function evScan(env, now) {
   const out = [], all = [];
@@ -8548,7 +8611,8 @@ async function evScan(env, now) {
       const sub = `${nick(g.away)} @ ${nick(g.home)}`;
       for (const [side, team, fair, price, book] of [['home', g.home, g.homeFair, g.homePrice, g.homeBook], ['away', g.away, g.awayFair, g.awayPrice, g.awayBook]]) {
         add({ key: `${sport}:${g.id}:${side}`, sport, market: 'ml', label: `${nick(team)} ML`, sub, commence: g.commence,
-          fair, price, book, fairSrc: g.fairSrc, asOf: snap.asOf, league: 'reg', grade: { t: 'side', sport, game_id: g.id, side } });
+          fair, price, book, fairSrc: g.fairSrc, asOf: snap.asOf, league: 'reg', grade: { t: 'side', sport, game_id: g.id, side },
+          link: (side === 'home' ? g.homeLink : g.awayLink) || null, hk: [sport, g.id, histSide('h2h', side)] });
       }
     }
   }
@@ -8566,7 +8630,8 @@ async function evScan(env, now) {
   const current = (r) => Date.parse(readAt(r)) >= Date.parse(latest.get(`${r.sport}:${r.league}`)) - GM_READ_SLACK_MS;
   for (const r of gm) {
     if (!current(r)) continue;
-    const base = { commence: r.commence, fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, book: r.book, fairSrc: r.fair_src, asOf: r.close_at || r.entry_at };
+    const base = { commence: r.commence, fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, book: r.book, fairSrc: r.fair_src, asOf: r.close_at || r.entry_at,
+      link: r.link || null, hk: [r.sport, r.game_id, histSide(r.market, r.side, r.point)] };
     if (r.sport === 'nfl' && r.market === 'h2h') {
       add({ ...base, key: `nfl:${r.game_id}:${r.pick}`, sport: 'nfl', market: 'ml', label: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`, grade: gmGrade(r) });
     } else if (r.sport === 'nflptd') {
@@ -8978,7 +9043,7 @@ async function picksCandidates(env, now) {
     if (!kind || r.win_prob < PICK_KINDS[kind].min) continue;
     const day = ptDateOf(Date.parse(r.commence));
     const price = r.close_price != null ? r.close_price : r.entry_price;
-    const base = { kind, p: r.win_prob, commence: r.commence, odds: price,
+    const base = { kind, p: r.win_prob, commence: r.commence, odds: price, link: r.link || null, hk: [r.sport, r.game_id, histSide(r.market, r.side, r.point)],
       src: { date: r.date, game_id: r.game_id, team: r.pick, market: r.market } };
     const book = { line: null, price, win: round1(r.win_prob) };
     if (kind === 'nba_ml') {
@@ -9521,6 +9586,13 @@ async function picksBoard(env) {
         for (const r of fr) if (r.first_p != null) firsts.set(r.leg_id, r);
       }
     } catch (e) { /* the list stands without it */ }
+    // The NBA player legs' last games, and the game lines' price history (2026-10-29).
+    const onCard = [...new Map([...list, ...pool].map((l) => [l.legId, l])).values()];
+    let trends = new Map();
+    const hists = new Map();
+    try { trends = await nbaTrends(env.DB, onCard); } catch (e) { /* the list stands without them */ }
+    const withHk = onCard.filter((l) => l.hk);
+    (await priceHists(env.DB, withHk.map((l) => l.hk))).forEach((h, i) => { if (h.length > 1) hists.set(withHk[i].legId, h); });
     const shown = (l, i) => ({
       rank: i + 1, kind: l.kind, sport: PICK_KINDS[l.kind].sport, kindLabel: PICK_KINDS[l.kind].label,
       p: round1(l.p), title: l.title, sub: l.sub, commence: l.commence, odds: l.odds == null ? null : l.odds,
@@ -9535,6 +9607,9 @@ async function picksBoard(env) {
       ...(l.modelP != null ? { modelP: l.modelP } : {}),
       // His projection, for the bar under a player leg (2026-10-28).
       ...(l.proj != null ? { proj: l.proj } : {}),
+      ...(l.link ? { link: l.link } : {}),
+      ...(hists.has(l.legId) ? { hist: hists.get(l.legId) } : {}),
+      ...(trends.has(l.legId) ? { trend: trends.get(l.legId) } : {}),
     });
     out.legs = list.map(shown);
     out.ppPool = pool.map(shown);
@@ -9558,7 +9633,11 @@ async function picksBoard(env) {
     // Logged as shown, graded, and their record beside them (2026-10-28).
     try {
       const scan = await evScan(env, now);
-      out.evBets = scan.bets.map(evShown);
+      // Each bet's price history, where its log keeps one (a line needs two points).
+      const withHk = scan.bets.filter((b) => b.hk);
+      const hs = await priceHists(env.DB, withHk.map((b) => b.hk));
+      const histOf = new Map(withHk.map((b, i) => [b.key, hs[i]]));
+      out.evBets = scan.bets.map((b) => { const h = histOf.get(b.key); return { ...evShown(b), ...(h && h.length > 1 ? { hist: h } : {}) }; });
       try { await logEdgeBets(env.DB, scan, now); await gradeEdgeBets(env.DB, now); } catch (e) { out.logError = String((e && e.message) || e); }
     } catch (e) { out.evBets = []; out.evError = String((e && e.message) || e); }
     try { out.edgeRecord = await edgeBetRecord(env); } catch (e) { out.recordError = String((e && e.message) || e); }
@@ -10577,6 +10656,8 @@ async function ensureSoccerSchema(db) {
   // The board reads by league and kickoff; the change-detection read keys off
   // the same pair. Without this every render scans the whole history.
   await db.prepare('CREATE INDEX IF NOT EXISTS soccer_lines_lg ON soccer_lines (league, commence)').run();
+  // Each quote's bet-slip link (includeLinks, which costs nothing; 2026-10-29).
+  await addColumns(db, 'soccer_lines', [['link', 'TEXT']]);
 }
 
 // One league's lines, appended only where a number actually moved.
@@ -10593,7 +10674,7 @@ async function soccerIngest(env, url) {
     const sp = SOCCER_LEAGUES[lg];
     const res = { league: lg, events: 0, wrote: 0, unchanged: 0 };
     try {
-      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${sp.key}/odds?apiKey=${key}&bookmakers=${SOCCER_BOOKS.join(',')}&markets=${SOCCER_MARKETS}&oddsFormat=american&dateFormat=iso`,
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${sp.key}/odds?apiKey=${key}&bookmakers=${SOCCER_BOOKS.join(',')}&markets=${SOCCER_MARKETS}&oddsFormat=american&dateFormat=iso&includeLinks=true`,
         { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, `soccer:${lg}`);
       const used = Number(r.headers.get('x-requests-last') || 0);
@@ -10606,7 +10687,7 @@ async function soccerIngest(env, url) {
       // unchanged price is not written again. Append-on-change keeps the history
       // honest — every row is a real move — and keeps the table small.
       const prior = (await env.DB.prepare(
-        'SELECT event_id, market, selection, point, book, price, captured_at FROM soccer_lines WHERE league=? AND commence > ? ORDER BY captured_at ASC'
+        'SELECT event_id, market, selection, point, book, price, link, captured_at FROM soccer_lines WHERE league=? AND commence > ? ORDER BY captured_at ASC'
       ).bind(lg, new Date(now - 3 * 3600e3).toISOString()).all()).results || [];
       const last = new Map();
       for (const p of prior) last.set(`${p.event_id}|${p.market}|${p.selection}|${p.book}`, p);
@@ -10620,11 +10701,13 @@ async function soccerIngest(env, url) {
               const sel = mk.key === 'totals' ? oc.name : oc.name;   // Over/Under, or a club name (or 'Draw')
               const k = `${e.id}|${mk.key}|${sel}|${bm.key}`;
               const was = last.get(k);
-              if (was && was.price === oc.price && (was.point ?? null) === (oc.point ?? null)) { res.unchanged++; continue; }
+              // A link the last row lacks is written once too, so a bet
+              // button does not wait for its price to move.
+              if (was && was.price === oc.price && (was.point ?? null) === (oc.point ?? null) && (!oc.link || was.link === oc.link)) { res.unchanged++; continue; }
               stmts.push(env.DB.prepare(
-                `INSERT INTO soccer_lines (league,event_id,commence,home,away,market,selection,point,book,price,captured_at)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-              ).bind(lg, e.id, e.commence_time || null, e.home_team || null, e.away_team || null, mk.key, sel, oc.point ?? null, bm.key, oc.price ?? null, stamp));
+                `INSERT INTO soccer_lines (league,event_id,commence,home,away,market,selection,point,book,price,link,captured_at)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+              ).bind(lg, e.id, e.commence_time || null, e.home_team || null, e.away_team || null, mk.key, sel, oc.point ?? null, bm.key, oc.price ?? null, oc.link || null, stamp));
               res.wrote++;
             }
           }
@@ -10827,11 +10910,17 @@ function h2hGames(cfg, evs, lg, now) {
     if (!isFinite(t) || t <= now || t - now > cfg.horizon) continue;
     const home = e.home_team, away = e.away_team;
     const px = {};
+    // Each book's link straight to its bet slip for each side, where the
+    // feed sends one (includeLinks, 2026-10-29): DraftKings' and FanDuel's
+    // as they are, BetMGM's, Caesars' and BetRivers' with a {state} to fill.
+    const links = { home: {}, away: {} };
     for (const bm of (e.bookmakers || [])) {
       const mk = (bm.markets || []).find((m) => m.key === 'h2h');
       const h = mk && (mk.outcomes || []).find((o) => o.name === home);
       const a = mk && (mk.outcomes || []).find((o) => o.name === away);
       if (h && a && typeof h.price === 'number' && typeof a.price === 'number') px[bm.key] = { home: h.price, away: a.price };
+      if (h && h.link) links.home[bm.key] = h.link;
+      if (a && a.link) links.away[bm.key] = a.link;
     }
     // Every book's no-vig chance of the home side; the sharp ones make the fair.
     const byBook = {};
@@ -10861,6 +10950,9 @@ function h2hGames(cfg, evs, lg, now) {
       homePrice: bh.price, homeBook: bh.book, awayPrice: ba.price, awayBook: ba.book,
       homeValue: value(fairHome, bh.price), awayValue: value(fairHome == null ? null : 1 - fairHome, ba.price),
       pickSide,
+      // The best price's own bet link, and every book's, side by side.
+      homeLink: (bh.book && links.home[bh.book]) || null, awayLink: (ba.book && links.away[ba.book]) || null,
+      ...(Object.keys(links.home).length || Object.keys(links.away).length ? { links } : {}),
     });
   }
   return out;
@@ -10883,8 +10975,9 @@ function h2hEntries(cfg, evs, lg, now) {
       win_prob: round1(winProb * 100), implied: round1(imp * 100), edge: round1((winProb - imp) * 100),
       price, book: side === 'home' ? g.homeBook : g.awayBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
       book_fairs: bookFairsJson(Object.fromEntries(Object.entries(g.byBook || {}).map(([bk, p]) => [bk, side === 'home' ? p : 1 - p]))),
+      link: (side === 'home' ? g.homeLink : g.awayLink) || null,
       // Both clubs, for a row whose side has lost the lead (logGamePicks).
-      quotes: { home: { price: g.homePrice, fair: g.homeFair }, away: { price: g.awayPrice, fair: g.awayFair } },
+      quotes: { home: { price: g.homePrice, fair: g.homeFair, link: g.homeLink }, away: { price: g.awayPrice, fair: g.awayFair, link: g.awayLink } },
     });
   }
   return out;
@@ -10892,7 +10985,7 @@ function h2hEntries(cfg, evs, lg, now) {
 
 async function h2hCapture(env, cfg, lg) {
   const r = await fetch(`https://api.the-odds-api.com/v4/sports/${cfg.leagues[lg]}/odds?apiKey=${env.ODDS_API_KEY}`
-    + `&markets=h2h&oddsFormat=american&dateFormat=iso&bookmakers=${[...cfg.sharp, ...cfg.exec].join(',')}`,
+    + `&markets=h2h&oddsFormat=american&dateFormat=iso&bookmakers=${[...cfg.sharp, ...cfg.exec].join(',')}&includeLinks=true`,
   { headers: { accept: 'application/json' } });
   await recordOddsUsage(env, r, `${cfg.sport}:${lg}:odds`);
   if (!r.ok) return { league: lg, error: `HTTP ${r.status}` };
@@ -11588,6 +11681,8 @@ async function ensureNbaSchema(db) {
   // Forward only: rows already read keep what they were read with.
   await addColumns(db, 'nba_box', NBA_BOX_STATS.filter((k) => !['threes', 'ast', 'reb'].includes(k)).map((k) => [k, 'INTEGER']));
   await db.prepare('CREATE INDEX IF NOT EXISTS nba_box_date ON nba_box (date)').run();
+  // A player's own games, for the trend bars under his leg on Picks (nbaTrends).
+  await db.prepare('CREATE INDEX IF NOT EXISTS nba_box_player ON nba_box (player_id, date)').run();
   await db.prepare(`CREATE TABLE IF NOT EXISTS nba_box_games (
     game_id TEXT PRIMARY KEY, date TEXT, season_type INTEGER, done INTEGER DEFAULT 0
   )`).run();
@@ -11659,6 +11754,28 @@ async function nbaPriors(env) {
     }
   } catch (e) { /* asset missing -> nothing is projected rather than something wrong */ }
   return NBA_PRIORS;
+}
+
+// The last games of each NBA player leg's stat, oldest first, against its line
+// (2026-10-29): the bars under the leg on Picks, "under in 7 of 10". This
+// season's games only, as the projection reads them; a player with none shows
+// none. One round trip, ten rows a player through nba_box_player.
+const TREND_N = 10;
+async function nbaTrends(db, legs) {
+  const want = legs.filter((l) => l.spec && l.spec.sport === 'nba' && l.spec.playerId && nbaPropMarket(l.spec.market) && l.spec.pp && l.spec.pp.line != null);
+  const out = new Map();
+  if (!want.length) return out;
+  const ids = [...new Set(want.map((l) => String(l.spec.playerId)))];
+  const res = await db.batch(ids.map((id) => db.prepare(`SELECT date, ${NBA_BOX_STATS.join(', ')} FROM nba_box
+    WHERE player_id = ? AND season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date DESC LIMIT ?`).bind(id, NBA_SEASON_FROM, TREND_N)));
+  const byId = new Map(ids.map((id, i) => [id, ((res[i] && res[i].results) || []).slice().reverse()]));
+  for (const l of want) {
+    const vals = (byId.get(String(l.spec.playerId)) || []).map((b) => nbaStat(b, l.spec.market)).filter((v) => v != null);
+    if (!vals.length) continue;
+    const line = l.spec.pp.line, under = l.spec.side !== 'Over';
+    out.set(l.legId, { vals, line, side: under ? 'under' : 'over', hit: vals.filter((v) => (under ? v < line : v > line)).length });
+  }
+  return out;
 }
 
 // One player's per-game rows, newest first, from this season's regular season
@@ -12889,7 +13006,7 @@ function devigThreeWay(prices) {
 // draw, away).
 const soc1x2Quotes = (g) => {
   const [h, d, a] = g.oneXtwo || [];
-  const q = (p) => (p ? { price: p.price, fair: p.fair } : null);
+  const q = (p) => (p ? { price: p.price, fair: p.fair, link: p.link || null } : null);
   return { home: q(h), draw: q(d), away: q(a) };
 };
 async function soccerBoardData(env, url, opts = {}) {
@@ -12914,7 +13031,7 @@ async function soccerBoardData(env, url, opts = {}) {
       `WITH RECURSIVE lg(l) AS (
          SELECT MIN(league) FROM soccer_lines
          UNION ALL SELECT (SELECT MIN(league) FROM soccer_lines WHERE league > lg.l) FROM lg WHERE lg.l IS NOT NULL)
-       SELECT league, event_id, commence, home, away, market, selection, point, book, price, captured_at
+       SELECT league, event_id, commence, home, away, market, selection, point, book, price, link, captured_at
          FROM soccer_lines WHERE league IN (SELECT l FROM lg) AND commence > ? ORDER BY captured_at ASC, rowid ASC`
     ).bind(new Date(Date.now() - 3 * 3600e3).toISOString()).all()).results || [];
     const latest = new Map();
@@ -12927,10 +13044,13 @@ async function soccerBoardData(env, url, opts = {}) {
     for (const r of latest.values()) {
       const g = games.get(r.event_id) || games.set(r.event_id, {
         id: r.event_id, league: r.league, leagueLabel: SOCCER_LEAGUES[r.league] ? SOCCER_LEAGUES[r.league].label : r.league,
-        commence: r.commence, home: r.home, away: r.away, h2h: {}, totals: {},
+        commence: r.commence, home: r.home, away: r.away, h2h: {}, totals: {}, links: {},
       }).get(r.event_id);
       if (r.market === 'h2h') (g.h2h[r.selection] = g.h2h[r.selection] || {})[r.book] = r.price;
       else (g.totals[`${r.point}|${r.selection}`] = g.totals[`${r.point}|${r.selection}`] || {})[r.book] = r.price;
+      // Each quote's bet-slip link, keyed as its price is.
+      const lk = r.market === 'h2h' ? `h2h|${r.selection}` : `${r.point}|${r.selection}`;
+      if (r.link) (g.links[lk] = g.links[lk] || {})[r.book] = r.link;
     }
     for (const g of games.values()) {
       const sides = [g.home, 'Draw', g.away];
@@ -12957,7 +13077,7 @@ async function soccerBoardData(env, url, opts = {}) {
           if (typeof p !== 'number') continue;
           if (bp == null || amProb(p) < amProb(bp)) { bp = p; bb = bk; }
         }
-        return { price: bp, book: bb };
+        return { price: bp, book: bb, link: (bb && (g.links[`h2h|${sel}`] || {})[bb]) || null };
       };
       const picks = sides.map((sel, i) => {
         const b = best(sel);
@@ -12966,7 +13086,7 @@ async function soccerBoardData(env, url, opts = {}) {
         return {
           selection: sel === 'Draw' ? 'Draw' : sel,
           fair: f != null ? Math.round(f * 1000) / 10 : null,
-          price: b.price, book: b.book,
+          price: b.price, book: b.book, link: b.link,
           implied: imp != null ? Math.round(imp * 1000) / 10 : null,
           value: (f != null && imp != null) ? Math.round((f - imp) * 1000) / 10 : null,
           bookFairs: bookFairsOf(sel),
@@ -13011,24 +13131,24 @@ async function soccerBoardData(env, url, opts = {}) {
           fairOver = shinDevig(ov.pinnacle, un.pinnacle);
           totFairSrc = fairOver != null ? 'pinnacle' : null;
         }
-        const bestSide = (rec) => {
+        const bestSide = (rec, lks) => {
           let bp = null, bb = null;
           for (const bk of SOCCER_EXEC) {
             const p = rec[bk];
             if (typeof p !== 'number') continue;
             if (bp == null || amProb(p) < amProb(bp)) { bp = p; bb = bk; }
           }
-          return { price: bp, book: bb };
+          return { price: bp, book: bb, link: (bb && (lks || {})[bb]) || null };
         };
-        const bo = bestSide(ov), bu = bestSide(un);
+        const bo = bestSide(ov, g.links[`${point}|Over`]), bu = bestSide(un, g.links[`${point}|Under`]);
         const val = (f, pr) => (f != null && pr != null && amProb(pr) != null) ? Math.round((f - amProb(pr)) * 1000) / 10 : null;
         totalRead = {
           point, sharpN: dvs.length, fairSrc: totFairSrc,
           lines: lineStats.map((x) => `${x.pt}:${x.sharp}s/${x.exec}x`).join(' '),
           overFair: fairOver != null ? Math.round(fairOver * 1000) / 10 : null,
-          overPrice: bo.price, overBook: bo.book, overValue: val(fairOver, bo.price),
+          overPrice: bo.price, overBook: bo.book, overValue: val(fairOver, bo.price), overLink: bo.link,
           underFair: fairOver != null ? Math.round((1 - fairOver) * 1000) / 10 : null,
-          underPrice: bu.price, underBook: bu.book, underValue: val(fairOver != null ? 1 - fairOver : null, bu.price),
+          underPrice: bu.price, underBook: bu.book, underValue: val(fairOver != null ? 1 - fairOver : null, bu.price), underLink: bu.link,
         };
       }
       out.games.push({
@@ -13099,7 +13219,7 @@ async function soccerBoardData(env, url, opts = {}) {
           side: g.lead.selection === 'Draw' ? 'draw' : (g.lead.selection === g.home ? 'home' : 'away'),
           pick: g.lead.selection, home: g.home, away: g.away,
           win_prob: g.lead.fair, implied: g.lead.implied, edge: g.lead.value,
-          price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.lead.bookFairs,
+          price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.lead.bookFairs, link: g.lead.link || null,
           // All three ways, for a row whose side has lost the lead (logGamePicks).
           quotes: soc1x2Quotes(g),
         })));
@@ -13110,8 +13230,8 @@ async function soccerBoardData(env, url, opts = {}) {
         for (const g of pre) {
           const t = g.total;
           if (!t || t.point == null || t.overFair == null) continue;
-          const over = { side: 'over', fair: t.overFair, price: t.overPrice, book: t.overBook, value: t.overValue };
-          const under = { side: 'under', fair: t.underFair, price: t.underPrice, book: t.underBook, value: t.underValue };
+          const over = { side: 'over', fair: t.overFair, price: t.overPrice, book: t.overBook, value: t.overValue, link: t.overLink };
+          const under = { side: 'under', fair: t.underFair, price: t.underPrice, book: t.underBook, value: t.underValue, link: t.underLink };
           const cands = [over, under].filter((x) => x.fair != null && x.price != null);
           if (!cands.length) continue;
           const best = cands.sort((x, y) => (y.value == null ? -1e9 : y.value) - (x.value == null ? -1e9 : x.value))[0];
@@ -13120,9 +13240,9 @@ async function soccerBoardData(env, url, opts = {}) {
             side: best.side, point: t.point, pick: `${best.side === 'over' ? 'Over' : 'Under'} ${t.point}`,
             home: g.home, away: g.away,
             win_prob: best.fair, implied: best.price == null ? null : Math.round(amProb(best.price) * 1000) / 10,
-            edge: best.value, price: best.price, book: best.book,
+            edge: best.value, price: best.price, book: best.book, link: best.link || null,
             fair_src: t.fairSrc || 'sharp-pool', sharp_n: t.sharpN,
-            quotes: { over: { price: t.overPrice, fair: t.overFair }, under: { price: t.underPrice, fair: t.underFair } },
+            quotes: { over: { price: t.overPrice, fair: t.overFair, link: t.overLink }, under: { price: t.underPrice, fair: t.underFair, link: t.underLink } },
           });
         }
         if (tot.length) await logByDay(tot);
@@ -13131,7 +13251,7 @@ async function soccerBoardData(env, url, opts = {}) {
           side: g.fav.selection === g.home ? 'home' : 'away',
           pick: g.fav.selection, home: g.home, away: g.away,
           win_prob: g.fav.fair, implied: g.fav.implied, edge: g.fav.value,
-          price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.fav.bookFairs,
+          price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.fav.bookFairs, link: g.fav.link || null,
           quotes: soc1x2Quotes(g),
         }));
         if (favs.length) await logByDay(favs);

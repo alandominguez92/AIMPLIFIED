@@ -133,7 +133,7 @@ const AM = (o) => (o > 0 ? '+' + o : String(o));
 // (tests/edgebets.mjs); none set here, so a stake reads as a share.
 const liftConst = (name) => { const at = app.indexOf(`const ${name} =`); return app.slice(at, app.indexOf(';\n', at) + 1); };
 const card = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'state', 'shortDay',
-  [liftConst('BOOK_LABEL'), liftConst('bkLabel'), liftConst('moneyTxt'), liftConst('stakeTxt'), lift('evBetsHtml'), lift('edgeRecordHtml'), lift('pickemHtml')].join('\n') + '\nreturn evBetsHtml;')((s) => String(s), AM, (v) => `${Math.round(v)}%`, (t) => t,
+  [liftConst('BOOK_LABEL'), liftConst('bkLabel'), liftConst('moneyTxt'), liftConst('stakeTxt'), liftConst('LINK_BOOK'), liftConst('STATE_SLOT'), lift('betLinkHtml'), liftConst('impPct'), lift('priceSparkHtml'), lift('evBetsHtml'), lift('edgeRecordHtml'), lift('pickemHtml')].join('\n') + '\nreturn evBetsHtml;')((s) => String(s), AM, (v) => `${Math.round(v)}%`, (t) => t,
   { nba: 'NBA', nhl: 'NHL', soccer: 'Soccer', nfl: 'NFL' }, { bank: { amount: null, cap: 5 } }, (d) => d);
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const html = card(p);
