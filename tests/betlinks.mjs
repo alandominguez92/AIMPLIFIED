@@ -116,6 +116,13 @@ ok(bet && bet.price === 120 && bet.ev === 10 && bet.link === MGM_ATL, 'the Hawks
 ok(bet && Array.isArray(bet.hist) && bet.hist.length === 2 && bet.hist[0][1] === 50 && bet.hist[0][2] === -108 && bet.hist[1][2] === 120, 'and its history: -108 at 3:27, +120 at 3:33, fair 50% throughout');
 ok(bet && !('hk' in bet) && !('grade' in bet), "the history key stays in the worker");
 ok(Array.isArray(d.legs) && !d.error, 'the list still reads');
+// A Picks moneyline's books (2026-10-29): every book's own link, from the
+// board's snapshot -- its row keeps only the best price's.
+const pel = (d.legs || []).find((l) => /^Pelicans ML/.test(l.title));
+const pelLinks = pel && pel.books ? pel.books.filter((b) => b.link) : [];
+console.log(`  ${pel ? `${pel.title} ${pel.odds}: ${pel.books.map((b) => `${b.book} ${b.price}${b.link ? ' link' : ''}`).join(', ')}` : 'no Pelicans leg'}`);
+ok(pel && pelLinks.length === 4 && ['draftkings', 'fanduel', 'betmgm', 'williamhill_us'].every((bk) => pelLinks.find((b) => b.book === bk).link === linkOf([NBA[1]], bk, 'New Orleans Pelicans')),
+  "the Pelicans on Picks: DraftKings', FanDuel's, BetMGM's and Caesars' own links, not only the best price's");
 
 console.log('\n-- every book, side by side --');
 const hold = (...am) => Math.round((am.reduce((s, x) => s + (x > 0 ? 100 / (x + 100) : -x / (-x + 100)), 0) - 1) * 1000) / 10;
@@ -241,8 +248,12 @@ ok(trl.length === 1 && !/position|border/.test(trl[0]) && !/class="tr-/.test(h),
 h = P.booksHtml(bet && bet.books);
 console.log(`  ${text(h)}`);
 ok(/^<details class="pk-books">/.test(h) && text(h).startsWith(`Every book (5) · best MGM +120 · lowest hold MGM ${hold(120, -110).toFixed(1)}%`), 'the fold names the best price and the lowest hold');
-ok((h.match(/<li class="best">/g) || []).length === 1 && (h.match(/<li class="sh">/g) || []).length === 1 && (h.match(/class="bet-at sm"/g) || []).length === 4,
+ok((h.match(/<span class="bk-r best">/g) || []).length === 1 && (h.match(/<span class="bk-r sh">/g) || []).length === 1 && (h.match(/class="bet-at sm"/g) || []).length === 4,
   'one best row, the sharp one marked, a small bet link on each of the four books');
+// Rows of its own since the evening of 2026-10-29: as list items, the Picks
+// list's .nba-pp .tc-legs li rule set them to block and the columns ran together.
+ok(!/<li\b/.test(h) && /<span class="bk-r bk-h"><span>Book<\/span><span>Price<\/span><span>Hold<\/span>/.test(h) && /<b>\+120<\/b><span class="hd">-2\.2%<\/span>/.test(h),
+  'its own rows under a Book, Price, Hold header, each hold a bare percentage');
 const chk = (key, price) => text(P.priceCheckText(d, { key, price }));
 console.log(`  ${chk(hk.key, '+150')}`);
 ok(chk(hk.key, '') === 'Hawks ML: fair 50%, which breaks even at -100 . Type a price to check it.', 'with no price: the fair, and what breaks even');

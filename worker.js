@@ -9099,6 +9099,17 @@ async function picksCandidates(env, now) {
   // the game-line log (each board refreshes its row's win chance and price).
   await ensureGamePickSchema(db);
   const gm = (await db.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','nflptd','soccer') AND date IN (?, ?) AND result IS NULL").bind(...days).all()).results || [];
+  // Every book's link for an NBA or NHL side, from its board's snapshot
+  // (2026-10-29): a row keeps only its best price's, and with no state set
+  // that can be a BetMGM link that will not open while DraftKings' would.
+  const sideLinks = new Map();
+  for (const sp of ['nba', 'nhl']) {
+    if (!gm.some((r) => r.sport === sp)) continue;
+    const hit = await loadFeedCache(db, `${sp}_board:reg`).catch(() => null);
+    for (const g of (hit && hit.present && hit.data && hit.data.games) || []) {
+      if (g.links) for (const sd of ['home', 'away']) sideLinks.set(`${sp}:${g.id}:${sd}`, g.links[sd]);
+    }
+  }
   const ptdPP = gm.some((r) => r.sport === 'nflptd' && soon(r.commence) && r.win_prob >= PICK_KINDS.nfl_ptd.min) ? await ptdPpLines(db, now) : new Map();
   for (const r of gm) {
     if (!soon(r.commence) || r.win_prob == null) continue;
@@ -9107,7 +9118,7 @@ async function picksCandidates(env, now) {
     const day = ptDateOf(Date.parse(r.commence));
     const price = r.close_price != null ? r.close_price : r.entry_price;
     const base = { kind, p: r.win_prob, commence: r.commence, odds: price, link: r.link || null, hk: [r.sport, r.game_id, histSide(r.market, r.side, r.point)],
-      books: rowPriceNow(r).books,
+      books: sideLinks.has(`${r.sport}:${r.game_id}:${r.side}`) ? booksOf(parseJsonOr(r.book_prices), sideLinks.get(`${r.sport}:${r.game_id}:${r.side}`)) : rowPriceNow(r).books,
       src: { date: r.date, game_id: r.game_id, team: r.pick, market: r.market } };
     const book = { line: null, price, win: round1(r.win_prob) };
     if (kind === 'nba_ml') {

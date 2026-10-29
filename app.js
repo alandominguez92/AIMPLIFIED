@@ -6466,10 +6466,13 @@
     if (!Array.isArray(books) || books.length < 2) return '';
     const top = books.find((b) => !b.sharp);
     const low = books.filter((b) => !b.sharp && typeof b.hold === 'number').sort((a, b) => a.hold - b.hold)[0];
-    const rows = books.map((b) => `<li class="${b.sharp ? 'sh' : b === top ? 'best' : ''}"><span class="bk">${esc(bkLabel(b.book))}${b.sharp ? ' <i>sharp</i>' : ''}</span>`
-      + `<b>${esc(AM(b.price))}</b><span class="hd">${typeof b.hold === 'number' ? `hold ${esc(b.hold.toFixed(1))}%` : ''}</span>${b.link ? betLinkHtml(b.link, true) : '<span></span>'}</li>`).join('');
+    // Rows of its own, not list items: the Picks list's own li rules
+    // (.nba-pp .tc-legs li) outrank a fold's and set them to block.
+    const rows = books.map((b) => `<span class="bk-r${b.sharp ? ' sh' : b === top ? ' best' : ''}"><span class="bk">${esc(bkLabel(b.book))}${b.sharp ? ' <i>sharp</i>' : ''}</span>`
+      + `<b>${esc(AM(b.price))}</b><span class="hd">${typeof b.hold === 'number' ? `${esc(b.hold.toFixed(1))}%` : ''}</span>${b.link ? betLinkHtml(b.link, true) : '<span></span>'}</span>`).join('');
     return `<details class="pk-books"><summary>Every book (${books.length})${top ? ` · best ${esc(bkLabel(top.book))} ${esc(AM(top.price))}` : ''}`
-      + `${low ? ` · lowest hold ${esc(bkLabel(low.book))} ${esc(low.hold.toFixed(1))}%` : ''}</summary><ul>${rows}</ul></details>`;
+      + `${low ? ` · lowest hold ${esc(bkLabel(low.book))} ${esc(low.hold.toFixed(1))}%` : ''}</summary>`
+      + `<span class="bk-rows"><span class="bk-r bk-h"><span>Book</span><span>Price</span><span>Hold</span><span></span></span>${rows}</span></details>`;
   }
   // The price checker (2026-10-29): any side the worker priced, at a price
   // typed in -- a boost, an alternate line's, another book's -- on the same

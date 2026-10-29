@@ -2988,13 +2988,15 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* Every book's price of a side, folded (2026-10-29). */
 .pk-books { display:block; max-width:420px; margin-top:8px; font-size:12px; }
 .pk-books summary { cursor:pointer; min-height:32px; display:flex; align-items:center; font-family:var(--sans); color:var(--model); }
-.pk-books ul { list-style:none; margin:2px 0 0; padding:0; }
-.pk-books li { display:grid; grid-template-columns:minmax(64px,1fr) 52px 78px 64px; align-items:center; gap:6px; min-height:36px;
+.pk-books .bk-rows { display:block; margin-top:2px; }
+.pk-books .bk-r { display:grid; grid-template-columns:minmax(0,1fr) 44px 44px 58px; align-items:center; gap:6px; min-height:36px;
   border-top:1px solid var(--border); font-family:var(--mono); color:var(--text); }
-.pk-books li b { font-weight:600; }
-.pk-books li.best b { color:var(--positive); }
-.pk-books li.sh { color:var(--textDim); }
-.pk-books li i { font-style:normal; font-family:var(--sans); font-size:11px; color:var(--model); }
+.pk-books .bk-r > * { min-width:0; }
+.pk-books .bk-h { min-height:24px; border-top:0; font-family:var(--sans); font-size:11px; color:var(--textFaint); }
+.pk-books .bk-r b { font-weight:600; }
+.pk-books .bk-r.best b { color:var(--positive); }
+.pk-books .bk-r.sh { color:var(--textDim); }
+.pk-books .bk-r i { font-style:normal; font-family:var(--sans); font-size:11px; color:var(--model); }
 .pk-books .hd { color:var(--textFaint); }
 .bet-at.sm { min-height:30px; margin-top:0; padding:0 8px; font-size:12px; justify-content:center; }
 /* The price checker, at the foot of the edge bets. */
