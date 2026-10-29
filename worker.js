@@ -149,7 +149,7 @@ const API_ROUTES = new Set([
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
-  '/api/mlb-void-moved', '/api/hist-backtest',
+  '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props',
 ]);
 
 export default {
@@ -207,7 +207,7 @@ export default {
     }
 
     // Both write; caching either would serve a stale body and skip the write.
-    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest' || p === '/api/mlb-void-moved' || p === '/api/hist-backtest') return handleApi(p, env, ctx, url);
+    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest' || p === '/api/mlb-void-moved' || p === '/api/hist-backtest' || p === '/api/hist-props') return handleApi(p, env, ctx, url);
     // The query string is dropped from the key on purpose — every viewer should
     // share one response — EXCEPT where it changes what the route returns.
     // /api/nfl-compare was keyed by path alone, so ?all=1 (played games included,
@@ -505,6 +505,9 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/mlpicks-export') return mlpicksExport(env, url);
   if (p === '/api/mlb-void-moved') return voidMovedGameRows(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
+  if (p === '/api/hist-props') {
+    return cors(new Response(JSON.stringify(await histProps(env, url)), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
+  }
   if (p === '/api/hist-backtest') {
     return cors(new Response(JSON.stringify(await histBacktest(env, url)), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
   }
@@ -13324,6 +13327,63 @@ async function histBacktest(env, url) {
   const rows = (await db.prepare('SELECT fav_p, won, fair_src FROM histml WHERE job = ?').bind(key).all()).results || [];
   return { ...out, done: !!state.done, progress: `${state.next} of ${days.length} days`, creditsSpent: state.credits, snapshots: state.snapshots,
     unmatched: state.unmatched, report: histReport(rows) };
+}
+
+// ---------------------------------------------------------------------------
+// Last season's player props, read back (2026-10-29, on the owner's call: the
+// month's spare credits, spent before they lapse). Picks of the day lists
+// only kinds of leg whose stated chance has held up; a new PrizePicks market
+// waits weeks for a live record. The odds feed sells past prop snapshots per
+// game (10 credits per market) -- the sharp books' lines and, where it kept
+// them, PrizePicks' own -- and every game grades from free box scores. The
+// question for each market: where the sharp books' no-vig chance said a side
+// was 58%+, did it land that often, and at PrizePicks' line?
+//
+// GET /api/hist-props?job=nba|nfl&probe=YYYY-MM-DD: one paid look at one game
+// of that day, as the feed sends it (one events read, 1 credit, and one
+// game's props, 10 per market), at most once in ten minutes.
+const HIST_PROP_BOOKS = ['pinnacle', 'fanduel', 'draftkings', 'betonlineag', 'lowvig', 'novig', 'prophetx', 'prizepicks', 'underdog', 'betmgm'];
+const HIST_PROP_JOBS = {
+  nba: { label: 'NBA 2025-26 player props', sport: 'basketball_nba', from: '2025-10-21', to: '2026-04-12',
+    markets: { player_points: 'pts', player_points_rebounds_assists: 'pra', player_points_rebounds: 'pts_reb', player_points_assists: 'pts_ast', player_rebounds_assists: 'reb_ast' } },
+  nfl: { label: 'NFL 2025 player props', sport: 'americanfootball_nfl', from: '2025-09-04', to: '2026-01-04',
+    markets: { player_rush_yds: 'rush_yds', player_reception_yds: 'rec_yds', player_receptions: 'rec' } },
+};
+const HIST_PROP_LEAD_MIN = 60;      // read an hour before each game
+async function histProps(env, url) {
+  const key = String(url.searchParams.get('job') || '');
+  const job = HIST_PROP_JOBS[key];
+  if (!job) return { error: `job is one of ${Object.keys(HIST_PROP_JOBS).join(', ')}` };
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  const probe = url.searchParams.get('probe');
+  if (probe) return histPropsProbe(env, key, job, probe);
+  return { job: key, label: job.label, note: 'probe only so far: ?probe=YYYY-MM-DD' };
+}
+async function histPropsProbe(env, key, job, date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'probe=YYYY-MM-DD' };
+  if (!env.ODDS_API_KEY) return { error: 'ODDS_API_KEY not configured' };
+  if (!(await claimFeedRefresh(env.DB, `hist_props_probe:${key}`, 600000))) return { error: 'one probe per ten minutes' };
+  const base = `https://api.the-odds-api.com/v4/historical/sports/${job.sport}`;
+  const er = await fetch(`${base}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso&date=${encodeURIComponent(`${date}T15:00:00Z`)}`, { headers: { accept: 'application/json' } });
+  await recordOddsUsage(env, er, `hist-props:${key}:events`);
+  const out = { job: key, date, eventsStatus: er.status, eventsCredits: er.headers.get('x-requests-last') };
+  if (!er.ok) return { ...out, body: (await er.text()).slice(0, 300) };
+  const ej = await er.json();
+  const evs = ((ej && ej.data) || []).filter((e) => ptDateOf(Date.parse(e.commence_time)) === date);
+  out.eventsTimestamp = ej && ej.timestamp;
+  out.events = evs.map((e) => ({ id: e.id, commence: e.commence_time, game: `${e.away_team} @ ${e.home_team}` }));
+  const ev = evs[0];
+  if (!ev) return { ...out, error: 'no game that day' };
+  const snap = new Date(Date.parse(ev.commence_time) - HIST_PROP_LEAD_MIN * 60e3).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const r = await fetch(`${base}/events/${ev.id}/odds?apiKey=${env.ODDS_API_KEY}&bookmakers=${HIST_PROP_BOOKS.join(',')}`
+    + `&markets=${Object.keys(job.markets).join(',')}&oddsFormat=american&dateFormat=iso&date=${encodeURIComponent(snap)}`, { headers: { accept: 'application/json' } });
+  await recordOddsUsage(env, r, `hist-props:${key}:odds`);
+  out.oddsStatus = r.status;
+  out.oddsCredits = r.headers.get('x-requests-last');
+  out.remaining = r.headers.get('x-requests-remaining');
+  out.snap = snap;
+  out.odds = r.ok ? await r.json() : (await r.text()).slice(0, 300);
+  return out;
 }
 
 async function fairProbe(env, reqUrl) {
