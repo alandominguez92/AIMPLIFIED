@@ -228,8 +228,16 @@ ok((h.match(/<path /g) || []).length === 2 && text(h) === 'opened -108 → +120 
 ok(P.priceSparkHtml([[bet && bet.hist[0][0], 50, -108]]) === '' && P.priceSparkHtml(null) === '', 'one point is no line');
 h = P.trendBarsHtml(t);
 console.log(`  ${text(h)}`);
-ok((h.match(/<i class="h"/g) || []).length === t.hit && (h.match(/<i class="[hm]"/g) || []).length === 5 && /class="tr-line"/.test(h), 'a bar a game, the hits coloured, the line across them');
-ok(text(h) === `Last 5: under in ${t.hit} · avg ${Math.round(jj.reduce((s, v) => s + v, 0) / 5 * 10) / 10} · line 38.5`, 'and named: how many went under, his average, the line');
+// A box a game since the evening of 2026-10-29: the owner's pick of three.
+ok((h.match(/<i class="h">/g) || []).length === t.hit && (h.match(/<i class="[hm]">/g) || []).length === 5 && /class="tb-boxes"/.test(h)
+  && (h.match(/<i class="[hm]">(\d+)<\/i>/g) || []).map((x) => x.replace(/<[^>]+>/g, '')).join(',') === jj.join(','), 'a box a game, oldest first, his number in each, the unders filled');
+ok(text(h) === `under 38.5 in ${t.hit} of last 5 · avg ${Math.round(jj.reduce((s, v) => s + v, 0) / 5 * 10) / 10} ${jj.join(' ')} oldest → latest`, 'and named: the line, how many went under, his average');
+// The bars' own line was .tr-line from the morning of 2026-10-29 until that
+// evening: the track record's class for a pick's line, which it pushed out of
+// place there. One rule of that name, and it is the track record's.
+const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n');
+const trl = css.match(/^\.tr-line \{[^}]*\}/gm) || [];
+ok(trl.length === 1 && !/position|border/.test(trl[0]) && !/class="tr-/.test(h), 'the boxes take nothing of the track record\'s tr- classes');
 h = P.booksHtml(bet && bet.books);
 console.log(`  ${text(h)}`);
 ok(/^<details class="pk-books">/.test(h) && text(h).startsWith(`Every book (5) · best MGM +120 · lowest hold MGM ${hold(120, -110).toFixed(1)}%`), 'the fold names the best price and the lowest hold');

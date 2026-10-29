@@ -6534,9 +6534,6 @@
       + `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path class="sp-px" d="${step((p) => impPct(p[2]))}"/><path class="sp-fair" d="${step((p) => p[1])}"/></svg>`
       + `<span class="bw-cush">${px} · ${fair}</span></span>`;
   }
-  // A player leg's last games against its line (2026-10-29): a bar a game,
-  // oldest first, the line across them, the games that went the pick's way in
-  // its colour. This season's games only, so early on there are fewer than ten.
   // A leg's run against its line, named when it is one (2026-10-29): five or
   // more games, seven in ten its way -- or three in ten or fewer, against it.
   function trendTag(t) {
@@ -6546,15 +6543,20 @@
     if (r <= 0.3) return { good: false, text: `${t.side} in only ${t.hit} of last ${t.vals.length}` };
     return null;
   }
+  // A player leg's last games against its line (2026-10-29; boxes since that
+  // evening, the owner's pick of three): a box a game, oldest first, its
+  // number inside, the games that went the pick's way filled. Bar heights read
+  // badly on the 0.5 and 1.5 lines most legs are -- a 0 was a stub, a 1 and a
+  // 4 hard to tell apart. This season's games only, so early on there are
+  // fewer than ten.
   function trendBarsHtml(t) {
     if (!t || !Array.isArray(t.vals) || !t.vals.length || typeof t.line !== 'number') return '';
     const under = t.side !== 'over';
-    const top = Math.max(t.line * 1.6, ...t.vals, 1);
-    const h = (v) => Math.max(4, Math.min(100, Math.round(v / top * 100)));
-    const bars = t.vals.map((v) => `<i class="${(under ? v < t.line : v > t.line) ? 'h' : 'm'}" style="height:${h(v)}%"></i>`).join('');
-    const avg = Math.round(t.vals.reduce((s, v) => s + v, 0) / t.vals.length * 10) / 10;
-    return `<span class="pk-trend"><span class="tr-bars" role="img" aria-label="${esc(`Last ${t.vals.length} games: ${t.vals.join(', ')}; line ${t.line}`)}">${bars}<b class="tr-line" style="bottom:${h(t.line)}%"></b></span>`
-      + `<span class="bw-cush">Last ${t.vals.length}: ${under ? 'under' : 'over'} in <b class="u">${t.hit}</b> · avg <b>${avg}</b> · line ${esc(String(t.line))}</span></span>`;
+    const avg = Math.round(t.vals.reduce((a, v) => a + v, 0) / t.vals.length * 10) / 10;
+    const boxes = t.vals.map((v) => `<i class="${(under ? v < t.line : v > t.line) ? 'h' : 'm'}">${esc(String(v))}</i>`).join('');
+    return `<span class="pk-trend"><span class="tb-head"><b class="${t.hit * 2 >= t.vals.length ? 'u' : 'o'}">${under ? 'under' : 'over'} ${esc(String(t.line))} in ${t.hit} of last ${t.vals.length}</b> <span class="tb-avg">· avg ${esc(String(avg))}</span></span>`
+      + `<span class="tb-boxes" role="img" aria-label="${esc(`Last ${t.vals.length} games, oldest first: ${t.vals.join(', ')}; line ${t.line}`)}">${boxes}</span>`
+      + `<span class="tb-cap">oldest → latest</span></span>`;
   }
   // Bets with an edge (2026-10-27): prices that beat the sharp line, from the
   // worker's evBets -- best edge first, each with its quarter-Kelly stake and

@@ -13615,11 +13615,14 @@ const HIST_PROP_BOOKS = ['pinnacle', 'fanduel', 'draftkings', 'betonlineag', 'lo
 const HIST_PROP_JOBS = {
   nba: { label: 'NBA 2025-26 player props', sport: 'basketball_nba', from: '2025-10-21', to: '2026-04-12',
     markets: { player_points: 'pts', player_points_rebounds_assists: 'pra', player_points_rebounds: 'pts_reb', player_points_assists: 'pts_ast', player_rebounds_assists: 'reb_ast' } },
-  // The unders Picks lists (2026-10-29, the owner's call): threes, assists and
-  // rebounds, 30 credits a game. Every other day of the season, so what the
-  // month has left reads all of it rather than its first half.
-  nba3: { label: 'NBA 2025-26 threes, assists, rebounds', sport: 'basketball_nba', from: '2025-10-21', to: '2026-04-12', step: 2,
-    markets: { player_threes: 'threes', player_assists: 'ast', player_rebounds: 'reb' } },
+  // The unders Picks lists (2026-10-29, the owner's call): threes and
+  // rebounds, 20 credits a game. Every other day of the season, so what the
+  // month has left reads all of it rather than its first half. Not assists:
+  // the probes found PrizePicks' standard line on one player a game (Feb 4,
+  // Nuggets @ Knicks: Jokic; rebounds eight, threes three) -- 10 credits a
+  // game for some 640 legs a season.
+  nba3: { label: 'NBA 2025-26 threes, rebounds', sport: 'basketball_nba', from: '2025-10-21', to: '2026-04-12', step: 2,
+    markets: { player_threes: 'threes', player_rebounds: 'reb' } },
   // ESPN's NFL scoreboard answers by week, never by date (see the yardage
   // grader): week 1 is the week of Tuesday Sep 2.
   nfl: { label: 'NFL 2025 player props', sport: 'americanfootball_nfl', from: '2025-09-04', to: '2026-01-04', year: 2025, week1: '2025-09-02',
@@ -13657,7 +13660,7 @@ const HIST_PROP_LEAD_MIN = 60;      // read an hour before each game
 // hold a row a leg.
 const HIST_CRON = '1-59/2 * * * *';
 const HIST_PROP_PER_TICK = 3;
-const HIST_PROP_CAPS = { nba: 63000, nba3: 21000, nfl: 9000 };
+const HIST_PROP_CAPS = { nba: 63000, nba3: 14000, nfl: 9000 };
 // What the live site keeps (2026-10-29, the owner's call: the credits have to
 // last the whole month). A thousand for each day left before the quota resets
 // on the 1st -- about half again the busiest day of the week before (658), the

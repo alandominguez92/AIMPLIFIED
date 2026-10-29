@@ -2969,13 +2969,22 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .hl-actions .bet-at { margin-top:0; min-height:44px; }
 .pk-spark, .pk-trend { display:block; max-width:300px; margin-top:6px; }
 .hero-leg .pk-spark, .hero-leg .pk-trend { grid-column:1 / -1; }
+/* A player's last games: a box a game, its number inside (2026-10-29). Its
+   own prefix: tr- is the track record's, and .tr-line there is a pick's line. */
+.tb-head { display:block; margin-bottom:5px; font-family:var(--mono); font-size:12px; color:var(--textDim); }
+.tb-head b { font-weight:600; }
+.tb-head b.u { color:var(--positive); }
+.tb-head b.o { color:var(--danger); }
+.tb-avg { white-space:nowrap; }
+.tb-boxes { display:flex; gap:4px; max-width:340px; }
+.tb-boxes i { flex:1 1 0; min-width:0; max-width:34px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:6px;
+  border:1px solid var(--border); font-style:normal; font-family:var(--mono); font-size:12px; color:var(--textDim); }
+.tb-boxes i.h { border-color:var(--positive); background:color-mix(in srgb, var(--positive) 14%, transparent); color:var(--positive); font-weight:600; }
+.tb-cap { display:block; margin-top:3px; font-family:var(--sans); font-size:11px; color:var(--textFaint); }
 .pk-spark svg { display:block; width:100%; height:30px; margin-bottom:2px; }
 .pk-spark path { fill:none; stroke-width:1.75; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
 .pk-spark .sp-px { stroke:var(--accentFill); }
 .pk-spark .sp-fair { stroke:var(--positive); }
-.tr-bars { position:relative; display:flex; align-items:flex-end; gap:3px; width:max-content; height:32px; margin-bottom:3px; }
-.tr-bars i { flex:none; width:14px; border-radius:2px 2px 0 0; background:var(--textFaint); opacity:.45; }
-.tr-bars i.h { background:var(--positive); opacity:1; }
 /* Every book's price of a side, folded (2026-10-29). */
 .pk-books { display:block; max-width:420px; margin-top:8px; font-size:12px; }
 .pk-books summary { cursor:pointer; min-height:32px; display:flex; align-items:center; font-family:var(--sans); color:var(--model); }
@@ -2999,8 +3008,6 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-check-out b { color:var(--text); font-weight:600; }
 .pk-check-out b.u { color:var(--positive); }
 .pk-check-out b.o { color:var(--danger); }
-/* The line in the bar tick's ink, with a card-coloured edge so it reads across the teal. */
-.tr-line { position:absolute; left:-3px; right:-3px; height:0; border-top:2px solid var(--text); box-shadow:0 1px 0 var(--card), 0 -1px 0 var(--card); }
 /* NBA blocks More (2026-10-27): its own section under the unders. */
 .pp-more-head { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
 /* Legs dropped before their start (2026-10-27): dimmed, the reason under. */

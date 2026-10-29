@@ -171,17 +171,17 @@ ok(asked.length > n0 && !r.paused && r.done === false, 'once the reset lifts the
 await get('/api/hist-props?job=nba&stop=1');
 
 // ---- threes, assists and rebounds, every other day (2026-10-29) ---------------------------------
-console.log('\n-- threes, assists, rebounds --');
+console.log('\n-- threes and rebounds --');
 let r3 = await get('/api/hist-props?job=nba3&start=1');
-ok(r3.progress === '0 of 87 days' && r3.cap === 21000, `every other day of the season: ${r3.progress}, a 21,000 cap`);
+ok(r3.progress === '0 of 87 days' && r3.cap === 14000, `every other day of the season: ${r3.progress}, a 14,000 cap`);
 const s3a = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nba3'").get().data);
 const d3 = []; for (let t = RealDate.parse('2025-10-21T12:00:00Z'); t <= RealDate.parse('2026-04-12T12:00:00Z'); t += 2 * 864e5) d3.push(new RealDate(t).toISOString().slice(0, 10));
 sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'hist_props:nba3'").run(JSON.stringify({ ...s3a, day: d3.indexOf('2026-01-15') }));
 const b3 = asked.length;
 await tick();
 const u3 = asked.slice(b3).find((u) => /basketball_nba\/events\/[0-9a-f]+\/odds/.test(u));
-ok(d3.includes('2026-01-15') && u3 && new URL(u3).searchParams.get('markets') === 'player_threes,player_assists,player_rebounds',
-  'its own markets: threes, assists, rebounds');
+ok(d3.includes('2026-01-15') && u3 && new URL(u3).searchParams.get('markets') === 'player_threes,player_rebounds',
+  'its own markets: threes and rebounds -- not assists, one PrizePicks line a game');
 await get('/api/hist-props?job=nba3&stop=1');
 
 // ---- the NFL ----------------------------------------------------------------------------------------
