@@ -1,0 +1,1411 @@
+{
+ "_recorded": "Production /api/picks at 2026-10-29T07:11:02.398Z (12:15 AM Pacific, Oct 29): its day record, with Oct 28 graded but for its NHL legs, and its edge-bet record.",
+ "asOf": "2026-10-29T07:11:02.398Z",
+ "history": {
+  "since": "2026-10-10",
+  "payouts": {
+   "power": {
+    "2": 3,
+    "3": 5,
+    "4": 10,
+    "5": 20,
+    "6": 37.5
+   },
+   "flex": {
+    "3": {
+     "2": 1.25,
+     "3": 2.25
+    },
+    "4": {
+     "3": 1.5,
+     "4": 5
+    },
+    "5": {
+     "3": 0.4,
+     "4": 2,
+     "5": 10
+    },
+    "6": {
+     "4": 0.4,
+     "5": 2,
+     "6": 25
+    }
+   }
+  },
+  "moved": {
+   "n": 43,
+   "avg": 0.2,
+   "rose": {
+    "n": 11,
+    "hit": 10
+   },
+   "fell": {
+    "n": 8,
+    "hit": 7
+   },
+   "flat": {
+    "n": 24,
+    "hit": 18
+   }
+  },
+  "entries": [
+   {
+    "key": "p2",
+    "label": "Top 2 Power",
+    "n": 2,
+    "type": "power",
+    "days": 0,
+    "won": 0,
+    "refunds": 0,
+    "units": 0,
+    "roi": null
+   },
+   {
+    "key": "p2h",
+    "label": "Top 2 Power, 75%+",
+    "n": 2,
+    "type": "power",
+    "days": 0,
+    "won": 0,
+    "refunds": 0,
+    "units": 0,
+    "roi": null
+   },
+   {
+    "key": "f3",
+    "label": "Top 3 Flex",
+    "n": 3,
+    "type": "flex",
+    "days": 0,
+    "won": 0,
+    "refunds": 0,
+    "units": 0,
+    "roi": null
+   },
+   {
+    "key": "f4",
+    "label": "Top 4 Flex",
+    "n": 4,
+    "type": "flex",
+    "days": 0,
+    "won": 0,
+    "refunds": 0,
+    "units": 0,
+    "roi": null
+   },
+   {
+    "key": "f5",
+    "label": "Top 5 Flex",
+    "n": 5,
+    "type": "flex",
+    "days": 0,
+    "won": 0,
+    "refunds": 0,
+    "units": 0,
+    "roi": null
+   },
+   {
+    "key": "f6",
+    "label": "Top 6 Flex",
+    "n": 6,
+    "type": "flex",
+    "days": 0,
+    "won": 0,
+    "refunds": 0,
+    "units": 0,
+    "roi": null
+   }
+  ],
+  "entriesFrom": "pool",
+  "poolSince": "2026-10-28",
+  "listEntries": [
+   {
+    "key": "p2",
+    "label": "Top 2 Power",
+    "n": 2,
+    "type": "power",
+    "days": 14,
+    "won": 9,
+    "refunds": 0,
+    "units": 13,
+    "roi": 92.9
+   },
+   {
+    "key": "p2h",
+    "label": "Top 2 Power, 75%+",
+    "n": 2,
+    "type": "power",
+    "days": 7,
+    "won": 5,
+    "refunds": 0,
+    "units": 8,
+    "roi": 114.3
+   },
+   {
+    "key": "f3",
+    "label": "Top 3 Flex",
+    "n": 3,
+    "type": "flex",
+    "days": 14,
+    "won": 14,
+    "refunds": 0,
+    "units": 11.5,
+    "roi": 82.1
+   },
+   {
+    "key": "f4",
+    "label": "Top 4 Flex",
+    "n": 4,
+    "type": "flex",
+    "days": 11,
+    "won": 8,
+    "refunds": 0,
+    "units": 22,
+    "roi": 200
+   },
+   {
+    "key": "f5",
+    "label": "Top 5 Flex",
+    "n": 5,
+    "type": "flex",
+    "days": 7,
+    "won": 5,
+    "refunds": 0,
+    "units": 27,
+    "roi": 385.7
+   },
+   {
+    "key": "f6",
+    "label": "Top 6 Flex",
+    "n": 6,
+    "type": "flex",
+    "days": 5,
+    "won": 3,
+    "refunds": 0,
+    "units": 24,
+    "roi": 480
+   }
+  ],
+  "listTotals": [
+   {
+    "key": "p2",
+    "label": "Top 2 Power",
+    "n": 2,
+    "type": "power",
+    "days": 15,
+    "won": 10,
+    "refunds": 0,
+    "units": 15,
+    "roi": 100
+   },
+   {
+    "key": "p2h",
+    "label": "Top 2 Power, 75%+",
+    "n": 2,
+    "type": "power",
+    "days": 8,
+    "won": 6,
+    "refunds": 0,
+    "units": 10,
+    "roi": 125
+   },
+   {
+    "key": "f3",
+    "label": "Top 3 Flex",
+    "n": 3,
+    "type": "flex",
+    "days": 15,
+    "won": 15,
+    "refunds": 0,
+    "units": 12.75,
+    "roi": 85
+   },
+   {
+    "key": "f4",
+    "label": "Top 4 Flex",
+    "n": 4,
+    "type": "flex",
+    "days": 12,
+    "won": 9,
+    "refunds": 0,
+    "units": 26,
+    "roi": 216.7
+   },
+   {
+    "key": "f5",
+    "label": "Top 5 Flex",
+    "n": 5,
+    "type": "flex",
+    "days": 8,
+    "won": 6,
+    "refunds": 0,
+    "units": 36,
+    "roi": 450
+   },
+   {
+    "key": "f6",
+    "label": "Top 6 Flex",
+    "n": 6,
+    "type": "flex",
+    "days": 6,
+    "won": 4,
+    "refunds": 0,
+    "units": 48,
+    "roi": 800
+   }
+  ],
+  "days": [
+   {
+    "date": "2026-10-29",
+    "hit": 0,
+    "decided": 0,
+    "pending": 5,
+    "legs": [
+     {
+      "label": "Blazers ML",
+      "kind": "nba_ml",
+      "p": 71.7,
+      "first": 73.7,
+      "result": null
+     },
+     {
+      "label": "Lightning ML",
+      "kind": "nhl_ml",
+      "p": 69.8,
+      "first": 68.8,
+      "result": null
+     },
+     {
+      "label": "Hurricanes ML",
+      "kind": "nhl_ml",
+      "p": 69.7,
+      "first": 69.1,
+      "result": null
+     },
+     {
+      "label": "Pelicans ML",
+      "kind": "nba_ml",
+      "p": 67.4,
+      "first": 67.4,
+      "result": null
+     },
+     {
+      "label": "Elias Lindholm Over 0.5 PTS",
+      "kind": "nhl_more",
+      "p": 55.3,
+      "first": 55.3,
+      "result": null
+     }
+    ],
+    "entries": {},
+    "pool": [
+     {
+      "label": "Zach Edey Over 1.5 BLK",
+      "kind": "nba_blk_more",
+      "p": 56,
+      "first": null,
+      "result": null
+     },
+     {
+      "label": "Elias Lindholm Over 0.5 PTS",
+      "kind": "nhl_more",
+      "p": 55.3,
+      "first": 55.3,
+      "result": null
+     }
+    ]
+   },
+   {
+    "date": "2026-10-28",
+    "hit": 9,
+    "decided": 9,
+    "pending": 2,
+    "legs": [
+     {
+      "label": "Spurs ML",
+      "kind": "nba_ml",
+      "p": 82.9,
+      "first": 83.5,
+      "result": "hit"
+     },
+     {
+      "label": "Cavaliers ML",
+      "kind": "nba_ml",
+      "p": 77.4,
+      "first": 77.6,
+      "result": "hit"
+     },
+     {
+      "label": "Rockets ML",
+      "kind": "nba_ml",
+      "p": 75.6,
+      "first": 73.7,
+      "result": "hit"
+     },
+     {
+      "label": "Pistons ML",
+      "kind": "nba_ml",
+      "p": 71.6,
+      "first": 70.1,
+      "result": "hit"
+     },
+     {
+      "label": "Knicks ML",
+      "kind": "nba_ml",
+      "p": 71.4,
+      "first": 70.6,
+      "result": "hit"
+     },
+     {
+      "label": "Inter Milan ML",
+      "kind": "soccer_fav",
+      "p": 70.8,
+      "first": 70.8,
+      "result": "hit"
+     },
+     {
+      "label": "Capitals ML",
+      "kind": "nhl_ml",
+      "p": 69.4,
+      "first": 67.3,
+      "result": "hit"
+     },
+     {
+      "label": "Minnesota United FC ML",
+      "kind": "soccer_fav",
+      "p": 67.8,
+      "first": 68,
+      "result": "hit"
+     },
+     {
+      "label": "Artturi Lehkonen Over 0.5 PTS",
+      "kind": "nhl_more",
+      "p": 64.1,
+      "first": 64.1,
+      "result": null
+     },
+     {
+      "label": "Austin Reaves Under 7.5 AST",
+      "kind": "nba_pp",
+      "p": 58,
+      "first": 58,
+      "result": "hit"
+     },
+     {
+      "label": "Jack Roslovic Over 0.5 PTS",
+      "kind": "nhl_more",
+      "p": 56,
+      "first": 56,
+      "result": null
+     }
+    ],
+    "entries": {},
+    "pool": [
+     {
+      "label": "Kyshawn George Over 0.5 BLK",
+      "kind": "nba_blk_more",
+      "p": 66.3,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Artturi Lehkonen Over 0.5 PTS",
+      "kind": "nhl_more",
+      "p": 64.1,
+      "first": 64.1,
+      "result": null
+     },
+     {
+      "label": "Fred VanVleet Under 2.5 3PM",
+      "kind": "nba_pp",
+      "p": 59.7,
+      "first": null,
+      "result": "miss"
+     },
+     {
+      "label": "Alex Tuch Over 0.5 PTS",
+      "kind": "nhl_more",
+      "p": 58.5,
+      "first": null,
+      "result": null
+     },
+     {
+      "label": "Austin Reaves Under 7.5 AST",
+      "kind": "nba_pp",
+      "p": 58,
+      "first": 58,
+      "result": "hit"
+     },
+     {
+      "label": "Joel Farabee Over 0.5 PTS",
+      "kind": "nhl_more",
+      "p": 56.5,
+      "first": null,
+      "result": null
+     },
+     {
+      "label": "Jack Roslovic Over 0.5 PTS",
+      "kind": "nhl_more",
+      "p": 56,
+      "first": 56,
+      "result": null
+     }
+    ],
+    "dropped": [
+     {
+      "date": "2026-10-28",
+      "kind": "nba_pp",
+      "label": "Wendell Carter Jr Under 2.5 AST",
+      "p": 76.8,
+      "lastOn": "2026-10-28T22:00:30.374Z",
+      "why": "PrizePicks took the line down before tip, most often a player ruled out",
+      "result": "miss",
+      "actual": 3
+     },
+     {
+      "date": "2026-10-28",
+      "kind": "nba_pp",
+      "label": "Cooper Flagg Under 6.5 AST",
+      "p": 72.2,
+      "lastOn": "2026-10-29T00:00:29.484Z",
+      "why": "PrizePicks moved the line from 6.5 to 6; the chance at 6 was 58.7%, under the 70% bar",
+      "result": "miss",
+      "actual": 8
+     },
+     {
+      "date": "2026-10-28",
+      "kind": "soccer_fav",
+      "label": "América ML",
+      "p": 68.4,
+      "lastOn": "2026-10-29T01:45:29.575Z",
+      "why": "its chance was 61.3% by the start, under the 65% bar",
+      "result": "miss"
+     },
+     {
+      "date": "2026-10-28",
+      "kind": "nhl_ml",
+      "label": "Oilers ML",
+      "p": 66.4,
+      "lastOn": "2026-10-28T01:45:30.062Z",
+      "why": "its chance was 62.8% by the start, under the 65% bar",
+      "result": "hit"
+     },
+     {
+      "date": "2026-10-28",
+      "kind": "soccer_fav",
+      "label": "Inter Miami CF ML",
+      "p": 65.5,
+      "lastOn": "2026-10-28T00:30:30.310Z",
+      "why": "its chance was 62.4% by the start, under the 65% bar",
+      "result": "miss"
+     },
+     {
+      "date": "2026-10-28",
+      "kind": "soccer_fav",
+      "label": "Vancouver Whitecaps FC ML",
+      "p": 65.2,
+      "lastOn": "2026-10-29T02:00:29.891Z",
+      "why": "its chance was 63.3% by the start, under the 65% bar",
+      "result": "hit"
+     }
+    ]
+   },
+   {
+    "date": "2026-10-27",
+    "hit": 2,
+    "decided": 3,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "Celtics ML",
+      "kind": "nba_ml",
+      "p": 83.5,
+      "first": 83.5,
+      "result": "hit"
+     },
+     {
+      "label": "AS Roma ML",
+      "kind": "soccer_fav",
+      "p": 70.2,
+      "first": 70.9,
+      "result": "hit"
+     },
+     {
+      "label": "Ducks ML",
+      "kind": "nhl_ml",
+      "p": 66.5,
+      "first": 65.8,
+      "result": "miss"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "f3": {
+      "wins": 2,
+      "pay": 1.25,
+      "net": 0.25
+     }
+    },
+    "dropped": [
+     {
+      "date": "2026-10-27",
+      "kind": "nba_pp",
+      "label": "Dylan Harper Under 1.5 3PM",
+      "p": 71.5,
+      "lastOn": "2026-10-27T22:30:30.155Z",
+      "why": "PrizePicks took the line down before tip, most often a player ruled out",
+      "result": "hit",
+      "actual": 0
+     }
+    ]
+   },
+   {
+    "date": "2026-10-26",
+    "hit": 2,
+    "decided": 4,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "Thunder ML",
+      "kind": "nba_ml",
+      "p": 74.5,
+      "first": 77.5,
+      "result": "hit"
+     },
+     {
+      "label": "Cooper Flagg Under 5.5 AST",
+      "kind": "nba_pp",
+      "p": 71.7,
+      "first": 71.7,
+      "result": "miss"
+     },
+     {
+      "label": "Dennis Schroder Under 1.5 3PM",
+      "kind": "nba_pp",
+      "p": 71.5,
+      "first": 71.5,
+      "result": "hit"
+     },
+     {
+      "label": "Nuggets ML",
+      "kind": "nba_ml",
+      "p": 70.7,
+      "first": 72.2,
+      "result": "miss"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 1,
+      "pay": 0,
+      "net": -1
+     },
+     "f3": {
+      "wins": 2,
+      "pay": 1.25,
+      "net": 0.25
+     },
+     "f4": {
+      "wins": 2,
+      "pay": 0,
+      "net": -1
+     }
+    },
+    "dropped": [
+     {
+      "date": "2026-10-26",
+      "kind": "nba_pp",
+      "label": "Sion James Under 1.5 3PM",
+      "p": 77.9,
+      "lastOn": "2026-10-26T21:36:47.404Z",
+      "why": "PrizePicks took the line down before tip, most often a player ruled out",
+      "result": "hit",
+      "actual": 1
+     },
+     {
+      "date": "2026-10-26",
+      "kind": "nba_ml",
+      "label": "Heat ML",
+      "p": 74.2,
+      "lastOn": "2026-10-26T20:49:21.780Z",
+      "why": "Cooper Flagg Under 5.5 AST (72%) took its game's place",
+      "result": "miss"
+     },
+     {
+      "date": "2026-10-26",
+      "kind": "nfl_ml",
+      "label": "DAL ML",
+      "p": 67.7,
+      "lastOn": "2026-10-26T20:47:13.414Z",
+      "why": "its chance was 66.1% by the start, under the 75% bar",
+      "result": "hit"
+     },
+     {
+      "date": "2026-10-26",
+      "kind": "nba_ml",
+      "label": "Rockets ML",
+      "p": 65.5,
+      "lastOn": "2026-10-26T20:49:21.780Z",
+      "why": "its chance was 63.8% by the start, under the 65% bar",
+      "result": "hit"
+     }
+    ]
+   },
+   {
+    "date": "2026-10-25",
+    "hit": 6,
+    "decided": 9,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "HOU ML",
+      "kind": "nfl_ml",
+      "p": 80.9,
+      "first": 80.7,
+      "result": "miss"
+     },
+     {
+      "label": "MIN ML",
+      "kind": "nfl_ml",
+      "p": 74.7,
+      "first": 71.7,
+      "result": "hit"
+     },
+     {
+      "label": "Inter Milan ML",
+      "kind": "soccer_fav",
+      "p": 70.5,
+      "first": 71.5,
+      "result": "hit"
+     },
+     {
+      "label": "Karl-Anthony Towns Under 3.5 AST",
+      "kind": "nba_pp",
+      "p": 70.5,
+      "first": 70.5,
+      "result": "miss"
+     },
+     {
+      "label": "Avalanche ML",
+      "kind": "nhl_ml",
+      "p": 69.1,
+      "first": 67.9,
+      "result": "miss"
+     },
+     {
+      "label": "Lakers ML",
+      "kind": "nba_ml",
+      "p": 68.5,
+      "first": 68.8,
+      "result": "hit"
+     },
+     {
+      "label": "DEN ML",
+      "kind": "nfl_ml",
+      "p": 67.3,
+      "first": 66.9,
+      "result": "hit"
+     },
+     {
+      "label": "Pacers ML",
+      "kind": "nba_ml",
+      "p": 65.6,
+      "first": 72.1,
+      "result": "hit"
+     },
+     {
+      "label": "Wild ML",
+      "kind": "nhl_ml",
+      "p": 65,
+      "first": 65,
+      "result": "hit"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 1,
+      "pay": 0,
+      "net": -1
+     },
+     "f3": {
+      "wins": 2,
+      "pay": 1.25,
+      "net": 0.25
+     },
+     "f4": {
+      "wins": 2,
+      "pay": 0,
+      "net": -1
+     },
+     "f5": {
+      "wins": 2,
+      "pay": 0,
+      "net": -1
+     },
+     "f6": {
+      "wins": 3,
+      "pay": 0,
+      "net": -1
+     }
+    }
+   },
+   {
+    "date": "2026-10-24",
+    "hit": 5,
+    "decided": 5,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "76ers ML",
+      "kind": "nba_ml",
+      "p": 84.2,
+      "first": 84.5,
+      "result": "hit"
+     },
+     {
+      "label": "Spurs ML",
+      "kind": "nba_ml",
+      "p": 82.9,
+      "first": 82.9,
+      "result": "hit"
+     },
+     {
+      "label": "Cavaliers ML",
+      "kind": "nba_ml",
+      "p": 80.3,
+      "first": 82.1,
+      "result": "hit"
+     },
+     {
+      "label": "Nuggets ML",
+      "kind": "nba_ml",
+      "p": 79.8,
+      "first": 80.9,
+      "result": "hit"
+     },
+     {
+      "label": "Suns ML",
+      "kind": "nba_ml",
+      "p": 77.9,
+      "first": 77.2,
+      "result": "hit"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "p2h": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "f3": {
+      "wins": 3,
+      "pay": 2.25,
+      "net": 1.25
+     },
+     "f4": {
+      "wins": 4,
+      "pay": 5,
+      "net": 4
+     },
+     "f5": {
+      "wins": 5,
+      "pay": 10,
+      "net": 9
+     }
+    }
+   },
+   {
+    "date": "2026-10-23",
+    "hit": 5,
+    "decided": 5,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "Dyson Daniels Under 0.5 3PM",
+      "kind": "nba_pp",
+      "p": 79.2,
+      "first": 79.2,
+      "result": "hit"
+     },
+     {
+      "label": "Blazers ML",
+      "kind": "nba_ml",
+      "p": 79,
+      "first": 72.8,
+      "result": "hit"
+     },
+     {
+      "label": "Lakers ML",
+      "kind": "nba_ml",
+      "p": 75.7,
+      "first": 77.5,
+      "result": "hit"
+     },
+     {
+      "label": "Raptors ML",
+      "kind": "nba_ml",
+      "p": 74.3,
+      "first": 67.4,
+      "result": "hit"
+     },
+     {
+      "label": "Karl-Anthony Towns Under 4 AST",
+      "kind": "nba_pp",
+      "p": 71.5,
+      "first": 71.5,
+      "result": "hit"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "p2h": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "f3": {
+      "wins": 3,
+      "pay": 2.25,
+      "net": 1.25
+     },
+     "f4": {
+      "wins": 4,
+      "pay": 5,
+      "net": 4
+     },
+     "f5": {
+      "wins": 5,
+      "pay": 10,
+      "net": 9
+     }
+    }
+   },
+   {
+    "date": "2026-10-22",
+    "hit": 6,
+    "decided": 8,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "Bayer Leverkusen ML",
+      "kind": "soccer_fav",
+      "p": 80.6,
+      "first": 79.4,
+      "result": "hit"
+     },
+     {
+      "label": "Benfica ML",
+      "kind": "soccer_fav",
+      "p": 73.9,
+      "first": 71.1,
+      "result": "hit"
+     },
+     {
+      "label": "Thunder ML",
+      "kind": "nba_ml",
+      "p": 73.5,
+      "first": 73.8,
+      "result": "hit"
+     },
+     {
+      "label": "AZ Alkmaar ML",
+      "kind": "soccer_fav",
+      "p": 69.4,
+      "first": 68.2,
+      "result": "hit"
+     },
+     {
+      "label": "Ferencváros TC ML",
+      "kind": "soccer_fav",
+      "p": 68.8,
+      "first": 73.3,
+      "result": "hit"
+     },
+     {
+      "label": "Real Sociedad ML",
+      "kind": "soccer_fav",
+      "p": 68.2,
+      "first": 66.4,
+      "result": "hit"
+     },
+     {
+      "label": "Juventus ML",
+      "kind": "soccer_fav",
+      "p": 67.7,
+      "first": 67.7,
+      "result": "miss"
+     },
+     {
+      "label": "Wild ML",
+      "kind": "nhl_ml",
+      "p": 66,
+      "first": 65.7,
+      "result": "miss"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "f3": {
+      "wins": 3,
+      "pay": 2.25,
+      "net": 1.25
+     },
+     "f4": {
+      "wins": 4,
+      "pay": 5,
+      "net": 4
+     },
+     "f5": {
+      "wins": 5,
+      "pay": 10,
+      "net": 9
+     },
+     "f6": {
+      "wins": 6,
+      "pay": 25,
+      "net": 24
+     }
+    }
+   },
+   {
+    "date": "2026-10-21",
+    "hit": 6,
+    "decided": 10,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "Rui Hachimura Under 5.5 REB",
+      "kind": "nba_pp",
+      "p": 86.5,
+      "first": null,
+      "result": "miss"
+     },
+     {
+      "label": "Inter Milan ML",
+      "kind": "soccer_fav",
+      "p": 80.2,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Raptors ML",
+      "kind": "nba_ml",
+      "p": 79.8,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Rockets ML",
+      "kind": "nba_ml",
+      "p": 78.6,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Gui Santos Under 5.5 REB",
+      "kind": "nba_pp",
+      "p": 78.6,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Real Madrid ML",
+      "kind": "soccer_fav",
+      "p": 77.7,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Aston Villa ML",
+      "kind": "soccer_fav",
+      "p": 77.6,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Sporting Lisbon ML",
+      "kind": "soccer_fav",
+      "p": 75.5,
+      "first": null,
+      "result": "miss"
+     },
+     {
+      "label": "Franz Wagner Under 5 AST",
+      "kind": "nba_pp",
+      "p": 75,
+      "first": null,
+      "result": "push"
+     },
+     {
+      "label": "Trae Young Under 10 AST",
+      "kind": "nba_pp",
+      "p": 70.4,
+      "first": null,
+      "result": "miss"
+     },
+     {
+      "label": "Toluca ML",
+      "kind": "soccer_fav",
+      "p": 70.3,
+      "first": null,
+      "result": "miss"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 1,
+      "pay": 0,
+      "net": -1
+     },
+     "p2h": {
+      "wins": 1,
+      "pay": 0,
+      "net": -1
+     },
+     "f3": {
+      "wins": 2,
+      "pay": 1.25,
+      "net": 0.25
+     },
+     "f4": {
+      "wins": 3,
+      "pay": 1.5,
+      "net": 0.5
+     },
+     "f5": {
+      "wins": 4,
+      "pay": 2,
+      "net": 1
+     },
+     "f6": {
+      "wins": 5,
+      "pay": 2,
+      "net": 1
+     }
+    }
+   },
+   {
+    "date": "2026-10-20",
+    "hit": 3,
+    "decided": 3,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "AS Roma ML",
+      "kind": "soccer_fav",
+      "p": 82.4,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Karl-Anthony Towns Under 4.5 AST",
+      "kind": "nba_pp",
+      "p": 79.8,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Borussia Dortmund ML",
+      "kind": "soccer_fav",
+      "p": 74.7,
+      "first": null,
+      "result": "hit"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "p2h": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "f3": {
+      "wins": 3,
+      "pay": 2.25,
+      "net": 1.25
+     }
+    }
+   },
+   {
+    "date": "2026-10-19",
+    "hit": 1,
+    "decided": 1,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "SF ML",
+      "kind": "nfl_ml",
+      "p": 79.1,
+      "first": null,
+      "result": "hit"
+     }
+    ],
+    "entries": {}
+   },
+   {
+    "date": "2026-10-18",
+    "hit": 5,
+    "decided": 6,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "KC ML",
+      "kind": "nfl_ml",
+      "p": 78.2,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Real Madrid ML",
+      "kind": "soccer_fav",
+      "p": 77.6,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "NE ML",
+      "kind": "nfl_ml",
+      "p": 76,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "IND ML",
+      "kind": "nfl_ml",
+      "p": 73.3,
+      "first": null,
+      "result": "miss"
+     },
+     {
+      "label": "BUF ML",
+      "kind": "nfl_ml",
+      "p": 67.7,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Brighton and Hove Albion ML",
+      "kind": "soccer_fav",
+      "p": 67.4,
+      "first": null,
+      "result": "hit"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "p2h": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "f3": {
+      "wins": 3,
+      "pay": 2.25,
+      "net": 1.25
+     },
+     "f4": {
+      "wins": 3,
+      "pay": 1.5,
+      "net": 0.5
+     },
+     "f5": {
+      "wins": 4,
+      "pay": 2,
+      "net": 1
+     },
+     "f6": {
+      "wins": 5,
+      "pay": 2,
+      "net": 1
+     }
+    }
+   },
+   {
+    "date": "2026-10-17",
+    "hit": 3,
+    "decided": 7,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "Manchester City ML",
+      "kind": "soccer_fav",
+      "p": 77.5,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Toluca ML",
+      "kind": "soccer_fav",
+      "p": 72,
+      "first": null,
+      "result": "miss"
+     },
+     {
+      "label": "Cruz Azul ML",
+      "kind": "soccer_fav",
+      "p": 71.7,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Seattle Sounders FC ML",
+      "kind": "soccer_fav",
+      "p": 70.3,
+      "first": null,
+      "result": "miss"
+     },
+     {
+      "label": "Villarreal ML",
+      "kind": "soccer_fav",
+      "p": 68.2,
+      "first": null,
+      "result": "miss"
+     },
+     {
+      "label": "Barcelona ML",
+      "kind": "soccer_fav",
+      "p": 66.6,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Philadelphia Union ML",
+      "kind": "soccer_fav",
+      "p": 66.5,
+      "first": null,
+      "result": "miss"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 1,
+      "pay": 0,
+      "net": -1
+     },
+     "f3": {
+      "wins": 2,
+      "pay": 1.25,
+      "net": 0.25
+     },
+     "f4": {
+      "wins": 2,
+      "pay": 0,
+      "net": -1
+     },
+     "f5": {
+      "wins": 2,
+      "pay": 0,
+      "net": -1
+     },
+     "f6": {
+      "wins": 3,
+      "pay": 0,
+      "net": -1
+     }
+    }
+   },
+   {
+    "date": "2026-10-14",
+    "hit": 4,
+    "decided": 4,
+    "pending": 0,
+    "legs": [
+     {
+      "label": "Nashville SC ML",
+      "kind": "soccer_fav",
+      "p": 77.9,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "VfB Stuttgart ML",
+      "kind": "soccer_fav",
+      "p": 72.1,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Liverpool ML",
+      "kind": "soccer_fav",
+      "p": 69.4,
+      "first": null,
+      "result": "hit"
+     },
+     {
+      "label": "Los Angeles FC ML",
+      "kind": "soccer_fav",
+      "p": 65.4,
+      "first": null,
+      "result": "hit"
+     }
+    ],
+    "entries": {
+     "p2": {
+      "wins": 2,
+      "pay": 3,
+      "net": 2
+     },
+     "f3": {
+      "wins": 3,
+      "pay": 2.25,
+      "net": 1.25
+     },
+     "f4": {
+      "wins": 4,
+      "pay": 5,
+      "net": 4
+     }
+    }
+   }
+  ]
+ },
+ "edgeRecord": {
+  "byDay": {
+   "2026-10-28": {
+    "n": 5,
+    "hit": 1,
+    "units": -2.25,
+    "clvN": 5,
+    "beat": 4
+   }
+  },
+  "since": "2026-10-28",
+  "n": 5,
+  "hit": 1,
+  "push": 0,
+  "void": 1,
+  "units": -2.25,
+  "kellyUnits": -0.05,
+  "roi": -45,
+  "clv": {
+   "n": 5,
+   "beat": 4,
+   "avg": 4
+  }
+ }
+}

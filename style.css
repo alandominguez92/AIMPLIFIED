@@ -3218,7 +3218,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .rc-lines { list-style:none; margin:10px 0 0; padding:0; display:grid; gap:4px; font-size:13px; }
 .rc-lines li { display:flex; justify-content:space-between; gap:12px; color:var(--textDim); }
 .rc-lines b { font-family:var(--mono); font-weight:600; color:var(--text); text-align:right; }
-.rc-lines b.u { color:var(--positive); } .rc-lines b.o { color:var(--danger); }
+.rc-lines b.u, .rc-lines i.u { color:var(--positive); } .rc-lines b.o, .rc-lines i.o { color:var(--danger); }
+.rc-lines i { font-style:normal; }
+.rc-lines li > span { white-space:nowrap; }
+.rc-pend { font-size:12px; color:var(--textDim); }
 .rc-off { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-size:12.5px; color:var(--textDim); }
 
 /* The entry ticket (2026-10-28). */

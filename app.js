@@ -6293,7 +6293,9 @@
       if (e) lines.push(`<li><span>${label}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
     }
     const eb = edge && edge.byDay && edge.byDay[date];
-    if (eb && eb.n) lines.push(`<li><span>Edge bets</span><b class="${eb.units > 0 ? 'u' : eb.units < 0 ? 'o' : ''}">${eb.hit} of ${eb.n} · ${units(eb.units)}${eb.clvN ? ` · beat the close ${eb.beat} of ${eb.clvN}` : ''}</b></li>`);
+    // Only the units take the colour: beating the close is good news on a
+    // losing night too.
+    if (eb && eb.n) lines.push(`<li><span>Edge bets</span><b>${eb.hit} of ${eb.n} · <i class="${eb.units > 0 ? 'u' : eb.units < 0 ? 'o' : ''}">${units(eb.units)}</i>${eb.clvN ? ` · beat the close ${eb.beat} of ${eb.clvN}` : ''}</b></li>`);
     if (d.pool && d.pool.length && d.decided) lines.push(`<li><span>The list</span><b>${d.hit} of ${d.decided}</b></li>`);
     const went = { hit: ', would have landed', miss: ', would have missed', push: ', would have tied' };
     const off = (d.dropped || []).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
@@ -6301,6 +6303,7 @@
     try { localStorage.setItem('aimplified_recap_seen', date); } catch (e) { /* private mode */ }
     return `<details class="pk-recap"${open ? ' open' : ''}><summary><span class="rc-h">Last night</span>`
       + `<span class="rc-day">${esc(shortDay(date))}</span><b class="rc-n">${hit} of ${dec.length}</b>`
+      + (legs.some((x) => x.result == null) ? `<span class="rc-pend">${legs.filter((x) => x.result == null).length} still to grade</span>` : '')
       + `<span class="rc-dots">${dec.map((x) => (x.result === 'hit' ? '✓' : '✗')).join('')}</span></summary>`
       + `<div class="rc-chips">${chips}</div>`
       + (lines.length ? `<ul class="rc-lines">${lines.join('')}</ul>` : '')

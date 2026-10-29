@@ -79,6 +79,24 @@ ok(P.shortLeg('Wendell Carter Jr Under 2.5 AST') === 'Carter Jr U2.5 AST' && P.s
   'legs by short names: "Carter Jr U2.5 AST", "George O0.5 BLK", "Celtics"');
 ok(P.recapHtml({ days: h.days.filter((d) => d.date !== '2026-10-27') }, null) === '', 'nothing when yesterday has no day');
 
+// The first night of the entry, at 12:15 AM on Oct 29: its NHL legs not yet
+// graded, and the edge bets' first day (tests/fixtures/picks-record-20261029.json).
+console.log('\n-- Last night, 12:15 AM Oct 29 for Oct 28 --');
+const G = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'picks-record-20261029.json'), 'utf8'));
+env.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [RealDate.parse(G.asOf)])); } static now() { return RealDate.parse(G.asOf); } };
+P = build();
+const r2 = P.recapHtml(G.history, G.edgeRecord);
+console.log('  ' + text(r2));
+const d28 = G.history.days.find((d) => d.date === '2026-10-28');
+const pend = d28.pool.filter((x) => x.result == null).length;
+ok(text(r2).startsWith(`Last night Oct 28 2 of 3 ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2)),
+  `the entry's legs, and the ${pend} NHL legs still to grade said so`);
+ok(/<li><span>Edge bets<\/span><b>1 of 5 · <i class="o">−2\.25u<\/i> · beat the close 4 of 5<\/b><\/li>/.test(r2) && /The list 9 of 9/.test(text(r2)),
+  "the edge bets' first day: 1 of 5 and down, red on the units only -- 4 of 5 beat the close; the list 9 of 9");
+env.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } };
+P = build();
+ok(/\.rc-lines li > span \{ white-space:nowrap; \}/.test(css), '"Edge bets" on one line on a phone');
+
 // ---- the entry ticket -----------------------------------------------------------------------------
 console.log('\n-- the ticket --');
 const pool = F.ppPool;
