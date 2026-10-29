@@ -2989,16 +2989,16 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-books { display:block; max-width:420px; margin-top:8px; font-size:12px; }
 .pk-books summary { cursor:pointer; min-height:32px; display:flex; align-items:center; font-family:var(--sans); color:var(--model); }
 .pk-books .bk-rows { display:block; margin-top:2px; }
-.pk-books .bk-r { display:grid; grid-template-columns:minmax(0,1fr) 44px 44px 58px; align-items:center; gap:6px; min-height:36px;
+.pk-books .bk-r { display:grid; grid-template-columns:minmax(0,1fr) 42px 40px 62px; align-items:center; gap:5px; min-height:36px;
   border-top:1px solid var(--border); font-family:var(--mono); color:var(--text); }
 .pk-books .bk-r > * { min-width:0; }
 .pk-books .bk-h { min-height:24px; border-top:0; font-family:var(--sans); font-size:11px; color:var(--textFaint); }
 .pk-books .bk-r b { font-weight:600; }
 .pk-books .bk-r.best b { color:var(--positive); }
 .pk-books .bk-r.sh { color:var(--textDim); }
-.pk-books .bk-r i { font-style:normal; font-family:var(--sans); font-size:11px; color:var(--model); }
+.pk-books .bk-g { display:block; padding:10px 0 4px; border-top:1px solid var(--border); font-family:var(--sans); font-size:11px; color:var(--model); }
 .pk-books .hd { color:var(--textFaint); }
-.bet-at.sm { min-height:30px; margin-top:0; padding:0 8px; font-size:12px; justify-content:center; }
+.bet-at.sm { min-height:30px; margin-top:0; padding:0 6px; font-size:11px; justify-content:center; white-space:nowrap; }
 /* The price checker, at the foot of the edge bets. */
 .pk-check { margin-top:14px; }
 .pk-check-f { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }

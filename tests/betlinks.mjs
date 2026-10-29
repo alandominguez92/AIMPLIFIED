@@ -254,6 +254,8 @@ ok((h.match(/<span class="bk-r best">/g) || []).length === 1 && (h.match(/<span 
 // list's .nba-pp .tc-legs li rule set them to block and the columns ran together.
 ok(!/<li\b/.test(h) && /<span class="bk-r bk-h"><span>Book<\/span><span>Price<\/span><span>Hold<\/span>/.test(h) && /<b>\+120<\/b><span class="hd">-2\.2%<\/span>/.test(h),
   'its own rows under a Book, Price, Hold header, each hold a bare percentage');
+ok(h.indexOf('<span class="bk-g">Sharp books · the fair line</span>') > h.lastIndexOf('<span class="bk-r best">') && h.indexOf('<span class="bk-r sh">') > h.indexOf('class="bk-g"') && !/<i>sharp<\/i>/.test(h),
+  'the books you can bet first; the sharp ones after, under their own heading');
 const chk = (key, price) => text(P.priceCheckText(d, { key, price }));
 console.log(`  ${chk(hk.key, '+150')}`);
 ok(chk(hk.key, '') === 'Hawks ML: fair 50%, which breaks even at -100 . Type a price to check it.', 'with no price: the fair, and what breaks even');
