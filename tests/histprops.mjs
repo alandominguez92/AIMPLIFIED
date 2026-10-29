@@ -146,18 +146,43 @@ ok(rep.graded === legs.filter((l) => l.a != null && !l.v).length && g.more.n ===
   `More where PrizePicks' line sat below the sharp one: ${g.more.hit} of ${g.more.n} in this game`);
 ok(rep.byMarket.pts && rep.byMarket.pra && rep.all.byBand.length === 5 && rep.all.at58 && 'less' in rep.all.at58, 'by market, by band, at 58%+ with Less and More apart');
 
-// ---- the stops ------------------------------------------------------------------------------------
-console.log('\n-- the stops --');
-remaining = 12040;                                   // 50 more and the floor is reached
+// ---- the reserve (2026-10-29: the credits have to last the month) --------------------------------
+console.log('\n-- the reserve --');
+const RV = new Function([cst('HIST_LIVE_PER_DAY'), wlift('histReserve')].join('\n') + '\nreturn histReserve;')();
+ok(RV(NOW) === 5000 && RV(RealDate.parse('2026-11-01T00:00:00Z')) === 32000 && RV(RealDate.parse('2026-11-30T20:00:00Z')) === 3000,
+  'the live site keeps 1,000 a day to the reset on the 1st, and 2,000 more: 5,000 at 1 AM Pacific Oct 29, 32,000 on Nov 1, 3,000 on its last day');
+remaining = 5040;                                    // one more game and the reserve is reached
 const st2 = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nba'").get().data);
 sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'hist_props:nba'").run(JSON.stringify({ ...st2, day: days.indexOf('2026-01-15'), queue: [] }));
 sq.prepare('DELETE FROM histpropgames').run();
 await tick();
 r = await get('/api/hist-props?job=nba');
-ok(r.done === true && /floor/.test(r.stopped) && r.remaining < 12000, `it stops when the feed leaves under 12,000 credits: "${r.stopped}" (${r.remaining} left)`);
+ok(r.done === false && /^reserve: the live site keeps 5000 until the 1st$/.test(r.paused) && r.remaining < 5000 && r.reserve === 5000,
+  `it pauses when the feed leaves less than the reserve: "${r.paused}" (${r.remaining} left)`);
 const n0 = asked.length;
 await tick();
-ok(asked.length === n0, 'and a stopped job reads nothing more');
+ok(asked.length === n0, 'and while the remaining stays under it, reads nothing');
+// The reset: the live boards' next read records the month's new remaining.
+sq.prepare("INSERT OR REPLACE INTO odds_usage (day, remaining, low, calls, updated_at) VALUES ('2026-11-01', 100000, 100000, 1, '2026-11-01T07:05:00Z')").run();
+remaining = 100000;
+await tick();
+r = await get('/api/hist-props?job=nba');
+ok(asked.length > n0 && !r.paused && r.done === false, 'once the reset lifts the remaining past it, the job goes on by itself');
+await get('/api/hist-props?job=nba&stop=1');
+
+// ---- threes, assists and rebounds, every other day (2026-10-29) ---------------------------------
+console.log('\n-- threes, assists, rebounds --');
+let r3 = await get('/api/hist-props?job=nba3&start=1');
+ok(r3.progress === '0 of 87 days' && r3.cap === 21000, `every other day of the season: ${r3.progress}, a 21,000 cap`);
+const s3a = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nba3'").get().data);
+const d3 = []; for (let t = RealDate.parse('2025-10-21T12:00:00Z'); t <= RealDate.parse('2026-04-12T12:00:00Z'); t += 2 * 864e5) d3.push(new RealDate(t).toISOString().slice(0, 10));
+sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'hist_props:nba3'").run(JSON.stringify({ ...s3a, day: d3.indexOf('2026-01-15') }));
+const b3 = asked.length;
+await tick();
+const u3 = asked.slice(b3).find((u) => /basketball_nba\/events\/[0-9a-f]+\/odds/.test(u));
+ok(d3.includes('2026-01-15') && u3 && new URL(u3).searchParams.get('markets') === 'player_threes,player_assists,player_rebounds',
+  'its own markets: threes, assists, rebounds');
+await get('/api/hist-props?job=nba3&stop=1');
 
 // ---- the NFL ----------------------------------------------------------------------------------------
 console.log('\n-- the NFL: Commanders @ Dolphins, Nov 16 2025 --');
@@ -174,7 +199,7 @@ const nlegs = JSON.parse(nrow.legs);
 const nl = (who, mk) => nlegs.find((l) => l.p === who && l.mk === mk) || {};
 console.log(`  ${nr.games} game, ${nr.creditsSpent} credits; Deebo ${JSON.stringify([nl('Deebo Samuel Sr.', 'rec_yds').pp, nl('Deebo Samuel Sr.', 'rec_yds').a, nl('Deebo Samuel Sr.', 'rec').a])}`);
 ok(nr.games === 1 && nr.creditsSpent === 31 && asked.slice(before2).some((u) => /nfl\/scoreboard\?xhr=1&year=2025&seasontype=2&week=11$/.test(u)),
-  'the NFL job runs once the NBA one is done: its day listed, the game read (30 credits), ESPN asked by week (Nov 16 is week 11)');
+  'the NFL job runs once the NBA ones are stopped: its day listed, the game read (30 credits), ESPN asked by week (Nov 16 is week 11)');
 ok(nl('Deebo Samuel Sr.', 'rec_yds').pp === 47.5 && nl('Deebo Samuel Sr.', 'rec_yds').a === 74 && nl('Deebo Samuel Sr.', 'rec').pp === 4.5 && nl('Deebo Samuel Sr.', 'rec').a === 7
   && nl('Deebo Samuel Sr.', 'rush_yds').a === 3, 'Deebo Samuel: 47.5 receiving yards and 4.5 catches on PrizePicks; 74 and 7, and 3 rushing yards');
 ok(nl('Tua Tagovailoa', 'rush_yds').a === 0 && nl("De'Von Achane", 'rush_yds').a === 120,

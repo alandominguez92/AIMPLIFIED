@@ -13456,7 +13456,7 @@ const HIST_BANDS = [[50, 55], [55, 60], [60, 65], [65, 70], [70, 75], [75, 80], 
 function histDays(job) {
   if (job.dates) return job.dates;
   const out = [];
-  for (let t = Date.parse(job.from + 'T12:00:00Z'); t <= Date.parse(job.to + 'T12:00:00Z'); t += 864e5) out.push(new Date(t).toISOString().slice(0, 10));
+  for (let t = Date.parse(job.from + 'T12:00:00Z'); t <= Date.parse(job.to + 'T12:00:00Z'); t += 864e5 * (job.step || 1)) out.push(new Date(t).toISOString().slice(0, 10));
   return out;
 }
 // One day's finals, as the graders read them, with each game's start where
@@ -13615,6 +13615,11 @@ const HIST_PROP_BOOKS = ['pinnacle', 'fanduel', 'draftkings', 'betonlineag', 'lo
 const HIST_PROP_JOBS = {
   nba: { label: 'NBA 2025-26 player props', sport: 'basketball_nba', from: '2025-10-21', to: '2026-04-12',
     markets: { player_points: 'pts', player_points_rebounds_assists: 'pra', player_points_rebounds: 'pts_reb', player_points_assists: 'pts_ast', player_rebounds_assists: 'reb_ast' } },
+  // The unders Picks lists (2026-10-29, the owner's call): threes, assists and
+  // rebounds, 30 credits a game. Every other day of the season, so what the
+  // month has left reads all of it rather than its first half.
+  nba3: { label: 'NBA 2025-26 threes, assists, rebounds', sport: 'basketball_nba', from: '2025-10-21', to: '2026-04-12', step: 2,
+    markets: { player_threes: 'threes', player_assists: 'ast', player_rebounds: 'reb' } },
   // ESPN's NFL scoreboard answers by week, never by date (see the yardage
   // grader): week 1 is the week of Tuesday Sep 2.
   nfl: { label: 'NFL 2025 player props', sport: 'americanfootball_nfl', from: '2025-09-04', to: '2026-01-04', year: 2025, week1: '2025-09-02',
@@ -13646,14 +13651,27 @@ function nflPropBoxRows(sum) {
 const HIST_PROP_LEAD_MIN = 60;      // read an hour before each game
 // &start=1 sets a job running on its own cron (HIST_CRON, every other minute,
 // HIST_PROP_PER_TICK games a run); &stop=1 pauses it; with neither, the
-// report from what has been read. Each job stops at its credit cap, or when
-// the feed says fewer than HIST_PROP_FLOOR credits are left -- the live
-// boards' share. One D1 row a game, its legs as JSON: the free tier's daily
-// writes would not hold a row a leg.
+// report from what has been read. Each job stops at its credit cap, and
+// pauses when the feed leaves less than the live site's reserve (histReserve).
+// One D1 row a game, its legs as JSON: the free tier's daily writes would not
+// hold a row a leg.
 const HIST_CRON = '1-59/2 * * * *';
 const HIST_PROP_PER_TICK = 3;
-const HIST_PROP_FLOOR = 12000;
-const HIST_PROP_CAPS = { nba: 63000, nfl: 9000 };
+const HIST_PROP_CAPS = { nba: 63000, nba3: 21000, nfl: 9000 };
+// What the live site keeps (2026-10-29, the owner's call: the credits have to
+// last the whole month). A thousand for each day left before the quota resets
+// on the 1st -- about half again the busiest day of the week before (658), the
+// live site's own average 450 -- and 2,000 more. A backtest pauses below it,
+// and goes on by itself once the reset lifts the remaining past it: the live
+// boards' reads keep odds_usage current, so the check costs nothing. (A fixed
+// 12,000 until then: in the month's last days it kept back far more than the
+// live site could use, and on the 1st far less than a month needs.)
+const HIST_LIVE_PER_DAY = 1000, HIST_LIVE_BUFFER = 2000;
+function histReserve(now) {
+  const d = new Date(now);
+  const reset = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  return Math.ceil((reset - now) / 864e5) * HIST_LIVE_PER_DAY + HIST_LIVE_BUFFER;
+}
 // The books whose no-vig line is a fair price for a prop (Pinnacle first, as
 // sharpFair reads them); the others are kept for their lines alone.
 const HIST_PROP_SHARP = ['pinnacle', 'fanduel', 'novig', 'prophetx', 'betonlineag', 'lowvig'];
@@ -13688,7 +13706,7 @@ async function histProps(env, url) {
   const state = histPropState(st.present && st.data);
   const rows = (await env.DB.prepare('SELECT legs FROM histpropgames WHERE job = ?').bind(key).all()).results || [];
   const days = histDays(job);
-  return { job: key, label: job.label, active: !!state.active, done: !!state.done, stopped: state.stopped || null,
+  return { job: key, label: job.label, active: !!state.active, done: !!state.done, stopped: state.stopped || null, ...(state.paused ? { paused: state.paused } : {}), reserve: histReserve(Date.now()),
     progress: `${state.day} of ${days.length} days`, games: state.games, creditsSpent: state.credits, cap: HIST_PROP_CAPS[key], remaining: state.remaining,
     errors: state.errors, ...(state.errorLog && state.errorLog.length ? { errorLog: state.errorLog } : {}), unmatched: state.unmatched.slice(0, 30), ...histPropOpen(rows), report: histPropReport(rows.map((r) => JSON.parse(r.legs || '[]')).flat(), job) };
 }
@@ -13861,6 +13879,18 @@ async function histPropsRun(env, key, job, maxGames) {
   const st = await loadFeedCache(db, stateKey);
   const state = histPropState(st.present && st.data);
   if (state.done || !env.ODDS_API_KEY) return state;
+  // The reserve, before anything is spent: the remaining the last read of
+  // any kind saw (odds_usage, one row). Below it the job waits; once the
+  // reset lifts it, the job goes on.
+  const u = await db.prepare('SELECT remaining FROM odds_usage ORDER BY day DESC LIMIT 1').first().catch(() => null);
+  if (u && typeof u.remaining === 'number') {
+    const keep = histReserve(Date.now());
+    if (u.remaining < keep) {
+      if (!state.paused) { state.paused = `reserve: the live site keeps ${keep} until the 1st`; await saveFeedCache(db, stateKey, state); }
+      return state;
+    }
+    if (state.paused) { delete state.paused; state.remaining = u.remaining; }
+  }
   const days = histDays(job);
   const base = `https://api.the-odds-api.com/v4/historical/sports/${job.sport}`;
   let read = 0, scanned = 0;
@@ -13921,10 +13951,12 @@ async function histPropsRun(env, key, job, maxGames) {
       .bind(key, g.id, g.date, g.commence, `${g.away} @ ${g.home}`, JSON.stringify(legs), legs.some((l) => l.a != null || l.v) ? HIST_GRADE_VER : 0).run();
     state.games++;
     if (state.credits >= HIST_PROP_CAPS[key]) { state.done = true; state.stopped = 'credit cap'; }
-    if (state.remaining != null && state.remaining < HIST_PROP_FLOOR) { state.done = true; state.stopped = 'floor: the live boards keep the rest'; }
+    const keep = histReserve(Date.now());
+    if (!state.done && state.remaining != null && state.remaining < keep) state.paused = `reserve: the live site keeps ${keep} until the 1st`;
     // Kept after each game (2026-10-29): a run cut off before its end had lost
     // the games it read (one of the first seven, 50 credits) and read them again.
     await saveFeedCache(db, stateKey, state);
+    if (state.paused) break;
   }
   await saveFeedCache(db, stateKey, state);
   return state;
