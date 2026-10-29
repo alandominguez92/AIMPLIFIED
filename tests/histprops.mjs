@@ -29,6 +29,7 @@ const BOARD = path.join(import.meta.dirname, '..');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
 const fx = (n) => JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', n), 'utf8'));
 const P = fx('hist-props-nba-20260115.json'), BOX = fx('espn-nba-box-401810433.json'), SB = fx('espn-nba-sb-20260115.json');
+const NP = fx('hist-props-nfl-20251116.json'), NBOX = fx('espn-nfl-box-401772631.json'), NSB = fx('espn-nfl-sb-2025-w11.json');
 const RealDate = Date;
 const NOW = RealDate.parse('2026-10-29T08:00:00Z');
 globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } };
@@ -50,6 +51,18 @@ globalThis.fetch = async (u) => {
   }
   if (/cdn\.espn\.com\/core\/nba\/scoreboard/.test(s)) return J(SB);
   if (/cdn\.espn\.com\/core\/nba\/boxscore\?xhr=1&gameId=401810433/.test(s)) return J(BOX);
+  if (/historical\/sports\/americanfootball_nfl\/events\?/.test(s)) {
+    return J({ timestamp: NP.eventsTimestamp, data: NP.events.map((e) => { const [away, home] = e.game.split(' @ '); return { id: e.id, commence_time: e.commence, home_team: home, away_team: away }; }) },
+      { 'x-requests-last': '1', 'x-requests-remaining': String(--remaining) });
+  }
+  const n = s.match(/historical\/sports\/americanfootball_nfl\/events\/([0-9a-f]+)\/odds/);
+  if (n) {
+    if (n[1] !== NP.odds.data.id) return new Response('{"message":"not recorded"}', { status: 404, headers: { 'x-requests-last': '0', 'x-requests-remaining': String(remaining) } });
+    remaining -= 30;
+    return J(NP.odds, { 'x-requests-last': '30', 'x-requests-remaining': String(remaining) });
+  }
+  if (/cdn\.espn\.com\/core\/nfl\/scoreboard\?xhr=1&year=2025&seasontype=2&week=11$/.test(s)) return J(NSB);
+  if (/cdn\.espn\.com\/core\/nfl\/boxscore\?xhr=1&gameId=401772631/.test(s)) return J(NBOX);
   return new Response('{}', { status: 404 });
 };
 const sq = new DatabaseSync(':memory:');
@@ -143,7 +156,28 @@ ok(r.done === true && /floor/.test(r.stopped) && r.remaining < 12000, `it stops 
 const n0 = asked.length;
 await tick();
 ok(asked.length === n0, 'and a stopped job reads nothing more');
-ok((await get('/api/hist-props?job=nfl&start=1')).error === 'only the NBA job runs so far', 'the NFL job waits for its box-score grader');
+
+// ---- the NFL ----------------------------------------------------------------------------------------
+console.log('\n-- the NFL: Commanders @ Dolphins, Nov 16 2025 --');
+remaining = 80000;
+await get('/api/hist-props?job=nfl&start=1');
+const nflDays = []; for (let t = RealDate.parse('2025-09-04T12:00:00Z'); t <= RealDate.parse('2026-01-04T12:00:00Z'); t += 864e5) nflDays.push(new RealDate(t).toISOString().slice(0, 10));
+const ns = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nfl'").get().data);
+sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'hist_props:nfl'").run(JSON.stringify({ ...ns, day: nflDays.indexOf('2025-11-16') }));
+const before2 = asked.length;
+await tick();
+const nr = await get('/api/hist-props?job=nfl');
+const nrow = sq.prepare("SELECT * FROM histpropgames WHERE job = 'nfl'").get();
+const nlegs = JSON.parse(nrow.legs);
+const nl = (who, mk) => nlegs.find((l) => l.p === who && l.mk === mk) || {};
+console.log(`  ${nr.games} game, ${nr.creditsSpent} credits; Deebo ${JSON.stringify([nl('Deebo Samuel Sr.', 'rec_yds').pp, nl('Deebo Samuel Sr.', 'rec_yds').a, nl('Deebo Samuel Sr.', 'rec').a])}`);
+ok(nr.games === 1 && nr.creditsSpent === 31 && asked.slice(before2).some((u) => /nfl\/scoreboard\?xhr=1&year=2025&seasontype=2&week=11$/.test(u)),
+  'the NFL job runs once the NBA one is done: its day listed, the game read (30 credits), ESPN asked by week (Nov 16 is week 11)');
+ok(nl('Deebo Samuel Sr.', 'rec_yds').pp === 47.5 && nl('Deebo Samuel Sr.', 'rec_yds').a === 74 && nl('Deebo Samuel Sr.', 'rec').pp === 4.5 && nl('Deebo Samuel Sr.', 'rec').a === 7
+  && nl('Deebo Samuel Sr.', 'rush_yds').a === 3, 'Deebo Samuel: 47.5 receiving yards and 4.5 catches on PrizePicks; 74 and 7, and 3 rushing yards');
+ok(nl('Tua Tagovailoa', 'rush_yds').a === 0 && nl("De'Von Achane", 'rush_yds').a === 120,
+  "a quarterback who never ran is 0 rushing yards, not void; Achane's 120 against 81.5");
+ok(nlegs.every((l) => l.a != null || l.v) || nr.openNames.length < 4, `NFL legs graded (${nlegs.filter((l) => l.a != null).length} of ${nlegs.length}; open: ${nr.openNames.join(', ') || 'none'})`);
 const toml = fs.readFileSync(BOARD + '/wrangler.toml', 'utf8');
 ok(/crons = \["\*\/5 \* \* \* \*", "2-59\/5 \* \* \* \*", "1-59\/2 \* \* \* \*"\]/.test(toml) && /const HIST_CRON = '1-59\/2 \* \* \* \*';/.test(src), 'on its own cron trigger');
 
