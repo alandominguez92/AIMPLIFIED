@@ -13596,7 +13596,7 @@ async function histProps(env, url) {
   const days = histDays(job);
   return { job: key, label: job.label, active: !!state.active, done: !!state.done, stopped: state.stopped || null,
     progress: `${state.day} of ${days.length} days`, games: state.games, creditsSpent: state.credits, cap: HIST_PROP_CAPS[key], remaining: state.remaining,
-    errors: state.errors, unmatched: state.unmatched.slice(0, 30), ...histPropOpen(rows), report: histPropReport(rows.map((r) => JSON.parse(r.legs || '[]')).flat(), job) };
+    errors: state.errors, ...(state.errorLog && state.errorLog.length ? { errorLog: state.errorLog } : {}), unmatched: state.unmatched.slice(0, 30), ...histPropOpen(rows), report: histPropReport(rows.map((r) => JSON.parse(r.legs || '[]')).flat(), job) };
 }
 // The names no box score matched, most legs first: each one an alias to add,
 // or a player who sat (v: 2).
@@ -13605,7 +13605,10 @@ function histPropOpen(rows) {
   for (const r of rows) for (const l of JSON.parse(r.legs || '[]')) if ((l.a == null && !l.v) || l.v === 2) n[l.p] = (n[l.p] || 0) + 1;
   return { openNames: Object.entries(n).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([p, k]) => `${p} (${k})`) };
 }
-const histPropState = (s) => ({ day: 0, queue: [], credits: 0, games: 0, done: false, active: false, errors: 0, unmatched: [], espn: {}, remaining: null, ...(s || {}) });
+const histPropState = (s) => ({ day: 0, queue: [], credits: 0, games: 0, done: false, active: false, errors: 0, errorLog: [], unmatched: [], espn: {}, remaining: null, ...(s || {}) });
+// What failed, for the report (2026-10-29): three NBA reads failed, at no
+// cost, and nothing said which games or why.
+const histPropFail = (state, what, r) => { state.errors++; (state.errorLog = state.errorLog || []).length < 20 && state.errorLog.push(`${what}: HTTP ${r.status}`); };
 async function ensureHistPropSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS histpropgames (
     job TEXT NOT NULL, event_id TEXT NOT NULL, date TEXT, commence TEXT, game TEXT, legs TEXT, graded INTEGER,
@@ -13740,7 +13743,7 @@ async function histPropsRun(env, key, job, maxGames) {
       await recordOddsUsage(env, er, `hist-props:${key}:events`);
       const spentE = Number(er.headers.get('x-requests-last'));
       state.credits += isFinite(spentE) ? spentE : 1;
-      if (!er.ok) { state.errors++; continue; }
+      if (!er.ok) { histPropFail(state, `${date} events`, er); continue; }
       const ej = await er.json();
       state.queue = ((ej && ej.data) || []).filter((e) => ptDateOf(Date.parse(e.commence_time)) === date)
         .map((e) => ({ id: e.id, commence: e.commence_time, home: e.home_team, away: e.away_team, date }));
@@ -13756,7 +13759,7 @@ async function histPropsRun(env, key, job, maxGames) {
     state.credits += isFinite(spent) ? spent : 10 * Object.keys(job.markets).length;
     const left = Number(r.headers.get('x-requests-remaining'));
     if (isFinite(left)) state.remaining = left;
-    if (!r.ok) { state.errors++; continue; }
+    if (!r.ok) { histPropFail(state, `${g.date} ${g.away} @ ${g.home}`, r); continue; }
     const j = await r.json();
     const legs = histPropLegs(job, j && j.data);
     // The game's ESPN id, from its scoreboard (the NBA's by day, the NFL's by
@@ -13873,16 +13876,23 @@ async function histPropsProbe(env, key, job, date) {
 // GET /api/links-probe?sport=nba|nhl|nfl|soccer_epl (2026-10-29): one paid
 // read (1 credit: h2h, five books) of the feed's bet links -- what it sends
 // with includeLinks for each book and side -- at most once in ten minutes.
+// &books=nfl reads the NFL capture's own ten books; &event=<id> reads one NFL
+// game's passing-TD props at the props capture's books (1 credit), on its
+// own ten minutes.
 async function linksProbe(env, url) {
   if (!env || !env.DB || !env.ODDS_API_KEY) return { error: 'not configured' };
   const sport = { nba: 'basketball_nba', nhl: 'icehockey_nhl', nfl: 'americanfootball_nfl' }[url.searchParams.get('sport') || 'nba'] || url.searchParams.get('sport');
-  if (!(await claimFeedRefresh(env.DB, 'links_probe', 600000))) return { error: 'one probe per ten minutes' };
-  const r = await fetch(`https://api.the-odds-api.com/v4/sports/${sport}/odds?apiKey=${env.ODDS_API_KEY}&markets=h2h&oddsFormat=american&dateFormat=iso`
-    + '&bookmakers=draftkings,fanduel,betmgm,williamhill_us,betrivers&includeLinks=true&includeSids=true', { headers: { accept: 'application/json' } });
+  const event = url.searchParams.get('event');
+  if (event && !/^[0-9a-f]{32}$/.test(event)) return { error: 'event: an Odds API event id' };
+  if (!(await claimFeedRefresh(env.DB, event ? 'links_probe_event' : 'links_probe', 600000))) return { error: 'one probe per ten minutes' };
+  const books = event ? NFL_PROP_BOOKS : url.searchParams.get('books') === 'nfl' ? NFL_BOOKS : ['draftkings', 'fanduel', 'betmgm', 'williamhill_us', 'betrivers'];
+  const r = await fetch(`https://api.the-odds-api.com/v4/sports/${sport}/${event ? `events/${event}/odds` : 'odds'}?apiKey=${env.ODDS_API_KEY}`
+    + `&markets=${event ? 'player_pass_tds' : 'h2h'}&oddsFormat=american&dateFormat=iso&bookmakers=${books.join(',')}&includeLinks=true&includeSids=true`, { headers: { accept: 'application/json' } });
   await recordOddsUsage(env, r, 'debug:links-probe');
   const out = { sport, status: r.status, credits: r.headers.get('x-requests-last'), remaining: r.headers.get('x-requests-remaining') };
   if (!r.ok) return { ...out, body: (await r.text()).slice(0, 300) };
   const evs = await r.json();
+  if (event) return { ...out, event: evs };
   return { ...out, n: (evs || []).length, events: (evs || []).slice(0, 2) };
 }
 

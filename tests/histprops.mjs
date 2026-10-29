@@ -99,6 +99,8 @@ ok(r.games === 1 && row && row.game === 'Memphis Grizzlies @ Orlando Magic' && r
   "a run on the backtest's own cron: the day's games listed (1 credit), Grizzlies @ Magic's props read an hour before tip (50), one row");
 ok(asked.filter((u) => /events\/[0-9a-f]+\/odds/.test(u)).length === 3 && r.errors === 2 && JSON.parse(st.queue ? '[]' : '[]').length === 0,
   'three games a run (the two the probe did not record count as errors)');
+// Which ones, and why (2026-10-29): production's three failed reads said neither.
+ok(Array.isArray(r.errorLog) && r.errorLog.length === 2 && r.errorLog.every((e) => /^2026-01-15 .+ @ .+: HTTP 404$/.test(e)), `each failed read is named: ${JSON.stringify(r.errorLog)}`);
 const oddsUrl = asked.find((u) => u.includes(`events/${P.odds.data.id}/odds`));
 ok(/date=2026-01-15T18%3A10%3A00Z/.test(oddsUrl) && /markets=player_points,player_points_rebounds_assists,player_points_rebounds,player_points_assists,player_rebounds_assists/.test(oddsUrl)
   && /bookmakers=pinnacle,fanduel,draftkings,betonlineag,lowvig,novig,prophetx,prizepicks,underdog,betmgm/.test(oddsUrl),
