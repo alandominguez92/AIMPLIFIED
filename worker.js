@@ -11630,7 +11630,9 @@ const nbaBaseName = (s) => nflBaseName(String(s || '').normalize('NFD').replace(
 const NBA_NAME_ALIAS = { 'Ron Holland': 'Ronald Holland II',
   // PrizePicks' names on Jan 15 2026 that ESPN's box score spells its own way
   // (2026-10-29, the props backtest).
-  'Vincent Williams Jr': 'Vince Williams Jr.', 'Moe Wagner': 'Moritz Wagner' };
+  'Vincent Williams Jr': 'Vince Williams Jr.', 'Moe Wagner': 'Moritz Wagner',
+  // And on opening week 2025 (the comma reads as "Last, First" to normName).
+  'Nicolas Claxton': 'Nic Claxton', 'Carlton Carrington': 'Bub Carrington', 'Herb Jones': 'Herbert Jones', 'Xavier Tillman, Sr.': 'Xavier Tillman Sr.' };
 let NBA_ALIAS = null;   // built on first use: nflBaseName is defined further down
 const nbaName = (s) => {
   if (!NBA_ALIAS) NBA_ALIAS = new Map(Object.entries(NBA_NAME_ALIAS).map(([a, b]) => [nbaBaseName(a), nbaBaseName(b)]));
@@ -13406,6 +13408,7 @@ async function histProps(env, url) {
   if (probe) return histPropsProbe(env, key, job, probe);
   await ensureHistPropSchema(env.DB);
   const stateKey = `hist_props:${key}`;
+  if (url.searchParams.get('regrade') === '1') return { job: key, ...(await histPropsRegrade(env, key, job)) };
   if (url.searchParams.get('start') === '1' || url.searchParams.get('stop') === '1') {
     const st = await loadFeedCache(env.DB, stateKey);
     const state = histPropState(st.present && st.data);
@@ -13420,10 +13423,11 @@ async function histProps(env, url) {
     progress: `${state.day} of ${days.length} days`, games: state.games, creditsSpent: state.credits, cap: HIST_PROP_CAPS[key], remaining: state.remaining,
     errors: state.errors, unmatched: state.unmatched.slice(0, 30), ...histPropOpen(rows), report: histPropReport(rows.map((r) => JSON.parse(r.legs || '[]')).flat(), job) };
 }
-// The names no box score matched, most legs first: each one an alias to add.
+// The names no box score matched, most legs first: each one an alias to add,
+// or a player who sat (v: 2).
 function histPropOpen(rows) {
   const n = {};
-  for (const r of rows) for (const l of JSON.parse(r.legs || '[]')) if (l.a == null && !l.v) n[l.p] = (n[l.p] || 0) + 1;
+  for (const r of rows) for (const l of JSON.parse(r.legs || '[]')) if ((l.a == null && !l.v) || l.v === 2) n[l.p] = (n[l.p] || 0) + 1;
   return { openNames: Object.entries(n).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([p, k]) => `${p} (${k})`) };
 }
 const histPropState = (s) => ({ day: 0, queue: [], credits: 0, games: 0, done: false, active: false, errors: 0, unmatched: [], espn: {}, remaining: null, ...(s || {}) });
@@ -13475,12 +13479,15 @@ function histPropLegs(job, ev) {
   return legs;
 }
 // Each leg's count from the game's box score (pure): a player who did not
-// play is void; one the box does not name stays open.
+// play is void. So is one a box read in full does not name -- ESPN leaves an
+// inactive player out altogether, as De'Andre Hunter on Oct 22 2025 -- marked
+// v: 2, so a name the box spells its own way still shows (histPropOpen).
 function histPropGrade(legs, boxRows, statOf = nbaStat) {
   const byName = new Map((boxRows || []).map((b) => [nbaName(b.player), b]));
   for (const l of legs) {
+    delete l.a; delete l.v;
     const b = byName.get(nbaName(l.p));
-    if (!b) continue;
+    if (!b) { if (byName.size) l.v = 2; continue; }
     if (b.dnp) { l.v = 1; continue; }
     const v = statOf(b, l.mk);
     if (v == null) l.v = 1; else l.a = v;
@@ -13603,13 +13610,53 @@ async function histPropsRun(env, key, job, maxGames) {
       } catch (e) { /* stays open */ }
     } else if (state.unmatched.length < 60) state.unmatched.push(`${g.date} ${g.away} @ ${g.home}`);
     await db.prepare('INSERT OR REPLACE INTO histpropgames (job, event_id, date, commence, game, legs, graded) VALUES (?,?,?,?,?,?,?)')
-      .bind(key, g.id, g.date, g.commence, `${g.away} @ ${g.home}`, JSON.stringify(legs), legs.some((l) => l.a != null || l.v) ? 1 : 0).run();
+      .bind(key, g.id, g.date, g.commence, `${g.away} @ ${g.home}`, JSON.stringify(legs), legs.some((l) => l.a != null || l.v) ? HIST_GRADE_VER : 0).run();
     state.games++;
     if (state.credits >= HIST_PROP_CAPS[key]) { state.done = true; state.stopped = 'credit cap'; }
     if (state.remaining != null && state.remaining < HIST_PROP_FLOOR) { state.done = true; state.stopped = 'floor: the live boards keep the rest'; }
+    // Kept after each game (2026-10-29): a run cut off before its end had lost
+    // the games it read (one of the first seven, 50 credits) and read them again.
+    await saveFeedCache(db, stateKey, state);
   }
   await saveFeedCache(db, stateKey, state);
   return state;
+}
+// &regrade=1: the stored games with a leg still open or a player the box did
+// not name, read from their box scores again with today's aliases, a few a
+// call (free: ESPN only).
+const HIST_REGRADE_PER_CALL = 6;
+// Raised when an alias is added: each stored game is read again once.
+const HIST_GRADE_VER = 2;
+async function histPropsRegrade(env, key, job) {
+  const db = env.DB;
+  const rows = (await db.prepare('SELECT event_id, date, game, legs, graded FROM histpropgames WHERE job = ? AND (graded IS NULL OR graded < ?)').bind(key, HIST_GRADE_VER).all()).results || [];
+  const todo = rows.filter((r) => JSON.parse(r.legs || '[]').some((l) => (l.a == null && !l.v) || l.v === 2));
+  const nfl = job.sport === 'americanfootball_nfl';
+  const sbs = {};
+  let done = 0, matched = 0;
+  for (const r of todo.slice(0, HIST_REGRADE_PER_CALL)) {
+    const legs = JSON.parse(r.legs || '[]');
+    const [away, home] = String(r.game || '').split(' @ ');
+    const sb = nfl ? `nfl/scoreboard?xhr=1&year=${job.year}&seasontype=2&week=${histNflWeek(r.date, job.week1)}` : `nba/scoreboard?xhr=1&date=${r.date.replace(/-/g, '')}`;
+    if (!sbs[sb]) {
+      try { const sr = await fetch(`https://cdn.espn.com/core/${sb}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } }); const sj = sr.ok ? await sr.json() : null;
+        sbs[sb] = (sj && sj.content && sj.content.sbData && sj.content.sbData.events) || []; } catch (e) { sbs[sb] = []; }
+    }
+    const ev = sbs[sb].find((e) => { const t = (((e.competitions || [])[0] || {}).competitors || []).map((c) => (c.team && (c.team.displayName || c.team.name)) || '');
+      return t.some((x) => nbaMatch(x, home)) && t.some((x) => nbaMatch(x, away)); });
+    done++;
+    if (!ev) continue;
+    try {
+      const br = await fetch(`https://cdn.espn.com/core/${nfl ? 'nfl' : 'nba'}/boxscore?xhr=1&gameId=${ev.id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+      if (!br.ok) continue;
+      const bj = await br.json();
+      if (nfl) histPropGrade(legs, nflPropBoxRows(bj), (b, mk) => (b[mk] == null ? null : b[mk]));
+      else histPropGrade(legs, nbaBoxRows(bj, ev.id, r.date, 2));
+      await db.prepare('UPDATE histpropgames SET legs = ?, graded = ? WHERE job = ? AND event_id = ?').bind(JSON.stringify(legs), HIST_GRADE_VER, key, r.event_id).run();
+      matched++;
+    } catch (e) { /* next call */ }
+  }
+  return { regraded: matched, looked: done, left: Math.max(0, todo.length - done) };
 }
 // The backtest's own cron: each job set running, a few games a run.
 async function histPropsTick(env) {

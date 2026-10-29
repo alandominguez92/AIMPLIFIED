@@ -95,7 +95,7 @@ await tick();
 r = await get('/api/hist-props?job=nba');
 console.log(`  ${r.progress}, ${r.games} games, ${r.creditsSpent} credits, ${r.errors} errors`);
 const row = sq.prepare('SELECT * FROM histpropgames').get();
-ok(r.games === 1 && row && row.game === 'Memphis Grizzlies @ Orlando Magic' && row.graded === 1 && r.creditsSpent === 51,
+ok(r.games === 1 && row && row.game === 'Memphis Grizzlies @ Orlando Magic' && row.graded === 2 && r.creditsSpent === 51,
   "a run on the backtest's own cron: the day's games listed (1 credit), Grizzlies @ Magic's props read an hour before tip (50), one row");
 ok(asked.filter((u) => /events\/[0-9a-f]+\/odds/.test(u)).length === 3 && r.errors === 2 && JSON.parse(st.queue ? '[]' : '[]').length === 0,
   'three games a run (the two the probe did not record count as errors)');
@@ -177,7 +177,39 @@ ok(nl('Deebo Samuel Sr.', 'rec_yds').pp === 47.5 && nl('Deebo Samuel Sr.', 'rec_
   && nl('Deebo Samuel Sr.', 'rush_yds').a === 3, 'Deebo Samuel: 47.5 receiving yards and 4.5 catches on PrizePicks; 74 and 7, and 3 rushing yards');
 ok(nl('Tua Tagovailoa', 'rush_yds').a === 0 && nl("De'Von Achane", 'rush_yds').a === 120,
   "a quarterback who never ran is 0 rushing yards, not void; Achane's 120 against 81.5");
-ok(nlegs.every((l) => l.a != null || l.v) || nr.openNames.length < 4, `NFL legs graded (${nlegs.filter((l) => l.a != null).length} of ${nlegs.length}; open: ${nr.openNames.join(', ') || 'none'})`);
+ok(nlegs.every((l) => l.a != null || l.v) && nl('Nick Westbrook-Ikhine', 'rec').v === 2 && nl('John Bates', 'rec_yds').v === 2
+  && nr.openNames.some((n) => /^Nick Westbrook-Ikhine/.test(n)),
+  `every NFL leg graded or void: one a box read in full does not name sat out (v 2), and is listed to check (${nr.openNames.join(', ')})`);
+
+// ---- names, a run cut off, and a regrade (2026-10-29) ------------------------------------------
+console.log('\n-- names --');
+const nm = new Function([cst('NFL_NAME_SUFFIX'), wlift('normName'), cst('nflBaseName'), cst('nbaBaseName'), cst('NBA_NAME_ALIAS'), 'let NBA_ALIAS = null;', cst('nbaName')].join('\n') + '\nreturn nbaName;')();
+ok([['Nicolas Claxton', 'Nic Claxton'], ['Carlton Carrington', 'Bub Carrington'], ['Herb Jones', 'Herbert Jones'], ['Xavier Tillman, Sr.', 'Xavier Tillman Sr.'], ["De'Andre Hunter", "De'Andre Hunter"]]
+  .every(([a, b]) => nm(a) === nm(b)), "PrizePicks' Nicolas Claxton, Carlton Carrington, Herb Jones and Xavier Tillman, Sr. are ESPN's Nic, Bub, Herbert and Xavier Tillman Sr.");
+
+console.log('\n-- a run cut off after its first game --');
+remaining = 80000;
+sq.prepare("DELETE FROM histpropgames WHERE job = 'nba'").run();
+const s3 = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nba'").get().data);
+sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'hist_props:nba'").run(JSON.stringify({ ...s3, active: true, done: false, stopped: null, games: 0, credits: 0, errors: 0, day: days.indexOf('2026-01-15'), queue: [] }));
+const realFetch = globalThis.fetch;
+let oddsN = 0;
+globalThis.fetch = async (u) => { if (/basketball_nba\/events\/[0-9a-f]+\/odds/.test(String(u)) && ++oddsN === 2) throw new Error('the run is cut off'); return realFetch(u); };
+await tick();
+globalThis.fetch = realFetch;
+const cut = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nba'").get().data);
+ok(cut.games === 1 && cut.credits === 51 && sq.prepare("SELECT COUNT(*) AS n FROM histpropgames WHERE job = 'nba'").get().n === 1,
+  'the game read before the cut is kept, and its credits counted: the state is saved after each game');
+
+console.log('\n-- a regrade --');
+const r0 = sq.prepare("SELECT legs FROM histpropgames WHERE job = 'nba'").get();
+const broken = JSON.parse(r0.legs).map((l) => (l.p === 'Paolo Banchero' ? { ...l, a: undefined } : l));
+sq.prepare("UPDATE histpropgames SET legs = ?, graded = 1 WHERE job = 'nba'").run(JSON.stringify(broken));
+const rg = await get('/api/hist-props?job=nba&regrade=1');
+const after = JSON.parse(sq.prepare("SELECT legs, graded FROM histpropgames WHERE job = 'nba'").get().legs);
+ok(rg.regraded === 1 && after.find((l) => l.p === 'Paolo Banchero' && l.mk === 'pts').a === 26 && sq.prepare("SELECT graded FROM histpropgames WHERE job = 'nba'").get().graded === 2,
+  "a stored game with a leg open is read from its box score again: Banchero's 26 back");
+ok((await get('/api/hist-props?job=nba&regrade=1')).regraded === 0, 'and once regraded at this alias set, not again');
 const toml = fs.readFileSync(BOARD + '/wrangler.toml', 'utf8');
 ok(/crons = \["\*\/5 \* \* \* \*", "2-59\/5 \* \* \* \*", "1-59\/2 \* \* \* \*"\]/.test(toml) && /const HIST_CRON = '1-59\/2 \* \* \* \*';/.test(src), 'on its own cron trigger');
 
