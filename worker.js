@@ -13611,6 +13611,16 @@ async function histProps(env, url) {
     state.active = url.searchParams.get('start') === '1';
     await saveFeedCache(env.DB, stateKey, state);
   }
+  // One player's legs by date (2026-10-29).
+  const who = url.searchParams.get('player');
+  if (who) {
+    const all = (await env.DB.prepare('SELECT date, commence, game, legs FROM histpropgames WHERE job = ?').bind(key).all()).results || [];
+    if (who) {
+      const k = nbaName(who);
+      return { job: key, player: who, rows: all.map((r) => ({ ...r, legs: JSON.stringify(JSON.parse(r.legs || '[]').filter((l) => nbaName(l.p) === k)) }))
+        .filter((r) => r.legs !== '[]').sort((a, b) => (a.commence < b.commence ? -1 : 1)) };
+    }
+  }
   const st = await loadFeedCache(env.DB, stateKey);
   const state = histPropState(st.present && st.data);
   const rows = (await env.DB.prepare('SELECT legs FROM histpropgames WHERE job = ?').bind(key).all()).results || [];
