@@ -4231,7 +4231,7 @@ function passTdEntries(rows, week, seasonType) {
     if (Number(r.point) !== NFL_PASS_TD_LINE) continue;      // only the standard line
     const k = `${r.event_id}|${r.player}`;
     if (!byPlayer.has(k)) byPlayer.set(k, { event_id: r.event_id, player: r.player, commence: r.commence, home: r.home, away: r.away, books: {} });
-    byPlayer.get(k).books[r.book] = { over: r.over, under: r.under };
+    byPlayer.get(k).books[r.book] = { over: r.over, under: r.under, link: r.link_under || null };
   }
   const out = [];
   for (const g of byPlayer.values()) {
@@ -4269,6 +4269,9 @@ function passTdEntries(rows, week, seasonType) {
       // model. Positive means the price is cheaper than the rate history ran at.
       edge: Math.round((NFL_PASS_TD_BASE - amProb(price) * 100) * 10) / 10,
       price, book, fair_src: sf.src, sharp_n: sf.n, book_fairs: bookFairsJson(byBook),
+      // The under's link at its best book, and every book's under (2026-10-29).
+      link: g.books[book].link || null,
+      book_prices: bookPricesJson(bookPricesOf(['over', 'under'].map((sd) => Object.fromEntries(Object.entries(g.books).map(([bk, q]) => [bk, q[sd]]))), 1)),
     });
   }
   return out;
@@ -5637,6 +5640,11 @@ async function ensureNflSchema(db) {
     PRIMARY KEY (event_id, market, player, point, book, captured_at)
   )`).run();
   await addColumns(db, 'nfl_lines', [['season_type', "TEXT NOT NULL DEFAULT 'REG'"]]);
+  // Each side's bet-slip link (includeLinks, which costs nothing; 2026-10-29),
+  // beside its price: a team's in link_over as its price is in over. Kept only
+  // on the moneylines and the passing-TD lines, the two the bet buttons use --
+  // every prop row's would have been some 18,000 writes once.
+  await addColumns(db, 'nfl_lines', [['link_over', 'TEXT'], ['link_under', 'TEXT']]);
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_evt ON nfl_lines (event_id, market)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_lines_wk ON nfl_lines (season, week)').run();
   // The NFL board asks twice per load for lines by season type and kickoff
@@ -5887,7 +5895,7 @@ async function ingestNflProps(env, opts, reqUrl) {
     for (let i = 0; i < ids.length; i += 40) {
       const chunk = ids.slice(i, i + 40);
       const q = await env.DB.prepare(
-        'SELECT event_id, market, player, point, book, over, under, captured_at FROM nfl_lines'
+        'SELECT event_id, market, player, point, book, over, under, link_over, link_under, captured_at FROM nfl_lines'
         + ' WHERE event_id IN (' + chunk.map(() => '?').join(',') + ')'
         + ' AND market IN (' + propMkts.map(() => '?').join(',') + ')'
       ).bind(...chunk, ...propMkts).all();
@@ -5898,11 +5906,12 @@ async function ingestNflProps(env, opts, reqUrl) {
       }
     }
   } catch (e) { out.errors.push('readCurrent: ' + String((e && e.message) || e)); }
-  const same = (k, ov, un) => {
+  // As the game lines' (2026-10-29): a link the last row lacks is written once.
+  const same = (k, ov, un, lo, lu) => {
     const p = cur.get(k);
     if (!p) return false;
     const eq = (a, c) => (a == null && c == null) || Number(a) === Number(c);
-    return eq(p.over, ov) && eq(p.under, un);
+    return eq(p.over, ov) && eq(p.under, un) && (!lo || p.link_over === lo) && (!lu || p.link_under === lu);
   };
 
   const stamp = new Date().toISOString();
@@ -5918,7 +5927,7 @@ async function ingestNflProps(env, opts, reqUrl) {
       const r = await fetch(
         `https://api.the-odds-api.com/v4/sports/${sp.key}/events/${ev.id}/odds`
         + `?apiKey=${key}&bookmakers=${NFL_PROP_BOOKS.join(',')}&markets=${markets}`
-        + '&oddsFormat=american&dateFormat=iso',
+        + '&oddsFormat=american&dateFormat=iso&includeLinks=true',
         { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, 'nfl:props');
       const used = parseInt(r.headers.get('x-requests-last') || '', 10);
@@ -5936,26 +5945,28 @@ async function ingestNflProps(env, opts, reqUrl) {
         // is the name. Pairing the two sides per (player, point) is what makes a
         // row de-viggable later.
         const byPlayer = new Map();
+        // Links on the passing-TD lines only (ensureNflSchema).
+        const linked = mk.key === 'player_pass_tds';
         for (const o of (mk.outcomes || [])) {
           const who = o.description;
           if (!who) continue;
           const k = who + '|' + (o.point == null ? '' : o.point);
-          const cell = byPlayer.get(k) || { player: who, point: o.point == null ? null : o.point, over: null, under: null };
-          if (o.name === 'Over') cell.over = o.price;
-          else if (o.name === 'Under') cell.under = o.price;
+          const cell = byPlayer.get(k) || { player: who, point: o.point == null ? null : o.point, over: null, under: null, lo: null, lu: null };
+          if (o.name === 'Over') { cell.over = o.price; if (linked) cell.lo = o.link || null; }
+          else if (o.name === 'Under') { cell.under = o.price; if (linked) cell.lu = o.link || null; }
           byPlayer.set(k, cell);
         }
         for (const c of byPlayer.values()) {
           priced = true;
           out.markets[mk.key] = (out.markets[mk.key] || 0) + 1;
           const k = lineKey(ev.id, mk.key, c.player, c.point, bm.key);
-          if (same(k, c.over, c.under)) { out.unchanged++; continue; }
+          if (same(k, c.over, c.under, c.lo, c.lu)) { out.unchanged++; continue; }
           stmts.push(env.DB.prepare(
             `INSERT OR REPLACE INTO nfl_lines
-             (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+             (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at, link_over, link_under)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
           ).bind(2026, wk, sp.seasonType, ev.id, ev.commence_time || null, ev.home_team || null, ev.away_team || null,
-            mk.key, null, c.player, c.point, bm.key, c.over, c.under, stamp));
+            mk.key, null, c.player, c.point, bm.key, c.over, c.under, stamp, c.lo, c.lu));
         }
       }
     }
@@ -5969,6 +5980,15 @@ async function ingestNflProps(env, opts, reqUrl) {
     }
   }
   out.wrote = stmts.length;
+  // The line rows go in before the passing-TD log below reads them back
+  // (2026-10-29). Written last, as they were, each capture logged the prices
+  // of the capture before it.
+  if (!dry) {
+    for (let i = 0; i < stmts.length; i += 50) {
+      try { await env.DB.batch(stmts.slice(i, i + 50)); }
+      catch (e) { out.errors.push('write: ' + String((e && e.message) || e)); }
+    }
+  }
 
   // Freeze the projections for the same slate. Calling the handler and reading
   // its body keeps one definition of the model rather than a second copy that
@@ -6010,7 +6030,7 @@ async function ingestNflProps(env, opts, reqUrl) {
     // hide the 1.5), so ties keep the order they had when this read was a
     // scan: rowid.
     const ptdRows = (await env.DB.prepare(
-      `SELECT event_id, commence, home, away, market, player, point, book, over, under, week, season_type
+      `SELECT event_id, commence, home, away, market, player, point, book, over, under, link_under, week, season_type
          FROM nfl_lines WHERE market = 'player_pass_tds' AND commence > ?
         ORDER BY captured_at ASC, rowid ASC`
     ).bind(new Date().toISOString()).all()).results || [];
@@ -6048,11 +6068,9 @@ async function ingestNflProps(env, opts, reqUrl) {
 
 
   if (dry) { out.dryRun = true; return out; }
-  for (const batch of [stmts, projStmts]) {
-    for (let i = 0; i < batch.length; i += 50) {
-      try { await env.DB.batch(batch.slice(i, i + 50)); }
-      catch (e) { out.errors.push('write: ' + String((e && e.message) || e)); }
-    }
+  for (let i = 0; i < projStmts.length; i += 50) {
+    try { await env.DB.batch(projStmts.slice(i, i + 50)); }
+    catch (e) { out.errors.push('write: ' + String((e && e.message) || e)); }
   }
   return out;
 }
@@ -6070,7 +6088,7 @@ async function ingestNflLines(env, opts) {
   try {
     const r = await fetch(
       `https://api.the-odds-api.com/v4/sports/${sp.key}/odds?apiKey=${key}&bookmakers=${NFL_BOOKS.join(',')}&markets=${NFL_GAME_MARKETS}`
-      + '&oddsFormat=american&dateFormat=iso',
+      + '&oddsFormat=american&dateFormat=iso&includeLinks=true',
       { headers: { accept: 'application/json' } });
     // Awaited, not deferred: ingestNflLines has no ctx to hand a background
     // promise to, and `ctx` here would be an unbound reference inside a try.
@@ -6102,7 +6120,7 @@ async function ingestNflLines(env, opts) {
         const chunk = ids.slice(i, i + 40);
         const marks = chunk.map(() => '?').join(',');
         const q = await env.DB.prepare(
-          'SELECT event_id, market, player, point, book, over, under, captured_at'
+          'SELECT event_id, market, player, point, book, over, under, link_over, captured_at'
           + ' FROM nfl_lines WHERE event_id IN (' + marks + ')'
           + ' AND market IN (' + gameMkts.map(() => '?').join(',') + ')'
         ).bind(...chunk, ...gameMkts).all();
@@ -6113,11 +6131,13 @@ async function ingestNflLines(env, opts) {
         }
       }
     } catch (e) { out.errors.push('readCurrent: ' + String((e && e.message) || e)); }
-    const same = (k, ov, un) => {
+    // A link the last row lacks is written once too (2026-10-29), so a bet
+    // button does not wait for its price to move.
+    const same = (k, ov, un, lo) => {
       const p = cur.get(k);
       if (!p) return false;
       const eq = (a, c) => (a == null && c == null) || Number(a) === Number(c);
-      return eq(p.over, ov) && eq(p.under, un);
+      return eq(p.over, ov) && eq(p.under, un) && (!lo || p.link_over === lo);
     };
     out.unchanged = 0;
     const horizon = Date.now() + NFL_HORIZON_DAYS * 864e5;
@@ -6154,14 +6174,15 @@ async function ingestNflLines(env, opts) {
             // so the column means "which selection" for every market.
             for (const o of oc) {
               const kT = lineKey(e.id, mk.key, o.name || null, o.point != null ? o.point : null, bm.key);
-              if (same(kT, o.price != null ? o.price : null, null)) { out.unchanged++; continue; }
+              const lk = mk.key === 'h2h' ? o.link || null : null;
+              if (same(kT, o.price != null ? o.price : null, null, lk)) { out.unchanged++; continue; }
               stmts.push(env.DB.prepare(
                 `INSERT OR REPLACE INTO nfl_lines
-                 (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+                 (season, week, season_type, event_id, commence, home, away, market, player_id, player, point, book, over, under, captured_at, link_over)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
               ).bind(2026, wk, sp.seasonType, e.id, e.commence_time || null, e.home_team || null, e.away_team || null,
                 mk.key, null, o.name || null, o.point != null ? o.point : null,
-                bm.key, o.price != null ? o.price : null, null, now));
+                bm.key, o.price != null ? o.price : null, null, now, lk));
             }
           }
         }
@@ -14654,6 +14675,9 @@ async function nflIngest(env, url) {
       + '   AND IFNULL(a.point,-9999) = IFNULL(b.point,-9999)'
       + '   AND IFNULL(a.over,-9999) = IFNULL(b.over,-9999)'
       + '   AND IFNULL(a.under,-9999) = IFNULL(b.under,-9999)'
+      // A row that only added its links (2026-10-29) is not a repeat.
+      + "   AND IFNULL(a.link_over,'') = IFNULL(b.link_over,'')"
+      + "   AND IFNULL(a.link_under,'') = IFNULL(b.link_under,'')"
       + '   AND b.captured_at < a.captured_at)'
     ).run();
     const after = await env.DB.prepare('SELECT COUNT(*) AS n FROM nfl_lines').first();
@@ -15209,7 +15233,7 @@ async function nflBoardData(env, url) {
     out.seasonType = type;
 
     const rows = (await env.DB.prepare(
-      `SELECT event_id, commence, home, away, market, player, point, book, over, under, captured_at, week
+      `SELECT event_id, commence, home, away, market, player, point, book, over, under, link_over, captured_at, week
          FROM nfl_lines WHERE season_type = ? AND commence > ?
         ORDER BY captured_at ASC`
     ).bind(type, new Date(Date.now() - 6 * 3600e3).toISOString()).all()).results || [];
@@ -15229,9 +15253,10 @@ async function nflBoardData(env, url) {
     for (const r of latest.values()) {
       const g = games.get(r.event_id) || games.set(r.event_id, {
         id: r.event_id, home: r.home, away: r.away, commence: r.commence,
-        week: r.week, h2h: {}, spreads: {}, totals: {},
+        week: r.week, h2h: {}, spreads: {}, totals: {}, links: {},
       }).get(r.event_id);
       if (r.market === 'h2h') (g.h2h[r.player] = g.h2h[r.player] || {})[r.book] = r.over;
+      if (r.market === 'h2h' && r.link_over) (g.links[r.player] = g.links[r.player] || {})[r.book] = r.link_over;
       else if (r.market === 'spreads') (g.spreads[r.player] = g.spreads[r.player] || {})[r.book] = { price: r.over, point: r.point };
       else if (r.market === 'totals') g.totals[r.book] = { point: r.point, over: r.over, under: r.under };
     }
@@ -15267,7 +15292,7 @@ async function nflBoardData(env, url) {
           if (typeof p !== 'number') continue;
           if (bp == null || amProb(p) < amProb(bp)) { bp = p; bb = bk; }
         }
-        return { price: bp, book: bb };
+        return { price: bp, book: bb, link: (bb && (g.links[team] || {})[bb]) || null };
       };
       const bestA = best(a), bestB = best(b);
 
@@ -15314,6 +15339,9 @@ async function nflBoardData(env, url) {
         home_fair: fair != null ? Math.round((1 - fair) * 1000) / 10 : null,
         away_price: bestA.price, away_book: bestA.book,
         home_price: bestB.price, home_book: bestB.book,
+        // Each side's best price's link, and every book's price with its hold (2026-10-29).
+        away_link: bestA.link, home_link: bestB.link,
+        away_books: bookPricesOf([g.h2h[a] || {}, g.h2h[b] || {}], 0), home_books: bookPricesOf([g.h2h[a] || {}, g.h2h[b] || {}], 1),
         away_spread: sA, home_spread: sB, total,
         away_implied: impl(sA), home_implied: impl(sB),
         pickTeam, pickPrice, pickBook,
@@ -15356,8 +15384,11 @@ async function nflBoardData(env, url) {
           price: g.pickPrice, book: g.pickBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
           // byBookA is each book's chance of the away side (team a).
           book_fairs: bookFairsJson(Object.fromEntries(Object.entries(g.byBookA || {}).map(([bk, p]) => [bk, g.pickTeam === g.away ? p : 1 - p]))),
+          link: (g.pickTeam === g.home ? g.home_link : g.away_link) || null,
+          book_prices: bookPricesJson(g.pickTeam === g.home ? g.home_books : g.away_books),
           // Both teams, for a row whose side has lost the lead (logGamePicks).
-          quotes: { home: { price: g.home_price, fair: g.home_fair }, away: { price: g.away_price, fair: g.away_fair } },
+          quotes: { home: { price: g.home_price, fair: g.home_fair, link: g.home_link, book_prices: bookPricesJson(g.home_books) },
+            away: { price: g.away_price, fair: g.away_fair, link: g.away_link, book_prices: bookPricesJson(g.away_books) } },
         })));
       }
     } catch (e) { /* logging never breaks the board */ }

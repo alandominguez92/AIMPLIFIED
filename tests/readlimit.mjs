@@ -265,7 +265,8 @@ ok(!onNfl.some((e) => /COUNT\(\*\)/.test(e.sql) || /GROUP BY week/.test(e.sql)),
   `no count of nfl_lines, whole or by week, rides the capture (${count('nfl_lines')} rows): ${onNfl.filter((e) => /COUNT\(\*\)|GROUP BY/.test(e.sql)).map(short).join(' ;; ') || 'none'}`);
 const ptd = cron.filter((e) => /market = 'player_pass_tds'/.test(e.sql));
 ok(ptd.length === 1 && ptd[0].plan.some((d) => /nfl_lines_ptd/.test(d)), 'the passing-TD read goes through nfl_lines_ptd: ' + ptd.map((e) => e.plan.join(' | ')).join(' ;; '));
-const cur = cron.filter((e) => /SELECT event_id, market, player, point, book, over, under, captured_at FROM nfl_lines WHERE event_id IN/.test(e.sql));
+// The links ride with the prices since 2026-10-29 (tests/nfllinks.mjs).
+const cur = cron.filter((e) => /SELECT event_id, market, player, point, book, over, under,( link_over,)?( link_under,)? captured_at FROM nfl_lines WHERE event_id IN/.test(e.sql));
 ok(cur.length >= 2 && cur.every((e) => /AND market IN/.test(e.sql) && e.plan.some((d) => /market=\?/.test(d))),
   `both captures' current-price reads ask for their own markets only (${cur.length}): ${cur.map((e) => e.plan.join(' | ')).join(' ;; ')}`);
 const reg = cron.filter((e) => /FROM nfl_lines WHERE season_type='REG'/.test(e.sql));
@@ -326,14 +327,14 @@ const same = (label, re, oldSql, oldArgs, opts = {}) => {
 };
 const GAME = ['h2h', 'spreads', 'totals'], PROP = ['player_reception_yds', 'player_rush_yds', 'player_pass_tds', 'player_pass_yds'];
 same('passing TDs', /market = 'player_pass_tds' AND commence > \?/,
-  `SELECT event_id, commence, home, away, market, player, point, book, over, under, week, season_type
+  `SELECT event_id, commence, home, away, market, player, point, book, over, under, link_under, week, season_type
      FROM nfl_lines WHERE market = 'player_pass_tds' AND commence > ? ORDER BY captured_at ASC`);
 const evIn = (e) => e.args.filter((x) => /^up/.test(String(x)));
-const curOld = (ids) => `SELECT event_id, market, player, point, book, over, under, captured_at FROM nfl_lines WHERE event_id IN (${ids.map(() => '?').join(',')})`;
+const curOld = (ids, links = '') => `SELECT event_id, market, player, point, book, over, under, ${links}captured_at FROM nfl_lines WHERE event_id IN (${ids.map(() => '?').join(',')})`;
 const gl = cron.find((e) => /FROM nfl_lines WHERE event_id IN .* AND market IN \(\?,\?,\?\)$/.test(e.sql));
-same('game-line capture: current prices', /FROM nfl_lines WHERE event_id IN .* AND market IN \(\?,\?,\?\)$/, curOld(gl ? evIn(gl) : []), gl ? evIn(gl) : [], { filter: (r) => GAME.includes(r.market), unordered: true });
+same('game-line capture: current prices', /FROM nfl_lines WHERE event_id IN .* AND market IN \(\?,\?,\?\)$/, curOld(gl ? evIn(gl) : [], 'link_over, '), gl ? evIn(gl) : [], { filter: (r) => GAME.includes(r.market), unordered: true });
 const pr = cron.find((e) => /FROM nfl_lines WHERE event_id IN .* AND market IN \(\?,\?,\?,\?\)$/.test(e.sql));
-same('props capture: current prices', /FROM nfl_lines WHERE event_id IN .* AND market IN \(\?,\?,\?,\?\)$/, curOld(pr ? evIn(pr) : []), pr ? evIn(pr) : [], { filter: (r) => PROP.includes(r.market), unordered: true });
+same('props capture: current prices', /FROM nfl_lines WHERE event_id IN .* AND market IN \(\?,\?,\?,\?\)$/, curOld(pr ? evIn(pr) : [], 'link_over, link_under, '), pr ? evIn(pr) : [], { filter: (r) => PROP.includes(r.market), unordered: true });
 const exists = ran(/FROM nfl_lines WHERE season_type='REG'/);
 ok(!!exists && !!ref.prepare(exists.sql).get(...exists.args) === (runOld("SELECT COUNT(*) AS n FROM nfl_lines WHERE season_type='REG' AND commence > ?", exists.args)[0].n > 0),
   'the season-type check answers as the count did');
