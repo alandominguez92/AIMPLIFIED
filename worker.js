@@ -9652,9 +9652,11 @@ async function picksBoard(env) {
     } catch (e) { /* the list stands without it */ }
     // The NBA player legs' last games, and the game lines' price history (2026-10-29).
     const onCard = [...new Map([...list, ...pool].map((l) => [l.legId, l])).values()];
-    let trends = new Map();
+    const trends = new Map();
     const hists = new Map();
-    try { trends = await nbaTrends(env.DB, onCard); } catch (e) { /* the list stands without them */ }
+    for (const f of [nbaTrends, nhlTrends, ptdTrends]) {
+      try { for (const [k, v] of await f(env.DB, onCard)) trends.set(k, v); } catch (e) { /* the list stands without them */ }
+    }
     const withHk = onCard.filter((l) => l.hk);
     (await priceHists(env.DB, withHk.map((l) => l.hk))).forEach((h, i) => { if (h.length > 1) hists.set(withHk[i].legId, h); });
     const shown = (l, i) => ({
@@ -11844,10 +11846,70 @@ async function nbaTrends(db, legs) {
     WHERE player_id = ? AND season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date DESC LIMIT ?`).bind(id, NBA_SEASON_FROM, TREND_N)));
   const byId = new Map(ids.map((id, i) => [id, ((res[i] && res[i].results) || []).slice().reverse()]));
   for (const l of want) {
-    const vals = (byId.get(String(l.spec.playerId)) || []).map((b) => nbaStat(b, l.spec.market)).filter((v) => v != null);
-    if (!vals.length) continue;
-    const line = l.spec.pp.line, under = l.spec.side !== 'Over';
-    out.set(l.legId, { vals, line, side: under ? 'under' : 'over', hit: vals.filter((v) => (under ? v < line : v > line)).length });
+    const t = trendOf((byId.get(String(l.spec.playerId)) || []).map((b) => nbaStat(b, l.spec.market)), l.spec.pp.line, l.spec.side);
+    if (t) out.set(l.legId, t);
+  }
+  return out;
+}
+// A leg's games against its line: values oldest first, and how many went the
+// leg's way.
+function trendOf(vals, line, side) {
+  const v = (vals || []).filter((x) => typeof x === 'number');
+  if (!v.length || typeof line !== 'number') return null;
+  const under = side !== 'Over' && side !== 'over';
+  return { vals: v, line, side: under ? 'under' : 'over', hit: v.filter((x) => (under ? x < line : x > line)).length };
+}
+// The same for an NHL player leg (2026-10-29), from the NHL's own game log for
+// the season (api-web.nhle.com, free): goals, assists, points and shots each
+// game, kept six hours a player in feed_cache.
+const NHL_LOG_TTL_MS = 6 * 3600e3;
+const NHL_LOG_STAT = { pts: 'points', ast: 'assists', goals: 'goals', sog: 'shots' };
+async function nhlGameLog(db, id) {
+  const key = `nhl_log:${id}`;
+  const hit = await loadFeedCache(db, key);
+  if (hit.present && hit.ageMs < NHL_LOG_TTL_MS) return hit.data;
+  try {
+    const r = await fetch(`https://api-web.nhle.com/v1/player/${id}/game-log/now`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return hit.data;
+    const j = await r.json();
+    // Newest first, as the NHL sends it.
+    const games = (j.gameLog || []).map((g) => ({ d: g.gameDate, goals: g.goals, assists: g.assists, points: g.points, shots: g.shots }));
+    await saveFeedCache(db, key, games);
+    return games;
+  } catch (e) { return hit.data; }
+}
+async function nhlTrends(db, legs) {
+  const want = legs.filter((l) => l.spec && l.spec.sport === 'nhl' && /^\d+$/.test(String(l.spec.playerId || '')) && NHL_LOG_STAT[l.spec.market] && l.spec.pp && l.spec.pp.line != null);
+  const out = new Map();
+  const ids = [...new Set(want.map((l) => String(l.spec.playerId)))];
+  const logs = new Map(await Promise.all(ids.map(async (id) => [id, await nhlGameLog(db, id)])));
+  for (const l of want) {
+    const g = logs.get(String(l.spec.playerId)) || [];
+    const t = trendOf(g.slice(0, TREND_N).reverse().map((x) => x[NHL_LOG_STAT[l.spec.market]]), l.spec.pp.line, l.spec.side);
+    if (t) out.set(l.legId, t);
+  }
+  return out;
+}
+// And a passing-TD under's (2026-10-29): the quarterback's touchdowns in each
+// graded game of the log, which its grader keeps in home_score -- no read
+// beyond the log itself.
+async function ptdTrends(db, legs) {
+  const want = legs.filter((l) => l.kind === 'nfl_ptd' && l.spec && l.spec.player);
+  const out = new Map();
+  if (!want.length) return out;
+  const rows = (await db.prepare("SELECT date, game_id, home_score FROM gmpicks WHERE sport = 'nflptd' AND result IN ('win', 'loss', 'push') AND home_score IS NOT NULL").all()).results || [];
+  // One a game: before Sep 24 a game was sometimes logged under two dates.
+  const games = new Map();
+  for (const r of rows) if (!games.has(r.game_id) || r.date > games.get(r.game_id).date) games.set(r.game_id, r);
+  const byQb = new Map();
+  for (const r of [...games.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))) {
+    const k = nflBaseName(String(r.game_id).split('|')[1] || '');
+    if (!byQb.has(k)) byQb.set(k, []);
+    byQb.get(k).push(r.home_score);
+  }
+  for (const l of want) {
+    const t = trendOf((byQb.get(nflBaseName(l.spec.player)) || []).slice(-TREND_N), (l.spec.pp && l.spec.pp.line) || NFL_PASS_TD_LINE, 'under');
+    if (t) out.set(l.legId, t);
   }
   return out;
 }
@@ -13611,15 +13673,16 @@ async function histProps(env, url) {
     state.active = url.searchParams.get('start') === '1';
     await saveFeedCache(env.DB, stateKey, state);
   }
-  // One player's legs by date (2026-10-29).
-  const who = url.searchParams.get('player');
-  if (who) {
+  // Form against the line (histPropForm), and one player's legs by date.
+  const form = url.searchParams.get('form'), who = url.searchParams.get('player');
+  if (form === '1' || who) {
     const all = (await env.DB.prepare('SELECT date, commence, game, legs FROM histpropgames WHERE job = ?').bind(key).all()).results || [];
     if (who) {
       const k = nbaName(who);
       return { job: key, player: who, rows: all.map((r) => ({ ...r, legs: JSON.stringify(JSON.parse(r.legs || '[]').filter((l) => nbaName(l.p) === k)) }))
         .filter((r) => r.legs !== '[]').sort((a, b) => (a.commence < b.commence ? -1 : 1)) };
     }
+    return { job: key, label: job.label, form: histPropForm(all) };
   }
   const st = await loadFeedCache(env.DB, stateKey);
   const state = histPropState(st.present && st.data);
@@ -13752,6 +13815,42 @@ function histPropReport(legs, job) {
   const markets = [...new Set(Object.values(job.markets))];
   return { graded: graded.length, voided: legs.filter((l) => l.v).length, open: legs.filter((l) => l.a == null && !l.v).length,
     all: one(graded), byMarket: Object.fromEntries(markets.map((m) => [m, one(graded.filter((l) => l.mk === m))])) };
+}
+// ---- Form against the line (2026-10-29, the owner's call) -------------------
+// "Players who keep reaching their number." For each graded leg: how often the
+// player cleared that night's PrizePicks line in his previous games with a
+// line (the last ten, at least five), and whether legs in each band of that
+// rate went over as often as the sharp books said at that line. Hot legs that
+// beat their sharp chance would be form the market misses; legs that land
+// where it said were priced already. lineVsAvg is the line against his recent
+// average: how far PrizePicks had already moved it.
+const FORM_N = 10, FORM_MIN = 5;
+const FORM_BANDS = [[0.8, 1.01, '8+ of 10'], [0.6, 0.8, '6-7 of 10'], [0.4, 0.6, '4-5 of 10'], [0.2, 0.4, '2-3 of 10'], [0, 0.2, '0-1 of 10']];
+function histPropForm(rows) {
+  const legs = [];
+  for (const r of rows) for (const l of JSON.parse(r.legs || '[]')) if (l.a != null && !l.v) legs.push({ ...l, t: r.commence || r.date });
+  legs.sort((x, y) => (x.t < y.t ? -1 : x.t > y.t ? 1 : 0));
+  const past = new Map(), seen = [];
+  for (const l of legs) {
+    const k = `${nbaName(l.p)}|${l.mk}`;
+    const prior = (past.get(k) || []).slice(-FORM_N);
+    if (prior.length >= FORM_MIN && l.a !== l.pp) {
+      const r = histPropRead(l);
+      seen.push({ mk: l.mk, over: prior.filter((v) => v > l.pp).length / prior.length, won: l.a > l.pp,
+        sharpOver: r.under == null ? null : round1(100 - r.under), gap: l.pp - prior.reduce((a, v) => a + v, 0) / prior.length });
+    }
+    if (!past.has(k)) past.set(k, []);
+    past.get(k).push(l.a);
+  }
+  const rate = (xs) => (xs.length ? round1(xs.filter((x) => x.won).length / xs.length * 100) : null);
+  const table = (ls) => FORM_BANDS.map(([lo, hi, band]) => {
+    const b = ls.filter((x) => x.over >= lo && x.over < hi), pr = b.filter((x) => x.sharpOver != null);
+    const said = pr.length ? round1(pr.reduce((a, x) => a + x.sharpOver, 0) / pr.length) : null, went = rate(pr);
+    return { band, n: b.length, overRate: rate(b), priced: pr.length, pricedOverRate: went, sharpSaid: said,
+      beat: went != null && said != null ? round1(went - said) : null, lineVsAvg: b.length ? round1(b.reduce((a, x) => a + x.gap, 0) / b.length) : null };
+  });
+  const markets = [...new Set(seen.map((x) => x.mk))];
+  return { legs: seen.length, minGames: FORM_MIN, all: table(seen), byMarket: Object.fromEntries(markets.map((m) => [m, table(seen.filter((x) => x.mk === m))])) };
 }
 // One run: the next games, each read an hour before its start, its legs
 // graded from ESPN's box score (free), one row each.

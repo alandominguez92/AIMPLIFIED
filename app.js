@@ -6009,6 +6009,8 @@
     if ((x.sport || s.sport) === 'nhl') notes.push('check the goalie');
     const mv = pickMoved(x);
     if (mv) notes.push(mv.text);
+    const tt = trendTag(x.trend);
+    if (tt) notes.push(tt.text);
     // By the leg's own Pacific day (2026-10-21): the list looks a day ahead,
     // so its first leg is often tomorrow's -- Inter at noon read "Today's".
     const legDay = ptDayOf(Date.parse(x.commence));
@@ -6184,6 +6186,8 @@
       // model's own beside the chance shown, which blends the two (2026-10-27).
       if (typeof x.sharp === 'number') tags.push(sharpTag(x.sharp, null, true));
       if (typeof x.modelP === 'number' && x.modelP !== x.p) tags.push(`<span class="tc-wait" title="The chance shown is a quarter the model's and three quarters the sharp books'">model ${esc(pct0(x.modelP))}</span>`);
+      const tt = trendTag(x.trend);
+      if (tt) tags.push(`<span class="${tt.good ? 'tc-gap' : 'tc-wait'}" title="His last games against this line. A run is context: the chance shown is the price's">${esc(tt.text)}</span>`);
       if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
       if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
       const mv = pickMoved(x);
@@ -6533,6 +6537,15 @@
   // A player leg's last games against its line (2026-10-29): a bar a game,
   // oldest first, the line across them, the games that went the pick's way in
   // its colour. This season's games only, so early on there are fewer than ten.
+  // A leg's run against its line, named when it is one (2026-10-29): five or
+  // more games, seven in ten its way -- or three in ten or fewer, against it.
+  function trendTag(t) {
+    if (!t || !Array.isArray(t.vals) || t.vals.length < 5) return null;
+    const r = t.hit / t.vals.length;
+    if (r >= 0.7) return { good: true, text: `${t.side} in ${t.hit} of last ${t.vals.length}` };
+    if (r <= 0.3) return { good: false, text: `${t.side} in only ${t.hit} of last ${t.vals.length}` };
+    return null;
+  }
   function trendBarsHtml(t) {
     if (!t || !Array.isArray(t.vals) || !t.vals.length || typeof t.line !== 'number') return '';
     const under = t.side !== 'over';

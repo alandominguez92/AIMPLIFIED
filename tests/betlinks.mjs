@@ -161,7 +161,7 @@ const wlift = (name) => { let at = src.indexOf(`function ${name}(`); if (at < 0)
 const cst = (name) => { const at = src.indexOf(`const ${name} =`); if (at < 0) throw new Error(`worker.js has no ${name}`); return src.slice(at, src.indexOf(';\n', at) + 1); };
 let T;
 try {
-  T = new Function('db', ['NBA_BOX_STATS', 'NBA_COMBOS', 'NBA_SEASON_FROM', 'TREND_N', 'nbaPropMarket'].map(cst).concat(['nbaStat', 'nbaBoxRows', 'nbaTrends'].map(wlift)).join('\n')
+  T = new Function('db', ['NBA_BOX_STATS', 'NBA_COMBOS', 'NBA_SEASON_FROM', 'TREND_N', 'nbaPropMarket'].map(cst).concat(['nbaStat', 'nbaBoxRows', 'trendOf', 'nbaTrends'].map(wlift)).join('\n')
     + '\nreturn { nbaTrends, nbaBoxRows };')();
 } catch (e) { console.log(`  FAIL  the trend lifts out of worker.js (${e.message})`); process.exit(1); }
 ok(all("SELECT name FROM sqlite_master WHERE name = 'nba_box_player'").length === 1, "nba_box keeps a player's own games in an index");
