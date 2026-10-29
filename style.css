@@ -2976,6 +2976,29 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tr-bars { position:relative; display:flex; align-items:flex-end; gap:3px; width:max-content; height:32px; margin-bottom:3px; }
 .tr-bars i { flex:none; width:14px; border-radius:2px 2px 0 0; background:var(--textFaint); opacity:.45; }
 .tr-bars i.h { background:var(--positive); opacity:1; }
+/* Every book's price of a side, folded (2026-10-29). */
+.pk-books { display:block; max-width:420px; margin-top:8px; font-size:12px; }
+.pk-books summary { cursor:pointer; min-height:32px; display:flex; align-items:center; font-family:var(--sans); color:var(--model); }
+.pk-books ul { list-style:none; margin:2px 0 0; padding:0; }
+.pk-books li { display:grid; grid-template-columns:minmax(64px,1fr) 52px 78px 64px; align-items:center; gap:6px; min-height:36px;
+  border-top:1px solid var(--border); font-family:var(--mono); color:var(--text); }
+.pk-books li b { font-weight:600; }
+.pk-books li.best b { color:var(--positive); }
+.pk-books li.sh { color:var(--textDim); }
+.pk-books li i { font-style:normal; font-family:var(--sans); font-size:11px; color:var(--model); }
+.pk-books .hd { color:var(--textFaint); }
+.bet-at.sm { min-height:30px; margin-top:0; padding:0 8px; font-size:12px; justify-content:center; }
+/* The price checker, at the foot of the edge bets. */
+.pk-check { margin-top:14px; }
+.pk-check-f { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.pk-check-f select, .pk-check-f input { min-height:44px; padding:6px 8px; font:inherit; font-size:16px; color:var(--text); background:var(--card);
+  border:1px solid var(--border); border-radius:8px; }
+.pk-check-f select { flex:1 1 220px; min-width:0; max-width:100%; }
+.pk-check-f input { flex:0 0 96px; width:96px; }
+.pk-check-out { display:block; margin-top:8px; font-family:var(--mono); font-size:12px; line-height:1.45; color:var(--textDim); }
+.pk-check-out b { color:var(--text); font-weight:600; }
+.pk-check-out b.u { color:var(--positive); }
+.pk-check-out b.o { color:var(--danger); }
 /* The line in the bar tick's ink, with a card-coloured edge so it reads across the teal. */
 .tr-line { position:absolute; left:-3px; right:-3px; height:0; border-top:2px solid var(--text); box-shadow:0 1px 0 var(--card), 0 -1px 0 var(--card); }
 /* NBA blocks More (2026-10-27): its own section under the unders. */

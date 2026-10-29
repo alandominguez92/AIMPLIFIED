@@ -48,7 +48,7 @@ const lift = (name, from) => {
   }
   throw new Error('could not lift ' + name);
 };
-const names = ['amProb', 'shinDevig', 'round1', 'median', 'sharpFair', 'bookFairsJson', 'h2hGames', 'h2hEntries',
+const names = ['amProb', 'shinDevig', 'round1', 'median', 'sharpFair', 'bookFairsJson', 'bookPricesOf', 'bookPricesJson', 'h2hGames', 'h2hEntries',
   'NFL_PASS_TD_LINE', 'NFL_PASS_TD_BASE', 'PTD_SHARP', 'PTD_EXEC', 'passTdEntries',
   'NBA_SHARP', 'NBA_PROP_SHARP', 'poissonCdf', 'negBinomCdf', 'normName', 'NFL_NAME_SUFFIX', 'nflBaseName', 'nbaBaseName',
   'NBA_NAME_ALIAS', 'NBA_ALIAS', 'nbaName', 'nhlName', 'nbaSharpUnder', 'DFS_BOOKS', 'bookUndersJson', 'NBA_DISP',

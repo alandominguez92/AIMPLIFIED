@@ -4966,6 +4966,15 @@
       renderNfl();
     });
   }
+  // The price checker's price, read as it is typed: only its line redraws,
+  // so the field keeps its focus.
+  document.body.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!t || !t.dataset || t.dataset.action !== 'chk-price') return;
+    state.chk = { ...(state.chk || {}), price: t.value };
+    const o = document.querySelector('.pk-check-out');
+    if (o) o.innerHTML = priceCheckText(state.picks, state.chk);
+  });
   document.body.addEventListener('change', (e) => {
     const t = e.target;
     if (!t || !t.dataset) return;
@@ -4979,6 +4988,12 @@
       else state.bank.cap = v > 0 && v <= 100 ? v : 5;
       try { localStorage.setItem('aimplified_bankroll', JSON.stringify(state.bank)); } catch (err) {}
       renderPicks();
+    }
+    // The price checker's side (2026-10-29).
+    if (t.dataset.action === 'chk-side') {
+      state.chk = { ...(state.chk || {}), key: t.value };
+      const o = document.querySelector('.pk-check-out');
+      if (o) o.innerHTML = priceCheckText(state.picks, state.chk);
     }
     if (t.dataset.action === 'log-price') { state.logPrices = { ...state.logPrices, [t.dataset.leg]: t.value }; }
     if (t.dataset.action === 'log-line') { state.logLines = { ...state.logLines, [t.dataset.leg]: t.value.trim() }; renderSlip(); }
@@ -6184,7 +6199,7 @@
         + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${pickEdgeHtml(x)}</span>` : ''}`
         // A player leg's projection against its line, as the MLB board draws it;
         // a team's chance against its price.
-        + `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${betLinkHtml(x.link)}</span>`
+        + `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${betLinkHtml(x.link)}${booksHtml(x.books)}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     };
@@ -6422,21 +6437,69 @@
   // Caesars' and BetRivers' name the state in the address, so they wait for
   // the state set under the bankroll. BetRivers' slip also wants a bet type
   // and a stake: its event page instead. The placeholders' braces are written
-  // {, \x7b and their pairs, so the function's own braces balance.
+  // \x7b and \x7d, so the function's own braces balance.
   const LINK_BOOK = [['draftkings', 'DraftKings'], ['fanduel', 'FanDuel'], ['betmgm', 'BetMGM'], ['caesars', 'Caesars'], ['betrivers', 'BetRivers']];
-  const STATE_SLOT = '{state}';
-  function betLinkHtml(u) {
+  const STATE_SLOT = '\x7bstate\x7d';
+  // small: the books fold's own, "Bet ↗" beside its price.
+  function betLinkHtml(u, small) {
     if (!u || !/^https:\/\//.test(String(u))) return '';
     let h = String(u);
     const bk = (LINK_BOOK.find(([k]) => h.includes(k)) || [null, 'the book'])[1];
     if (h.includes(STATE_SLOT)) {
       const st = state.bank && state.bank.state;
-      if (!st) return `<button type="button" class="bet-at need" data-action="bank-open">Set your state to open ${esc(bk)}</button>`;
+      if (!st) return `<button type="button" class="bet-at need${small ? ' sm' : ''}" data-action="bank-open">${small ? 'Set state' : `Set your state to open ${esc(bk)}`}</button>`;
       h = h.split(STATE_SLOT).join(st);
     }
     h = h.replace(/[?&][^?&#]*\x7b[^\x7d]*\x7d[^&#]*/g, '');
     if (/[\x7b\x7d]/.test(h)) return '';
-    return `<a class="bet-at" href="${esc(h)}" target="_blank" rel="noopener noreferrer">Bet at ${esc(bk)} ↗</a>`;
+    return `<a class="bet-at${small ? ' sm' : ''}" href="${esc(h)}" target="_blank" rel="noopener noreferrer"${small ? ` aria-label="Bet at ${esc(bk)}"` : ''}>${small ? 'Bet ↗' : `Bet at ${esc(bk)} ↗`}</a>`;
+  }
+  // Every book's price of the side, best first, each with its hold -- how far
+  // its prices on the market add up past 100% (2026-10-29). Folded, so a row
+  // reads as before until it is opened. The sharp books make the fair; they
+  // are listed to be read, and marked.
+  function booksHtml(books) {
+    if (!Array.isArray(books) || books.length < 2) return '';
+    const top = books.find((b) => !b.sharp);
+    const low = books.filter((b) => !b.sharp && typeof b.hold === 'number').sort((a, b) => a.hold - b.hold)[0];
+    const rows = books.map((b) => `<li class="${b.sharp ? 'sh' : b === top ? 'best' : ''}"><span class="bk">${esc(bkLabel(b.book))}${b.sharp ? ' <i>sharp</i>' : ''}</span>`
+      + `<b>${esc(AM(b.price))}</b><span class="hd">${typeof b.hold === 'number' ? `hold ${esc(b.hold.toFixed(1))}%` : ''}</span>${b.link ? betLinkHtml(b.link, true) : '<span></span>'}</li>`).join('');
+    return `<details class="pk-books"><summary>Every book (${books.length})${top ? ` · best ${esc(bkLabel(top.book))} ${esc(AM(top.price))}` : ''}`
+      + `${low ? ` · lowest hold ${esc(bkLabel(low.book))} ${esc(low.hold.toFixed(1))}%` : ''}</summary><ul>${rows}</ul></details>`;
+  }
+  // The price checker (2026-10-29): any side the worker priced, at a price
+  // typed in -- a boost, an alternate line's, another book's -- on the same
+  // fair and the same quarter Kelly as the bets above it.
+  function priceCheckHtml(d) {
+    const sides = ((d && d.priced) || []).filter((x) => Date.parse(x.commence) > Date.now());
+    if (!sides.length || !d.kelly) return '';
+    const c = state.chk || {};
+    const opts = sides.slice().sort((a, b) => String(a.sport).localeCompare(String(b.sport)) || String(a.label).localeCompare(String(b.label)))
+      .map((x) => `<option value="${esc(x.key)}"${x.key === c.key ? ' selected' : ''}>${esc(PICK_SPORT[x.sport] || x.sport)} · ${esc(x.label)} · ${esc(x.sub)}</option>`).join('');
+    return `<div class="pk-check"><div class="tc-head pp-more-head"><span class="tc-title">Check a price</span></div>`
+      + `<div class="tc-sub">A boost, or another book's number, on any side priced here: its EV on the sharp fair, and the stake.</div>`
+      + `<div class="pk-check-f"><select data-action="chk-side" aria-label="The side to price">${opts}</select>`
+      + `<input type="text" inputmode="numeric" data-action="chk-price" value="${esc(c.price || '')}" placeholder="+150" aria-label="The price, in American odds"></div>`
+      + `<output class="pk-check-out" aria-live="polite">${priceCheckText(d, c)}</output></div>`;
+  }
+  function priceCheckText(d, c) {
+    const sides = ((d && d.priced) || []).filter((x) => Date.parse(x.commence) > Date.now());
+    const x = sides.find((y) => y.key === (c && c.key)) || sides.slice().sort((a, b) => String(a.sport).localeCompare(String(b.sport)) || String(a.label).localeCompare(String(b.label)))[0];
+    if (!x || !d.kelly || typeof x.fair !== 'number') return '';
+    const p = x.fair / 100;
+    const need = p >= 0.5 ? -Math.round(p / (1 - p) * 100) : Math.round((1 - p) / p * 100);
+    const am = Number(String((c && c.price) || '').replace(/[^0-9+-]/g, ''));
+    const fair = `${esc(x.label)}: fair ${esc(String(x.fair))}%, which breaks even at <b>${esc(AM(need))}</b>`;
+    if (!(Math.abs(am) >= 100)) return `${fair}. Type a price to check it.`;
+    const dec = am > 0 ? 1 + am / 100 : 1 + 100 / -am;
+    const ev = Math.round((p * dec - 1) * 1000) / 10;
+    if (!(ev > 0)) return `At <b>${esc(AM(am))}</b>: EV <b class="o">${esc(ev.toFixed(1))}%</b> · no bet. ${esc(x.label)} needs ${esc(AM(need))} or better.`;
+    const k = d.kelly, bar = x.prop ? k.minProp : k.minLine;
+    let stake = Math.round(ev / 100 / (dec - 1) * k.fraction * 1000) / 10;
+    const capped = !!x.prop && stake > k.propCap;
+    if (capped) stake = k.propCap;
+    return `At <b>${esc(AM(am))}</b>: EV <b class="u">+${esc(ev.toFixed(1))}%</b> on a ${esc(String(x.fair))}% fair · ¼ Kelly <b>${esc(stakeTxt(stake))}</b>${capped ? ' (cap)' : ''}`
+      + `${ev < bar ? ` · under the ${esc(String(bar))}% the list asks of ${x.prop ? 'a prop' : 'a game line'}` : ''}. Breaks even at ${esc(AM(need))}.`;
   }
   // How a side's price and the sharp line moved before the start (2026-10-29):
   // the chance its price needs and the fair chance, read by read, as steps (a
@@ -6498,10 +6561,10 @@
       // The boards' own book names (2026-10-28): "betmgm" printed as it came.
       + `<span class="tc-book">${esc(AM(b.price))} ${esc(bkLabel(b.book))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(stakeTxt(stakeOf(b)))}${b.capped ? ' (cap)' : ''}</span>`
       + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
-      + priceSparkHtml(b.hist) + betLinkHtml(b.link)
+      + priceSparkHtml(b.hist) + betLinkHtml(b.link) + booksHtml(b.books)
       + `</div></li>`).join('')}</ol>`
       : '<div class="tc-wait-note">No price beats the sharp line by enough right now.</div>';
-    return `<div class="nba-pp pk-card pk-ev-card">${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}</div>`;
+    return `<div class="nba-pp pk-card pk-ev-card">${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}${priceCheckHtml(d)}</div>`;
   }
   // The edge bets' own record (2026-10-28): won and lost, units, and how many
   // beat the closing line.

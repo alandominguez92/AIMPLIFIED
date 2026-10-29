@@ -55,7 +55,7 @@ const fnOf = (name) => { const at = src.search(new RegExp(`(async )?function ${n
 const constOf = (name) => { const at = src.indexOf(`const ${name} =`); let d = 0;
   for (let i = at; i < src.length; i++) { const c = src[i]; if ('{(['.includes(c)) d++; else if ('})]'.includes(c)) d--; else if (c === ';' && d === 0) return src.slice(at, i + 1); } };
 const W = new Function('ensureGamePickSchema', [constOf('GM_MODEL_VER'), constOf('ML_PRICE_GAP'), constOf('ML_PRICE_MAX'), fnOf('amProb'), fnOf('round1'),
-  fnOf('mlPriceSane'), constOf('soc1x2Quotes'), fnOf('logGamePicks')].join('\n') + '\nreturn { logGamePicks, soc1x2Quotes };')(async () => {});
+  fnOf('mlPriceSane'), constOf('bookPricesJson'), constOf('soc1x2Quotes'), fnOf('logGamePicks')].join('\n') + '\nreturn { logGamePicks, soc1x2Quotes };')(async () => {});
 
 // ---- production's rows at 12:45 PM ----------------------------------------------------------
 await get('/api/gmpicks-export');                                  // the table
@@ -109,9 +109,10 @@ await W.logGamePicks(DB, 'soccer', '2026-10-28', [{ game_id: game('CF Montreal')
 const tot = sq.prepare("SELECT * FROM gmpicks WHERE market = 'totals' AND game_id = ?").get(game('CF Montreal').id);
 ok(t.point !== 2.5 && tot.close_price === 100 && tot.close_at === '2026-10-28T19:00:00.000Z', `an Over 2.5 row is not priced from a read of the ${t.point} line`);
 
+// (Each quote has carried its link and every book's price since 2026-10-29: tests/betlinks.mjs.)
 // ---- every capture hands over its quotes ----------------------------------------------------------
-ok((fnOf('soccerBoardData').match(/quotes: soc1x2Quotes\(g\)/g) || []).length === 2 && /quotes: \{ over: \{ price: t\.overPrice, fair: t\.overFair, link: t\.overLink \}, under: \{ price: t\.underPrice, fair: t\.underFair, link: t\.underLink \} \}/.test(fnOf('soccerBoardData'))
-  && /quotes: \{ home: \{ price: g\.homePrice, fair: g\.homeFair, link: g\.homeLink \}, away: \{ price: g\.awayPrice, fair: g\.awayFair, link: g\.awayLink \} \}/.test(fnOf('h2hEntries'))
+ok((fnOf('soccerBoardData').match(/quotes: soc1x2Quotes\(g\)/g) || []).length === 2 && /quotes: \{ over: \{ price: t\.overPrice, fair: t\.overFair[^}]*\},\s*under: \{ price: t\.underPrice, fair: t\.underFair[^}]*\} \}/.test(fnOf('soccerBoardData'))
+  && /quotes: \{ home: \{ price: g\.homePrice, fair: g\.homeFair[^}]*\},\s*away: \{ price: g\.awayPrice, fair: g\.awayFair[^}]*\} \}/.test(fnOf('h2hEntries'))
   && /quotes: \{ home: \{ price: g\.home_price, fair: g\.home_fair \}, away: \{ price: g\.away_price, fair: g\.away_fair \} \}/.test(fnOf('nflBoardData')),
   "soccer's three ways and goals sides, and the NBA's, NHL's and NFL's two clubs");
 

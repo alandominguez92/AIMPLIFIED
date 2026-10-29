@@ -3866,6 +3866,8 @@ async function ensureGamePickSchema(db) {
   // The best price's own bet-slip link, as last read (2026-10-29): Picks'
   // and the edge bets' "Bet at" button.
   await addColumns(db, 'gmpicks', [['link', 'TEXT']]);
+  // Every book's price of the side and its hold (bookPricesOf), as last read.
+  await addColumns(db, 'gmpicks', [['book_prices', 'TEXT']]);
 }
 
 // entries: { game_id, league, commence, side, pick, home, away, win_prob,
@@ -3884,19 +3886,19 @@ async function logGamePicks(db, sport, date, entries) {
     const at = new Date().toISOString();
     stmts.push(db.prepare(
       `INSERT OR IGNORE INTO gmpicks (sport,date,game_id,market,league,week,commence,side,point,pick,home,away,win_prob,implied,edge,entry_price,close_price,book,fair_src,sharp_n,model_ver,
-         entry_win_prob,entry_edge,entry_at,close_at,book_fairs,link)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         entry_win_prob,entry_edge,entry_at,close_at,book_fairs,link,book_prices)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(sport, date, String(e.game_id), market, e.league || null, e.week == null ? null : e.week,
       e.commence || null, e.side || null,
       e.point == null ? null : e.point, e.pick || null,
       e.home || null, e.away || null, e.win_prob, e.implied == null ? null : e.implied, e.edge == null ? null : e.edge,
       e.price, e.price, e.book || null, e.fair_src || null, e.sharp_n == null ? null : e.sharp_n, GM_MODEL_VER,
-      e.win_prob, e.edge == null ? null : e.edge, at, at, e.book_fairs || null, e.link || null));
+      e.win_prob, e.edge == null ? null : e.edge, at, at, e.book_fairs || null, e.link || null, e.book_prices || null));
     // Close refreshes only while the same side is still the board's lead, so a
     // flip later in the week cannot overwrite the entry side's closing number.
     stmts.push(db.prepare(
-      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=?, close_at=?, book_fairs=COALESCE(?, book_fairs), link=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
-    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied, at, e.book_fairs || null, e.link || null,
+      'UPDATE gmpicks SET close_price=?, edge=?, win_prob=?, implied=?, close_at=?, book_fairs=COALESCE(?, book_fairs), link=?, book_prices=COALESCE(?, book_prices) WHERE sport=? AND date=? AND game_id=? AND market=? AND side=?'
+    ).bind(e.price, e.edge == null ? null : e.edge, e.win_prob, e.implied == null ? null : e.implied, at, e.book_fairs || null, e.link || null, e.book_prices || null,
       sport, date, String(e.game_id), market, e.side || null));
     // A row whose side has lost the board's lead (2026-10-28) keeps its own
     // side's read too, from the same capture's quotes for every side. Its close
@@ -3908,8 +3910,8 @@ async function logGamePicks(db, sport, date, entries) {
     for (const [sd, q] of Object.entries(e.quotes || {})) {
       if (sd === e.side || !q || typeof q.price !== 'number' || q.fair == null || !mlPriceSane(q.price, q.fair)) continue;
       const imp = round1(amProb(q.price) * 100);
-      stmts.push(db.prepare('UPDATE gmpicks SET close_price=?, win_prob=?, implied=?, edge=?, close_at=?, link=? WHERE sport=? AND date=? AND game_id=? AND market=? AND side=? AND point IS ?')
-        .bind(q.price, q.fair, imp, round1(q.fair - imp), at, q.link || null, sport, date, String(e.game_id), market, sd, e.point == null ? null : e.point));
+      stmts.push(db.prepare('UPDATE gmpicks SET close_price=?, win_prob=?, implied=?, edge=?, close_at=?, link=?, book_prices=COALESCE(?, book_prices) WHERE sport=? AND date=? AND game_id=? AND market=? AND side=? AND point IS ?')
+        .bind(q.price, q.fair, imp, round1(q.fair - imp), at, q.link || null, q.book_prices || null, sport, date, String(e.game_id), market, sd, e.point == null ? null : e.point));
     }
     logged++;
   }
@@ -7962,6 +7964,20 @@ function bookFairsJson(map) {
   for (const [bk, p] of Object.entries(map || {})) if (!DFS_BOOKS.has(bk) && p != null && isFinite(p)) out[bk] = Math.round(p * 1000) / 10;
   return Object.keys(out).length ? JSON.stringify(out) : null;
 }
+// Every book's price of one side, and the book's hold on the market it is
+// part of -- how far its prices add up past 100% -- for the "every book" fold
+// on Picks (2026-10-29). sides: each outcome's { book: price }; i: this
+// side's. A book missing an outcome has a price and no hold.
+function bookPricesOf(sides, i) {
+  const out = {};
+  for (const bk of Object.keys(sides[i] || {})) {
+    const ps = sides.map((x) => (x || {})[bk]);
+    if (DFS_BOOKS.has(bk) || typeof ps[i] !== 'number') continue;
+    out[bk] = [ps[i], ps.every((x) => typeof x === 'number') ? round1((ps.reduce((a, x) => a + amProb(x), 0) - 1) * 100) : null];
+  }
+  return Object.keys(out).length ? out : null;
+}
+const bookPricesJson = (o) => (o ? JSON.stringify(o) : null);
 
 // Strikeout park factors (normalized ~1.00; >1 = more Ks). Approximate, stable
 // season-level values — thin-air Coors suppresses whiffs; pitcher parks lift
@@ -8586,6 +8602,30 @@ const GM_READ_SLACK_MS = 5 * 60e3;
 // (bets): the edge-bet log reads each logged bet's closing price and fair
 // from all (2026-10-28). Each side carries how it grades (grade).
 const evShown = (b) => { const { key, grade, league, hk, ...rest } = b; return rest; };
+// A side's books for the page, best price first: [{ book, price, hold, link,
+// sharp }]. Pinnacle and the other sharp books make the fair; they are listed
+// so their prices can be read, and marked, with no link to bet them.
+const SHARP_MARK = new Set(['pinnacle', 'lowvig', 'betonlineag', 'novig', 'prophetx', 'circasports', 'betfair_ex_uk', 'matchbook']);
+function booksOf(prices, links) {
+  if (!prices) return null;
+  const out = Object.entries(prices).filter(([, v]) => Array.isArray(v) && typeof v[0] === 'number')
+    .map(([book, [price, hold]]) => ({ book, price, hold: hold == null ? null : hold, ...(links && links[book] && !SHARP_MARK.has(book) ? { link: links[book] } : {}), ...(SHARP_MARK.has(book) ? { sharp: true } : {}) }));
+  return out.length ? out.sort((a, b) => amProb(a.price) - amProb(b.price)) : null;
+}
+const parseJsonOr = (s, d = null) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };
+// The book a bet link is for, by its address.
+const LINK_BOOKS = [['draftkings', 'draftkings'], ['fanduel', 'fanduel'], ['betmgm', 'betmgm'], ['caesars', 'williamhill_us'], ['betrivers', 'betrivers']];
+const linkBook = (u) => { const m = u ? LINK_BOOKS.find(([d]) => String(u).includes(`.${d}.`) || String(u).includes(`//${d}.`)) : null; return m ? m[1] : null; };
+// A game-line row's latest price and the book it is at. The row's own book
+// is its first read's: the latest read's best can be at another, and its
+// link says which -- or, with none, the book in its price list at that price.
+function rowPriceNow(r) {
+  const price = r.close_price != null ? r.close_price : r.entry_price;
+  const lb = linkBook(r.link), bp = parseJsonOr(r.book_prices);
+  const atPrice = bp && Object.keys(bp).find((bk) => !SHARP_MARK.has(bk) && bp[bk][0] === price);
+  const book = lb && (!bp || (bp[lb] && bp[lb][0] === price)) ? lb : atPrice || r.book;
+  return { price, book, books: booksOf(bp, lb ? { [lb]: r.link } : null) };
+}
 async function evBets(env, now) { return (await evScan(env, now)).bets.map(evShown); }
 async function evScan(env, now) {
   const out = [], all = [];
@@ -8612,7 +8652,8 @@ async function evScan(env, now) {
       for (const [side, team, fair, price, book] of [['home', g.home, g.homeFair, g.homePrice, g.homeBook], ['away', g.away, g.awayFair, g.awayPrice, g.awayBook]]) {
         add({ key: `${sport}:${g.id}:${side}`, sport, market: 'ml', label: `${nick(team)} ML`, sub, commence: g.commence,
           fair, price, book, fairSrc: g.fairSrc, asOf: snap.asOf, league: 'reg', grade: { t: 'side', sport, game_id: g.id, side },
-          link: (side === 'home' ? g.homeLink : g.awayLink) || null, hk: [sport, g.id, histSide('h2h', side)] });
+          link: (side === 'home' ? g.homeLink : g.awayLink) || null, hk: [sport, g.id, histSide('h2h', side)],
+          books: booksOf(g.bookPrices && g.bookPrices[side], g.links && g.links[side]) });
       }
     }
   }
@@ -8630,8 +8671,9 @@ async function evScan(env, now) {
   const current = (r) => Date.parse(readAt(r)) >= Date.parse(latest.get(`${r.sport}:${r.league}`)) - GM_READ_SLACK_MS;
   for (const r of gm) {
     if (!current(r)) continue;
-    const base = { commence: r.commence, fair: r.win_prob, price: r.close_price != null ? r.close_price : r.entry_price, book: r.book, fairSrc: r.fair_src, asOf: r.close_at || r.entry_at,
-      link: r.link || null, hk: [r.sport, r.game_id, histSide(r.market, r.side, r.point)] };
+    const now_ = rowPriceNow(r);
+    const base = { commence: r.commence, fair: r.win_prob, price: now_.price, book: now_.book, fairSrc: r.fair_src, asOf: r.close_at || r.entry_at,
+      link: r.link || null, hk: [r.sport, r.game_id, histSide(r.market, r.side, r.point)], books: now_.books };
     if (r.sport === 'nfl' && r.market === 'h2h') {
       add({ ...base, key: `nfl:${r.game_id}:${r.pick}`, sport: 'nfl', market: 'ml', label: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`, grade: gmGrade(r) });
     } else if (r.sport === 'nflptd') {
@@ -9044,6 +9086,7 @@ async function picksCandidates(env, now) {
     const day = ptDateOf(Date.parse(r.commence));
     const price = r.close_price != null ? r.close_price : r.entry_price;
     const base = { kind, p: r.win_prob, commence: r.commence, odds: price, link: r.link || null, hk: [r.sport, r.game_id, histSide(r.market, r.side, r.point)],
+      books: rowPriceNow(r).books,
       src: { date: r.date, game_id: r.game_id, team: r.pick, market: r.market } };
     const book = { line: null, price, win: round1(r.win_prob) };
     if (kind === 'nba_ml') {
@@ -9608,6 +9651,7 @@ async function picksBoard(env) {
       // His projection, for the bar under a player leg (2026-10-28).
       ...(l.proj != null ? { proj: l.proj } : {}),
       ...(l.link ? { link: l.link } : {}),
+      ...(l.books ? { books: l.books } : {}),
       ...(hists.has(l.legId) ? { hist: hists.get(l.legId) } : {}),
       ...(trends.has(l.legId) ? { trend: trends.get(l.legId) } : {}),
     });
@@ -9638,6 +9682,10 @@ async function picksBoard(env) {
       const hs = await priceHists(env.DB, withHk.map((b) => b.hk));
       const histOf = new Map(withHk.map((b, i) => [b.key, hs[i]]));
       out.evBets = scan.bets.map((b) => { const h = histOf.get(b.key); return { ...evShown(b), ...(h && h.length > 1 ? { hist: h } : {}) }; });
+      // Every side priced, for the page's price checker (2026-10-29): a boost
+      // or another book's number, read against the same fair and stake rule.
+      out.priced = scan.all.map((o) => ({ key: o.key, sport: o.sport, label: o.label, sub: o.sub, commence: o.commence, fair: round1(o.fair), ...(o.prop ? { prop: true } : {}) }));
+      out.kelly = { fraction: KELLY_FRACTION, propCap: PROP_STAKE_CAP, minLine: EV_MIN_LINE, minProp: EV_MIN_PROP };
       try { await logEdgeBets(env.DB, scan, now); await gradeEdgeBets(env.DB, now); } catch (e) { out.logError = String((e && e.message) || e); }
     } catch (e) { out.evBets = []; out.evError = String((e && e.message) || e); }
     try { out.edgeRecord = await edgeBetRecord(env); } catch (e) { out.recordError = String((e && e.message) || e); }
@@ -10942,6 +10990,7 @@ function h2hGames(cfg, evs, lg, now) {
     if (bh.price == null && ba.price == null) continue;
     const value = (fair, price) => (fair != null && price != null ? round1((fair - amProb(price)) * 100) : null);
     const pickSide = fairHome == null ? null : (fairHome >= 0.5 ? 'home' : 'away');
+    const H = Object.fromEntries(Object.entries(px).map(([bk, q]) => [bk, q.home])), A = Object.fromEntries(Object.entries(px).map(([bk, q]) => [bk, q.away]));
     out.push({
       id: e.id, league: lg, commence: e.commence_time, home, away,
       fairSrc, sharpN: sf.n, byBook,
@@ -10953,6 +11002,8 @@ function h2hGames(cfg, evs, lg, now) {
       // The best price's own bet link, and every book's, side by side.
       homeLink: (bh.book && links.home[bh.book]) || null, awayLink: (ba.book && links.away[ba.book]) || null,
       ...(Object.keys(links.home).length || Object.keys(links.away).length ? { links } : {}),
+      // Every book's price of each side, with its hold (bookPricesOf).
+      bookPrices: { home: bookPricesOf([H, A], 0), away: bookPricesOf([H, A], 1) },
     });
   }
   return out;
@@ -10976,8 +11027,10 @@ function h2hEntries(cfg, evs, lg, now) {
       price, book: side === 'home' ? g.homeBook : g.awayBook, fair_src: g.fairSrc, sharp_n: g.sharpN,
       book_fairs: bookFairsJson(Object.fromEntries(Object.entries(g.byBook || {}).map(([bk, p]) => [bk, side === 'home' ? p : 1 - p]))),
       link: (side === 'home' ? g.homeLink : g.awayLink) || null,
+      book_prices: bookPricesJson(g.bookPrices && g.bookPrices[side]),
       // Both clubs, for a row whose side has lost the lead (logGamePicks).
-      quotes: { home: { price: g.homePrice, fair: g.homeFair, link: g.homeLink }, away: { price: g.awayPrice, fair: g.awayFair, link: g.awayLink } },
+      quotes: { home: { price: g.homePrice, fair: g.homeFair, link: g.homeLink, book_prices: bookPricesJson(g.bookPrices && g.bookPrices.home) },
+        away: { price: g.awayPrice, fair: g.awayFair, link: g.awayLink, book_prices: bookPricesJson(g.bookPrices && g.bookPrices.away) } },
     });
   }
   return out;
@@ -13006,7 +13059,7 @@ function devigThreeWay(prices) {
 // draw, away).
 const soc1x2Quotes = (g) => {
   const [h, d, a] = g.oneXtwo || [];
-  const q = (p) => (p ? { price: p.price, fair: p.fair, link: p.link || null } : null);
+  const q = (p) => (p ? { price: p.price, fair: p.fair, link: p.link || null, book_prices: bookPricesJson(p.books) } : null);
   return { home: q(h), draw: q(d), away: q(a) };
 };
 async function soccerBoardData(env, url, opts = {}) {
@@ -13086,7 +13139,7 @@ async function soccerBoardData(env, url, opts = {}) {
         return {
           selection: sel === 'Draw' ? 'Draw' : sel,
           fair: f != null ? Math.round(f * 1000) / 10 : null,
-          price: b.price, book: b.book, link: b.link,
+          price: b.price, book: b.book, link: b.link, books: bookPricesOf(sides.map((x) => g.h2h[x] || {}), i),
           implied: imp != null ? Math.round(imp * 1000) / 10 : null,
           value: (f != null && imp != null) ? Math.round((f - imp) * 1000) / 10 : null,
           bookFairs: bookFairsOf(sel),
@@ -13146,9 +13199,9 @@ async function soccerBoardData(env, url, opts = {}) {
           point, sharpN: dvs.length, fairSrc: totFairSrc,
           lines: lineStats.map((x) => `${x.pt}:${x.sharp}s/${x.exec}x`).join(' '),
           overFair: fairOver != null ? Math.round(fairOver * 1000) / 10 : null,
-          overPrice: bo.price, overBook: bo.book, overValue: val(fairOver, bo.price), overLink: bo.link,
+          overPrice: bo.price, overBook: bo.book, overValue: val(fairOver, bo.price), overLink: bo.link, overBooks: bookPricesOf([ov, un], 0),
           underFair: fairOver != null ? Math.round((1 - fairOver) * 1000) / 10 : null,
-          underPrice: bu.price, underBook: bu.book, underValue: val(fairOver != null ? 1 - fairOver : null, bu.price), underLink: bu.link,
+          underPrice: bu.price, underBook: bu.book, underValue: val(fairOver != null ? 1 - fairOver : null, bu.price), underLink: bu.link, underBooks: bookPricesOf([ov, un], 1),
         };
       }
       out.games.push({
@@ -13219,7 +13272,7 @@ async function soccerBoardData(env, url, opts = {}) {
           side: g.lead.selection === 'Draw' ? 'draw' : (g.lead.selection === g.home ? 'home' : 'away'),
           pick: g.lead.selection, home: g.home, away: g.away,
           win_prob: g.lead.fair, implied: g.lead.implied, edge: g.lead.value,
-          price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.lead.bookFairs, link: g.lead.link || null,
+          price: g.lead.price, book: g.lead.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.lead.bookFairs, link: g.lead.link || null, book_prices: bookPricesJson(g.lead.books),
           // All three ways, for a row whose side has lost the lead (logGamePicks).
           quotes: soc1x2Quotes(g),
         })));
@@ -13230,8 +13283,8 @@ async function soccerBoardData(env, url, opts = {}) {
         for (const g of pre) {
           const t = g.total;
           if (!t || t.point == null || t.overFair == null) continue;
-          const over = { side: 'over', fair: t.overFair, price: t.overPrice, book: t.overBook, value: t.overValue, link: t.overLink };
-          const under = { side: 'under', fair: t.underFair, price: t.underPrice, book: t.underBook, value: t.underValue, link: t.underLink };
+          const over = { side: 'over', fair: t.overFair, price: t.overPrice, book: t.overBook, value: t.overValue, link: t.overLink, books: t.overBooks };
+          const under = { side: 'under', fair: t.underFair, price: t.underPrice, book: t.underBook, value: t.underValue, link: t.underLink, books: t.underBooks };
           const cands = [over, under].filter((x) => x.fair != null && x.price != null);
           if (!cands.length) continue;
           const best = cands.sort((x, y) => (y.value == null ? -1e9 : y.value) - (x.value == null ? -1e9 : x.value))[0];
@@ -13240,9 +13293,10 @@ async function soccerBoardData(env, url, opts = {}) {
             side: best.side, point: t.point, pick: `${best.side === 'over' ? 'Over' : 'Under'} ${t.point}`,
             home: g.home, away: g.away,
             win_prob: best.fair, implied: best.price == null ? null : Math.round(amProb(best.price) * 1000) / 10,
-            edge: best.value, price: best.price, book: best.book, link: best.link || null,
+            edge: best.value, price: best.price, book: best.book, link: best.link || null, book_prices: bookPricesJson(best.books),
             fair_src: t.fairSrc || 'sharp-pool', sharp_n: t.sharpN,
-            quotes: { over: { price: t.overPrice, fair: t.overFair, link: t.overLink }, under: { price: t.underPrice, fair: t.underFair, link: t.underLink } },
+            quotes: { over: { price: t.overPrice, fair: t.overFair, link: t.overLink, book_prices: bookPricesJson(t.overBooks) },
+              under: { price: t.underPrice, fair: t.underFair, link: t.underLink, book_prices: bookPricesJson(t.underBooks) } },
           });
         }
         if (tot.length) await logByDay(tot);
@@ -13251,7 +13305,7 @@ async function soccerBoardData(env, url, opts = {}) {
           side: g.fav.selection === g.home ? 'home' : 'away',
           pick: g.fav.selection, home: g.home, away: g.away,
           win_prob: g.fav.fair, implied: g.fav.implied, edge: g.fav.value,
-          price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.fav.bookFairs, link: g.fav.link || null,
+          price: g.fav.price, book: g.fav.book, fair_src: g.fairSrc, sharp_n: g.sharpN, book_fairs: g.fav.bookFairs, link: g.fav.link || null, book_prices: bookPricesJson(g.fav.books),
           quotes: soc1x2Quotes(g),
         }));
         if (favs.length) await logByDay(favs);
