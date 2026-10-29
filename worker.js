@@ -149,7 +149,7 @@ const API_ROUTES = new Set([
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
-  '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props',
+  '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe',
 ]);
 
 export default {
@@ -207,7 +207,7 @@ export default {
     }
 
     // Both write; caching either would serve a stale body and skip the write.
-    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest' || p === '/api/mlb-void-moved' || p === '/api/hist-backtest' || p === '/api/hist-props') return handleApi(p, env, ctx, url);
+    if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest' || p === '/api/mlb-void-moved' || p === '/api/hist-backtest' || p === '/api/hist-props' || p === '/api/links-probe') return handleApi(p, env, ctx, url);
     // The query string is dropped from the key on purpose — every viewer should
     // share one response — EXCEPT where it changes what the route returns.
     // /api/nfl-compare was keyed by path alone, so ?all=1 (played games included,
@@ -511,6 +511,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/mlpicks-export') return mlpicksExport(env, url);
   if (p === '/api/mlb-void-moved') return voidMovedGameRows(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
+  if (p === '/api/links-probe') return cors(new Response(JSON.stringify(await linksProbe(env, url)), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
   if (p === '/api/hist-props') {
     return cors(new Response(JSON.stringify(await histProps(env, url)), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
   }
@@ -13693,6 +13694,22 @@ async function histPropsProbe(env, key, job, date) {
   out.snap = snap;
   out.odds = r.ok ? await r.json() : (await r.text()).slice(0, 300);
   return out;
+}
+
+// GET /api/links-probe?sport=nba|nhl|nfl|soccer_epl (2026-10-29): one paid
+// read (1 credit: h2h, five books) of the feed's bet links -- what it sends
+// with includeLinks for each book and side -- at most once in ten minutes.
+async function linksProbe(env, url) {
+  if (!env || !env.DB || !env.ODDS_API_KEY) return { error: 'not configured' };
+  const sport = { nba: 'basketball_nba', nhl: 'icehockey_nhl', nfl: 'americanfootball_nfl' }[url.searchParams.get('sport') || 'nba'] || url.searchParams.get('sport');
+  if (!(await claimFeedRefresh(env.DB, 'links_probe', 600000))) return { error: 'one probe per ten minutes' };
+  const r = await fetch(`https://api.the-odds-api.com/v4/sports/${sport}/odds?apiKey=${env.ODDS_API_KEY}&markets=h2h&oddsFormat=american&dateFormat=iso`
+    + '&bookmakers=draftkings,fanduel,betmgm,williamhill_us,betrivers&includeLinks=true&includeSids=true', { headers: { accept: 'application/json' } });
+  await recordOddsUsage(env, r, 'debug:links-probe');
+  const out = { sport, status: r.status, credits: r.headers.get('x-requests-last'), remaining: r.headers.get('x-requests-remaining') };
+  if (!r.ok) return { ...out, body: (await r.text()).slice(0, 300) };
+  const evs = await r.json();
+  return { ...out, n: (evs || []).length, events: (evs || []).slice(0, 2) };
 }
 
 async function fairProbe(env, reqUrl) {
