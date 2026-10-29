@@ -243,6 +243,12 @@ export default {
       ctx.waitUntil(socBoxTick(env, { perTick: 30, via: 'soccer-trigger' }).catch(() => null));
       return;
     }
+    // Last season's props, read back while a job is set running (2026-10-29):
+    // its own invocation and request budget, idle otherwise.
+    if (event && event.cron === HIST_CRON) {
+      ctx.waitUntil(histPropsTick(env).catch(() => null));
+      return;
+    }
     ctx.waitUntil(captureCloses(env, ctx));
     // Soccer game lines, gated to twice a matchday per league — see
     // soccerMaybeIngest. Most ticks do nothing but read a counter.
@@ -11621,7 +11627,10 @@ const nbaBaseName = (s) => nflBaseName(String(s || '').normalize('NFD').replace(
 // no prior and his rebounds leg was never logged. Every name goes through it,
 // priors included, so a player whose own name is one of these collides with the
 // aliased one and both are dropped (nbaPriors), never given each other's legs.
-const NBA_NAME_ALIAS = { 'Ron Holland': 'Ronald Holland II' };
+const NBA_NAME_ALIAS = { 'Ron Holland': 'Ronald Holland II',
+  // PrizePicks' names on Jan 15 2026 that ESPN's box score spells its own way
+  // (2026-10-29, the props backtest).
+  'Vincent Williams Jr': 'Vince Williams Jr.', 'Moe Wagner': 'Moritz Wagner' };
 let NBA_ALIAS = null;   // built on first use: nflBaseName is defined further down
 const nbaName = (s) => {
   if (!NBA_ALIAS) NBA_ALIAS = new Map(Object.entries(NBA_NAME_ALIAS).map(([a, b]) => [nbaBaseName(a), nbaBaseName(b)]));
@@ -13350,6 +13359,19 @@ const HIST_PROP_JOBS = {
     markets: { player_rush_yds: 'rush_yds', player_reception_yds: 'rec_yds', player_receptions: 'rec' } },
 };
 const HIST_PROP_LEAD_MIN = 60;      // read an hour before each game
+// &start=1 sets a job running on its own cron (HIST_CRON, every other minute,
+// HIST_PROP_PER_TICK games a run); &stop=1 pauses it; with neither, the
+// report from what has been read. Each job stops at its credit cap, or when
+// the feed says fewer than HIST_PROP_FLOOR credits are left -- the live
+// boards' share. One D1 row a game, its legs as JSON: the free tier's daily
+// writes would not hold a row a leg.
+const HIST_CRON = '1-59/2 * * * *';
+const HIST_PROP_PER_TICK = 3;
+const HIST_PROP_FLOOR = 12000;
+const HIST_PROP_CAPS = { nba: 63000, nfl: 9000 };
+// The books whose no-vig line is a fair price for a prop (Pinnacle first, as
+// sharpFair reads them); the others are kept for their lines alone.
+const HIST_PROP_SHARP = ['pinnacle', 'fanduel', 'novig', 'prophetx', 'betonlineag', 'lowvig'];
 async function histProps(env, url) {
   const key = String(url.searchParams.get('job') || '');
   const job = HIST_PROP_JOBS[key];
@@ -13357,7 +13379,212 @@ async function histProps(env, url) {
   if (!env || !env.DB) return { error: 'no DB binding' };
   const probe = url.searchParams.get('probe');
   if (probe) return histPropsProbe(env, key, job, probe);
-  return { job: key, label: job.label, note: 'probe only so far: ?probe=YYYY-MM-DD' };
+  await ensureHistPropSchema(env.DB);
+  const stateKey = `hist_props:${key}`;
+  if (url.searchParams.get('start') === '1' || url.searchParams.get('stop') === '1') {
+    if (key !== 'nba') return { error: 'only the NBA job runs so far' };
+    const st = await loadFeedCache(env.DB, stateKey);
+    const state = histPropState(st.present && st.data);
+    state.active = url.searchParams.get('start') === '1';
+    await saveFeedCache(env.DB, stateKey, state);
+  }
+  const st = await loadFeedCache(env.DB, stateKey);
+  const state = histPropState(st.present && st.data);
+  const rows = (await env.DB.prepare('SELECT legs FROM histpropgames WHERE job = ?').bind(key).all()).results || [];
+  const days = histDays(job);
+  return { job: key, label: job.label, active: !!state.active, done: !!state.done, stopped: state.stopped || null,
+    progress: `${state.day} of ${days.length} days`, games: state.games, creditsSpent: state.credits, cap: HIST_PROP_CAPS[key], remaining: state.remaining,
+    errors: state.errors, unmatched: state.unmatched.slice(0, 30), ...histPropOpen(rows), report: histPropReport(rows.map((r) => JSON.parse(r.legs || '[]')).flat(), job) };
+}
+// The names no box score matched, most legs first: each one an alias to add.
+function histPropOpen(rows) {
+  const n = {};
+  for (const r of rows) for (const l of JSON.parse(r.legs || '[]')) if (l.a == null && !l.v) n[l.p] = (n[l.p] || 0) + 1;
+  return { openNames: Object.entries(n).sort((a, b) => b[1] - a[1]).slice(0, 40).map(([p, k]) => `${p} (${k})`) };
+}
+const histPropState = (s) => ({ day: 0, queue: [], credits: 0, games: 0, done: false, active: false, errors: 0, unmatched: [], espn: {}, remaining: null, ...(s || {}) });
+async function ensureHistPropSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS histpropgames (
+    job TEXT NOT NULL, event_id TEXT NOT NULL, date TEXT, commence TEXT, game TEXT, legs TEXT, graded INTEGER,
+    PRIMARY KEY (job, event_id)
+  )`).run();
+}
+// One game's props as legs (pure): for each market and player PrizePicks
+// posted, its standard line (the one it quotes Less on: a demon or goblin is
+// More only), every other book's lines quoted both ways with the no-vig
+// chance of the under there, and Underdog's line.
+function histPropLegs(job, ev) {
+  const legs = [];
+  const books = (ev && ev.bookmakers) || [];
+  const mkt = (b, mk) => (b.markets || []).find((m) => m.key === mk);
+  const pp = books.find((b) => b.key === 'prizepicks');
+  for (const [mk, stat] of Object.entries(job.markets)) {
+    const ppm = pp && mkt(pp, mk);
+    if (!ppm) continue;
+    const lines = new Map();
+    for (const o of (ppm.outcomes || [])) {
+      if (o.name !== 'Under' || o.point == null) continue;
+      const k = nbaName(o.description);
+      if (!lines.has(k)) lines.set(k, { p: o.description, pp: o.point });
+    }
+    for (const [k, leg] of lines) {
+      const q = {};
+      let ud = null;
+      for (const b of books) {
+        if (b.key === 'prizepicks') continue;
+        const m = mkt(b, mk);
+        if (!m) continue;
+        const mine = (m.outcomes || []).filter((o) => nbaName(o.description) === k && o.point != null && typeof o.price === 'number');
+        if (b.key === 'underdog') { const u = mine.find((o) => o.name === 'Under'); if (u) ud = u.point; continue; }
+        if (DFS_BOOKS.has(b.key)) continue;
+        const pts = [];
+        for (const pt of new Set(mine.map((o) => o.point))) {
+          const u = mine.find((o) => o.point === pt && o.name === 'Under'), ov = mine.find((o) => o.point === pt && o.name === 'Over');
+          const f = u && ov ? shinDevig(u.price, ov.price) : null;
+          if (f != null && f > 0 && f < 1) pts.push([pt, round1(f * 100)]);
+        }
+        if (pts.length) q[b.key] = pts;
+      }
+      legs.push({ ...leg, mk: stat, ...(ud != null ? { ud } : {}), q });
+    }
+  }
+  return legs;
+}
+// Each leg's count from the game's box score (pure): a player who did not
+// play is void; one the box does not name stays open.
+function histPropGrade(legs, boxRows) {
+  const byName = new Map((boxRows || []).map((b) => [nbaName(b.player), b]));
+  for (const l of legs) {
+    const b = byName.get(nbaName(l.p));
+    if (!b) continue;
+    if (b.dnp) { l.v = 1; continue; }
+    const v = nbaStat(b, l.mk);
+    if (v == null) l.v = 1; else l.a = v;
+  }
+  return legs;
+}
+// A book's main line: the one it quotes nearest an even price.
+const histMain = (pts) => (pts && pts.length ? pts.slice().sort((a, b) => Math.abs(a[1] - 50) - Math.abs(b[1] - 50))[0] : null);
+// The sharp books' chance of the under at PrizePicks' own line, from those
+// quoting that line both ways (Pinnacle first, as everywhere); and the gap
+// from PrizePicks' line to the sharp main line (Pinnacle's, else FanDuel's,
+// else the median of the others').
+function histPropRead(l) {
+  const fairs = {};
+  for (const bk of HIST_PROP_SHARP) { const at = (l.q[bk] || []).find((x) => x[0] === l.pp); if (at) fairs[bk] = at[1]; }
+  const f = Object.keys(fairs).length ? sharpFair(fairs, 1) : { fair: null, src: 'MKT', n: 0 };
+  const mains = HIST_PROP_SHARP.map((bk) => [bk, histMain(l.q[bk])]).filter(([, m]) => m);
+  const main = (mains.find(([bk]) => bk === 'pinnacle') || mains.find(([bk]) => bk === 'fanduel') || [null, null])[1]
+    || (mains.length ? [median(mains.map(([, m]) => m[0])), null] : null);
+  return { under: f.fair, src: f.src, n: f.n, gap: main ? round1(l.pp - main[0]) : null };
+}
+const HIST_PROP_BANDS = [[50, 55], [55, 58], [58, 62], [62, 66], [66, 101]];
+// The report (pure): by market and all together -- the side the sharp chance
+// at PrizePicks' line favours, by band, and at 58%+ (a 2-pick needs 57.7% a
+// leg); and More and Less by where PrizePicks' line sat against the sharp one.
+function histPropReport(legs, job) {
+  const graded = legs.filter((l) => l.a != null && !l.v);
+  const cell = (l) => { const n = l.length, hit = l.filter((x) => x.won).length; return { n, hit, rate: n ? round1(hit / n * 100) : null }; };
+  const one = (ls) => {
+    const sides = [];
+    const gaps = { below: { more: [], less: [] }, level: { more: [], less: [] }, above: { more: [], less: [] } };
+    for (const l of ls) {
+      if (l.a === l.pp) continue;                                      // a push decides nothing
+      const r = histPropRead(l);
+      const lessWon = l.a < l.pp;
+      if (r.under != null) {
+        const less = r.under >= 50;
+        sides.push({ chance: less ? r.under : 100 - r.under, won: less ? lessWon : !lessWon, less });
+      }
+      if (r.gap != null) {
+        const g = r.gap < 0 ? 'below' : r.gap > 0 ? 'above' : 'level';
+        gaps[g].more.push({ won: !lessWon }); gaps[g].less.push({ won: lessWon });
+      }
+    }
+    const band = (lo, hi) => { const l = sides.filter((s) => s.chance >= lo && s.chance < hi);
+      return { band: hi > 100 ? `${lo}+` : `${lo}-${hi}`, ...cell(l), stated: l.length ? round1(l.reduce((a, s) => a + s.chance, 0) / l.length) : null }; };
+    const at58 = sides.filter((s) => s.chance >= 58);
+    return { legs: ls.length, priced: sides.length, byBand: HIST_PROP_BANDS.map(([lo, hi]) => band(lo, hi)),
+      at58: { ...cell(at58), stated: at58.length ? round1(at58.reduce((a, s) => a + s.chance, 0) / at58.length) : null,
+        less: cell(at58.filter((s) => s.less)), more: cell(at58.filter((s) => !s.less)) },
+      byGap: Object.fromEntries(Object.entries(gaps).map(([g, v]) => [g, { more: cell(v.more), less: cell(v.less) }])) };
+  };
+  const markets = [...new Set(Object.values(job.markets))];
+  return { graded: graded.length, voided: legs.filter((l) => l.v).length, open: legs.filter((l) => l.a == null && !l.v).length,
+    all: one(graded), byMarket: Object.fromEntries(markets.map((m) => [m, one(graded.filter((l) => l.mk === m))])) };
+}
+// One run: the next games, each read an hour before its start, its legs
+// graded from ESPN's box score (free), one row each.
+async function histPropsRun(env, key, job, maxGames) {
+  const db = env.DB;
+  await ensureHistPropSchema(db);
+  const stateKey = `hist_props:${key}`;
+  const st = await loadFeedCache(db, stateKey);
+  const state = histPropState(st.present && st.data);
+  if (state.done || !env.ODDS_API_KEY) return state;
+  const days = histDays(job);
+  const base = `https://api.the-odds-api.com/v4/historical/sports/${job.sport}`;
+  let read = 0, scanned = 0;
+  while (read < maxGames && !state.done && scanned < 4) {
+    if (!state.queue.length) {
+      if (state.day >= days.length) { state.done = true; state.stopped = 'season read'; break; }
+      const date = days[state.day++];
+      scanned++;
+      const er = await fetch(`${base}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso&date=${encodeURIComponent(`${date}T15:00:00Z`)}`, { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, er, `hist-props:${key}:events`);
+      const spentE = Number(er.headers.get('x-requests-last'));
+      state.credits += isFinite(spentE) ? spentE : 1;
+      if (!er.ok) { state.errors++; continue; }
+      const ej = await er.json();
+      state.queue = ((ej && ej.data) || []).filter((e) => ptDateOf(Date.parse(e.commence_time)) === date)
+        .map((e) => ({ id: e.id, commence: e.commence_time, home: e.home_team, away: e.away_team, date }));
+      continue;
+    }
+    const g = state.queue.shift();
+    const snap = new Date(Date.parse(g.commence) - HIST_PROP_LEAD_MIN * 60e3).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const r = await fetch(`${base}/events/${g.id}/odds?apiKey=${env.ODDS_API_KEY}&bookmakers=${HIST_PROP_BOOKS.join(',')}`
+      + `&markets=${Object.keys(job.markets).join(',')}&oddsFormat=american&dateFormat=iso&date=${encodeURIComponent(snap)}`, { headers: { accept: 'application/json' } });
+    await recordOddsUsage(env, r, `hist-props:${key}:odds`);
+    read++;
+    const spent = Number(r.headers.get('x-requests-last'));
+    state.credits += isFinite(spent) ? spent : 10 * Object.keys(job.markets).length;
+    const left = Number(r.headers.get('x-requests-remaining'));
+    if (isFinite(left)) state.remaining = left;
+    if (!r.ok) { state.errors++; continue; }
+    const j = await r.json();
+    const legs = histPropLegs(job, j && j.data);
+    // The game's ESPN id, from that day's scoreboard (kept for the day's other games).
+    if (!state.espn[g.date]) {
+      let evs = [];
+      try { evs = await espnScoreboard(`nba/scoreboard?xhr=1&date=${g.date.replace(/-/g, '')}`); } catch (e) { /* none */ }
+      state.espn = { [g.date]: evs.map((e) => { const c = (e.competitions || [])[0] || {};
+        return { id: e.id, teams: (c.competitors || []).map((t) => (t.team && (t.team.displayName || t.team.name)) || '') }; }) };
+    }
+    const hit = (state.espn[g.date] || []).find((e) => e.teams.some((t) => nbaMatch(t, g.home)) && e.teams.some((t) => nbaMatch(t, g.away)));
+    if (hit) {
+      try {
+        const br = await fetch(`${ESPN_CDN_NBA}/boxscore?xhr=1&gameId=${hit.id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+        if (br.ok) histPropGrade(legs, nbaBoxRows(await br.json(), hit.id, g.date, 2));
+      } catch (e) { /* stays open */ }
+    } else if (state.unmatched.length < 60) state.unmatched.push(`${g.date} ${g.away} @ ${g.home}`);
+    await db.prepare('INSERT OR REPLACE INTO histpropgames (job, event_id, date, commence, game, legs, graded) VALUES (?,?,?,?,?,?,?)')
+      .bind(key, g.id, g.date, g.commence, `${g.away} @ ${g.home}`, JSON.stringify(legs), legs.some((l) => l.a != null || l.v) ? 1 : 0).run();
+    state.games++;
+    if (state.credits >= HIST_PROP_CAPS[key]) { state.done = true; state.stopped = 'credit cap'; }
+    if (state.remaining != null && state.remaining < HIST_PROP_FLOOR) { state.done = true; state.stopped = 'floor: the live boards keep the rest'; }
+  }
+  await saveFeedCache(db, stateKey, state);
+  return state;
+}
+// The backtest's own cron: each job set running, a few games a run.
+async function histPropsTick(env) {
+  if (!env || !env.DB) return null;
+  for (const [key, job] of Object.entries(HIST_PROP_JOBS)) {
+    const st = await loadFeedCache(env.DB, `hist_props:${key}`);
+    const s = st.present && st.data;
+    if (s && s.active && !s.done) return histPropsRun(env, key, job, HIST_PROP_PER_TICK);
+  }
+  return null;
 }
 async function histPropsProbe(env, key, job, date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'probe=YYYY-MM-DD' };

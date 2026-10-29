@@ -60,8 +60,9 @@ globalThis.fetch = async (u) => {
 
 const PRIORS = fs.readFileSync(path.join(BOARD, 'nba-priors.json'), 'utf8');
 const SRC = fs.readFileSync(path.join(BOARD, 'worker.js'), 'utf8').replace(/\r\n/g, '\n');
-const ALIAS_LINE = "const NBA_NAME_ALIAS = { 'Ron Holland': 'Ronald Holland II' };";
-const BEFORE = SRC.replace(ALIAS_LINE, 'const NBA_NAME_ALIAS = {};');
+// Just his entry: the table holds others since 2026-10-29 (tests/histprops.mjs).
+const ALIAS_LINE = "const NBA_NAME_ALIAS = { 'Ron Holland': 'Ronald Holland II',";
+const BEFORE = SRC.replace(ALIAS_LINE, 'const NBA_NAME_ALIAS = {');
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };

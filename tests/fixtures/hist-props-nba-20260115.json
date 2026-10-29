@@ -1,0 +1,7151 @@
+{
+ "_recorded": "Production /api/hist-props?job=nba&probe=2026-01-15 at 12:55 AM Pacific, Oct 29 2026: the Odds API historical events list for Jan 15 2026 and one game's player props (Grizzlies @ Magic) an hour before tip, as the feed sent them.",
+ "job": "nba",
+ "date": "2026-01-15",
+ "eventsStatus": 200,
+ "eventsCredits": "1",
+ "eventsTimestamp": "2026-01-15T14:55:38Z",
+ "events": [
+  {
+   "id": "3c42c29ed4783164fd918abc996efd37",
+   "commence": "2026-01-15T19:10:00Z",
+   "game": "Memphis Grizzlies @ Orlando Magic"
+  },
+  {
+   "id": "e2a3dbd8d101d617f49495df16db2d11",
+   "commence": "2026-01-16T00:10:00Z",
+   "game": "Phoenix Suns @ Detroit Pistons"
+  },
+  {
+   "id": "363cf226fe2602130e774d952f7aba95",
+   "commence": "2026-01-16T00:40:00Z",
+   "game": "Boston Celtics @ Miami Heat"
+  },
+  {
+   "id": "2ad9e0affab10cad1a66f8c7bc1ad959",
+   "commence": "2026-01-16T00:40:00Z",
+   "game": "Oklahoma City Thunder @ Houston Rockets"
+  },
+  {
+   "id": "2bb59ddfd831a67347299ff05ffd9937",
+   "commence": "2026-01-16T01:10:00Z",
+   "game": "Milwaukee Bucks @ San Antonio Spurs"
+  },
+  {
+   "id": "2f48e9622a54956dd753751102a3ea12",
+   "commence": "2026-01-16T01:40:00Z",
+   "game": "Utah Jazz @ Dallas Mavericks"
+  },
+  {
+   "id": "149c207c35f1cf5624ab9bdad5d583e6",
+   "commence": "2026-01-16T03:10:00Z",
+   "game": "Atlanta Hawks @ Portland Trail Blazers"
+  },
+  {
+   "id": "d6a726d5017e571d13743c9313a78366",
+   "commence": "2026-01-16T03:10:00Z",
+   "game": "New York Knicks @ Golden State Warriors"
+  },
+  {
+   "id": "0a255703aa60120bbd8ef50715aa91a7",
+   "commence": "2026-01-16T03:40:00Z",
+   "game": "Charlotte Hornets @ Los Angeles Lakers"
+  }
+ ],
+ "oddsStatus": 200,
+ "oddsCredits": "50",
+ "remaining": "85686",
+ "snap": "2026-01-15T18:10:00Z",
+ "odds": {
+  "timestamp": "2026-01-15T18:05:37Z",
+  "previous_timestamp": "2026-01-15T18:00:49Z",
+  "next_timestamp": "2026-01-15T18:10:38Z",
+  "data": {
+   "id": "3c42c29ed4783164fd918abc996efd37",
+   "sport_key": "basketball_nba",
+   "sport_title": "NBA",
+   "commence_time": "2026-01-15T19:10:00Z",
+   "home_team": "Orlando Magic",
+   "away_team": "Memphis Grizzlies",
+   "bookmakers": [
+    {
+     "key": "fanduel",
+     "title": "FanDuel",
+     "last_update": "2026-01-15T18:05:27Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:05:01Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -113,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -113,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -113,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -113,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -128,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": 100,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -130,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": 102,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -128,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": 100,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 104,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -132,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -111,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -115,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -106,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -120,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -104,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -122,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -122,
+         "point": 6.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -104,
+         "point": 6.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -104,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -122,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -118,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -108,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -115,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -111,
+         "point": 15.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_assists",
+       "last_update": "2026-01-15T18:05:01Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -128,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -104,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -118,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -112,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -112,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -118,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -122,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -108,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -112,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -118,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -125,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -106,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -114,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -118,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -112,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -118,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -102,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -130,
+         "point": 20.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds",
+       "last_update": "2026-01-15T18:05:01Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -120,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -106,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -102,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -125,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -120,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -106,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -118,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -108,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -104,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -122,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -104,
+         "point": 31.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -122,
+         "point": 31.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -120,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -106,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -111,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -115,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -111,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -111,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -115,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -102,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -125,
+         "point": 16.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:05:01Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -113,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -113,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -104,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -120,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -102,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -125,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -113,
+         "point": 29.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -113,
+         "point": 29.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -111,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -104,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -122,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -115,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -111,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -115,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -111,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -125,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -102,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -108,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -118,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -125,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -102,
+         "point": 22.5
+        }
+       ]
+      },
+      {
+       "key": "player_rebounds_assists",
+       "last_update": "2026-01-15T18:05:01Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 108,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -138,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": 108,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -138,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -130,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": 102,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 102,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -130,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -125,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -102,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": 100,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -128,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -102,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -125,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -102,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -125,
+         "point": 13.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "draftkings",
+     "title": "DraftKings",
+     "last_update": "2026-01-15T18:04:57Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:05:35Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -109,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -117,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -126,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -101,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -118,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -108,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -106,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -120,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -102,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -125,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -112,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -114,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -119,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -107,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -101,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -127,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -121,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -105,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -118,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -108,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -121,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -106,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -131,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": 103,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -107,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -119,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -101,
+         "point": 5.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -126,
+         "point": 5.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_assists",
+       "last_update": "2026-01-15T18:05:35Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -118,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -111,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -107,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -123,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -109,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -121,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -119,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -110,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -112,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -117,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -107,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -124,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -115,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -115,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -126,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -104,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -124,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -106,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -106,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -124,
+         "point": 12.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds",
+       "last_update": "2026-01-15T18:05:35Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -123,
+         "point": 30.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -107,
+         "point": 30.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -121,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -108,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -114,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -116,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -114,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -116,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -118,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -112,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -111,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -118,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -107,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -123,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -118,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -111,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -114,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -115,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -107,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -123,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -129,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -102,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -128,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -103,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -105,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -125,
+         "point": 10.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:05:35Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -111,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -119,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -124,
+         "point": 28.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -106,
+         "point": 28.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -127,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -104,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -105,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -126,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -116,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -113,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -118,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -111,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -113,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -116,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -110,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -119,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -120,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -110,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -118,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -111,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -127,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -103,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -108,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -122,
+         "point": 16.5
+        }
+       ]
+      },
+      {
+       "key": "player_rebounds_assists",
+       "last_update": "2026-01-15T18:05:35Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -116,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -114,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -107,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -123,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -138,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": 105,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -123,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -107,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -105,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -126,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -138,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": 105,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -121,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -109,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": 109,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -143,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -127,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -103,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 100,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -132,
+         "point": 7.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "novig",
+     "title": "Novig",
+     "last_update": "2026-01-15T18:05:26Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:05:50Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": 308,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": 112,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -165,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -127,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": 118,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -104,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -111,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 107,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -134,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -108,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -104,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 116,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -182,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -101,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -122,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -105,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -147,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -101,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -151,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -120,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -103,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": 181,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -230,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 102,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -127,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -124,
+         "point": 6.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": 107,
+         "point": 6.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": 110,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -150,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -111,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -111,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -222,
+         "point": 4.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -153,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": 103,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 256,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -426,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 136,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -206,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": 372,
+         "point": 29.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": 227,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -372,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -229,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": 154,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 205,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -327,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": 130,
+         "point": 6.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": 136,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -205,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 313,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 270,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": 179,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -165,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": 110,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": 109,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -140,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 119,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -181,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": 114,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -374,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -111,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -112,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": 145,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -124,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": 103,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -152,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -133,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -101,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -108,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -106,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 236,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 100,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -101,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -111,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -110,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -120,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 173,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -270,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 116,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -174,
+         "point": 20.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_assists",
+       "last_update": "2026-01-15T18:05:50Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -111,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -116,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -122,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -106,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -110,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -104,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -111,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -116,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -111,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -115,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -107,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -121,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -134,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -112,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 114,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -178,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -117,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -109,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": 135,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -104,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -119,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -165,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": 106,
+         "point": 23.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds",
+       "last_update": "2026-01-15T18:05:50Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 110,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -166,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -138,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -111,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -104,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -124,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -120,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -108,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -106,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -119,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 104,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -161,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -110,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -114,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -107,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -121,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -108,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -107,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -103,
+         "point": 31.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -122,
+         "point": 31.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -144,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -102,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": 100,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -156,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 118,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -178,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -109,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -102,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -126,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -108,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -118,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -119,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -105,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -132,
+         "point": 30.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -107,
+         "point": 30.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -156,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": 101,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -119,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -105,
+         "point": 24.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:05:50Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -130,
+         "point": 35.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": 103,
+         "point": 35.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -131,
+         "point": 28.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -103,
+         "point": 28.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -120,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -104,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 110,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -138,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 113,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -142,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": 102,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 129,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -162,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 107,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -146,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 109,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -142,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -109,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -114,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -113,
+         "point": 29.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -111,
+         "point": 29.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -110,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -114,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -129,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": 101,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -108,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -116,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -110,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -100,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -107,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -117,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -107,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -121,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -148,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": 117,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 107,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -136,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -113,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -110,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -108,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -111,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 116,
+         "point": 28.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -144,
+         "point": 28.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -101,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -125,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -125,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -100,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": 100,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -127,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": 100,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -135,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": 107,
+         "point": 22.5
+        }
+       ]
+      },
+      {
+       "key": "player_rebounds_assists",
+       "last_update": "2026-01-15T18:05:50Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -104,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -119,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -160,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": 102,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 102,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -129,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -127,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -111,
+         "point": 9.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "betonlineag",
+     "title": "BetOnline.ag",
+     "last_update": "2026-01-15T18:04:43Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:05:22Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -118,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -110,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -127,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -102,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -128,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -101,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -119,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -109,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -115,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -109,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": 110,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -143,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -110,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -118,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -114,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -114,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -114,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -114,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": 112,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -145,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": -114,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -114,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 100,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -130,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 104,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -135,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -118,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -110,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -167,
+         "point": 4.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": 128,
+         "point": 4.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -123,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -106,
+         "point": 10.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:05:22Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -114,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -114,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -122,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -108,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -112,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -115,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -103,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -125,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -114,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -114,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -112,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -115,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -115,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -112,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -127,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -102,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -108,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -120,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 102,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -132,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -116,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -111,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -102,
+         "point": 29.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -127,
+         "point": 29.5
+        },
+        {
+         "name": "Over",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -122,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -106,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -112,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -116,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -111,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": -115,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -112,
+         "point": 11.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "underdog",
+     "title": "Underdog",
+     "last_update": "2026-01-15T18:04:33Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:05:45Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 12.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_assists",
+       "last_update": "2026-01-15T18:05:45Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 20.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds",
+       "last_update": "2026-01-15T18:05:45Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 31.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 31.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 20.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:05:45Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 28.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 28.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -137,
+         "point": 11.5
+        }
+       ]
+      },
+      {
+       "key": "player_rebounds_assists",
+       "last_update": "2026-01-15T18:05:45Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 10.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "betmgm",
+     "title": "BetMGM",
+     "last_update": "2026-01-15T18:04:57Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:05:52Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -120,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -110,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": -125,
+         "point": 6.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -105,
+         "point": 6.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -125,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -110,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -118,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -110,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -120,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -110,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -125,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -105,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -125,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -105,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -110,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -120,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -120,
+         "point": 6.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -110,
+         "point": 6.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -105,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -130,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 100,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -135,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -118,
+         "point": 5.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -110,
+         "point": 5.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -118,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -110,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -120,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -105,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -125,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -110,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -118,
+         "point": 10.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_assists",
+       "last_update": "2026-01-15T18:05:52Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -125,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -110,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -130,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -105,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -125,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -105,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -110,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -120,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -120,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -110,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -115,
+         "point": 28.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -115,
+         "point": 28.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 100,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -135,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -125,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -105,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -120,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -110,
+         "point": 12.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds",
+       "last_update": "2026-01-15T18:05:52Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -115,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -115,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -110,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -118,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -125,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -105,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -130,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -105,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -118,
+         "point": 31.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -110,
+         "point": 31.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -105,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -130,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -105,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -125,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -110,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -120,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -105,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -130,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -105,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -125,
+         "point": 20.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:05:52Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -105,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -125,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": -110,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -118,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -125,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -105,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -110,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -120,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -120,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -110,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -125,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -105,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -125,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -105,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -118,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -110,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -105,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -125,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -105,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -125,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -118,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -110,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -105,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -130,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -118,
+         "point": 29.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -110,
+         "point": 29.5
+        },
+        {
+         "name": "Over",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -130,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -105,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -115,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -120,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -110,
+         "point": 10.5
+        }
+       ]
+      },
+      {
+       "key": "player_rebounds_assists",
+       "last_update": "2026-01-15T18:05:52Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -140,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": 105,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -115,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -115,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -105,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -130,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -135,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": 100,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 100,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -130,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 100,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -135,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -140,
+         "point": 4.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": 105,
+         "point": 4.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -105,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -125,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 110,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -145,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -130,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": 100,
+         "point": 9.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "prizepicks",
+     "title": "PrizePicks",
+     "last_update": "2026-01-15T18:02:09Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:02:46Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 13
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 13
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 6.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 6.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -137,
+         "point": 5.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -137,
+         "point": 5.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_assists",
+       "last_update": "2026-01-15T18:02:46Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -137,
+         "point": 6.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -137,
+         "point": 6.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds",
+       "last_update": "2026-01-15T18:02:46Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 31.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 31.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -137,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -137,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -137,
+         "point": 10.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:02:46Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 28.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 28.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -137,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -137,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -137,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": -137,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -137,
+         "point": 11.5
+        }
+       ]
+      },
+      {
+       "key": "player_rebounds_assists",
+       "last_update": "2026-01-15T18:02:46Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -137,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -137,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 10
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -137,
+         "point": 10
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 10
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -137,
+         "point": 10
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -137,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 9
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -137,
+         "point": 9
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -137,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 8
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -137,
+         "point": 8
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -137,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 7
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 7
+        },
+        {
+         "name": "Over",
+         "description": "Moe Wagner",
+         "price": -137,
+         "point": 4.5
+        },
+        {
+         "name": "Under",
+         "description": "Moe Wagner",
+         "price": -137,
+         "point": 4.5
+        },
+        {
+         "name": "Over",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -137,
+         "point": 4.5
+        },
+        {
+         "name": "Under",
+         "description": "Kentavious Caldwell-Pope",
+         "price": -137,
+         "point": 4.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "prophetx",
+     "title": "ProphetX",
+     "last_update": "2026-01-15T18:05:24Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:05:48Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -600,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -335,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -164,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": 132,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -120,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": 107,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -106,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -117,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 113,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -140,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 168,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -215,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 1300,
+         "point": 34.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -4600,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -186,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": 142,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 105,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -108,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 103,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -130,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 225,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 1350,
+         "point": 34.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -410,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -180,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": 138,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -107,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -111,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": 117,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -150,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -260,
+         "point": 5.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -105,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -109,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": 150,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": 560,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -480,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -200,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": 152,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -110,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": 100,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 117,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -150,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 200,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -270,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -405,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -196,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": 150,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -128,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": 114,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 105,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -121,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 240,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -295,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -3400,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -380,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -156,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": 120,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 101,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -108,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 122,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -156,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 270,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 1450,
+         "point": 34.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -740,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -375,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -152,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": 128,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -108,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": 107,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": 120,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -125,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": 126,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -164,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": 215,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -380,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -960,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -405,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -240,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": 178,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -112,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -112,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": 107,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -132,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": 132,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -164,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": 355,
+         "point": 29.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -490,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -260,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -102,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -123,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 119,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -186,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 188,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 295,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -710,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -325,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -176,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": 150,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -121,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": 115,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 101,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -110,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 130,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -142,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 250,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -495,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -215,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": 160,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -117,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -105,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": 186,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -250,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -205,
+         "point": 5.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": -124,
+         "point": 6.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -119,
+         "point": 6.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": 114,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -150,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": 150,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Tristan da Silva",
+         "price": 510,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": -101,
+         "point": 5.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -124,
+         "point": 5.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": 142,
+         "point": 6.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -182,
+         "point": 6.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": 194,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Noah Penda",
+         "price": -265,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": 295,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": 1250,
+         "point": 14.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_assists",
+       "last_update": "2026-01-15T18:05:48Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -134,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -113,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -104,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -146,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -114,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -136,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -114,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -134,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 122,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -166,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": 106,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -134,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -115,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -120,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -126,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -112,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -136,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 114,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -178,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -124,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -124,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -113,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -132,
+         "point": 17.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds",
+       "last_update": "2026-01-15T18:05:48Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -122,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -122,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 104,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -162,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -106,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -140,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -109,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -138,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 116,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -178,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -156,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": 101,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -122,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -122,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -138,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -110,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -113,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -130,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -132,
+         "point": 30.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -117,
+         "point": 30.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -106,
+         "point": 31.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -140,
+         "point": 31.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -122,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -122,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": 100,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -138,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -110,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -104,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -142,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -113,
+         "point": 18.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -130,
+         "point": 18.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": 110,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -168,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -104,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -142,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -102,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Noah Penda",
+         "price": 142,
+         "point": 11.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:05:48Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -128,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -115,
+         "point": 15.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -103,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -148,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -140,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": 111,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -101,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -113,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": 115,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -136,
+         "point": 25.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -117,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -103,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -101,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -125,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -144,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": 113,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -115,
+         "point": 28.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -103,
+         "point": 28.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": 105,
+         "point": 29.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -121,
+         "point": 29.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -120,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -124,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": 125,
+         "point": 25.5
+        },
+        {
+         "name": "Under",
+         "description": "Tristan da Silva",
+         "price": -115,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -117,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -101,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 104,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -120,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -134,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -113,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -104,
+         "point": 17.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -142,
+         "point": 17.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -116,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -109,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": 113,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -130,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -132,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": 104,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -103,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -119,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 112,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -142,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -140,
+         "point": 35.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": 111,
+         "point": 35.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -114,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -108,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": 100,
+         "point": 37.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -127,
+         "point": 37.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -117,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -109,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 111,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -130,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": 134,
+         "point": 22.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -168,
+         "point": 22.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -102,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -124,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": 132,
+         "point": 28.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -144,
+         "point": 28.5
+        }
+       ]
+      },
+      {
+       "key": "player_rebounds_assists",
+       "last_update": "2026-01-15T18:05:48Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": 108,
+         "point": 8.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -158,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -127,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -130,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -113,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -160,
+         "point": 12.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": 103,
+         "point": 12.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -104,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -105,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -105,
+         "point": 9.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -140,
+         "point": 9.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": 100,
+         "point": 7.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -132,
+         "point": 7.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -122,
+         "point": 8.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 105,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -130,
+         "point": 10.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "pinnacle",
+     "title": "Pinnacle",
+     "last_update": "2026-01-15T18:05:13Z",
+     "markets": [
+      {
+       "key": "player_points",
+       "last_update": "2026-01-15T18:05:04Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -132,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": 100,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": 100,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -133,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -107,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -124,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -131,
+         "point": 11.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -101,
+         "point": 11.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -103,
+         "point": 20.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -128,
+         "point": 20.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -120,
+         "point": 10.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -111,
+         "point": 10.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -121,
+         "point": 19.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -109,
+         "point": 19.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -111,
+         "point": 14.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -119,
+         "point": 14.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -110,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": -120,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -115,
+         "point": 13.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -115,
+         "point": 13.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -147,
+         "point": 15.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": 111,
+         "point": 15.5
+        }
+       ]
+      },
+      {
+       "key": "player_points_rebounds_assists",
+       "last_update": "2026-01-15T18:05:04Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "description": "Paolo Banchero",
+         "price": -123,
+         "point": 36.5
+        },
+        {
+         "name": "Under",
+         "description": "Paolo Banchero",
+         "price": -108,
+         "point": 36.5
+        },
+        {
+         "name": "Over",
+         "description": "Cedric Coward",
+         "price": -105,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cedric Coward",
+         "price": -126,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Jock Landale",
+         "price": -104,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Jock Landale",
+         "price": -127,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Desmond Bane",
+         "price": -113,
+         "point": 29.5
+        },
+        {
+         "name": "Under",
+         "description": "Desmond Bane",
+         "price": -117,
+         "point": 29.5
+        },
+        {
+         "name": "Over",
+         "description": "Wendell Carter Jr",
+         "price": -104,
+         "point": 21.5
+        },
+        {
+         "name": "Under",
+         "description": "Wendell Carter Jr",
+         "price": -128,
+         "point": 21.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaren Jackson Jr",
+         "price": -112,
+         "point": 27.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaren Jackson Jr",
+         "price": -118,
+         "point": 27.5
+        },
+        {
+         "name": "Over",
+         "description": "Vincent Williams Jr",
+         "price": -107,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Vincent Williams Jr",
+         "price": -124,
+         "point": 16.5
+        },
+        {
+         "name": "Over",
+         "description": "Cam Spencer",
+         "price": -117,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Cam Spencer",
+         "price": -113,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Santi Aldama",
+         "price": -128,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Santi Aldama",
+         "price": -103,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Franz Wagner",
+         "price": -137,
+         "point": 23.5
+        },
+        {
+         "name": "Under",
+         "description": "Franz Wagner",
+         "price": 103,
+         "point": 23.5
+        },
+        {
+         "name": "Over",
+         "description": "Anthony Black",
+         "price": -116,
+         "point": 24.5
+        },
+        {
+         "name": "Under",
+         "description": "Anthony Black",
+         "price": -114,
+         "point": 24.5
+        },
+        {
+         "name": "Over",
+         "description": "Jaylen Wells",
+         "price": -130,
+         "point": 16.5
+        },
+        {
+         "name": "Under",
+         "description": "Jaylen Wells",
+         "price": -102,
+         "point": 16.5
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

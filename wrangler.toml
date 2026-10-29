@@ -18,8 +18,12 @@ binding = "ASSETS"
 # The second trigger is the soccer box-score ingest (worker.js SOC_BOX_CRON).
 # Its own invocation, because one match is ~30 ESPN requests and an
 # invocation's request budget is shared by everything it runs.
+#
+# The third is last season's player props read back (worker.js HIST_CRON,
+# 2026-10-29): a few games a run while a backtest job is set running, idle
+# otherwise.
 [triggers]
-crons = ["*/5 * * * *", "2-59/5 * * * *"]
+crons = ["*/5 * * * *", "2-59/5 * * * *", "1-59/2 * * * *"]
 
 # Track record storage (Cloudflare D1). With this binding active, env.DB is
 # defined, so the Worker logs each night's priced picks, grades them from the
