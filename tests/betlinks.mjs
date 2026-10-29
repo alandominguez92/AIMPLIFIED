@@ -239,6 +239,7 @@ const chk = (key, price) => text(P.priceCheckText(d, { key, price }));
 console.log(`  ${chk(hk.key, '+150')}`);
 ok(chk(hk.key, '') === 'Hawks ML: fair 50%, which breaks even at -100 . Type a price to check it.', 'with no price: the fair, and what breaks even');
 ok(chk(hk.key, '+150') === 'At +150 : EV +25.0% on a 50% fair · ¼ Kelly 4.2% . Breaks even at -100.', 'a +150 boost on the Hawks: +25% EV, 4.2% at a quarter Kelly');
+ok(chk(hk.key, '+200') === 'At +200 : EV +50.0% on a 50% fair · ¼ Kelly 6.3% · more than your 5% daily cap. Breaks even at -100.', 'a stake past the daily cap says so');
 ok(chk(hk.key, '-120') === 'At -120 : EV -8.3% · no bet. Hawks ML needs -100 or better.', 'at -120: no bet, and the price it needs');
 ok(/under the 1\.5% the list asks of a game line/.test(chk(hk.key, '+102')), 'an edge under the bar says so');
 state.bank.amount = 500;

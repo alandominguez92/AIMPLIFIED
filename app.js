@@ -6498,7 +6498,10 @@
     let stake = Math.round(ev / 100 / (dec - 1) * k.fraction * 1000) / 10;
     const capped = !!x.prop && stake > k.propCap;
     if (capped) stake = k.propCap;
+    // Past the day's cap, it says so: the list's bets are scaled to fit it.
+    const cap = (state.bank && state.bank.cap) || 5;
     return `At <b>${esc(AM(am))}</b>: EV <b class="u">+${esc(ev.toFixed(1))}%</b> on a ${esc(String(x.fair))}% fair · ¼ Kelly <b>${esc(stakeTxt(stake))}</b>${capped ? ' (cap)' : ''}`
+      + `${stake > cap ? ` · more than your ${esc(String(cap))}% daily cap` : ''}`
       + `${ev < bar ? ` · under the ${esc(String(bar))}% the list asks of ${x.prop ? 'a prop' : 'a game line'}` : ''}. Breaks even at ${esc(AM(need))}.`;
   }
   // How a side's price and the sharp line moved before the start (2026-10-29):
