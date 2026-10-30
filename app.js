@@ -6328,6 +6328,10 @@
     // losing night too.
     if (eb && eb.n) lines.push(`<li><span>Edge bets</span><b>${eb.hit} of ${eb.n} · <i class="${eb.units > 0 ? 'u' : eb.units < 0 ? 'o' : ''}">${units(eb.units)}</i>${eb.clvN ? ` · beat the close ${eb.beat} of ${eb.clvN}` : ''}</b></li>`);
     if (d.pool && d.pool.length && d.decided) lines.push(`<li><span>The list</span><b>${d.hit} of ${d.decided}</b></li>`);
+    // Which edge bets they were (2026-10-30), each at the price it was logged at.
+    const ebs = eb && Array.isArray(eb.bets) && eb.bets.length
+      ? eb.bets.map((b) => `${glyph[b.result] || '·'} ${esc(shortLeg(b.label))} ${esc(AM(b.price))}${b.book ? ' ' + esc(bkLabel(b.book)) : ''}${b.beat === true ? ', beat the close' : b.beat === false ? ', missed the close' : ''}`).join(' · ')
+      : '';
     const went = { hit: ', would have landed', miss: ', would have missed', push: ', would have tied' };
     const off = (d.dropped || []).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
     const open = recapSeenAtLoad !== date;
@@ -6338,6 +6342,7 @@
       + `<span class="rc-dots">${dec.map((x) => (x.result === 'hit' ? '✓' : '✗')).join('')}</span></summary>`
       + `<div class="rc-chips">${chips}</div>`
       + (lines.length ? `<ul class="rc-lines">${lines.join('')}</ul>` : '')
+      + (ebs ? `<div class="rc-off rc-ebets">Edge bets: ${ebs}</div>` : '')
       + (off ? `<div class="rc-off">Off before the start: ${off}</div>` : '')
       + `</details>`;
   }

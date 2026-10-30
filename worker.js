@@ -8825,7 +8825,7 @@ async function gradeEdgeBets(db, now) {
 async function edgeBetRecord(env) {
   await ensureEdgeBetSchema(env.DB);
   return recordCached(env, 'edge-bets', async () => {
-    const rows = (await env.DB.prepare("SELECT date, first_price, first_fair, first_stake, close_fair, result FROM edgebets WHERE result IS NOT NULL").all()).results || [];
+    const rows = (await env.DB.prepare("SELECT date, label, book, first_price, first_fair, first_stake, close_fair, result FROM edgebets WHERE result IS NOT NULL").all()).results || [];
     const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
     let flat = 0, kelly = 0;
     for (const r of dec) { const d = decOf(r.first_price); flat += r.result === 'hit' ? d - 1 : -1; kelly += (r.first_stake || 0) * (r.result === 'hit' ? d - 1 : -1); }
@@ -8837,7 +8837,11 @@ async function edgeBetRecord(env) {
       const d2 = l.filter((r) => r.result === 'hit' || r.result === 'miss');
       const c = l.filter((r) => r.close_fair != null).map((r) => r.close_fair / 100 * decOf(r.first_price) - 1);
       byDay[date] = { n: d2.length, hit: d2.filter((r) => r.result === 'hit').length,
-        units: round2(d2.reduce((s, r) => s + (r.result === 'hit' ? decOf(r.first_price) - 1 : -1), 0)), clvN: c.length, beat: c.filter((v) => v > 0).length };
+        units: round2(d2.reduce((s, r) => s + (r.result === 'hit' ? decOf(r.first_price) - 1 : -1), 0)), clvN: c.length, beat: c.filter((v) => v > 0).length,
+        // Each bet, so "Last night" says which (2026-10-30): its record said
+        // one lost and not which.
+        bets: l.map((r) => ({ label: r.label, price: r.first_price, book: r.book || null, result: r.result,
+          beat: r.close_fair == null ? null : r.close_fair / 100 * decOf(r.first_price) - 1 > 0 })) };
     }
     return { data: {
       byDay,
@@ -9364,7 +9368,9 @@ const dropOutranked = (o) => `${o.label} (${Math.round(o.p)}%) took its game's p
 // the books' is no reason to leave it.
 function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   if (!m) return null;
-  if (reread && m.close_point == null) return `PrizePicks took the line down before ${kind === 'nhl_more' ? 'puck drop' : 'tip'}, most often a player ruled out`;
+  // An NHL line coming down is not a scratch (2026-10-30): on Oct 29 Strome,
+  // Batherson and Hutson all played -- 0, 3 and 1 points.
+  if (reread && m.close_point == null) return kind === 'nhl_more' ? 'PrizePicks took the line down before puck drop' : 'PrizePicks took the line down before tip, most often a player ruled out';
   if (!PICK_KINDS[kind]) kind = 'nba_pp';
   const cur = ppCurrent(m), min = PICK_KINDS[kind].min, more = kind !== 'nba_pp';
   const p = cur.model_under == null ? null : more ? 100 - cur.model_under : cur.model_under;

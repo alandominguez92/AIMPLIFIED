@@ -169,6 +169,11 @@ ok(R.clv.n === 4 && R.clv.beat === clv.filter((v) => v > 0).length && R.clv.avg 
 const d27 = R.byDay && R.byDay['2026-10-27'];
 ok(d27 && d27.n === 4 && d27.hit === 3 && d27.units === flat && d27.clvN === 4 && d27.beat === R.clv.beat && Object.keys(R.byDay).join() === '2026-10-27',
   `and by day: Oct 27, ${d27 && d27.hit} of ${d27 && d27.n}, ${d27 && d27.units}u, beat the close ${d27 && d27.beat} of ${d27 && d27.clvN}`);
+// And each bet that day (2026-10-30), for "Last night": which won, which lost.
+const gl = (r) => sq.prepare('SELECT label, book, first_price, result FROM edgebets WHERE date = ? AND key = ?').get(r.date, r.key);
+const want27 = graded.map(gl).map((r) => `${r.label}|${r.first_price}|${r.book}|${r.result}`).sort().join(';');
+ok(d27 && Array.isArray(d27.bets) && d27.bets.map((b) => `${b.label}|${b.price}|${b.book}|${b.result}`).sort().join(';') === want27
+  && d27.bets.filter((b) => b.beat).length === d27.beat, `and its bets: ${d27 && (d27.bets || []).map((b) => `${b.label} ${b.price} ${b.result}`).join(', ')}`);
 
 // ---- fresh prices ---------------------------------------------------------------------------------
 console.log('\n-- fresh prices --');

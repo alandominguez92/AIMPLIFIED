@@ -47,6 +47,8 @@ const env = {
   esc, Date: class extends RealDate { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } },
   localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
   state: { bank: { amount: null, cap: 5 }, ticketN: null },
+  // The recap's edge bets name their price and book (2026-10-30).
+  AM: (n) => (n == null ? '—' : (n > 0 ? '+' + n : String(n))), bkLabel: (k) => ({ draftkings: 'DK', fanduel: 'FD', betmgm: 'MGM' }[k] || String(k).toUpperCase()),
   ptDayOf: (ms) => (ms ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new RealDate(ms)) : null),
   shortDay: (ymd) => new RealDate(ymd + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
   pct0: (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—'),
@@ -75,6 +77,9 @@ P = build();                                                  // a later page lo
 ok(/<details class="pk-recap">/.test(P.recapHtml(h, null)) && !/ open>/.test(P.recapHtml(h, null)), 'folded on the next load');
 const eb = { byDay: { '2026-10-27': { n: 4, hit: 3, units: 7.5, clvN: 4, beat: 4 } } };
 ok(/Edge bets 3 of 4 · \+7\.50u · beat the close 4 of 4/.test(text(P.recapHtml(h, eb))), "and the edge bets' day, where it has one (the worker's byDay: tests/edgebets.mjs)");
+// Which bets (2026-10-30): the worker's byDay carries each one now.
+const eb2 = { byDay: { '2026-10-27': { ...eb.byDay['2026-10-27'], n: 2, hit: 1, bets: [{ label: 'Blazers ML', price: 400, book: 'draftkings', result: 'hit', beat: true }, { label: 'Over 2.5 goals', price: -105, book: 'fanduel', result: 'miss', beat: false }] } } };
+ok(/Edge bets: ✓ Blazers \+400 DK, beat the close · ✗ Over 2\.5 goals -105 FD, missed the close/.test(text(P.recapHtml(h, eb2))), 'each bet by name, price and book, and whether it beat the close');
 ok(P.shortLeg('Wendell Carter Jr Under 2.5 AST') === 'Carter Jr U2.5 AST' && P.shortLeg('Kyshawn George Over 0.5 BLK') === 'George O0.5 BLK' && P.shortLeg('Celtics ML') === 'Celtics',
   'legs by short names: "Carter Jr U2.5 AST", "George O0.5 BLK", "Celtics"');
 ok(P.recapHtml({ days: h.days.filter((d) => d.date !== '2026-10-27') }, null) === '', 'nothing when yesterday has no day');

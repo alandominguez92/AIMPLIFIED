@@ -244,7 +244,9 @@ let pd = ((await get('/api/picks')).record.history.days.find((d) => d.date === '
 ok(pd && pd.why === 'the chance at 0.5 was 47%, under the 55% bar' && pd.result === 'hit', `"${pd && pd.why}", and it would have landed`);
 sq.prepare("UPDATE nhlpp SET close_point = NULL, close_under = NULL WHERE player = 'Vasily Podkolzin'").run();
 pd = ((await get('/api/picks')).record.history.days.find((d) => d.date === '2026-10-26').dropped || []).find((x) => /Podkolzin/.test(x.label));
-ok(pd && pd.why === 'PrizePicks took the line down before puck drop, most often a player ruled out', `taken down: "${pd && pd.why}"`);
+// Not "most often a player ruled out" since 2026-10-30: on Oct 29 the three
+// NHL lines PrizePicks took down were all players who played.
+ok(pd && pd.why === 'PrizePicks took the line down before puck drop', `taken down: "${pd && pd.why}"`);
 // And had the sharp books priced Wilson's More as they did Edey's (42.5).
 sq.prepare("UPDATE nbapp SET close_sharp_under = 57.5 WHERE date = '2026-10-26' AND player = 'Caleb Wilson' AND market = 'blk'").run();
 const wd2 = ((await get('/api/picks')).record.history.days.find((d) => d.date === '2026-10-26').dropped || []).find((x) => /Caleb Wilson/.test(x.label));
