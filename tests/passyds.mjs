@@ -33,6 +33,8 @@ globalThis.caches = { default: { match: async () => undefined, put: async () => 
 
 const RealDate = Date;
 let NOW = RealDate.parse('2026-09-24T12:00:00Z');   // Thursday 5 AM Pacific
+// The feed's remaining credits are a month's (80,000): at 100 the live site
+// is lean since 2026-10-30 (oddsLean), and the passing yards wait.
 globalThis.Date = class extends RealDate {
   constructor(...a) { super(...(a.length ? a : [NOW])); }
   static now() { return NOW; }
@@ -78,7 +80,7 @@ const ESPN_BOX = JSON.parse(fs.readFileSync(path.join(FIX, 'espn-nfl-boxscore-40
 const oddsCalls = [], espnCalls = [];
 globalThis.fetch = async (u) => {
   const url = String(u);
-  const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json', 'x-requests-remaining': '100', 'x-requests-last': '1' } });
+  const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'content-type': 'application/json', 'x-requests-remaining': '80000', 'x-requests-last': '1' } });
   if (url.includes('cdn.espn.com')) {
     espnCalls.push(url);
     const q = new URL(url).searchParams;

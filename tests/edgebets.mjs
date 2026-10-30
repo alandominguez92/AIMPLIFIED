@@ -181,14 +181,19 @@ const wlift = (name) => { const at = src.indexOf(`async function ${name}(`); let
   for (let i = src.indexOf('{', at); i < src.length; i++) { if (src[i] === '{') d++; else if (src[i] === '}' && --d === 0) return src.slice(at, i + 1); } };
 const consts = ['EDGE_STALE_MS', 'EDGE_REFRESH_GAP_MS', 'EDGE_REFRESH_MAX'].map((n) => src.slice(src.indexOf(`const ${n} =`), src.indexOf(';\n', src.indexOf(`const ${n} =`)) + 1)).join('\n');
 const reads = [], store = {};
-const refresh = new Function('h2hCapture', 'soccerIngest', 'ingestNflLines', 'nflBoardData', 'loadFeedCache', 'saveFeedCache', 'ptDateOf', 'NBA_ML', 'NHL_ML', 'SOCCER_LEAGUES',
+let lean = false;                                     // oddsLean (2026-10-30): tests/histprops.mjs keeps the reserve
+const refresh = new Function('h2hCapture', 'soccerIngest', 'ingestNflLines', 'nflBoardData', 'loadFeedCache', 'saveFeedCache', 'ptDateOf', 'NBA_ML', 'NHL_ML', 'SOCCER_LEAGUES', 'oddsLean',
   consts + '\n' + wlift('refreshEdgePrices') + '\nreturn refreshEdgePrices;')(
   async (e, cfg, lg) => reads.push(`${cfg.sport}:${lg}`), async (e, u) => reads.push(`soccer:${u.searchParams.get('league')}`), async () => reads.push('nfl'), async () => {},
   async (db, k) => (k in store ? { present: true, data: store[k] } : { present: false }), async (db, k, v) => { store[k] = JSON.parse(JSON.stringify(v)); },
-  (t) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new RealDate(t)), { sport: 'nba' }, { sport: 'nhl' }, { mls: {}, ligamx: {} });
+  (t) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new RealDate(t)), { sport: 'nba' }, { sport: 'nhl' }, { mls: {}, ligamx: {} }, async () => lean);
 const at = RealDate.parse('2026-10-27T21:00:00Z');
 const scan = { bets: [{ sport: 'soccer', league: 'mls', asOf: '2026-10-27T12:05:55.302Z' }, { sport: 'soccer', league: 'ligamx', asOf: '2026-10-27T20:30:32.836Z' },
   { sport: 'nba', asOf: '2026-10-27T07:00:37.980Z', prop: true }] };
+lean = true;
+await refresh({ ODDS_API_KEY: 'k' }, scan, at);
+ok(reads.length === 0 && !Object.keys(store).length, 'lean, with too few credits left to the renewal, an old price waits for the next board read');
+lean = false;
 await refresh({ ODDS_API_KEY: 'k' }, scan, at);
 ok(reads.join() === 'soccer:mls', "FC Cincinnati's +410, nine hours old at 2 PM, buys one MLS read; Tijuana's, half an hour old, and a prop's buy none");
 await refresh({ ODDS_API_KEY: 'k' }, scan, at + 3600e3);

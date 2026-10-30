@@ -5918,10 +5918,13 @@ async function ingestNflProps(env, opts, reqUrl) {
   const stmts = [];
   const pydRows = [];
   out.passYdsEvents = 0;
+  // Lean: the passing yards (logged, never listed) wait.
+  const lean = await oddsLean(env.DB, now);
+  if (lean) out.lean = true;
   for (const ev of upcoming) {
     let d;
     // Passing yards only inside the day-of window -- see NFL_PASS_YDS_WINDOW_MS.
-    const nearKick = Date.parse(ev.commence_time) - now <= NFL_PASS_YDS_WINDOW_MS;
+    const nearKick = !lean && Date.parse(ev.commence_time) - now <= NFL_PASS_YDS_WINDOW_MS;
     const markets = NFL_PROP_MARKETS + (nearKick ? ',' + NFL_PASS_YDS_MARKET : '');
     try {
       const r = await fetch(
@@ -9609,6 +9612,8 @@ async function refreshEdgePrices(env, scan, now) {
     if (lg) due.set(`${b.sport}:${lg}`, { sport: b.sport, lg });
   }
   if (!due.size) return [];
+  // Lean: an old price waits for the boards' own next read.
+  if (await oddsLean(env.DB, now)) return [];
   const key = `edge_fresh:${ptDateOf(now)}`;
   const hit = await loadFeedCache(env.DB, key);
   const st = (hit.present && hit.data) || { n: 0, last: {} };
@@ -13679,18 +13684,39 @@ const HIST_CRON = '1-59/2 * * * *';
 const HIST_PROP_PER_TICK = 3;
 const HIST_PROP_CAPS = { nba: 63000, nba3: 14000, nfl: 9000 };
 // What the live site keeps (2026-10-29, the owner's call: the credits have to
-// last the whole month). A thousand for each day left before the quota resets
-// on the 1st -- about half again the busiest day of the week before (658), the
-// live site's own average 450 -- and 2,000 more. A backtest pauses below it,
-// and goes on by itself once the reset lifts the remaining past it: the live
+// last the whole month). A thousand for each day left before the quota renews
+// -- about half again the busiest day of the week before (658), the live
+// site's own average 450 -- and 2,000 more. A backtest pauses below it, and
+// goes on by itself once the renewal lifts the remaining past it: the live
 // boards' reads keep odds_usage current, so the check costs nothing. (A fixed
 // 12,000 until then: in the month's last days it kept back far more than the
 // live site could use, and on the 1st far less than a month needs.)
 const HIST_LIVE_PER_DAY = 1000, HIST_LIVE_BUFFER = 2000;
-function histReserve(now) {
+// The day of the month the Odds API quota renews: the 3rd (2026-10-30, the
+// owner's plan; the 1st was assumed until then). Midnight UTC that day; a
+// renewal later in the day only means the reserve waits a few hours more.
+const ODDS_RESET_DAY = 3;
+function nextOddsReset(now) {
   const d = new Date(now);
-  const reset = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
-  return Math.ceil((reset - now) / 864e5) * HIST_LIVE_PER_DAY + HIST_LIVE_BUFFER;
+  const r = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), ODDS_RESET_DAY);
+  return r > now ? r : Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, ODDS_RESET_DAY);
+}
+const oddsDaysLeft = (now) => Math.ceil((nextOddsReset(now) - now) / 864e5);
+function histReserve(now) {
+  return oddsDaysLeft(now) * HIST_LIVE_PER_DAY + HIST_LIVE_BUFFER;
+}
+// Lean (2026-10-30: 4,668 credits left on Oct 30, the renewal on Nov 3). When
+// the remaining the last read saw will not cover the live site's busiest day
+// (658) for each day left, with room over, the reads it can do without wait:
+// the stale edge-price refresh and the NFL passing-yards add-on, which is
+// logged and never listed. The boards, the PrizePicks reads and the pre-start
+// reads go on. One row read.
+const LIVE_LEAN_PER_DAY = 700;
+async function oddsLean(db, now) {
+  try {
+    const u = await db.prepare('SELECT remaining FROM odds_usage ORDER BY day DESC LIMIT 1').first();
+    return !!(u && typeof u.remaining === 'number' && u.remaining < oddsDaysLeft(now) * LIVE_LEAN_PER_DAY);
+  } catch (e) { return false; }
 }
 // The books whose no-vig line is a fair price for a prop (Pinnacle first, as
 // sharpFair reads them); the others are kept for their lines alone.
@@ -13906,7 +13932,7 @@ async function histPropsRun(env, key, job, maxGames) {
   if (u && typeof u.remaining === 'number') {
     const keep = histReserve(Date.now());
     if (u.remaining < keep) {
-      if (!state.paused) { state.paused = `reserve: the live site keeps ${keep} until the 1st`; await saveFeedCache(db, stateKey, state); }
+      if (!state.paused) { state.paused = `reserve: the live site keeps ${keep} until the quota renews`; await saveFeedCache(db, stateKey, state); }
       return state;
     }
     if (state.paused) { delete state.paused; state.remaining = u.remaining; }
@@ -13972,7 +13998,7 @@ async function histPropsRun(env, key, job, maxGames) {
     state.games++;
     if (state.credits >= HIST_PROP_CAPS[key]) { state.done = true; state.stopped = 'credit cap'; }
     const keep = histReserve(Date.now());
-    if (!state.done && state.remaining != null && state.remaining < keep) state.paused = `reserve: the live site keeps ${keep} until the 1st`;
+    if (!state.done && state.remaining != null && state.remaining < keep) state.paused = `reserve: the live site keeps ${keep} until the quota renews`;
     // Kept after each game (2026-10-29): a run cut off before its end had lost
     // the games it read (one of the first seven, 50 credits) and read them again.
     await saveFeedCache(db, stateKey, state);
