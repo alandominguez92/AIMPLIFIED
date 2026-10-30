@@ -5883,7 +5883,7 @@
   // question. /api/picks builds the list from the logs, admits only kinds of leg
   // whose stated chance has held up, and logs what it shows so the list earns a
   // record of its own. Each star takes the leg under the id its own board uses.
-  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nba_blk_more: 'PrizePicks', nhl_ml: 'NHL ML', nhl_more: 'PrizePicks', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
+  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nba_blk_more: 'PrizePicks', nba_reb_gap: 'PrizePicks', nhl_ml: 'NHL ML', nhl_more: 'PrizePicks', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
   const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL', nfl: 'NFL', soccer: 'Soccer' };
   // Placeholder legs while the list loads (2026-10-12): the section was a
   // blank area for the seconds /api/picks takes on first open.

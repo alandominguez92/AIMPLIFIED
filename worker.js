@@ -8518,6 +8518,14 @@ const PICK_KINDS = {
   // and NHL points and assists 20 of 29 at 55%+ through Oct 27 (the cards'
   // blkMore and more records). PrizePicks legs, so they widen its entries.
   nba_blk_more: { sport: 'nba', label: 'NBA blocks More (PrizePicks)', min: 55 },
+  // Rebounds Less where PrizePicks' line sits above the sharp books' main line
+  // (2026-10-30, the owner's call, "betting against would be the best
+  // option"): last season's backtest, 408 of 727 (56.1%) -- 52.6% where the
+  // two lines met, 48.7% below (/api/hist-props?job=nba3). Its chance is that
+  // rate (REB_GAP_P): the sharp books' own at PrizePicks' number read about
+  // 52% on these. Past the 5- and 6-pick Flex break-even (about 54%), not the
+  // 2-pick Power's 57.7%.
+  nba_reb_gap: { sport: 'nba', label: 'NBA rebounds Less, PrizePicks above the sharp line', min: 55 },
   // NFL at 75%+ from 2026-10-26, on the owner's call ("too many losses"):
   // through Week 7 the log's favourites at 75%+ won 11 of 14 (78.5% stated)
   // and those at 65-75% 6 of 12 (about 70% stated) -- the Texans at 80.9% and
@@ -8557,7 +8565,7 @@ const KELLY_PRIOR_N = 20;
 // The first PrizePicks entry priced this way asked 5.4% on two model unders.
 const PROP_STAKE_CAP = 1;
 const ENTRY_STAKE_CAP = 2;
-const PROP_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nhl_more', 'nfl_ptd']);
+const PROP_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nba_reb_gap', 'nhl_more', 'nfl_ptd']);
 const capStake = (s, cap) => (cap != null && s > cap ? { stake: cap, capped: true } : { stake: s });
 const decOf = (am) => (am > 0 ? 1 + am / 100 : 1 + 100 / -am);
 const amOfChance = (p) => (p >= 0.5 ? -Math.round(p / (1 - p) * 100) : Math.round((1 - p) / p * 100));
@@ -8597,7 +8605,7 @@ function entryStake(ps, type) {              // ps: chances 0-1
 // winner"), one an entry. The NBA, NHL, soccer and MLB moneylines are
 // sportsbook bets; priced at PrizePicks' payouts they made a 2-pick Power read
 // +62% and stake 7.8% of a bankroll, on an entry that could not be placed.
-const PP_ENTRY_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nhl_more', 'nfl_ptd']);
+const PP_ENTRY_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nba_reb_gap', 'nhl_more', 'nfl_ptd']);
 
 // ---- Bets with an edge (2026-10-27) -------------------------------------------
 // The list ranks by how likely a leg is to land; sharp betting asks where a
@@ -9193,6 +9201,24 @@ async function picksCandidates(env, now) {
       sharp: r.sharp_under == null ? null : r.sharp_under });
   }
 
+  // Rebounds Less where PrizePicks' line sits above the sharp main line
+  // (2026-10-30, PICK_KINDS.nba_reb_gap). Rotation players, as the unders.
+  const rbs = (await db.prepare("SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL AND market = 'reb'").bind(...days).all()).results || [];
+  for (const row of ppStanding(rbs)) {
+    const r = ppCurrent(row);
+    const gap = rebGapOf(r);
+    if (!soon(r.commence) || gap == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
+    legs.push({ kind: 'nba_reb_gap', gameKey: 'nba:' + r.game_id, p: REB_GAP_P, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null,
+      vsBook: gap, legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
+      title: `${r.player} Under ${r.point} REB`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
+      src: { date: r.date, game_id: r.game_id, player_key: r.player, market: r.market, team: r.team },
+      spec: { sport: 'nba', date: ptDateOf(Date.parse(r.commence)), gamePk: r.game_id, playerId: r.player_id || null, player: r.player, team: r.team || null,
+        market: r.market, side: 'Under', book: { line: r.book_line != null ? r.book_line : null, price: typeof r.book_under === 'number' ? r.book_under : null, under: null },
+        pp: { line: r.point, under: REB_GAP_P } },
+      dfs: { ud: r.ud_line == null ? null : r.ud_line, p6: r.p6_line == null ? null : r.p6_line },
+      sharp: r.sharp_under == null ? null : r.sharp_under });
+  }
+
   // The PrizePicks Mores (2026-10-28): NBA blocks, rotation players, and the
   // NHL's points and assists, at a More chance of 55%+ by the model, as their
   // cards list them. A blocks leg the sharp books priced blends as the unders
@@ -9321,7 +9347,7 @@ async function dayPickResult(db, r) {
     if (!m || (m.result !== 'win' && m.result !== 'loss')) return m && m.result === 'void' ? 'void' : null;
     return (m.team === r.team) === (m.result === 'win') ? 'hit' : 'miss';
   }
-  if (r.kind === 'mlb_pp' || r.kind === 'nba_pp') {
+  if (r.kind === 'mlb_pp' || r.kind === 'nba_pp' || r.kind === 'nba_reb_gap') {
     const m = r.kind === 'mlb_pp'
       ? await one('SELECT result FROM pppicks WHERE date = ? AND game_id = ? AND player_id = ? AND market = ?', r.src_date, r.game_id, Number(r.player_key), r.market)
       : await one('SELECT result, point, close_point, close_result FROM nbapp WHERE date = ? AND game_id = ? AND player = ? AND market = ?', r.src_date, r.game_id, r.player_key, r.market);
@@ -9375,7 +9401,14 @@ function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   // Batherson and Hutson all played -- 0, 3 and 1 points.
   if (reread && m.close_point == null) return kind === 'nhl_more' ? 'PrizePicks took the line down before puck drop' : 'PrizePicks took the line down before tip, most often a player ruled out';
   if (!PICK_KINDS[kind]) kind = 'nba_pp';
-  const cur = ppCurrent(m), min = PICK_KINDS[kind].min, more = kind !== 'nba_pp';
+  // A rebounds Less leaves when its line stops sitting above the sharp books'.
+  if (kind === 'nba_reb_gap') {
+    const cur = ppCurrent(m), main = sharpMainOf(cur.book_unders);
+    if (cur.point !== m.point) return `PrizePicks moved the line from ${m.point} to ${cur.point}`;
+    if (main != null && !(cur.point > main)) return `the sharp books' line moved to ${main}, ${main > cur.point ? 'above' : 'level with'} PrizePicks' ${cur.point}`;
+    return other ? dropOutranked(other) : null;
+  }
+  const cur = ppCurrent(m), min = PICK_KINDS[kind].min, more = kind === 'nba_blk_more' || kind === 'nhl_more';
   const p = cur.model_under == null ? null : more ? 100 - cur.model_under : cur.model_under;
   const why = [];
   if (cur.point !== m.point) why.push(`PrizePicks moved the line from ${m.point} to ${cur.point}`);
@@ -9403,13 +9436,13 @@ async function dayPickDrops(db, now, listed) {
   return Promise.all(off.map(async (r) => {
     const other = listed.find((x) => x.date === r.date && String(x.game_id) === String(r.game_id)) || null;
     let why = null, result = null, actual = null;
-    if (r.kind === 'nba_pp' || r.kind === 'nba_blk_more' || r.kind === 'nhl_more') {
+    if (r.kind === 'nba_pp' || r.kind === 'nba_reb_gap' || r.kind === 'nba_blk_more' || r.kind === 'nhl_more') {
       const tbl = r.kind === 'nhl_more' ? 'nhlpp' : 'nbapp';
       const m = await one(`SELECT * FROM ${tbl} WHERE date = ? AND game_id = ? AND player = ? AND market = ?`, r.src_date, r.game_id, r.player_key, r.market);
       const reread = !!(m && (m.close_at || await one(`SELECT 1 AS x FROM ${tbl} WHERE date = ? AND game_id = ? AND close_at IS NOT NULL LIMIT 1`, r.src_date, r.game_id)));
       why = ppDropWhy(m, reread, other, r.kind);
       const res = ppShownResult(m, r.label);
-      result = r.kind === 'nba_pp' ? ppLegResult(res) : ppMoreResult(res);
+      result = r.kind === 'nba_pp' || r.kind === 'nba_reb_gap' ? ppLegResult(res) : ppMoreResult(res);
       if (m && m.actual != null) actual = m.actual;
     } else if (PICK_GM_SPORT[r.kind]) {
       const g = await one('SELECT pick, win_prob, result FROM gmpicks WHERE sport = ? AND date = ? AND game_id = ? AND market = ?', PICK_GM_SPORT[r.kind], r.src_date, r.game_id, r.market);
@@ -9456,6 +9489,12 @@ async function pickKindBuild(db) {
   for (const r of ((await db.prepare(`SELECT model_under, min_proj, point, book_line, result FROM nbapp WHERE result IN ('under','over') AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
     .bind(...NBA_PICK_MARKETS).all()).results || [])) {
     if (r.min_proj >= NBA_ROTATION_MIN && r.model_under >= PICK_KINDS.nba_pp.min && !ppBelowBook(r)) add('nba_pp', r.result === 'under');
+  }
+  // Rebounds Less above the sharp line (2026-10-30): at the line read last,
+  // against the lines read with it, as the list shows them.
+  for (const r of ((await db.prepare("SELECT point, close_point, result, close_result, min_proj, book_unders FROM nbapp WHERE market = 'reb' AND book_unders IS NOT NULL AND (result IN ('under','over') OR close_result IN ('under','over'))").all()).results || [])) {
+    const at = r.close_point != null ? { point: r.close_point, res: r.close_result } : { point: r.point, res: r.result };
+    if ((at.res === 'under' || at.res === 'over') && r.min_proj >= NBA_ROTATION_MIN && rebGapOf({ point: at.point, book_unders: r.book_unders }) != null) add('nba_reb_gap', at.res === 'under');
   }
   // The Mores (2026-10-28): graded at the first line, the More side, as the
   // cards' blkMore and more records count them.
@@ -11604,6 +11643,21 @@ const NBA_PICK_MARKETS = ['threes', 'ast'];
 // under is harder than the market's, and those legs landed 32 of 71 (45%)
 // against 58-60% at or above the books' number.
 const ppBelowBook = (r) => r.book_line != null && r.point != null && r.point < r.book_line;
+// The sharp books' main line from a row's book_unders (2026-10-30), as the
+// props backtest reads it (histPropRead): Pinnacle's, else FanDuel's, else the
+// median of the other sharp books'. A book's main line is its number nearest
+// even money.
+function sharpMainOf(json) {
+  const bu = parseJsonOr(json);
+  if (!bu) return null;
+  for (const bk of ['pinnacle', 'fanduel']) if (Array.isArray(bu[bk]) && typeof bu[bk][0] === 'number') return bu[bk][0];
+  const rest = HIST_PROP_SHARP.filter((bk) => Array.isArray(bu[bk]) && typeof bu[bk][0] === 'number').map((bk) => bu[bk][0]);
+  return rest.length ? median(rest) : null;
+}
+const REB_GAP_P = 56.1;
+// A rebounds row's line above the sharp main line: its current one (ppCurrent),
+// against the lines as last read.
+const rebGapOf = (r) => { const main = sharpMainOf(r.book_unders); return main != null && r.point != null && r.point > main ? round1(r.point - main) : null; };
 const NBA_PP_VER = 'nbapp-v1';
 const NBA_PP_PER_TICK = 5;                   // per-event calls a tick may make
 // When PrizePicks' props are read (2026-10-23), for the NBA and NHL logs alike.
