@@ -12388,6 +12388,8 @@ async function nbaPpDay(env, day) {
       tip: m.close_at ? { line: m.close_point, under: m.close_under, book: m.close_book_line, book_under: m.close_book_under, sharp: m.close_sharp_under, at: m.close_at } : null,
       pulled: reread.has(m.game_id) && m.close_point == null, ud: m.ud_line, p6: m.p6_line,
       season: m.l10_n ? { under: m.l10_under, n: m.l10_n } : null, actual: m.actual, result: m.result, tipResult: m.close_result, picks,
+      // Every book's main line and under, as last read (2026-10-30).
+      bookUnders: m.book_unders || null,
       // In the PrizePicks entry's pool at tip (2026-10-28), with its chance there.
       pool: d && d.in_pool === 1 ? { p: d.pool_p, result: d.result } : null };
   });
