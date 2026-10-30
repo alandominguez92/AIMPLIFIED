@@ -12423,6 +12423,9 @@ async function nbaPpBoard(env) {
       ud_line: r.ud_line == null ? null : r.ud_line, p6_line: r.p6_line == null ? null : r.p6_line,
       sharp_under: r.sharp_under == null ? null : r.sharp_under, sharp_src: r.sharp_src || null,
       l10_n: r.l10_n == null ? null : r.l10_n, l10_under: r.l10_under == null ? null : r.l10_under,
+      // Every book's main line and under, as last read (2026-10-30): where
+      // PrizePicks' number sits against the sharp books'.
+      bookUnders: r.book_unders || null,
     })).sort((a, b) => b.model_under - a.model_under);
     // The record is kept over the players the card shows. A bench player's 0.5
     // line tops any ranking by the model's chance, and he is the one who sits.
