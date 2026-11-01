@@ -94,5 +94,21 @@ const g = graded.filter((r) => r.result === 'under' || r.result === 'over');
 ok(R && R.n === g.length && R.hit === g.filter((r) => r.result === 'under').length && R.priced && R.priced.sharpSaid != null,
   `the record on the track record: ${R && R.hit} of ${R && R.n} under, the sharp books having said ${R && R.priced && R.priced.sharpSaid}%`);
 
+console.log('\n-- by PrizePicks\' number: where last season\'s lean sat --');
+const BL = (R && R.byLine) || {};
+const under = (l) => l.filter((r) => r.result === 'under').length;
+const inLean = g.filter((r) => r.pp_line >= 4 && r.pp_line <= 6), lower = g.filter((r) => r.pp_line < 4), higher = g.filter((r) => r.pp_line > 6);
+console.log(`  ${g.map((r) => `${r.player} ${r.pp_line} ${r.result}`).join(' | ')}`);
+ok(inLean.includes(dsg) && BL.lean && BL.lean.from === 4 && BL.lean.to === 6 && BL.lean.n === inLean.length && BL.lean.hit === under(inLean),
+  `lines 4 to 6 on their own: ${BL.lean && BL.lean.hit} of ${BL.lean && BL.lean.n}, Deebo Samuel's 7 over 4.5 among them`);
+ok(BL.lean && BL.lean.lastSeason.hit === 304 && BL.lean.lastSeason.n === 512 && BL.lean.lastSeason.hitRate === 59.4, 'beside last season\'s 304 of 512 (59.4%) to judge it against');
+ok(BL.lower && BL.higher && BL.lower.n === lower.length && BL.lower.hit === under(lower) && BL.higher.n === higher.length && BL.higher.hit === under(higher) && BL.lean.n + BL.lower.n + BL.higher.n === R.n,
+  `the lines below and above it apart (${BL.lower && BL.lower.n} and ${BL.higher && BL.higher.n}), and every graded leg in exactly one`);
+const lineList = BL.lines || [];
+ok(lineList.length === new Set(g.map((r) => r.pp_line)).size && lineList.every((l, i) => !i || lineList[i - 1].line < l.line) && lineList.every((l) => l.n === g.filter((r) => r.pp_line === l.line).length),
+  `each line, in order: ${lineList.map((l) => `${l.line} ${l.hit}/${l.n}`).join(', ')}`);
+const ertz = graded.find((r) => r.player === 'Zach Ertz');
+ok(ertz && ertz.result === 'push' && ertz.pp_line === 4 && R.pushed === 1 && !lineList.some((l) => l.line === 4), "a push decides nothing: Zach Ertz's 4 catches against 4 is counted apart, in none of them");
+
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

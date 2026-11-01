@@ -4762,6 +4762,11 @@ async function gradeRecs(env) {
 }
 // How the catches unders have done: overall, against the sharp books' chance
 // at PrizePicks' line, and by where that line sat against the sharp books'.
+// Where last season's lean sat (2026-11-01, /api/hist-props?job=nfl&lines=1):
+// PrizePicks' numbers from 4 to 6, 304 of 512 unders (59.4%), each line 56-62%,
+// both halves of the season. It flipped right above them: 6.5 went 6 of 31. The
+// range was picked after seeing the numbers, so this log is its first real test.
+const REC_LEAN = { lo: 4, hi: 6, lastSeason: { n: 512, hit: 304, hitRate: 59.4 } };
 function buildRecRecord(rows) {
   const g = rows.filter((r) => r.result === 'under' || r.result === 'over');
   const cell = (l) => { const hit = l.filter((r) => r.result === 'under').length; return { n: l.length, hit, hitRate: l.length ? round1(hit / l.length * 100) : null }; };
@@ -4774,6 +4779,11 @@ function buildRecRecord(rows) {
     ...cell(g),
     priced: { ...cell(pr), sharpSaid: pr.length ? round1(pr.reduce((a, r) => a + r.sharp_under, 0) / pr.length) : null },
     vsSharpLine: { below: cell(g.filter((r) => gap(r) != null && gap(r) < 0)), level: cell(g.filter((r) => gap(r) === 0)), above: cell(g.filter((r) => gap(r) != null && gap(r) > 0)) },
+    byLine: {
+      lean: { from: REC_LEAN.lo, to: REC_LEAN.hi, ...cell(g.filter((r) => r.pp_line >= REC_LEAN.lo && r.pp_line <= REC_LEAN.hi)), lastSeason: REC_LEAN.lastSeason },
+      lower: cell(g.filter((r) => r.pp_line < REC_LEAN.lo)), higher: cell(g.filter((r) => r.pp_line > REC_LEAN.hi)),
+      lines: [...new Set(g.map((r) => r.pp_line))].sort((a, b) => a - b).map((line) => ({ line, ...cell(g.filter((r) => r.pp_line === line)) })),
+    },
   };
 }
 
