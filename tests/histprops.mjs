@@ -186,6 +186,19 @@ ok(d3.includes('2026-01-15') && u3 && new URL(u3).searchParams.get('markets') ==
   'its own markets: threes and rebounds -- not assists, one PrizePicks line a game');
 await get('/api/hist-props?job=nba3&stop=1');
 
+// ---- turnovers, blocks + steals, free throws (2026-11-01) ---------------------------------------
+console.log('\n-- turnovers, blocks + steals, free throws --');
+let r4 = await get('/api/hist-props?job=nba4&start=1');
+ok(r4.progress === '0 of 87 days' && r4.cap === 19000, `every other day again: ${r4.progress}, a 19,000 cap`);
+const s4a = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nba4'").get().data);
+sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'hist_props:nba4'").run(JSON.stringify({ ...s4a, day: d3.indexOf('2026-01-15') }));
+const b4 = asked.length;
+await tick();
+const u4 = asked.slice(b4).find((u) => /basketball_nba\/events\/[0-9a-f]+\/odds/.test(u));
+ok(u4 && new URL(u4).searchParams.get('markets') === 'player_turnovers,player_blocks_steals,player_frees_made',
+  'its own markets: turnovers, blocks + steals, free throws made');
+await get('/api/hist-props?job=nba4&stop=1');
+
 // ---- the NFL ----------------------------------------------------------------------------------------
 console.log('\n-- the NFL: Commanders @ Dolphins, Nov 16 2025 --');
 remaining = 80000;
