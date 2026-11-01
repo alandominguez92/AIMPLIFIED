@@ -6004,7 +6004,8 @@
     const notes = [];
     if (x.kind === 'mlb_pp') notes.push(x.lineup === 'in' ? 'lineup in' : 'lineup not posted');
     if (typeof x.vsBook === 'number' && x.vsBook !== 0) notes.push(`PP ${x.vsBook > 0 ? '+' : '−'}${Math.abs(x.vsBook)} vs book`);
-    if ((x.sport || s.sport) === 'nba') notes.push('check injuries');
+    const it = injuryTag(x);
+    if (it) notes.push(it.text);
     // No goalie data here, and the starter moves an NHL line more than anything.
     if ((x.sport || s.sport) === 'nhl') notes.push('check the goalie');
     const mv = pickMoved(x);
@@ -6192,7 +6193,8 @@
       if (tt) tags.push(`<span class="${tt.good ? 'tc-gap' : 'tc-wait'}" title="His last games against this line. A run is context: the chance shown is the price's">${esc(tt.text)}</span>`);
       const ra = readAgeTag(x);
       if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
-      if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
+      const it = injuryTag(x);
+      if (it) tags.push(`<span class="${it.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(it.title)}">${esc(it.text)}</span>`);
       if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
       const mv = pickMoved(x);
       if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
@@ -6564,6 +6566,19 @@
     const h = (Date.now() - t) / 3600e3;
     const ago = h < 1 ? `${Math.max(1, Math.round(h * 60))} min ago` : `${Math.round(h)}h ago`;
     return h >= 3 ? { stale: true, text: `PP line read ${ago}: check the app` } : { stale: false, text: `PP line read ${ago}` };
+  }
+  // ESPN's injury report on an NBA leg (2026-11-01): what it lists for him,
+  // or that it lists nothing once his game's report has been read. Before
+  // that, and on a team pick, the old reminder. One it lists out is not sent.
+  function injuryTag(x) {
+    if ((x.sport || (x.spec || {}).sport) !== 'nba') return null;
+    const i = x.inj;
+    if (!i) return { warn: true, text: 'check injuries', title: (x.spec || {}).playerId ? "ESPN's report for his game has not been read yet" : 'Who is out on either side' };
+    const t = Date.parse(i.at || '');
+    const ago = isFinite(t) ? Math.max(1, Math.round((Date.now() - t) / 60000)) : null;
+    const read = ago == null ? '' : ago < 60 ? `, read ${ago} min ago` : `, read ${Math.round(ago / 60)}h ago`;
+    if (!i.status) return { warn: false, text: 'no injury listed', title: `Not on ESPN's injury report${read}` };
+    return { warn: true, text: `${i.status === 'Day-To-Day' ? 'GTD' : i.status}${i.what ? ': ' + i.what : ''}`, title: `ESPN's injury report${read}` };
   }
   // A leg's run against its line, named when it is one (2026-10-29): five or
   // more games, seven in ten its way -- or three in ten or fewer, against it.

@@ -1,0 +1,1427 @@
+{
+ "_note": "cdn.espn.com/core/nba/game?xhr=1&gameId=ID for the four Nov 1 games, read 2026-10-31 ~21:00 PT; the header and the injuries (athlete links and headshots dropped)",
+ "games": {
+  "401909903": {
+   "gamepackageJSON": {
+    "header": {
+     "id": "401909903",
+     "competitions": [
+      {
+       "date": "2026-11-01T20:30Z",
+       "competitors": [
+        {
+         "homeAway": "home",
+         "team": {
+          "displayName": "Orlando Magic",
+          "abbreviation": "ORL"
+         }
+        },
+        {
+         "homeAway": "away",
+         "team": {
+          "displayName": "Boston Celtics",
+          "abbreviation": "BOS"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "injuries": [
+     {
+      "team": {
+       "id": "19",
+       "abbreviation": "ORL",
+       "displayName": "Orlando Magic"
+      },
+      "injuries": [
+       {
+        "date": "2026-10-29T18:29Z",
+        "athlete": {
+         "lastName": "Isaac",
+         "displayName": "Jonathan Isaac",
+         "fullName": "Jonathan Isaac",
+         "uid": "s:40~l:46~a:4065654",
+         "jersey": "1",
+         "guid": "99d3b132-e33a-2cc7-8cf9-236b06d7c625",
+         "id": "4065654",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "J. Isaac",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Left",
+         "returnDate": "2026-11-10",
+         "location": "Leg",
+         "detail": "Not Specified",
+         "type": "Knee"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-26T18:44Z",
+        "athlete": {
+         "lastName": "Suggs",
+         "displayName": "Jalen Suggs",
+         "fullName": "Jalen Suggs",
+         "uid": "s:40~l:46~a:4432165",
+         "jersey": "4",
+         "guid": "bd1767da-2774-3ec3-9c48-f443f0777bf6",
+         "id": "4432165",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "J. Suggs",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-10",
+         "location": "Leg",
+         "type": "Knee"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-24T16:47Z",
+        "athlete": {
+         "lastName": "Banchero",
+         "displayName": "Paolo Banchero",
+         "fullName": "Paolo Banchero",
+         "uid": "s:40~l:46~a:4432573",
+         "jersey": "5",
+         "guid": "b121848a-30d3-3fad-b6ab-74bf04005533",
+         "id": "4432573",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "P. Banchero",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-22",
+         "location": "Leg",
+         "detail": "Sprain",
+         "type": "Ankle"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-17T22:19Z",
+        "athlete": {
+         "uid": "s:40~l:46~a:5214637",
+         "lastName": "Penda",
+         "displayName": "Noah Penda",
+         "jersey": "93",
+         "guid": "299c942c-0435-341d-b08e-19d226d035c7",
+         "fullName": "Noah Penda",
+         "id": "5214637",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "N. Penda",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-18",
+         "location": "Leg",
+         "detail": "Strain",
+         "type": "Hamstring"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-09-28T21:33Z",
+        "athlete": {
+         "lastName": "Nelson",
+         "displayName": "Izaiyah Nelson",
+         "fullName": "Izaiyah Nelson",
+         "uid": "s:40~l:46~a:5107251",
+         "jersey": "25",
+         "guid": "958597f9-1595-3866-b892-18e4970af907",
+         "id": "5107251",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "I. Nelson",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Left",
+         "returnDate": "2026-11-18",
+         "location": "Leg",
+         "detail": "Surgery",
+         "type": "Ankle"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "2",
+       "abbreviation": "BOS",
+       "displayName": "Boston Celtics"
+      },
+      "injuries": [
+       {
+        "date": "2026-10-31T20:32Z",
+        "athlete": {
+         "uid": "s:40~l:46~a:4351852",
+         "lastName": "Robinson",
+         "displayName": "Mitchell Robinson",
+         "jersey": "4",
+         "guid": "0f21507b-ed4f-c040-eefc-8223b67fab5b",
+         "fullName": "Mitchell Robinson",
+         "id": "4351852",
+         "position": {
+          "displayName": "Center",
+          "name": "Center",
+          "abbreviation": "C"
+         },
+         "shortName": "M. Robinson",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "GTD",
+          "description": "GTD",
+          "abbreviation": "GTD"
+         },
+         "returnDate": "2026-11-01",
+         "location": "Other",
+         "type": "Rest"
+        },
+        "type": {
+         "name": "INJURY_STATUS_DAYTODAY",
+         "description": "day-to-day",
+         "id": "6",
+         "abbreviation": "DD"
+        },
+        "status": "Day-To-Day"
+       },
+       {
+        "date": "2026-10-18T14:49Z",
+        "athlete": {
+         "lastName": "Carter",
+         "displayName": "Devin Carter",
+         "fullName": "Devin Carter",
+         "uid": "s:40~l:46~a:4433188",
+         "jersey": "99",
+         "guid": "f13fe8cd-9f53-3743-b447-34a9c6b80c86",
+         "id": "4433188",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "D. Carter",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "returnDate": "2026-11-08",
+         "location": "Other",
+         "type": "Illness"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "401909904": {
+   "gamepackageJSON": {
+    "header": {
+     "id": "401909904",
+     "competitions": [
+      {
+       "date": "2026-11-01T22:00Z",
+       "competitors": [
+        {
+         "homeAway": "home",
+         "team": {
+          "displayName": "Indiana Pacers",
+          "abbreviation": "IND"
+         }
+        },
+        {
+         "homeAway": "away",
+         "team": {
+          "displayName": "Brooklyn Nets",
+          "abbreviation": "BKN"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "injuries": [
+     {
+      "team": {
+       "id": "11",
+       "abbreviation": "IND",
+       "displayName": "Indiana Pacers"
+      },
+      "injuries": [
+       {
+        "date": "2026-10-31T21:14Z",
+        "athlete": {
+         "uid": "s:40~l:46~a:4017837",
+         "lastName": "Zubac",
+         "displayName": "Ivica Zubac",
+         "jersey": "40",
+         "guid": "314d5203-a973-39ef-ad47-e6bcd46f77fd",
+         "fullName": "Ivica Zubac",
+         "id": "4017837",
+         "position": {
+          "displayName": "Center",
+          "name": "Center",
+          "abbreviation": "C"
+         },
+         "shortName": "I. Zubac",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Left",
+         "returnDate": "2026-11-02",
+         "location": "Leg",
+         "detail": "Sprain",
+         "type": "Ankle"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-31T21:13Z",
+        "athlete": {
+         "lastName": "Nesmith",
+         "displayName": "Aaron Nesmith",
+         "fullName": "Aaron Nesmith",
+         "uid": "s:40~l:46~a:4396909",
+         "jersey": "23",
+         "guid": "524f7f01-f97b-eff0-2090-ba3212148d9e",
+         "id": "4396909",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "A. Nesmith",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "GTD",
+          "description": "GTD",
+          "abbreviation": "GTD"
+         },
+         "side": "Left",
+         "returnDate": "2026-11-01",
+         "location": "Leg",
+         "detail": "Strain",
+         "type": "Hamstring"
+        },
+        "type": {
+         "name": "INJURY_STATUS_DAYTODAY",
+         "description": "day-to-day",
+         "id": "6",
+         "abbreviation": "DD"
+        },
+        "status": "Day-To-Day"
+       },
+       {
+        "date": "2026-10-31T21:10Z",
+        "athlete": {
+         "lastName": "Toppin",
+         "displayName": "Obi Toppin",
+         "fullName": "Obi Toppin",
+         "uid": "s:40~l:46~a:4278355",
+         "jersey": "1",
+         "guid": "5906d109-9922-295b-8e60-cd644f04178a",
+         "id": "4278355",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "O. Toppin",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "GTD",
+          "description": "GTD",
+          "abbreviation": "GTD"
+         },
+         "returnDate": "2026-11-01",
+         "location": "Torso",
+         "detail": "Soreness",
+         "type": "Back"
+        },
+        "type": {
+         "name": "INJURY_STATUS_DAYTODAY",
+         "description": "day-to-day",
+         "id": "6",
+         "abbreviation": "DD"
+        },
+        "status": "Day-To-Day"
+       },
+       {
+        "date": "2026-10-30T19:09Z",
+        "athlete": {
+         "lastName": "McConnell",
+         "displayName": "T.J. McConnell",
+         "fullName": "T.J. McConnell",
+         "uid": "s:40~l:46~a:2530530",
+         "jersey": "9",
+         "guid": "14d9b685-3a6f-3167-02a8-027fe65d051d",
+         "id": "2530530",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "T.J. McConnell",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-02",
+         "location": "Leg",
+         "detail": "Strain",
+         "type": "Hamstring"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-30T19:06Z",
+        "athlete": {
+         "lastName": "Furphy",
+         "displayName": "Johnny Furphy",
+         "fullName": "Johnny Furphy",
+         "uid": "s:40~l:46~a:5157066",
+         "jersey": "12",
+         "guid": "0d594fa3-7e6f-3179-bafc-a240052c78e2",
+         "id": "5157066",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "J. Furphy",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2027-01-02",
+         "location": "Leg",
+         "detail": "Surgery",
+         "type": "Knee"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "17",
+       "abbreviation": "BKN",
+       "displayName": "Brooklyn Nets"
+      },
+      "injuries": [
+       {
+        "date": "2026-10-31T20:58Z",
+        "athlete": {
+         "lastName": "Brown Jr.",
+         "displayName": "Mikel Brown Jr.",
+         "fullName": "Mikel Brown Jr.",
+         "uid": "s:40~l:46~a:5101761",
+         "jersey": "0",
+         "guid": "2db2923f-89bb-30ea-8406-5f92a2b24636",
+         "id": "5101761",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "M. Brown Jr.",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "returnDate": "2026-11-02",
+         "location": "Other",
+         "type": "Rest"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-29T17:09Z",
+        "athlete": {
+         "lastName": "Demin",
+         "displayName": "Egor Demin",
+         "fullName": "Egor Demin",
+         "uid": "s:40~l:46~a:5175643",
+         "jersey": "8",
+         "guid": "fb0aca8f-4878-3010-abe0-05b507191367",
+         "id": "5175643",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "E. Demin",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-07",
+         "location": "Leg",
+         "detail": "Bruise",
+         "type": "Leg"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-25T17:19Z",
+        "athlete": {
+         "lastName": "Bilodeau",
+         "displayName": "Tyler Bilodeau",
+         "fullName": "Tyler Bilodeau",
+         "uid": "s:40~l:46~a:5105626",
+         "jersey": "34",
+         "guid": "36f0beb9-4399-3183-aa43-b5bcea2e79ff",
+         "id": "5105626",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "T. Bilodeau",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-06",
+         "location": "Arm",
+         "detail": "Sprain",
+         "type": "Shoulder"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "401909905": {
+   "gamepackageJSON": {
+    "header": {
+     "id": "401909905",
+     "competitions": [
+      {
+       "date": "2026-11-02T01:30Z",
+       "competitors": [
+        {
+         "homeAway": "home",
+         "team": {
+          "displayName": "Golden State Warriors",
+          "abbreviation": "GS"
+         }
+        },
+        {
+         "homeAway": "away",
+         "team": {
+          "displayName": "LA Clippers",
+          "abbreviation": "LAC"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "injuries": [
+     {
+      "team": {
+       "id": "9",
+       "abbreviation": "GS",
+       "displayName": "Golden State Warriors"
+      },
+      "injuries": [
+       {
+        "date": "2026-10-31T19:54Z",
+        "athlete": {
+         "uid": "s:40~l:46~a:4997536",
+         "lastName": "Santos",
+         "displayName": "Gui Santos",
+         "jersey": "15",
+         "guid": "3bcac1e3-9862-3a7c-b106-edf763dd24a2",
+         "fullName": "Gui Santos",
+         "id": "4997536",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "G. Santos",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "GTD",
+          "description": "GTD",
+          "abbreviation": "GTD"
+         },
+         "side": "Left",
+         "returnDate": "2026-11-01",
+         "location": "Leg",
+         "type": "Knee"
+        },
+        "type": {
+         "name": "INJURY_STATUS_DAYTODAY",
+         "description": "day-to-day",
+         "id": "6",
+         "abbreviation": "DD"
+        },
+        "status": "Day-To-Day"
+       },
+       {
+        "date": "2026-10-31T19:51Z",
+        "athlete": {
+         "lastName": "Green",
+         "displayName": "Draymond Green",
+         "fullName": "Draymond Green",
+         "uid": "s:40~l:46~a:6589",
+         "jersey": "23",
+         "guid": "de360720-e416-25f2-8a6b-b5ff82616cb1",
+         "id": "6589",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "D. Green",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "returnDate": "2026-11-02",
+         "location": "Other",
+         "type": "Rest"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-31T19:48Z",
+        "athlete": {
+         "lastName": "Curry",
+         "displayName": "Stephen Curry",
+         "fullName": "Stephen Curry",
+         "uid": "s:40~l:46~a:3975",
+         "jersey": "30",
+         "guid": "5dda51f1-50c9-66e1-2026-400b73f34fad",
+         "id": "3975",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "S. Curry",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "returnDate": "2026-11-02",
+         "location": "Other",
+         "type": "Rest"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-28T14:25Z",
+        "athlete": {
+         "uid": "s:40~l:46~a:3102531",
+         "lastName": "Porzingis",
+         "displayName": "Kristaps Porzingis",
+         "jersey": "7",
+         "guid": "a1f467e2-5304-c8c1-db23-80fe313c3d7c",
+         "fullName": "Kristaps Porzingis",
+         "id": "3102531",
+         "position": {
+          "displayName": "Center",
+          "name": "Center",
+          "abbreviation": "C"
+         },
+         "shortName": "K. Porzingis",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "returnDate": "2026-12-01",
+         "location": "Other",
+         "type": "Illness"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-16T16:14Z",
+        "athlete": {
+         "lastName": "Moody",
+         "displayName": "Moses Moody",
+         "fullName": "Moses Moody",
+         "uid": "s:40~l:46~a:4432171",
+         "jersey": "4",
+         "guid": "dd869c0b-ea23-34a4-ae00-f343db752592",
+         "id": "4432171",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "M. Moody",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Left",
+         "returnDate": "2026-12-01",
+         "location": "Leg",
+         "detail": "Surgery",
+         "type": "Knee"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "12",
+       "abbreviation": "LAC",
+       "displayName": "LA Clippers"
+      },
+      "injuries": [
+       {
+        "date": "2026-10-29T18:44Z",
+        "athlete": {
+         "lastName": "Niederhauser",
+         "displayName": "Yanic Konan Niederhauser",
+         "fullName": "Yanic Konan Niederhauser",
+         "uid": "s:40~l:46~a:5108024",
+         "jersey": "14",
+         "guid": "b8f95973-790d-3977-be63-49f41f63125e",
+         "id": "5108024",
+         "position": {
+          "displayName": "Center",
+          "name": "Center",
+          "abbreviation": "C"
+         },
+         "shortName": "Y. Niederhauser",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-08",
+         "location": "Leg",
+         "detail": "Surgery",
+         "type": "Foot"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-29T01:03Z",
+        "athlete": {
+         "lastName": "Strus",
+         "displayName": "Max Strus",
+         "fullName": "Max Strus",
+         "uid": "s:40~l:46~a:4065778",
+         "jersey": "31",
+         "guid": "ac438cf4-ae0c-8aec-7efc-a048bfe3df5b",
+         "id": "4065778",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "M. Strus",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-08",
+         "location": "Leg",
+         "detail": "Plantar Fasciitis",
+         "type": "Foot"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-29T01:00Z",
+        "athlete": {
+         "lastName": "Ingram",
+         "displayName": "Brandon Ingram",
+         "fullName": "Brandon Ingram",
+         "uid": "s:40~l:46~a:3913176",
+         "jersey": "7",
+         "guid": "735792ca-bca3-6bab-e2ed-68f39ccc7270",
+         "id": "3913176",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "B. Ingram",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-08",
+         "location": "Leg",
+         "detail": "Surgery",
+         "type": "Achilles"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-15T01:03Z",
+        "athlete": {
+         "lastName": "Beal",
+         "displayName": "Bradley Beal",
+         "fullName": "Bradley Beal",
+         "uid": "s:40~l:46~a:6580",
+         "jersey": "3",
+         "guid": "fb35d5ac-5dde-c5ee-98f3-c348c244c0ae",
+         "id": "6580",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "B. Beal",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-08",
+         "location": "Leg",
+         "detail": "Inflammation",
+         "type": "Knee"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-08-26T20:04Z",
+        "athlete": {
+         "lastName": "Miller",
+         "displayName": "Jordan Miller",
+         "fullName": "Jordan Miller",
+         "uid": "s:40~l:46~a:4396818",
+         "jersey": "22",
+         "guid": "95f0a11b-bc2d-69ef-a842-ccb34d618696",
+         "id": "4396818",
+         "position": {
+          "displayName": "Guard",
+          "name": "Guard",
+          "abbreviation": "G"
+         },
+         "shortName": "J. Miller",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Left",
+         "returnDate": "2027-03-02",
+         "location": "Arm",
+         "detail": "Surgery",
+         "type": "Shoulder"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "401909906": {
+   "gamepackageJSON": {
+    "header": {
+     "id": "401909906",
+     "competitions": [
+      {
+       "date": "2026-11-02T02:00Z",
+       "competitors": [
+        {
+         "homeAway": "home",
+         "team": {
+          "displayName": "Los Angeles Lakers",
+          "abbreviation": "LAL"
+         }
+        },
+        {
+         "homeAway": "away",
+         "team": {
+          "displayName": "Toronto Raptors",
+          "abbreviation": "TOR"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "injuries": [
+     {
+      "team": {
+       "id": "13",
+       "abbreviation": "LAL",
+       "displayName": "Los Angeles Lakers"
+      },
+      "injuries": [
+       {
+        "date": "2026-11-01T00:04Z",
+        "athlete": {
+         "lastName": "Williams",
+         "displayName": "Ziaire Williams",
+         "fullName": "Ziaire Williams",
+         "uid": "s:40~l:46~a:4433137",
+         "jersey": "11",
+         "guid": "ddb32530-906d-3a8e-94c6-e72430294a1a",
+         "id": "4433137",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "Z. Williams",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "GTD",
+          "description": "GTD",
+          "abbreviation": "GTD"
+         },
+         "side": "Left",
+         "returnDate": "2026-11-01",
+         "location": "Leg",
+         "type": "Foot"
+        },
+        "type": {
+         "name": "INJURY_STATUS_DAYTODAY",
+         "description": "day-to-day",
+         "id": "6",
+         "abbreviation": "DD"
+        },
+        "status": "Day-To-Day"
+       },
+       {
+        "date": "2026-10-30T00:05Z",
+        "athlete": {
+         "lastName": "Thiero",
+         "displayName": "Adou Thiero",
+         "fullName": "Adou Thiero",
+         "uid": "s:40~l:46~a:5060631",
+         "jersey": "1",
+         "guid": "ce1ad795-4ef7-3aac-b6b1-837ee61b3c04",
+         "id": "5060631",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "A. Thiero",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "GTD",
+          "description": "GTD",
+          "abbreviation": "GTD"
+         },
+         "side": "Left",
+         "returnDate": "2026-11-01",
+         "location": "Leg",
+         "detail": "Inflammation",
+         "type": "Knee"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       }
+      ]
+     },
+     {
+      "team": {
+       "id": "28",
+       "abbreviation": "TOR",
+       "displayName": "Toronto Raptors"
+      },
+      "injuries": [
+       {
+        "date": "2026-10-29T15:39Z",
+        "athlete": {
+         "lastName": "Leonard",
+         "displayName": "Kawhi Leonard",
+         "fullName": "Kawhi Leonard",
+         "uid": "s:40~l:46~a:6450",
+         "jersey": "2",
+         "guid": "87ff907c-c68c-a82d-1215-37e05d0c62ef",
+         "id": "6450",
+         "position": {
+          "displayName": "Forward",
+          "name": "Forward",
+          "abbreviation": "F"
+         },
+         "shortName": "K. Leonard",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Left",
+         "returnDate": "2026-11-23",
+         "location": "Leg",
+         "detail": "Inflammation",
+         "type": "Knee"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       },
+       {
+        "date": "2026-10-27T19:31Z",
+        "athlete": {
+         "uid": "s:40~l:46~a:4432586",
+         "lastName": "Bittle",
+         "displayName": "Nate Bittle",
+         "guid": "23fd2284-1f1f-3ec5-84fd-4a51c4af32ef",
+         "fullName": "Nate Bittle",
+         "id": "4432586",
+         "position": {
+          "displayName": "Center",
+          "name": "Center",
+          "abbreviation": "C"
+         },
+         "shortName": "N. Bittle",
+         "status": {
+          "name": "Active",
+          "id": "1",
+          "type": "active",
+          "abbreviation": "Active"
+         }
+        },
+        "details": {
+         "fantasyStatus": {
+          "displayDescription": "Out",
+          "description": "OUT",
+          "abbreviation": "OUT"
+         },
+         "side": "Right",
+         "returnDate": "2026-11-02",
+         "location": "Leg",
+         "detail": "Fracture",
+         "type": "Foot"
+        },
+        "type": {
+         "name": "INJURY_STATUS_OUT",
+         "description": "out",
+         "id": "4",
+         "abbreviation": "O"
+        },
+        "status": "Out"
+       }
+      ]
+     }
+    ]
+   }
+  }
+ }
+}

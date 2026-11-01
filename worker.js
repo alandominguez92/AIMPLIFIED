@@ -263,6 +263,8 @@ export default {
     // lines read when posted and again before tip (ppReadDue), the log graded.
     ctx.waitUntil(nbaBoxIngest(env).catch(() => null));
     ctx.waitUntil(nbaPpMaybeCapture(env).catch(() => null));
+    // ESPN's injury report for the NBA legs on Picks (2026-11-01), free.
+    ctx.waitUntil(nbaInjuryTick(env).catch(() => null));
     // NHL PrizePicks points and assists unders: read the same way, graded
     // hourly from the NHL's box scores.
     ctx.waitUntil(nhlPpMaybeCapture(env).catch(() => null));
@@ -9253,6 +9255,95 @@ async function ensureDayPickSchema(db) {
 // so a star here and a star there are one leg. `unavailable` names the kinds
 // whose source could not be read, so the log does not mistake an outage for a
 // leg falling off the list.
+// ESPN's injury report on the NBA player legs (2026-11-01, the owner's call:
+// the page said "check injuries" and nothing more). The cdn game feed carries
+// each side's report -- Out, or Day-To-Day with ESPN's fantasy GTD -- by ESPN
+// athlete id, the id the legs carry (nba_box). Free. The cron keeps a
+// feed_cache row a day (NBA_INJ_KEY + the date): the day's games from its
+// scoreboard every three hours, and each game still to start read again every
+// half hour inside twelve hours of tip, every three hours before that, two
+// games a tick, the soonest first. The board reads those rows and nothing else.
+const NBA_INJ_KEY = 'nba_inj:';
+const NBA_INJ_SB_MS = 3 * 3600e3;
+const NBA_INJ_NEAR_MS = 12 * 3600e3;
+const NBA_INJ_EVERY_NEAR_MS = 30 * 60e3;
+const NBA_INJ_EVERY_FAR_MS = 3 * 3600e3;
+const NBA_INJ_PER_TICK = 2;
+// A game feed's report (pure): { [athlete id]: { name, s: ESPN's status, f:
+// its fantasy status, what: 'hamstring strain', ret: return date, upd: when
+// ESPN last changed it } }.
+function nbaInjuriesOf(feed) {
+  const out = {};
+  for (const t of ((feed && feed.gamepackageJSON) || feed || {}).injuries || []) {
+    for (const i of t.injuries || []) {
+      const a = i.athlete || {}, d = i.details || {};
+      if (!a.id) continue;
+      const what = [d.type, d.detail].filter((x) => x && !/^not specified$/i.test(x)).join(' ').toLowerCase() || null;
+      out[String(a.id)] = { name: a.displayName || null, s: i.status || null, f: (d.fantasyStatus || {}).abbreviation || null, what, ret: d.returnDate || null, upd: i.date || null };
+    }
+  }
+  return out;
+}
+// Out where ESPN says so both ways: on Nov 1 it had Adou Thiero "Out" with a
+// fantasy status of GTD.
+const nbaInjOut = (i) => i.s === 'Out' && (!i.f || i.f === 'OUT');
+async function nbaInjuryTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  let read = 0;
+  for (const day of [ptDateOf(now), ptDateOf(now + 86400e3)]) {
+    const key = NBA_INJ_KEY + day;
+    const c = await loadFeedCache(env.DB, key);
+    const st = (c.present && c.data) || { sbAt: 0, games: [] };
+    let dirty = false;
+    if (now - (st.sbAt || 0) >= NBA_INJ_SB_MS) {
+      try {
+        const evs = await espnScoreboard(`nba/scoreboard?xhr=1&date=${day.replace(/-/g, '')}`);
+        // An empty answer is a failed read as often as a day off: the games already found stand.
+        if (evs.length || !st.games.length) {
+          const was = new Map(st.games.map((g) => [g.id, g]));
+          st.games = evs.filter((ev) => ev && ev.id).map((ev) => {
+            const cs = ((ev.competitions || [])[0] || {}).competitors || [];
+            const nm = (side) => ((cs.find((x) => x.homeAway === side) || {}).team || {}).displayName || null;
+            const old = was.get(String(ev.id)) || {};
+            return { id: String(ev.id), home: nm('home'), away: nm('away'), commence: ev.date, at: old.at || 0, inj: old.inj || {} };
+          });
+        }
+        st.sbAt = now; dirty = true;
+      } catch (e) { /* the next tick */ }
+    }
+    const due = st.games.filter((g) => { const t = Date.parse(g.commence);
+      return t > now && now - (g.at || 0) >= (t - now <= NBA_INJ_NEAR_MS ? NBA_INJ_EVERY_NEAR_MS : NBA_INJ_EVERY_FAR_MS); })
+      .sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
+    for (const g of due) {
+      if (read >= NBA_INJ_PER_TICK) break;
+      read++;
+      try {
+        const r = await fetch(`${ESPN_CDN_NBA}/game?xhr=1&gameId=${g.id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+        if (!r.ok) continue;
+        g.inj = nbaInjuriesOf(await r.json()); g.at = now; dirty = true;
+      } catch (e) { /* the next tick */ }
+    }
+    if (dirty) await saveFeedCache(env.DB, key, st);
+  }
+  return { read };
+}
+async function nbaInjuryDays(db, days) {
+  const out = new Map();
+  for (const d of days) { const c = await loadFeedCache(db, NBA_INJ_KEY + d); if (c.present && c.data) out.set(d, c.data.games || []); }
+  return out;
+}
+// A leg's line on the report (pure): null until its game's report has been
+// read; then what it lists for him, or { status: null } for nothing.
+function nbaLegInjury(l, byDay) {
+  const s = l.spec || {};
+  if (s.sport !== 'nba' || !s.playerId || !l.teams) return null;
+  const g = (byDay.get(s.date) || []).find((x) => nbaMatch(x.home, l.teams.home) && nbaMatch(x.away, l.teams.away));
+  if (!g || !g.at) return null;
+  const i = (g.inj || {})[String(s.playerId)];
+  const at = new Date(g.at).toISOString();
+  return i ? { status: i.f || i.s, out: nbaInjOut(i), what: i.what, ret: i.ret, upd: i.upd, at } : { status: null, at };
+}
+
 async function picksCandidates(env, now) {
   const db = env.DB;
   const days = [ptDateOf(now), ptDateOf(now + 86400e3)];
@@ -9383,6 +9474,7 @@ async function picksCandidates(env, now) {
     if (!(r.min_proj >= NBA_ROTATION_MIN) || ppBelowBook(r)) continue;
     const p = r.sharp_under != null ? round1(NBA_PICK_MODEL_W * r.model_under + (1 - NBA_PICK_MODEL_W) * r.sharp_under) : r.model_under;
     legs.push({ kind: 'nba_pp', gameKey: 'nba:' + r.game_id, p, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null, readAt: r.close_at || r.captured_at || null,
+      teams: { home: r.home, away: r.away },
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
       title: `${r.player} Under ${r.point} ${PICKS_NBA_MK[r.market] || r.market}`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
@@ -9406,6 +9498,7 @@ async function picksCandidates(env, now) {
     const gap = rebGapOf(r);
     if (!soon(r.commence) || gap == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
     legs.push({ kind: 'nba_reb_gap', gameKey: 'nba:' + r.game_id, p: REB_GAP_P, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null, readAt: r.close_at || r.captured_at || null,
+      teams: { home: r.home, away: r.away },
       vsBook: gap, legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
       title: `${r.player} Under ${r.point} REB`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
       src: { date: r.date, game_id: r.game_id, player_key: r.player, market: r.market, team: r.team },
@@ -9423,6 +9516,7 @@ async function picksCandidates(env, now) {
   // well: 55% is near PrizePicks' break-even, and on Oct 26 Zach Edey's 55.8
   // More read 45.8 with the sharp books' 42.5 in it.
   const moreLeg = (sport, r, p, mk) => ({ kind: sport === 'nba' ? 'nba_blk_more' : 'nhl_more', gameKey: `${sport}:${r.game_id}`, p, readAt: r.close_at || r.captured_at || null,
+    teams: { home: r.home, away: r.away },
     modelP: round1(100 - r.model_under), proj: r.proj, commence: r.commence, odds: null,
     legId: `${sport}pp:${r.game_id}:${r.player}:${r.market}:over`, title: `${r.player} Over ${r.point} ${mk}`,
     sub: sport === 'nhl' ? `${nhlNick(r.away)} @ ${nhlNick(r.home)}` : `${lastWord(r.away)} @ ${lastWord(r.home)}`,
@@ -9445,14 +9539,23 @@ async function picksCandidates(env, now) {
     if (100 - r.model_under < PICK_KINDS.nhl_more.min) continue;
     legs.push(moreLeg('nhl', r, ppMoreChance(r), PICKS_NHL_MK[r.market] || r.market));
   }
-  return { legs, unavailable };
+  // ESPN's injury report on the NBA player legs (2026-11-01): one it lists out
+  // leaves the list and the pool; the rest carry what it says.
+  const injDays = await nbaInjuryDays(db, days).catch(() => new Map());
+  const kept = legs.filter((l) => { const i = nbaLegInjury(l, injDays); if (i) l.inj = i; return !(i && i.out); });
+  return { legs: kept, unavailable };
 }
 
 // The best leg of each game, best first, at most PICKS_N. Legs of one game tend
 // to land or miss together, and a PrizePicks entry needs two teams anyway.
+// Equal chances (2026-11-01): a half-point PrizePicks line before a whole
+// number. Every rebounds-gap leg shows the same 56.1, and a whole-number line
+// can land on it: PrizePicks drops that leg and pays the entry a size down.
+const ppWholeLine = (l) => (l.spec && l.spec.pp && Number.isInteger(l.spec.pp.line) ? 1 : 0);
+const pickOrder = (a, b) => b.p - a.p || ppWholeLine(a) - ppWholeLine(b) || Date.parse(a.commence) - Date.parse(b.commence);
 function pickList(legs) {
   const best = new Map();
-  for (const l of [...legs].sort((a, b) => b.p - a.p || Date.parse(a.commence) - Date.parse(b.commence))) {
+  for (const l of [...legs].sort(pickOrder)) {
     if (!best.has(l.gameKey)) best.set(l.gameKey, l);
   }
   return [...best.values()].slice(0, PICKS_N);
@@ -9465,7 +9568,7 @@ function pickList(legs) {
 function ppPoolOf(legs) {
   const pool = [], games = new Set();
   let teamPick = false;
-  for (const l of [...legs].sort((a, b) => b.p - a.p || Date.parse(a.commence) - Date.parse(b.commence))) {
+  for (const l of [...legs].sort(pickOrder)) {
     if (pool.length >= PICKS_N || games.has(l.gameKey)) continue;
     const team = l.kind === 'nfl_ml';
     if (!PP_ENTRY_KINDS.has(l.kind) && !(team && !teamPick)) continue;
@@ -9630,6 +9733,17 @@ async function dayPickDrops(db, now, listed) {
       WHERE on_list = 0 AND seen_at IS NOT NULL AND date >= ? AND julianday(commence) <= julianday(?) ORDER BY date DESC, p DESC LIMIT ?`)
     .bind(ptDateOf(now - PICK_DROP_DAYS * 86400e3), new Date(now).toISOString(), PICK_DROP_MAX).all()).results || [];
   const one = (sql, ...a) => db.prepare(sql).bind(...a).first();
+  // A player ESPN listed out left the list for that (2026-11-01): the day's
+  // report as the cron last read it, once a day.
+  const injDays = new Map();
+  const injOutWhy = async (r) => {
+    if (!injDays.has(r.date)) injDays.set(r.date, loadFeedCache(db, NBA_INJ_KEY + r.date).then((c) => (c.present && c.data && c.data.games) || []).catch(() => []));
+    const who = nbaName(r.player_key || '');
+    for (const g of await injDays.get(r.date)) {
+      for (const i of Object.values(g.inj || {})) if (nbaInjOut(i) && nbaName(i.name || '') === who) return `ESPN listed him out${i.what ? ` (${i.what})` : ''}`;
+    }
+    return null;
+  };
   return Promise.all(off.map(async (r) => {
     const other = listed.find((x) => x.date === r.date && String(x.game_id) === String(r.game_id)) || null;
     let why = null, result = null, actual = null;
@@ -9637,7 +9751,7 @@ async function dayPickDrops(db, now, listed) {
       const tbl = r.kind === 'nhl_more' ? 'nhlpp' : 'nbapp';
       const m = await one(`SELECT * FROM ${tbl} WHERE date = ? AND game_id = ? AND player = ? AND market = ?`, r.src_date, r.game_id, r.player_key, r.market);
       const reread = !!(m && (m.close_at || await one(`SELECT 1 AS x FROM ${tbl} WHERE date = ? AND game_id = ? AND close_at IS NOT NULL LIMIT 1`, r.src_date, r.game_id)));
-      why = ppDropWhy(m, reread, other, r.kind);
+      why = (r.kind !== 'nhl_more' && await injOutWhy(r)) || ppDropWhy(m, reread, other, r.kind);
       const res = ppShownResult(m, r.label);
       result = r.kind === 'nba_pp' || r.kind === 'nba_reb_gap' ? ppLegResult(res) : ppMoreResult(res);
       if (m && m.actual != null) actual = m.actual;
@@ -9941,6 +10055,8 @@ async function picksBoard(env) {
       ...(l.books ? { books: l.books } : {}),
       // When PrizePicks' line shown was read (2026-10-31): it moves between reads.
       ...(l.readAt ? { readAt: l.readAt } : {}),
+      // ESPN's injury report on him, once his game's has been read (2026-11-01).
+      ...(l.inj ? { inj: l.inj } : {}),
       ...(hists.has(l.legId) ? { hist: hists.get(l.legId) } : {}),
       ...(trends.has(l.legId) ? { trend: trends.get(l.legId) } : {}),
     });

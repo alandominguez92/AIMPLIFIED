@@ -1,0 +1,141 @@
+{
+ "_note": "cdn.espn.com/core/nba/scoreboard?xhr=1&date=20261101, read 2026-10-31 ~20:55 PT; events trimmed to the fields read",
+ "content": {
+  "sbData": {
+   "events": [
+    {
+     "id": "401909903",
+     "date": "2026-11-01T20:30Z",
+     "name": "Boston Celtics at Orlando Magic",
+     "status": {
+      "type": {
+       "name": "STATUS_SCHEDULED",
+       "state": "pre"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "team": {
+          "id": "19",
+          "displayName": "Orlando Magic",
+          "abbreviation": "ORL"
+         }
+        },
+        {
+         "homeAway": "away",
+         "team": {
+          "id": "2",
+          "displayName": "Boston Celtics",
+          "abbreviation": "BOS"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401909904",
+     "date": "2026-11-01T22:00Z",
+     "name": "Brooklyn Nets at Indiana Pacers",
+     "status": {
+      "type": {
+       "name": "STATUS_SCHEDULED",
+       "state": "pre"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "team": {
+          "id": "11",
+          "displayName": "Indiana Pacers",
+          "abbreviation": "IND"
+         }
+        },
+        {
+         "homeAway": "away",
+         "team": {
+          "id": "17",
+          "displayName": "Brooklyn Nets",
+          "abbreviation": "BKN"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401909905",
+     "date": "2026-11-02T01:30Z",
+     "name": "LA Clippers at Golden State Warriors",
+     "status": {
+      "type": {
+       "name": "STATUS_SCHEDULED",
+       "state": "pre"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "team": {
+          "id": "9",
+          "displayName": "Golden State Warriors",
+          "abbreviation": "GS"
+         }
+        },
+        {
+         "homeAway": "away",
+         "team": {
+          "id": "12",
+          "displayName": "LA Clippers",
+          "abbreviation": "LAC"
+         }
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "401909906",
+     "date": "2026-11-02T02:00Z",
+     "name": "Toronto Raptors at Los Angeles Lakers",
+     "status": {
+      "type": {
+       "name": "STATUS_SCHEDULED",
+       "state": "pre"
+      }
+     },
+     "competitions": [
+      {
+       "competitors": [
+        {
+         "homeAway": "home",
+         "team": {
+          "id": "13",
+          "displayName": "Los Angeles Lakers",
+          "abbreviation": "LAL"
+         }
+        },
+        {
+         "homeAway": "away",
+         "team": {
+          "id": "28",
+          "displayName": "Toronto Raptors",
+          "abbreviation": "TOR"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

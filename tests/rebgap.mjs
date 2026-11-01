@@ -76,6 +76,25 @@ ok((d.ppPool || []).some((x) => x.legId === dan.legId) && dan.spec.side === 'Und
 // When its line was read (2026-10-31): the 3:40 PM pre-tip read.
 ok(dan.readAt === '2026-10-29T22:40:55.042Z', `and when PrizePicks' line was read: ${dan.readAt}`);
 ok(!legOf(d, 'C.J. McCollum') && !legOf(d, 'Toumani Camara'), "McCollum's 2.5 level with the books' 2.5 is not one; nor Camara's 3.5 before any book had posted");
+// Equal chances (2026-11-01): every rebounds-gap leg shows 56.1, and most sit
+// on a whole number (Daniels' 6), where a push drops the leg from the entry.
+// A half-point line goes first among them -- in its game and in the order.
+{
+  const lift = (name) => { const at = src.indexOf(`function ${name}(`); let dd = 0;
+    for (let i = src.indexOf(') {', at) + 2; i < src.length; i++) { if (src[i] === '{') dd++; else if (src[i] === '}' && --dd === 0) return src.slice(at, i + 1); } };
+  const line = (name) => src.slice(src.indexOf(`const ${name} =`), src.indexOf('\n', src.indexOf(`const ${name} =`)));
+  const P = new Function([line('PICKS_N'), line('PP_ENTRY_KINDS'), line('ppWholeLine'), line('pickOrder'), lift('pickList'), lift('ppPoolOf')].join('\n') + '\nreturn { pickList, ppPoolOf };')();
+  const at = (l, line, i, game) => ({ ...l, legId: `${l.legId}-${i}`, gameKey: game || `${l.gameKey}-${i}`, title: `${i} Under ${line} REB`,
+    commence: new RealDate(Date.parse(l.commence) + i * 60e3).toISOString(), spec: { ...l.spec, pp: { ...l.spec.pp, line } } });
+  const half = at(dan, 5.5, 1, dan.gameKey);
+  ok(P.ppPoolOf([dan, half])[0].legId === half.legId && P.pickList([dan, half])[0].legId === half.legId,
+    "two of one game at 56.1: the 5.5 before Daniels' 6, in the pool and on the list");
+  const seven = [...[1, 2, 3, 4, 5, 6].map((i) => at(dan, 6, i)), at(dan, 7.5, 7)];
+  const pool = P.ppPoolOf(seven);
+  ok(pool.length === 6 && pool[0].title === '7 Under 7.5 REB' && pool.slice(1).map((x) => x.title.split(' ')[0]).join() === '1,2,3,4,5',
+    `seven games at 56.1, the half-point line the last to start: first in the pool (${pool.map((x) => x.title.split(' ')[0]).join()})`);
+  ok(P.ppPoolOf([{ ...half, p: 55 }, dan])[0].legId === dan.legId, 'a higher chance still comes first');
+}
 // (A bench player's is not one either -- the unders' own rotation bar, NBA_ROTATION_MIN
 // -- but none of these three days' rows above the sharp line was a bench player's.)
 
