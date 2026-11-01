@@ -255,6 +255,8 @@ ok(text(h) === `under 38.5 in ${t.hit} of last 5 · avg ${Math.round(jj.reduce((
 const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n');
 const trl = css.match(/^\.tr-line \{[^}]*\}/gm) || [];
 ok(trl.length === 1 && !/position|border/.test(trl[0]) && !/class="tr-/.test(h), 'the boxes take nothing of the track record\'s tr- classes');
+const toRead = P.booksHtml(bet && bet.books, true);
+ok(!/bet-at|Set state/.test(toRead) && (toRead.match(/class="bk"/g) || []).length === (bet ? bet.books.length : -1) && /\+120/.test(toRead), 'to read only (a moneyline, 2026-11-01): every book and price, no bet links');
 h = P.booksHtml(bet && bet.books);
 console.log(`  ${text(h)}`);
 ok(/^<details class="pk-books">/.test(h) && text(h).startsWith(`Every book (5) · best MGM +120 · lowest hold MGM ${hold(120, -110).toFixed(1)}%`), 'the fold names the best price and the lowest hold');

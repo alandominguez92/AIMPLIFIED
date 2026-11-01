@@ -45,7 +45,7 @@ function lift(name, from = src) {
 const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
   // The hero's trend bars, price line and bet link (2026-10-29).
-  'trendTag', 'readAgeTag', 'injuryTag', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'heroLegHtml'];
+  'trendTag', 'readAgeTag', 'injuryTag', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml', 'heroLegHtml'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const state = { slip: {} };
 const F = new Function('state', 'esc', names.map((n) => lift(n)).join('\n')
@@ -119,6 +119,18 @@ const thin = F.heroLegHtml({ ...pp, record: { n: 3, hit: 3, hitRate: 100 } });
 ok(/class="hl-p ring"><span class="hl-pct">/.test(thin) && !/data-sport="picks"/.test(thin), 'under five graded legs, no green; and no link on the Picks tab itself');
 const ml = F.heroLegHtml({ ...pp, kind: 'mlb_ml', title: 'LAD ML', odds: -150, spec: { sport: 'mlb', team: 'LAD', market: 'ml' } });
 ok(/class="hl-name">LAD</.test(ml) && /Moneyline <span class="hl-odds">-150</.test(ml) && /team-logos\/119\.svg/.test(ml), 'a moneyline: the club, its mark and price');
+// No sportsbook line or button on a moneyline (the owner, 2026-11-01): DraftKings
+// and FanDuel won't take moneyline-only picks. A player leg keeps both. Nov 1's
+// real legs and links.
+const hur = F.heroLegHtml({ ...pp, kind: 'nhl_ml', sport: 'nhl', title: 'Hurricanes ML', odds: -265, ev: -5.4, stake: 0, betAt: -300,
+  link: 'https://sportsbook.draftkings.com/?outcomes=0ML86944643_1', spec: { sport: 'nhl', team: 'Hurricanes', market: 'ml' } });
+ok(!/bet-at/.test(hur) && !/hl-edge/.test(hur) && /class="hl-add/.test(hur) && /Moneyline <span class="hl-odds">-265</.test(hur), 'a moneyline has no bet button and no sportsbook line, and keeps its price and Add to slip');
+const rodgers = F.heroLegHtml({ ...pp, kind: 'nfl_ptd', sport: 'nfl', title: 'Aaron Rodgers Under 1.5 Pass TDs', odds: -144, ev: 4.7, stake: 1, betAt: -162,
+  link: 'https://sportsbook.fanduel.com/addToBetslip?marketId=42.621093728&selectionId=60427', spec: { sport: 'nfl', player: 'Aaron Rodgers', market: 'pass_tds', side: 'Under', pp: { line: 1.5, under: 61.8 } } });
+ok(/Bet at FanDuel/.test(rodgers) && /hl-edge/.test(rodgers), "a passing-TD under keeps FanDuel's button and its price line");
+const rpSrc = lift('renderPicks');
+ok(rpSrc.includes("${team ? '' : pickEdgeHtml(x)}") && rpSrc.includes("${team ? '' : betLinkHtml(legLink(x))}${booksHtml(x.books, team)}"), "the list and the pool the same: a moneyline's row has its price, no edge line, no button, and its books to read only");
+ok(!/moneylines are sportsbook bets/.test(rpSrc), 'and the list no longer calls moneylines sportsbook bets');
 const nbaMl = F.heroLegHtml({ ...pp, kind: 'nba_ml', sport: 'nba', title: 'Celtics ML', odds: -330,
   spec: { sport: 'nba', team: 'Celtics', market: 'ml', logo: 'nba/500/bos.png' } });
 const socMl = F.heroLegHtml({ ...pp, kind: 'soccer_fav', sport: 'soccer', title: 'Arsenal ML', odds: -250,

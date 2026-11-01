@@ -6040,9 +6040,11 @@
       // a team's chance against its price.
       + `${pickBarHtml(x, s)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}</div>`
       + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
-      + (typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
+      // No sportsbook line or button on a moneyline (the owner, 2026-11-01):
+      // DraftKings and FanDuel won't take moneyline-only picks.
+      + (!team && typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
       + `<div class="hl-actions"><button type="button" class="hl-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? '★ In your slip' : '☆ Add to slip'}</button>`
-      + betLinkHtml(legLink(x))
+      + (team ? '' : betLinkHtml(legLink(x)))
       + (opts && opts.link ? `<a href="#" class="hl-all" data-action="set-sport" data-sport="picks">All picks →</a>` : '')
       + `</div></article>`;
   }
@@ -6183,6 +6185,7 @@
     // One leg's row: the list's, and the PrizePicks pool's (2026-10-28).
     const itemHtml = (x) => {
       const lg = pickLeg(x);
+      const team = pickIsTeam(x);
       const on = !!state.slip[offerLeg(lg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
       const tags = [];
@@ -6211,10 +6214,10 @@
         + `<span class="tc-l1"><b>${esc(x.title)}</b><span class="tc-p">${pct0(x.p)}</span></span>`
         // A soccer leg's league says the sport; the others name it.
         + `<span class="tc-l2"><span><span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
-        + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${pickEdgeHtml(x)}</span>` : ''}`
+        + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${team ? '' : pickEdgeHtml(x)}</span>` : ''}`
         // A player leg's projection against its line, as the MLB board draws it;
         // a team's chance against its price.
-        + `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${betLinkHtml(legLink(x))}${booksHtml(x.books)}</span>`
+        + `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${team ? '' : betLinkHtml(legLink(x))}${booksHtml(x.books, team)}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     };
@@ -6279,7 +6282,7 @@
       + `</div>`;
     const listCard = `<div class="nba-pp pk-card pk-likely">`
       + `<div class="tc-head"><span class="tc-title">Most likely to land</span></div>`
-      + `<div class="tc-sub">Every kind of leg, one a game, best chance first. The moneylines are sportsbook bets: under each, its chance against its price.</div>`
+      + `<div class="tc-sub">Every kind of leg, one a game, best chance first. Under a moneyline: its chance against the market's price.</div>`
       + `<ol class="tc-legs">${legs.map(itemHtml).join('')}</ol>`
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
     grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + bankHtml() + ppCard + evBetsHtml(d) + listCard + after;
@@ -6476,8 +6479,8 @@
     return `<a class="bet-at${small ? ' sm' : ''}" href="${esc(h)}" target="_blank" rel="noopener noreferrer"${small ? ` aria-label="Bet at ${esc(bk)}"` : ''}>${small ? 'Bet ↗' : `Bet at ${esc(bk)} ↗`}</a>`;
   }
   // The button on a leg (2026-11-01): its best price's book, or, while no state
-  // is set, the best of the books that need none. "Set your state to open
-  // Caesars" was the only way to bet the Jaguars, a nickel from DraftKings.
+  // is set, the best of the books that need none, rather than a button that
+  // only asks for a state with DraftKings a nickel behind.
   function legLink(x) {
     if (!String(x.link || '').includes(STATE_SLOT) || (state.bank && state.bank.state)) return x.link;
     const free = (x.books || []).find((b) => b.link && !b.link.includes(STATE_SLOT));
@@ -6486,8 +6489,8 @@
   // Every book's price of the side, best first, each with its hold -- how far
   // its prices on the market add up past 100% (2026-10-29). Folded, so a row
   // reads as before until it is opened. The sharp books make the fair; they
-  // are listed to be read, and marked.
-  function booksHtml(books) {
+  // are listed to be read, and marked. toRead: prices only, no bet links.
+  function booksHtml(books, toRead) {
     if (!Array.isArray(books) || books.length < 2) return '';
     const top = books.find((b) => !b.sharp);
     const low = books.filter((b) => !b.sharp && typeof b.hold === 'number').sort((a, b) => a.hold - b.hold)[0];
@@ -6496,7 +6499,7 @@
     // you can bet first, then the sharp ones under their own heading -- a
     // "sharp" tag on each row wrapped under its name in a narrow card.
     const row = (b) => `<span class="bk-r${b.sharp ? ' sh' : b === top ? ' best' : ''}"><span class="bk">${esc(bkLabel(b.book))}</span>`
-      + `<b>${esc(AM(b.price))}</b><span class="hd">${typeof b.hold === 'number' ? `${esc(b.hold.toFixed(1))}%` : ''}</span>${b.link ? betLinkHtml(b.link, true) : '<span></span>'}</span>`;
+      + `<b>${esc(AM(b.price))}</b><span class="hd">${typeof b.hold === 'number' ? `${esc(b.hold.toFixed(1))}%` : ''}</span>${b.link && !toRead ? betLinkHtml(b.link, true) : '<span></span>'}</span>`;
     const bet = books.filter((b) => !b.sharp), sharp = books.filter((b) => b.sharp);
     return `<details class="pk-books"><summary>Every book (${books.length})${top ? ` · best ${esc(bkLabel(top.book))} ${esc(AM(top.price))}` : ''}`
       + `${low ? ` · lowest hold ${esc(bkLabel(low.book))} ${esc(low.hold.toFixed(1))}%` : ''}</summary>`
