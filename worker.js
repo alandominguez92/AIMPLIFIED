@@ -3129,7 +3129,7 @@ async function nbaLiveCards(env, now, feeds) {
   const days = [ptDateOf(now), ptDateOf(now - 864e5)];
   await ensureNbaSchema(env.DB);
   const rows = (await env.DB.prepare('SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
-  const picked = await livePickIds(env.DB, days, ['nba_pp']);
+  const picked = await livePickIds(env.DB, days, ['nba_pp', 'nba_reb_gap']);
   const legs = liveFollowed(rows, now, picked, (r) => `nbapp:${r.game_id}:${r.player}:${r.market}`, (r) => r.min_proj >= NBA_ROTATION_MIN);
   if (!legs.length) return [];
   const cards = [];
@@ -8681,7 +8681,7 @@ async function topLegsFill(env, sport, out) {
 //   MLB PrizePicks unders at 70%+: 19 of 25 (76%). Below 70 the model ran 5-10
 //     points hot (60-65%: 55 of 109), and strikeout unders hit 49%: both out.
 //   NBA and soccer favourites at 65%+, NFL's at 75%+ (from 2026-10-26), and
-//   NBA PrizePicks unders at 70%+:
+//   NBA PrizePicks unders at 70%+ (threes and assists, off from 2026-11-01):
 //     in, each with its own record beside it. The sharp line is the best
 //     number there is and the NBA model held up on last season's games, but
 //     none has PICKS_PROVEN_N graded legs at its bar yet. NBA preseason is out:
@@ -8701,7 +8701,12 @@ const PICK_KINDS = {
   mlb_ml: { sport: 'mlb', label: 'MLB moneyline favourite', min: 65 },
   mlb_pp: { sport: 'mlb', label: 'MLB PrizePicks under (TB, H+R+RBI)', min: 70 },
   nba_ml: { sport: 'nba', label: 'NBA moneyline favourite', min: 65 },
-  nba_pp: { sport: 'nba', label: 'NBA PrizePicks under (3PM, AST; PP line not below the book)', min: 70 },
+  // Off the list from 2026-11-01, the owner's call: its legs were listed at 70%+
+  // and landed 14 of 25, and the log's 70%+ legs 29 of 56, so the model's chance
+  // says nothing in these markets. Threes unders alone are about 54-55% over two
+  // seasons, break-even on a Flex at best. Still logged and graded on the NBA
+  // card; the entry stays so that past days keep their results and reasons.
+  nba_pp: { sport: 'nba', label: 'NBA PrizePicks under (3PM, AST; PP line not below the book)', min: 70, off: '2026-11-01' },
   // PrizePicks Mores from 2026-10-28, the owner's call: the two markets whose
   // More side had landed where the model leaned More -- NBA blocks 17 of 24
   // and NHL points and assists 20 of 29 at 55%+ through Oct 27 (the cards'
@@ -9475,12 +9480,14 @@ async function picksCandidates(env, now) {
   }
 
   // NBA PrizePicks unders: rotation players, as on the NBA card, in the
-  // markets the list was built on (blocks and steals are logged only).
+  // markets the list was built on (blocks and steals are logged only). Nothing
+  // dated from PICK_KINDS.nba_pp.off on: only a replay of an earlier day gets
+  // through, which is what keeps those days' results checkable.
   await ensureNbaSchema(db);
   // Tonight's rows read once for the unders, the rebounds and the blocks
   // (2026-11-01), in the order the three reads had them.
   const nbaOpen = (await db.prepare('SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
-  const np = nbaOpen.filter((r) => NBA_PICK_MARKETS.includes(r.market));
+  const np = nbaOpen.filter((r) => NBA_PICK_MARKETS.includes(r.market) && r.date < PICK_KINDS.nba_pp.off);
   for (const row of ppStanding(np)) {
     // At its latest line: the one that can be played now (ppCurrent).
     const r = ppCurrent(row);
@@ -9711,6 +9718,7 @@ const dropOutranked = (o) => `${o.label} (${Math.round(o.p)}%) took its game's p
 // the books' is no reason to leave it.
 function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   if (!m) return null;
+  if (kind === 'nba_pp' && m.date >= PICK_KINDS.nba_pp.off) return 'threes and assists unders came off Picks on Nov 1: listed at 70%+, they landed 56%';
   // An NHL line coming down is not a scratch (2026-10-30): on Oct 29 Strome,
   // Batherson and Hutson all played -- 0, 3 and 1 points.
   if (reread && m.close_point == null) return kind === 'nhl_more' ? 'PrizePicks took the line down before puck drop' : 'PrizePicks took the line down before tip, most often a player ruled out';
@@ -10010,12 +10018,14 @@ async function refreshEdgePrices(env, scan, now) {
   return done;
 }
 
+// What the list says it carries on a day: a kind that came off is not among them.
+const pickKindsOn = (now) => Object.entries(PICK_KINDS).filter(([, v]) => !v.off || ptDateOf(now) < v.off);
 async function picksBoard(env) {
   const out = {
     note: 'LOGGED as shown. The legs most likely to land, across sports, one per game: for PrizePicks, which pays the same on every leg. '
       + 'Only kinds of leg whose stated chance has held up in the logs, at the bar where it held up.',
     asOf: new Date().toISOString(),
-    rules: Object.fromEntries(Object.entries(PICK_KINDS).map(([k, v]) => [k, `${v.label}, ${v.min}%+`])),
+    rules: Object.fromEntries(pickKindsOn(Date.now()).map(([k, v]) => [k, `${v.label}, ${v.min}%+`])),
     legs: [], qualifyingGames: 0, entries: [], kinds: {}, record: null,
   };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
@@ -10035,7 +10045,7 @@ async function picksBoard(env) {
     let timer;
     await Promise.race([logos, new Promise((r) => { timer = setTimeout(r, SOC_LOGO_WAIT_MS); })]);
     clearTimeout(timer);
-    out.kinds = Object.fromEntries(Object.entries(PICK_KINDS).map(([k, v]) => [k, { ...v, record: kinds[k] }]));
+    out.kinds = Object.fromEntries(pickKindsOn(now).map(([k, v]) => [k, { ...v, record: kinds[k] }]));
     out.qualifyingGames = new Set(legs.map((l) => l.gameKey)).size;
     if (unavailable.size) out.unavailable = [...unavailable];
     // Each leg's first chance on the list, for how far it has moved since.
@@ -11980,8 +11990,8 @@ const NBA_PP_MARKETS = { player_threes: 'threes', player_assists: 'ast', player_
 const NBA_PP_BOOKS = ['prizepicks', 'underdog', 'pick6', 'draftkings', 'fanduel', ...NBA_SHARP];
 const NBA_PRIOR_K = 5;
 const NBA_DISP = { threes: 1.15, ast: 1.25, reb: 1.2, blk: 1.15, stl: 1.1 };
-// The markets Picks of the day may carry: the ones whose under it was built on.
-// Blocks and steals join once their own graded record says their chance holds.
+// The NBA unders the edge list prices, at the book's own line against the sharp
+// books. They were Picks of the day's until 2026-11-01 (PICK_KINDS.nba_pp).
 // Rebounds came off on 2026-10-23: 67 of 133 unders (50.4%) at PrizePicks'
 // own lines in the first three nights, against 63% for assists and threes,
 // and about 51% in the Oct 19 backtest. Still logged and graded on the card.
@@ -14213,9 +14223,10 @@ async function histProps(env, url) {
     await saveFeedCache(env.DB, stateKey, state);
   }
   // Form against the line (histPropForm), and one player's legs by date.
-  const form = url.searchParams.get('form'), who = url.searchParams.get('player');
-  if (form === '1' || who) {
+  const form = url.searchParams.get('form'), who = url.searchParams.get('player'), lines = url.searchParams.get('lines');
+  if (form === '1' || who || lines === '1') {
     const all = (await env.DB.prepare('SELECT date, commence, game, legs FROM histpropgames WHERE job = ?').bind(key).all()).results || [];
+    if (lines === '1') return { job: key, label: job.label, games: all.length, lines: histPropLines(all) };
     if (who) {
       const k = nbaName(who);
       return { job: key, player: who, rows: all.map((r) => ({ ...r, legs: JSON.stringify(JSON.parse(r.legs || '[]').filter((l) => nbaName(l.p) === k)) }))
@@ -14321,6 +14332,37 @@ function histPropRead(l) {
   return { under: f.fair, src: f.src, n: f.n, gap: main ? round1(l.pp - main[0]) : null };
 }
 const HIST_PROP_BANDS = [[50, 55], [55, 58], [58, 62], [62, 66], [66, 101]];
+// How often the Less landed at each of PrizePicks' numbers, market by market
+// (2026-11-01, pure; ?lines=1). It needs no sharp price, which nba4's markets
+// never have. With this many lines some will look good by luck, so each reads
+// the earlier and later half of the games apart and carries `low`, the floor of
+// its 95% interval. A push decides nothing: PrizePicks voids it.
+function histPropLines(rows) {
+  const dates = rows.map((r) => r.date).filter(Boolean).sort();
+  const mid = dates[Math.floor(dates.length / 2)];
+  const blank = () => ({ push: 0, early: { n: 0, less: 0 }, late: { n: 0, less: 0 } });
+  const cellOf = (c) => {
+    const n = c.early.n + c.late.n, less = c.early.less + c.late.less, z = 1.96;
+    const low = n ? (less / n + z * z / (2 * n) - z * Math.sqrt((less / n) * (1 - less / n) / n + z * z / (4 * n * n))) / (1 + z * z / n) : null;
+    const half = (h) => ({ n: h.n, rate: h.n ? round1(h.less / h.n * 100) : null });
+    return { n, less, rate: n ? round1(less / n * 100) : null, low: low == null ? null : round1(low * 100), push: c.push, early: half(c.early), late: half(c.late) };
+  };
+  const byMarket = new Map();
+  for (const r of rows) {
+    for (const l of JSON.parse(r.legs || '[]')) {
+      if (l.a == null || l.v) continue;
+      const m = byMarket.get(l.mk) || byMarket.set(l.mk, { all: blank(), lines: new Map() }).get(l.mk);
+      const c = m.lines.get(l.pp) || m.lines.set(l.pp, blank()).get(l.pp);
+      for (const x of [m.all, c]) {
+        if (l.a === l.pp) { x.push++; continue; }
+        const h = r.date < mid ? x.early : x.late;
+        h.n++; if (l.a < l.pp) h.less++;
+      }
+    }
+  }
+  return Object.fromEntries([...byMarket].map(([mk, m]) => [mk, { all: cellOf(m.all),
+    lines: [...m.lines].sort((a, b) => a[0] - b[0]).map(([line, c]) => ({ line, ...cellOf(c) })) }]));
+}
 // The report (pure): by market and all together -- the side the sharp chance
 // at PrizePicks' line favours, by band, and at 58%+ (a 2-pick needs 57.7% a
 // leg); and More and Less by where PrizePicks' line sat against the sharp one.

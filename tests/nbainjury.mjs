@@ -17,7 +17,11 @@
 // Nov 1 (nbapp-20261101.json), their ESPN ids from ESPN's rosters. The 12:30
 // PM read of Nets @ Pacers is the 9 PM one with two entries added, each a
 // copy of a real one beside it: Day'Ron Sharpe out (rest), as Mikel Brown Jr.
-// was, and Andrew Nembhard day-to-day (back soreness), as Obi Toppin was.
+// was, and Keon Ellis day-to-day (back soreness), as Obi Toppin was. Threes and
+// assists left Picks on Nov 1 (tests/threesoff.mjs), so the player legs here are
+// those two's rebounds: their rows are real, the sharp lines beside them (read
+// only near tip, and these rows are from the night before) shaped as
+// tests/rebgap.mjs records them.
 // Nov 1's moneylines are logged on the day, so the Clippers @ Warriors row is
 // shaped as Oct 31's were (production's gmpicks export), its teams and start
 // ESPN's. Real SQLite and the real worker.
@@ -73,6 +77,9 @@ for (const l of PP) {
 }
 sq.prepare(`INSERT INTO gmpicks (sport, date, game_id, market, league, commence, side, pick, home, away, win_prob, entry_price, close_price, result)
   VALUES ('nba', '2026-11-01', 'f00dfeed00000000000000000000c1a5', 'h2h', 'reg', '2026-11-02T01:40:00Z', 'away', 'Los Angeles Clippers', 'Golden State Warriors', 'Los Angeles Clippers', 70.2, -230, -245, NULL)`).run();
+const unders = (bk, line, u) => JSON.stringify({ [bk]: [line, u] });
+sq.prepare("UPDATE nbapp SET book_unders = ? WHERE player = ? AND market = 'reb'").run(unders('pinnacle', 7.5, 50.4), "Day'Ron Sharpe");
+sq.prepare("UPDATE nbapp SET book_unders = ? WHERE player = ? AND market = 'reb'").run(unders('fanduel', 1.5, 49.8), 'Keon Ellis');
 const cached = () => JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'nba_inj:2026-11-01'").get().data);
 const feedReads = (from) => asked.slice(from).filter((u) => /core\/nba\/game\?/.test(u)).map((u) => u.split('gameId=')[1]);
 const legsOf = (d) => [...(d.legs || []), ...(d.ppPool || [])];
@@ -99,7 +106,7 @@ let d = await get('/api/picks');
 const sh = leg(d, "Day'Ron Sharpe");
 console.log(`  ${legsOf(d).filter((x) => x.sport === 'nba').map((x) => `${x.title} ${JSON.stringify(x.inj || null)}`).join(' | ')}`);
 ok(sh && sh.inj && sh.inj.status === null && sh.inj.at === new RealDate(RealDate.parse('2026-11-01T19:00:00Z')).toISOString(),
-  "Day'Ron Sharpe's assists: not on the report, as read at noon");
+  "Day'Ron Sharpe's rebounds: not on the report, as read at noon");
 const ml = leg(d, 'Clippers ML');
 const T = (ml && ml.inj && ml.inj.teams) || [];
 console.log(`  ${ml && ml.title}: ${JSON.stringify(T)}`);
@@ -109,23 +116,23 @@ ok(T.length === 2 && T[0].team === 'Clippers' && T[1].team === 'Warriors'
   && T[1].out[0].what === 'rest' && T[1].out[3].what === 'knee surgery',
   'the Clippers moneyline: who each side is missing, the picked side first, newest news first -- Warriors without Green and Curry (rest), Santos GTD');
 
-console.log('\n-- 12:35 PM: ESPN rules Sharpe out, Nembhard questionable --');
+console.log('\n-- 12:35 PM: ESPN rules Sharpe out, Ellis questionable --');
 const g4 = structuredClone(GAMES['401909904']);
 const bkn = g4.gamepackageJSON.injuries.find((t) => t.team.abbreviation === 'BKN'), indT = g4.gamepackageJSON.injuries.find((t) => t.team.abbreviation === 'IND');
 const brown = bkn.injuries.find((i) => i.athlete.displayName === 'Mikel Brown Jr.'), toppin = indT.injuries.find((i) => i.athlete.displayName === 'Obi Toppin');
 bkn.injuries.push({ ...structuredClone(brown), date: '2026-11-01T19:30Z', athlete: { ...brown.athlete, id: '4432194', displayName: "Day'Ron Sharpe", fullName: "Day'Ron Sharpe" } });
-indT.injuries.push({ ...structuredClone(toppin), date: '2026-11-01T19:31Z', athlete: { ...toppin.athlete, id: '4395712', displayName: 'Andrew Nembhard', fullName: 'Andrew Nembhard' } });
+indT.injuries.push({ ...structuredClone(toppin), date: '2026-11-01T19:31Z', athlete: { ...toppin.athlete, id: '4702177', displayName: 'Keon Ellis', fullName: 'Keon Ellis' } });
 feeds = { ...GAMES, '401909904': g4 };
 NOW = RealDate.parse('2026-11-01T19:35:00Z');
 a0 = asked.length;
 await tick();
 ok(feedReads(a0).includes('401909904'), 'half an hour on, Nets @ Pacers read again');
 d = await get('/api/picks');
-const nem = leg(d, 'Andrew Nembhard');
+const ell = leg(d, 'Keon Ellis');
 console.log(`  ${legsOf(d).filter((x) => x.sport === 'nba').map((x) => `${x.title} ${JSON.stringify(x.inj || null)}`).join(' | ')}`);
 ok(!leg(d, "Day'Ron Sharpe"), 'Sharpe, out: off the list and the pool');
-ok(nem && nem.inj && nem.inj.status === 'GTD' && nem.inj.what === 'back soreness' && !nem.inj.out && (d.ppPool || []).some((x) => x.legId === nem.legId),
-  "Nembhard's assists take the game's place, flagged GTD (back soreness)");
+ok(ell && ell.inj && ell.inj.status === 'GTD' && ell.inj.what === 'back soreness' && !ell.inj.out && (d.ppPool || []).some((x) => x.legId === ell.legId),
+  "Ellis's rebounds take the game's place, flagged GTD (back soreness)");
 
 console.log('\n-- after tip --');
 NOW = RealDate.parse('2026-11-01T22:30:00Z');
@@ -140,8 +147,8 @@ const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 const at = app.indexOf('  function injuryTag(');
 const IT = new Function('Date', app.slice(at, app.indexOf('\n  }\n', at) + 4) + '\nreturn injuryTag;')(globalThis.Date);
 NOW = RealDate.parse('2026-11-01T19:47:00Z');
-const t1 = IT(nem), t2 = IT(sh), t3 = IT({ sport: 'nba', spec: { sport: 'nba', playerId: '1' } }), t4 = IT({ sport: 'nhl', spec: {} });
-ok(t1.warn && t1.text === 'GTD: back soreness' && t1.title === "ESPN's injury report, read 12 min ago", `Nembhard: "${t1.text}" (${t1.title})`);
+const t1 = IT(ell), t2 = IT(sh), t3 = IT({ sport: 'nba', spec: { sport: 'nba', playerId: '1' } }), t4 = IT({ sport: 'nhl', spec: {} });
+ok(t1.warn && t1.text === 'GTD: back soreness' && t1.title === "ESPN's injury report, read 12 min ago", `Ellis: "${t1.text}" (${t1.title})`);
 ok(!t2.warn && t2.text === 'no injury listed', `Sharpe at noon: "${t2.text}"`);
 ok(t3.warn && t3.text === 'check injuries' && t4 === null, 'a game not read yet keeps "check injuries"; an NHL leg, nothing');
 const t5 = IT(ml);

@@ -272,6 +272,22 @@ ok(hl('Josh Norris', 'pts').v === 2 && hlegs.filter((l) => l.a == null).length =
   'Josh Norris, priced an hour before and not in the box: void, the only leg not graded');
 const hrep = hr.report.byMarket;
 ok(hrep.pts && hrep.ast && hrep.saves && hr.report.all.priced >= 6, `the report by market, the sharp books' chance at PrizePicks' line on ${hr.report.all.priced} of ${hr.report.all.legs}`);
+
+console.log('\n-- how often the Less landed at each line --');
+// A later game, in the stored shape: a Less that missed, and a whole-number line that pushed.
+sq.prepare("INSERT INTO histpropgames (job, event_id, date, commence, game, legs, graded) VALUES ('nhl', 'later', '2026-03-01', '2026-03-02T00:00:00Z', 'x @ y', ?, 2)")
+  .run(JSON.stringify([{ p: 'A', mk: 'saves', pp: 23.5, a: 30 }, { p: 'B', mk: 'saves', pp: 24, a: 24 }]));
+const hl1 = await get('/api/hist-props?job=nhl&lines=1');
+const hline = (mk, x) => hl1.lines[mk].lines.find((l) => l.line === x);
+console.log(`  ${JSON.stringify(hline('saves', 23.5))}`);
+ok(hl1.games === 2 && hline('pts', 0.5).n === 4 && hline('pts', 0.5).less === 1 && hline('pts', 0.5).rate === 25 && hline('ast', 0.5).less === 0 && hline('ast', 0.5).n === 2,
+  "points at 0.5: McLeod's the one Less of four, Norris's void not counted; assists at 0.5: none of two");
+ok(hline('saves', 23.5).n === 3 && hline('saves', 23.5).less === 2 && hline('saves', 23.5).early.n === 2 && hline('saves', 23.5).early.rate === 100 && hline('saves', 23.5).late.n === 1 && hline('saves', 23.5).late.rate === 0,
+  'saves at 23.5: two of three, the earlier and later games apart, so one stretch cannot pass for a line');
+ok(hline('saves', 24).n === 0 && hline('saves', 24).push === 1 && hline('saves', 24).rate === null && hl1.lines.saves.all.n === 3 && hl1.lines.saves.all.push === 1,
+  'a push decides nothing: counted apart, in neither the Less nor the n');
+ok(hline('saves', 23.5).low === 20.8 && hl1.lines.saves.lines[0].line === 23.5, `the floor of the 95% interval (${hline('saves', 23.5).low}), and the lines in order`);
+sq.prepare("DELETE FROM histpropgames WHERE job = 'nhl' AND event_id = 'later'").run();
 await get('/api/hist-props?job=nhl&stop=1');
 
 // ---- names, a run cut off, and a regrade (2026-10-29) ------------------------------------------

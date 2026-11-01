@@ -96,6 +96,9 @@ const dp = sq.prepare(`INSERT INTO daypicks (date, leg_id, kind, src_date, game_
 dp.run(`nbapp:${ATL.game_id}:Dyson Daniels:threes`, 'nba_pp', ATL.game_id, 'Dyson Daniels', 'threes', 'ATL', 'Dyson Daniels Under 0.5 3PM', 79.2, ATL.commence, 2);
 dp.run(`nbapp:${NYK.game_id}:Karl-Anthony Towns:ast`, 'nba_pp', NYK.game_id, 'Karl-Anthony Towns', 'ast', 'NY', 'Karl-Anthony Towns Under 4 AST', 71.5, NYK.commence, 6);
 dp.run(`nba:ml:${TOR.game_id}:away`, 'nba_ml', TOR.game_id, null, 'h2h', 'Toronto Raptors', 'Raptors ML', 74.9, TOR.commence, 4);
+// A rebounds Less is the NBA under the list carries from Nov 1: its leg is followed too.
+const REB = LEGS.filter((x) => x.market === 'reb' && x.game === NYK.game).sort((a, b) => a.model_under - b.model_under)[0];
+dp.run(`nbapp:${NYK.game_id}:${REB.player}:reb`, 'nba_reb_gap', NYK.game_id, REB.player, 'reb', REB.team, `${REB.player} Under ${REB.point} REB`, 56.1, NYK.commence, 7);
 sq.prepare(`INSERT INTO gmpicks (sport, date, game_id, market, league, commence, side, pick, home, away, win_prob, entry_price, close_price)
   VALUES ('nba', '2026-10-23', ?, 'h2h', 'reg', ?, 'away', 'Toronto Raptors', 'Washington Wizards', 'Toronto Raptors', 74.9, -320, -320)`).run(TOR.game_id, TOR.commence);
 const ev = (away) => NHL_EV.find((e) => e.away_team === away);
@@ -175,6 +178,8 @@ ok(nel.stat === nhlLine('2026020167', '8475754').points && nel.stat === 0 && nel
 console.log('\n-- the moneylines on Picks --');
 const rap = ml.find((c) => c.name === 'Raptors ML');
 console.log('  ' + ml.map((c) => `${c.name} ${c.stat} ${c.vs} ${c.state} [${c.matchup} ${c.inning}]`).join(' | '));
+const rebCard = nba.find((c) => c.name === REB.player && c.statLabel === 'REB');
+ok(rebCard && rebCard.onPicks, `the list's rebounds Less is followed and marked, not left to the model's three best (${REB.player} ${rebCard && rebCard.stat} of ${REB.point})`);
 ok(ml.length === 1 && rap && rap.sport === 'nba' && rap.onPicks, 'the Raptors, on the list and under way; the Blazers and Lakers have not tipped');
 ok(rap && rap.stat === '94–89' && rap.vs === 'up 5' && rap.matchup === 'TOR 94 – WSH 89' && rap.inning === 'Q4 7:28' && rap.state === 'cashing',
   `Raptors 94-89 with seven minutes left: "${rap && rap.vs}", ${rap && rap.state}`);
