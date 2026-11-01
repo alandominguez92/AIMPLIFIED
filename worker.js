@@ -14006,7 +14006,8 @@ function histPropForm(rows) {
     if (prior.length >= FORM_MIN && l.a !== l.pp) {
       const r = histPropRead(l);
       seen.push({ mk: l.mk, over: prior.filter((v) => v > l.pp).length / prior.length, won: l.a > l.pp,
-        sharpOver: r.under == null ? null : round1(100 - r.under), gap: l.pp - prior.reduce((a, v) => a + v, 0) / prior.length });
+        sharpOver: r.under == null ? null : round1(100 - r.under), gap: l.pp - prior.reduce((a, v) => a + v, 0) / prior.length,
+        line: r.gap == null ? null : r.gap < 0 ? 'below' : r.gap > 0 ? 'above' : 'level' });
     }
     if (!past.has(k)) past.set(k, []);
     past.get(k).push(l.a);
@@ -14018,8 +14019,18 @@ function histPropForm(rows) {
     return { band, n: b.length, overRate: rate(b), priced: pr.length, pricedOverRate: went, sharpSaid: said,
       beat: went != null && said != null ? round1(went - said) : null, lineVsAvg: b.length ? round1(b.reduce((a, x) => a + x.gap, 0) / b.length) : null };
   });
+  // Each band split by where PrizePicks' line sat against the sharp main line
+  // (2026-11-01, the owner's call): a cold player whose line PrizePicks left
+  // above the sharp books' -- two weak signals together. The Less side: how
+  // often it went under, and what the sharp books said at that line.
+  const lines = (ls) => Object.fromEntries(FORM_BANDS.map(([lo, hi, band]) => [band, Object.fromEntries(['below', 'level', 'above'].map((g) => {
+    const b = ls.filter((x) => x.over >= lo && x.over < hi && x.line === g), pr = b.filter((x) => x.sharpOver != null);
+    const under = b.length ? round1(100 - rate(b)) : null, said = pr.length ? round1(100 - pr.reduce((a, x) => a + x.sharpOver, 0) / pr.length) : null;
+    return [g, { n: b.length, under, sharpUnder: said, beat: under != null && said != null && pr.length === b.length ? round1(under - said) : null }];
+  }))]));
   const markets = [...new Set(seen.map((x) => x.mk))];
-  return { legs: seen.length, minGames: FORM_MIN, all: table(seen), byMarket: Object.fromEntries(markets.map((m) => [m, table(seen.filter((x) => x.mk === m))])) };
+  return { legs: seen.length, minGames: FORM_MIN, all: table(seen), byMarket: Object.fromEntries(markets.map((m) => [m, table(seen.filter((x) => x.mk === m))])),
+    byLine: lines(seen), byMarketLine: Object.fromEntries(markets.map((m) => [m, lines(seen.filter((x) => x.mk === m))])) };
 }
 // One run: the next games, each read an hour before its start, its legs
 // graded from ESPN's box score (free), one row each.

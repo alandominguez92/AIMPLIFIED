@@ -85,6 +85,7 @@ for (const pl of F.players) {
   }
 }
 const BANDS = [[0.8, 1.01], [0.6, 0.8], [0.4, 0.6], [0.2, 0.4], [0, 0.2]];
+const FORM_BANDS_N = [['8+ of 10', 0.8, 1.01], ['6-7 of 10', 0.6, 0.8], ['4-5 of 10', 0.4, 0.6], ['2-3 of 10', 0.2, 0.4], ['0-1 of 10', 0, 0.2]];
 const expect = BANDS.map(([lo, hi]) => {
   const b = want.filter((x) => x.over >= lo && x.over < hi), pr = b.filter((x) => x.sharpOver != null);
   return { n: b.length, overRate: b.length ? r1(b.filter((x) => x.won).length / b.length * 100) : null,
@@ -98,6 +99,33 @@ ok(f && f.all.every((b, i) => b.n === expect[i].n && b.overRate === expect[i].ov
   'each band as worked out from the rows: its legs, how often they went over, what the sharp books said, the line against his average');
 ok(f && f.all.every((b) => b.beat == null || b.beat === r1(b.pricedOverRate - b.sharpSaid)), 'beat is how far the band went over past what the sharp books said');
 ok(f && f.byMarket.pts && f.byMarket.pra && Object.values(f.byMarket).reduce((a, t) => a + t.reduce((x, b) => x + b.n, 0), 0) === f.legs, 'and the same by market, adding up to the whole');
+
+// ---- each band by where PrizePicks' line sat (2026-11-01) -----------------------------------------
+// Against the sharp main line: Pinnacle's main, else FanDuel's, else the median
+// of the other sharp books' -- a book's main being its number nearest even money.
+const mainOf = (pts) => (pts && pts.length ? pts.slice().sort((a, b) => Math.abs(a[1] - 50) - Math.abs(b[1] - 50))[0][0] : null);
+const lineOf = (l) => {
+  const mains = SHARP.map((bk) => [bk, mainOf(l.q && l.q[bk])]).filter(([, m]) => m != null);
+  const m = (mains.find(([bk]) => bk === 'pinnacle') || mains.find(([bk]) => bk === 'fanduel') || [])[1] ?? (mains.length ? med(mains.map(([, x]) => x)) : null);
+  return m == null ? null : l.pp < m ? 'below' : l.pp > m ? 'above' : 'level';
+};
+const want2 = [];
+for (const pl of F.players) {
+  const byMk = {};
+  for (const r of pl.rows) for (const l of JSON.parse(r.legs)) if (l.a != null && !l.v) (byMk[l.mk] = byMk[l.mk] || []).push({ ...l, t: r.commence });
+  for (const ls of Object.values(byMk)) {
+    ls.sort((a, b) => (a.t < b.t ? -1 : 1));
+    ls.forEach((l, i) => { const prior = ls.slice(Math.max(0, i - 10), i).map((x) => x.a); if (prior.length >= 5 && l.a !== l.pp) want2.push({ over: prior.filter((v) => v > l.pp).length / prior.length, won: l.a > l.pp, line: lineOf(l) }); });
+  }
+}
+const cold = want2.filter((x) => x.over < 0.4 && x.line === 'above');
+const cg = f && f.byLine && f.byLine['2-3 of 10'] && f.byLine['2-3 of 10'].above, c0 = f && f.byLine && f.byLine['0-1 of 10'] && f.byLine['0-1 of 10'].above;
+console.log(`  cold and above the sharp line: 2-3 of 10 ${JSON.stringify(cg)}, 0-1 of 10 ${JSON.stringify(c0)}`);
+ok(f && f.byLine && ['below', 'level', 'above'].every((g) => FORM_BANDS_N.every(([band, lo, hi]) => f.byLine[band][g].n === want2.filter((x) => x.over >= lo && x.over < hi && x.line === g).length)),
+  'each band split by where the line sat against the sharp main line, the legs counted from the rows');
+const cgRows = want2.filter((x) => x.over >= 0.2 && x.over < 0.4 && x.line === 'above');
+ok(cg && c0 && cg.n + c0.n === cold.length && cg.n === cgRows.length && cg.under === r1(100 - r1(cgRows.filter((x) => x.won).length / cgRows.length * 100)),
+  `the cold-and-above cells: how often they went under (${cg && cg.under}% of ${cg && cg.n})`);
 
 // ---- nothing from after the game ------------------------------------------------------------------
 // Brunson's last game, changed to 60 points: no band but the games after it could move -- there are none.
