@@ -69,7 +69,8 @@ if (pydM) {
   // each game ten-odd credits instead of two.
   const win = src.match(/const NFL_PASS_YDS_WINDOW_MS = (\d+) \* 3600 \* 1000/);
   ok(!!win && Number(win[1]) <= 24, `passing yards are bought only inside a day-of window (${win ? win[1] + 'h' : 'no window found'})`);
-  ok(/nearKick \? ',' \+ NFL_PASS_YDS_MARKET : ''/.test(src), 'and the window is what adds the market to a call');
+  // Catches ride the same window since 2026-11-01 (tests/nflrec.mjs).
+  ok(/nearKick \? ',' \+ NFL_PASS_YDS_MARKET( \+ ',' \+ NFL_REC_MARKET)? : ''/.test(src), 'and the window is what adds the market to a call');
 }
 
 const missing = [...projectedMarkets].filter((m) => !captured.has(m));

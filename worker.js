@@ -272,6 +272,7 @@ export default {
     ctx.waitUntil(gradeGamePicks(env).catch(() => null));
     ctx.waitUntil(gradePassTds(env).catch(() => null));
     ctx.waitUntil(gradePassYds(env).catch(() => null));
+    ctx.waitUntil(gradeRecs(env).catch(() => null));
     ctx.waitUntil(nflGradeCron(env).catch(() => null));
     ctx.waitUntil(gradeEntryLegs(env).catch(() => null));
     // Picks of the day: every fifteen minutes, so the log knows which legs were
@@ -3407,6 +3408,7 @@ async function trackRecord(env) {
     try { await gradeGamePicks(env); } catch (e) { /* additive */ }
     try { await gradePassTds(env); } catch (e) { /* additive */ }
     try { await gradePassYds(env); } catch (e) { /* additive */ }
+    try { await gradeRecs(env); } catch (e) { /* additive */ }
     // MLB's half, kept until a row of its six tables is written (recordCached;
     // the graders above made the tables): after the World Series nothing
     // writes them until spring.
@@ -3426,6 +3428,10 @@ async function trackRecord(env) {
     try {
       await ensurePassYdsSchema(env.DB);
       out.nflPassYds = buildPassYdsRecord(((await env.DB.prepare('SELECT * FROM nflpyd').all()).results) || []);
+    } catch (e) { /* additive */ }
+    try {
+      await ensureRecSchema(env.DB);
+      out.nflRec = buildRecRecord(((await env.DB.prepare('SELECT * FROM nflrec').all()).results) || []);
     } catch (e) { /* additive */ }
     out.recent = mlb.recent;
     return cors(json(out, 120));
@@ -4599,6 +4605,174 @@ async function gradePassYds(env) {
   }
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
   return out;
+}
+
+// ---- Catches, logged only (2026-11-01, NFL_REC_MARKET) ----------------------
+// One row a player PrizePicks quotes a game: its line, the books' median main
+// line, the sharp books' main line, and the sharp books' chance of the under
+// at PrizePicks' own line -- Pinnacle's, else the median of those quoting it
+// both ways (as the props backtest reads it, histPropRead). Graded from ESPN's
+// box score. The question: do the unders still land past that chance?
+async function ensureRecSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nflrec (
+    event_id TEXT NOT NULL, player TEXT NOT NULL,
+    season INTEGER, week INTEGER, season_type TEXT, date TEXT, commence TEXT, home TEXT, away TEXT,
+    pp_open REAL, pp_line REAL, book_line REAL, book_n INTEGER, sharp_line REAL, sharp_n INTEGER,
+    sharp_under REAL, sharp_src TEXT, quotes TEXT, first_at TEXT, last_at TEXT,
+    actual REAL, result TEXT, graded_at TEXT,
+    PRIMARY KEY (event_id, player)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nflrec_open ON nflrec (date) WHERE result IS NULL').run();
+}
+function recEntries(ev, d, week, seasonType) {
+  const out = [];
+  if (!ev || !d) return out;
+  const byName = new Map();
+  for (const bm of (d.bookmakers || [])) {
+    const mk = (bm.markets || []).find((m) => m.key === NFL_REC_MARKET);
+    if (!mk) continue;
+    const cells = new Map();
+    for (const o of (mk.outcomes || [])) {
+      if (!o.description || o.point == null || !Number.isFinite(Number(o.point))) continue;
+      const k = `${o.description}|${o.point}`;
+      const c = cells.get(k) || { player: o.description, point: Number(o.point), over: null, under: null };
+      if (o.name === 'Over') c.over = o.price; else if (o.name === 'Under') c.under = o.price;
+      cells.set(k, c);
+    }
+    for (const c of cells.values()) {
+      const nk = nflBaseName(c.player);
+      const q = byName.get(nk) || { player: c.player, quotes: {} };
+      if (bm.key === 'prizepicks') q.player = c.player;
+      (q.quotes[bm.key] = q.quotes[bm.key] || []).push([c.point, c.over, c.under]);
+      byName.set(nk, q);
+    }
+  }
+  const lineOf = (q, books) => {
+    const pts = books.filter((b) => q.quotes[b]).map((b) => pydMainPoint(q.quotes[b])).filter((x) => x != null);
+    return { line: pts.length ? median(pts) : null, n: pts.length };
+  };
+  for (const q of byName.values()) {
+    // PrizePicks' line is the one it takes an under on: its demons and
+    // goblins come over-only.
+    const pp = (q.quotes.prizepicks || []).filter((x) => typeof x[2] === 'number');
+    if (!pp.length) continue;
+    const ppLine = pydMainPoint(pp);
+    const fairs = {};
+    for (const bk of HIST_PROP_SHARP) {
+      const at = (q.quotes[bk] || []).find((x) => x[0] === ppLine && typeof x[1] === 'number' && typeof x[2] === 'number');
+      const f = at ? shinDevig(at[2], at[1]) : null;
+      if (f != null && f > 0 && f < 1) fairs[bk] = round1(f * 100);
+    }
+    const sf = Object.keys(fairs).length ? sharpFair(fairs, 1) : { fair: null, src: null };
+    const bk = lineOf(q, Object.keys(q.quotes).filter((b) => b !== 'prizepicks'));
+    const sh = lineOf(q, HIST_PROP_SHARP);
+    out.push({
+      event_id: ev.id, player: q.player,
+      season: nflSeasonOf(ptDateOf(Date.parse(ev.commence_time))), week: week == null ? null : week,
+      season_type: seasonType || 'REG', date: ptDateOf(Date.parse(ev.commence_time)),
+      commence: ev.commence_time || null, home: ev.home_team || null, away: ev.away_team || null,
+      pp_line: ppLine, book_line: bk.line, book_n: bk.n, sharp_line: sh.line, sharp_n: sh.n,
+      sharp_under: sf.fair == null ? null : round1(sf.fair), sharp_src: sf.src || null,
+      quotes: JSON.stringify(q.quotes),
+    });
+  }
+  return out;
+}
+async function logRecs(db, rows, stamp) {
+  if (!db || !rows || !rows.length) return 0;
+  await ensureRecSchema(db);
+  const stmts = rows.map((r) => db.prepare(
+    `INSERT INTO nflrec (event_id, player, season, week, season_type, date, commence, home, away,
+       pp_open, pp_line, book_line, book_n, sharp_line, sharp_n, sharp_under, sharp_src, quotes, first_at, last_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT (event_id, player) DO UPDATE SET
+       pp_line = excluded.pp_line, book_line = excluded.book_line, book_n = excluded.book_n,
+       sharp_line = excluded.sharp_line, sharp_n = excluded.sharp_n, sharp_under = excluded.sharp_under, sharp_src = excluded.sharp_src,
+       quotes = excluded.quotes, last_at = excluded.last_at
+     WHERE nflrec.result IS NULL`
+  ).bind(r.event_id, r.player, r.season, r.week, r.season_type, r.date, r.commence, r.home, r.away,
+    r.pp_line, r.pp_line, r.book_line, r.book_n, r.sharp_line, r.sharp_n, r.sharp_under, r.sharp_src, r.quotes, stamp, stamp));
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return stmts.length;
+}
+// Each final game's players for one week, from its box score: `${away}|${home}`
+// -> nflPropBoxRows' rows (catches, 0 where a player played and had none).
+async function nflBoxWeek(yr, lg, wk, rs) {
+  let events = [];
+  try {
+    events = await espnScoreboard(`nfl/scoreboard?xhr=1&year=${yr}&seasontype=${String(lg).toUpperCase() === 'PRE' ? 1 : 2}&week=${wk}`);
+  } catch (e) { return null; }
+  const games = new Map();
+  const want = new Set(rs.map((r) => `${r.away}|${r.home}`));
+  for (const ev of events) {
+    const st = (ev && ev.status && ev.status.type && ev.status.type.name) || '';
+    if (!/FINAL/.test(String(st))) continue;
+    const c = (ev.competitions || [])[0];
+    const names = ((c && c.competitors) || []).map((t) => (t.team || {}).displayName || '');
+    const keys = [...want].filter((k) => { const [a, h] = k.split('|'); return names.includes(a) && names.includes(h); });
+    if (!keys.length || !ev.id) continue;
+    try {
+      const r = await fetch(`${ESPN_CDN}/boxscore?xhr=1&gameId=${ev.id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+      if (!r.ok) continue;
+      const rows = nflPropBoxRows(await r.json());
+      if (rows.length) for (const k of keys) games.set(k, rows);
+    } catch (e) { /* the next tick */ }
+  }
+  return games;
+}
+async function gradeRecs(env) {
+  const out = { graded: 0, pending: 0, voided: 0 };
+  if (!env || !env.DB) return out;
+  await ensureRecSchema(env.DB);
+  const rows = (await env.DB.prepare('SELECT * FROM nflrec WHERE result IS NULL AND date < ? AND date >= ?')
+    .bind(slateDate(), slateDateOffset(-14)).all()).results || [];
+  out.pending = rows.length;
+  if (!rows.length) return out;
+  const byWeek = new Map();
+  for (const r of rows) {
+    const k = `${r.season}|${r.season_type}|${r.week}`;
+    if (!byWeek.has(k)) byWeek.set(k, []);
+    byWeek.get(k).push(r);
+  }
+  const at = new Date().toISOString();
+  const stmts = [];
+  for (const [k, rs] of byWeek) {
+    const [yr, lg, wk] = k.split('|');
+    if (!wk || wk === 'null' || !yr || yr === 'null') continue;
+    const games = await nflBoxWeek(yr, lg, wk, rs);
+    if (!games) continue;
+    for (const r of rs) {
+      const box = games.get(`${r.away}|${r.home}`);
+      if (!box) continue;
+      const me = box.find((b) => nflBaseName(b.player) === nflBaseName(r.player));
+      let result = null, rec = null;
+      // Not in a box read in full, and no one in it shares his surname: he
+      // did not play (nflPasserAbsent's rule). A surname alone stays pending.
+      if (!me) { if (nflPasserAbsent(box.map((b) => nflBaseName(b.player)), r.player)) result = 'void'; }
+      else if (r.pp_line != null) { rec = me.rec; result = rec === r.pp_line ? 'push' : rec < r.pp_line ? 'under' : 'over'; }
+      if (!result) continue;
+      stmts.push(env.DB.prepare('UPDATE nflrec SET result=?, actual=?, graded_at=? WHERE event_id=? AND player=?').bind(result, rec, at, r.event_id, r.player));
+      if (result === 'void') out.voided++; else out.graded++;
+    }
+  }
+  for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+  return out;
+}
+// How the catches unders have done: overall, against the sharp books' chance
+// at PrizePicks' line, and by where that line sat against the sharp books'.
+function buildRecRecord(rows) {
+  const g = rows.filter((r) => r.result === 'under' || r.result === 'over');
+  const cell = (l) => { const hit = l.filter((r) => r.result === 'under').length; return { n: l.length, hit, hitRate: l.length ? round1(hit / l.length * 100) : null }; };
+  const pr = g.filter((r) => r.sharp_under != null);
+  const gap = (r) => (r.sharp_line == null || r.pp_line == null ? null : r.pp_line - r.sharp_line);
+  return {
+    note: "catches, LOGGED ONLY: PrizePicks' under at PrizePicks' number. Last season: 55.7% where the sharp books said 51.9%.",
+    logged: rows.length, pending: rows.filter((r) => r.result == null).length,
+    voided: rows.filter((r) => r.result === 'void').length, pushed: rows.filter((r) => r.result === 'push').length,
+    ...cell(g),
+    priced: { ...cell(pr), sharpSaid: pr.length ? round1(pr.reduce((a, r) => a + r.sharp_under, 0) / pr.length) : null },
+    vsSharpLine: { below: cell(g.filter((r) => gap(r) != null && gap(r) < 0)), level: cell(g.filter((r) => gap(r) === 0)), above: cell(g.filter((r) => gap(r) != null && gap(r) > 0)) },
+  };
 }
 
 // The question, and what would make it worth posting: PrizePicks' under, at
@@ -5805,6 +5979,13 @@ const NFL_PASS_TD_BASE = 55.4;   // realised under-1.5 rate, 2024-25 regular sea
 // captures buy it: about 2 credits a game, ~30 a week.
 const NFL_PASS_YDS_MARKET = 'player_pass_yds';
 const NFL_PASS_YDS_WINDOW_MS = 20 * 3600 * 1000;
+// Catches, logged the same way (2026-11-01, the owner's call): last season's
+// backtest had PrizePicks' catches unders landing 55.7% where the sharp books
+// said 51.9% (671 priced legs) -- the one NFL lean it found, and a marginal one.
+// Bought on the same day-of calls as passing yards, about 2 credits a game.
+// Logged in nflrec only: their rows in nfl_lines, every book a player, would
+// have been some 40,000 writes a Sunday.
+const NFL_REC_MARKET = 'player_receptions';
 // Books are named explicitly rather than pulled by region. Three reasons, all
 // found by dry-running the live payload: regions=us,eu returned 23 books, 13 of
 // them European retail we will never price against; it billed 6 credits where a
@@ -5890,6 +6071,7 @@ async function ingestNflProps(env, opts, reqUrl) {
   // Only the markets this capture can buy: `same` is only ever asked about
   // them, and the game lines stored beside them were read for nothing.
   const propMkts = [...NFL_PROP_MARKETS.split(','), NFL_PASS_YDS_MARKET];
+  const recRows = [];
   try {
     const ids = upcoming.map((e) => e.id);
     for (let i = 0; i < ids.length; i += 40) {
@@ -5925,7 +6107,7 @@ async function ingestNflProps(env, opts, reqUrl) {
     let d;
     // Passing yards only inside the day-of window -- see NFL_PASS_YDS_WINDOW_MS.
     const nearKick = !lean && Date.parse(ev.commence_time) - now <= NFL_PASS_YDS_WINDOW_MS;
-    const markets = NFL_PROP_MARKETS + (nearKick ? ',' + NFL_PASS_YDS_MARKET : '');
+    const markets = NFL_PROP_MARKETS + (nearKick ? ',' + NFL_PASS_YDS_MARKET + ',' + NFL_REC_MARKET : '');
     try {
       const r = await fetch(
         `https://api.the-odds-api.com/v4/sports/${sp.key}/events/${ev.id}/odds`
@@ -5943,6 +6125,7 @@ async function ingestNflProps(env, opts, reqUrl) {
     let priced = false;
     for (const bm of (d.bookmakers || [])) {
       for (const mk of (bm.markets || [])) {
+        if (mk.key === NFL_REC_MARKET) continue;      // logged in nflrec alone (recEntries)
         // A prop outcome names the SIDE in `name` and the PLAYER in
         // `description` — the opposite of the team markets, where the selection
         // is the name. Pairing the two sides per (player, point) is what makes a
@@ -5980,6 +6163,7 @@ async function ingestNflProps(env, opts, reqUrl) {
     if (nearKick) {
       out.passYdsEvents++;
       for (const e of passYdsEntries(ev, d, wk, sp.seasonType)) pydRows.push(e);
+      for (const e of recEntries(ev, d, wk, sp.seasonType)) recRows.push(e);
     }
   }
   out.wrote = stmts.length;
@@ -6068,6 +6252,9 @@ async function ingestNflProps(env, opts, reqUrl) {
     out.passYdsLogged = dry ? 0 : await logPassYds(env.DB, pydRows, stamp);
     if (dry) out.passYdsWouldLog = pydRows.length;
   } catch (e) { out.errors.push('pass-yds: ' + String((e && e.message) || e)); }
+  try {
+    out.recLogged = dry ? 0 : await logRecs(env.DB, recRows, stamp);
+  } catch (e) { out.errors.push('receptions: ' + String((e && e.message) || e)); }
 
 
   if (dry) { out.dryRun = true; return out; }
