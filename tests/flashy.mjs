@@ -80,6 +80,9 @@ ok(/Edge bets 3 of 4 · \+7\.50u · beat the close 4 of 4/.test(text(P.recapHtml
 // Which bets (2026-10-30): the worker's byDay carries each one now.
 const eb2 = { byDay: { '2026-10-27': { ...eb.byDay['2026-10-27'], n: 2, hit: 1, bets: [{ label: 'Blazers ML', price: 400, book: 'draftkings', result: 'hit', beat: true }, { label: 'Over 2.5 goals', price: -105, book: 'fanduel', result: 'miss', beat: false }] } } };
 ok(/Edge bets: ✓ Blazers \+400 DK, beat the close · ✗ Over 2\.5 goals -105 FD, missed the close/.test(text(P.recapHtml(h, eb2))), 'each bet by name, price and book, and whether it beat the close');
+// An entry a void or tie cut down says what it paid as (2026-11-01).
+const hc = { ...h, days: h.days.map((d) => (d.date !== '2026-10-27' ? d : { ...d, entries: { ...d.entries, f3: { wins: 2, pay: 3, net: 2, legs: 2 } } })) };
+ok(/Top 3 Flex as a 2-pick \+2\.00u/.test(text(P.recapHtml(hc, null))), 'a Flex cut to two by a push: "Top 3 Flex as a 2-pick +2.00u"');
 ok(P.shortLeg('Wendell Carter Jr Under 2.5 AST') === 'Carter Jr U2.5 AST' && P.shortLeg('Kyshawn George Over 0.5 BLK') === 'George O0.5 BLK' && P.shortLeg('Celtics ML') === 'Celtics',
   'legs by short names: "Carter Jr U2.5 AST", "George O0.5 BLK", "Celtics"');
 ok(P.recapHtml({ days: h.days.filter((d) => d.date !== '2026-10-27') }, null) === '', 'nothing when yesterday has no day');

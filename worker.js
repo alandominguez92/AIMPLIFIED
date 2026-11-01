@@ -8620,6 +8620,14 @@ const PP_ENTRY_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nba_reb_gap
 // props +3%: the fair line is an estimate too, and props' holds are wider.
 // Nothing is bought: snapshots and logs only. asOf says how old each price is.
 const EV_MIN_LINE = 1.5;
+// Half the stake at +200 or longer (2026-11-01, the owner's call): the edge
+// bets' longshots went 0 for 5 in their first three days (CF Montreal +450,
+// the Draw +330, Hornets +225, Pacers +230, Jets +205) while the shorter
+// prices went 4 of 7, and last season's game-model backtest had the biggest
+// gaps from Pinnacle's line losing. Still shown and logged, so the record
+// says when the full stake can come back.
+const EDGE_LONG_PRICE = 200;
+const EDGE_LONG_FACTOR = 0.5;
 const EV_MIN_PROP = 3;
 const EV_MAX = 12;
 // Further out than the list's day: an early price is often the better one,
@@ -8671,7 +8679,9 @@ async function evScan(env, now) {
     all.push(o);
     const d = decOf(o.price), ev = p * d - 1;
     if (ev * 100 < (o.prop ? EV_MIN_PROP : EV_MIN_LINE)) return;
-    out.push({ ...o, fair: round1(o.fair), ev: round1(ev * 100), ...capStake(round1(ev / (d - 1) * KELLY_FRACTION * 100), o.prop ? PROP_STAKE_CAP : null), betAt: amOfChance(p) });
+    const long = o.price >= EDGE_LONG_PRICE;
+    out.push({ ...o, fair: round1(o.fair), ev: round1(ev * 100), ...capStake(round1(ev / (d - 1) * KELLY_FRACTION * (long ? EDGE_LONG_FACTOR : 1) * 100), o.prop ? PROP_STAKE_CAP : null),
+      ...(long ? { longHalf: true } : {}), betAt: amOfChance(p) });
   };
   // NBA and NHL: both sides of every game, as the last capture priced them.
   for (const sport of ['nba', 'nhl']) {
@@ -9514,9 +9524,13 @@ async function pickKindBuild(db) {
 // What the list would have paid (2026-10-22): one unit an entry at PrizePicks'
 // standard payouts (PP_POWER, PP_FLEX), each day's top two by chance as a
 // 2-pick Power and its top three to six as a Flex. An entry waits until every
-// leg in it has graded. A void or tie in it counts as a refund, neither won
-// nor lost: PrizePicks drops that leg and pays the smaller entry, or refunds a
-// two-pick, and the smaller entry is not one the list showed.
+// leg in it has graded. A void or tie in it is graded as PrizePicks pays it
+// (2026-11-01, the owner's call): the leg comes out and the entry pays as the
+// smaller one -- a Flex of three or more at its own table, a Power or a Flex
+// down to two as a Power -- and one left with a single leg is refunded, as
+// entryPayout settles a logged entry. Until then the whole entry counted as a
+// refund, and with whole-number rebounds lines pushing about one leg in six
+// the units left out most of the bigger Flex entries (Oct 30: Top 4, 5, 6).
 // The fifth field is a floor (2026-10-25): the 75%+ Power takes the day's top
 // two legs at 75% or better, and skips a day without two. From Oct 10 to 24,
 // legs at 75%+ landed 28 of 31 and legs at 65-75% 20 of 29.
@@ -9531,11 +9545,13 @@ function histDayEntries(l, tots) {
   for (const [key, , n, type, min] of PICK_HIST_ENTRIES) {
     const top = (min ? l.filter((x) => x.p >= min) : l).slice(0, n);
     if (top.length < n || top.some((x) => x.result == null)) continue;
-    if (top.some((x) => x.result !== 'hit' && x.result !== 'miss')) { for (const t of tots) t[key].refunds++; entries[key] = { refund: true, net: 0 }; continue; }
-    const wins = top.filter((x) => x.result === 'hit').length;
-    const pay = type === 'power' ? (wins === n ? PP_POWER[n] : 0) : ((PP_FLEX[n] || {})[wins] || 0);
+    const live = top.filter((x) => x.result === 'hit' || x.result === 'miss');
+    const k = live.length, wins = live.filter((x) => x.result === 'hit').length;
+    if (k < 2) { for (const t of tots) t[key].refunds++; entries[key] = { refund: true, net: 0 }; continue; }
+    const pay = type === 'flex' && k >= 3 ? ((PP_FLEX[k] || {})[wins] || 0) : (wins === k ? PP_POWER[k] : 0);
     for (const t of tots) { t[key].days++; t[key].units += pay - 1; if (pay > 1) t[key].won++; }
-    entries[key] = { wins, pay, net: Math.round((pay - 1) * 100) / 100 };
+    // legs: what it paid as, where a void or tie took a leg out.
+    entries[key] = { wins, pay, net: Math.round((pay - 1) * 100) / 100, ...(k < n ? { legs: k } : {}) };
   }
   return entries;
 }
@@ -9771,7 +9787,7 @@ async function picksBoard(env) {
       // Every side priced, for the page's price checker (2026-10-29): a boost
       // or another book's number, read against the same fair and stake rule.
       out.priced = scan.all.map((o) => ({ key: o.key, sport: o.sport, label: o.label, sub: o.sub, commence: o.commence, fair: round1(o.fair), ...(o.prop ? { prop: true } : {}) }));
-      out.kelly = { fraction: KELLY_FRACTION, propCap: PROP_STAKE_CAP, minLine: EV_MIN_LINE, minProp: EV_MIN_PROP };
+      out.kelly = { fraction: KELLY_FRACTION, propCap: PROP_STAKE_CAP, minLine: EV_MIN_LINE, minProp: EV_MIN_PROP, longPrice: EDGE_LONG_PRICE, longFactor: EDGE_LONG_FACTOR };
       try { await logEdgeBets(env.DB, scan, now); await gradeEdgeBets(env.DB, now); } catch (e) { out.logError = String((e && e.message) || e); }
     } catch (e) { out.evBets = []; out.evError = String((e && e.message) || e); }
     try { out.edgeRecord = await edgeBetRecord(env); } catch (e) { out.recordError = String((e && e.message) || e); }

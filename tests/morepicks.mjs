@@ -230,8 +230,14 @@ const truth = { 'Sion James Under 1.5 3PM': D.box['Sion James'].threes < 1.5 ? '
   'Vasily Podkolzin Over 0.5 PTS': M.nhlActual['Vasily Podkolzin:pts'] > 0.5 ? 'hit' : 'miss', 'Jack Roslovic Over 0.5 PTS': M.nhlActual['Jack Roslovic:pts'] > 0.5 ? 'hit' : 'miss' };
 ok((day.pool || []).length === 6 && day.pool.every((x) => truth[x.label] === x.result), 'every leg of it graded, its pool-only legs too, as the box scores had them');
 const pe = (k) => h.entries.find((e) => e.key === k) || {};
-ok(day.entries.p2 && day.entries.p2.net === -1 && pe('p2').days === 1 && pe('p2').units === -1 && day.entries.f3.refund === true && pe('f6').refunds === 1 && pe('f6').days === 0,
-  "the units are the entry's: the top two (James landed, Flagg missed) lost the Power; Holmgren's void made each Flex a refund");
+// A void comes out of an entry and it pays as the smaller one, as PrizePicks
+// pays it (2026-11-01; until then the whole entry was a refund).
+const fx = (k, n) => { const e = day.entries[k], live = day.pool.slice(0, n).filter((x) => x.result === 'hit' || x.result === 'miss'), w = live.filter((x) => x.result === 'hit').length;
+  const pay = live.length >= 3 ? (({ 3: { 3: 2.25, 2: 1.25 }, 4: { 4: 5, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 } })[live.length] || {})[w] || 0 : (w === live.length ? 3 : 0);
+  return e && e.legs === live.length && e.wins === w && e.net === Math.round((pay - 1) * 100) / 100; };
+ok(day.entries.p2 && day.entries.p2.net === -1 && pe('p2').days === 1 && pe('p2').units === -1 && day.entries.f3.legs === 2 && day.entries.f3.net === -1
+  && fx('f4', 4) && fx('f5', 5) && fx('f6', 6) && pe('f6').refunds === 0 && pe('f6').days === 1,
+  `the units are the entry's: the top two (James landed, Flagg missed) lost the Power; Holmgren's void took a leg from each Flex, the 3 down to a 2-pick that lost (${['f3', 'f4', 'f5', 'f6'].map((k) => `${k} as ${day.entries[k].legs}: ${day.entries[k].net}`).join(', ')})`);
 const lp2 = h.listTotals.find((e) => e.key === 'p2');
 ok(p.record.top2.days === 1 && p.record.top2.bothHit === 1 && lp2.units === 2 && (h.listEntries || []).every((e) => !e.days),
   "and the list's own top two (James and the Thunder, both landed) stay the list's count; no list days before the pool");
@@ -285,7 +291,7 @@ const hist = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'movedLin
 const txt = (x) => x.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 const hh = txt(hist(h));
 console.log('  ' + hh.slice(0, 520));
-ok(/What the PrizePicks entry would have paid, since Oct 26/.test(hh) && /Oct 26 .*Top 2 Power −1\.00u Top 3 Flex refund/.test(hh)
+ok(/What the PrizePicks entry would have paid, since Oct 26/.test(hh) && /Oct 26 .*Top 2 Power −1\.00u Top 3 Flex −1\.00u/.test(hh)
   && /The PrizePicks entry, best first ✓ Sion James Under 1\.5 3PM 78% ✗ Cooper Flagg Under 5\.5 AST 72% void Chet Holmgren Over 1\.5 BLK 65%/.test(hh),
   "the card: the entry's units, and under the day its legs at each start");
 ok(/Before Oct 26, from the list's own top legs, moneylines included: Top 2 Power won 1 of 1, \+2\.00u/.test(txt(hist({ ...h, listEntries: h.listTotals }))) && !/Before Oct/.test(hh),

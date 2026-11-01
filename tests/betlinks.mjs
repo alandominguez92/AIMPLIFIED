@@ -137,7 +137,8 @@ ok(bp.betmgm[0] === 120 && bp.fanduel[0] === -108 && bp.fanduel[1] === hold(-108
 console.log('\n-- the price checker --');
 const hk = (d.priced || []).find((x) => x.label === 'Hawks ML');
 ok((d.priced || []).length === 4 && hk && hk.fair === 50 && !('grade' in hk), 'every side priced goes to the checker (two games, both sides), with its fair');
-ok(d.kelly && d.kelly.fraction === 0.25 && d.kelly.propCap === 1 && d.kelly.minLine === 1.5 && d.kelly.minProp === 3, 'and the stake rule: a quarter Kelly, props held to 1%, the bars');
+ok(d.kelly && d.kelly.fraction === 0.25 && d.kelly.propCap === 1 && d.kelly.minLine === 1.5 && d.kelly.minProp === 3 && d.kelly.longPrice === 200 && d.kelly.longFactor === 0.5,
+  'and the stake rule: a quarter Kelly, props held to 1%, the bars, half at +200 or longer');
 
 console.log('\n-- the Premier League: links kept beside the prices --');
 const strip = (evs) => evs.map((e) => ({ ...e, bookmakers: e.bookmakers.map((b) => ({ ...b, markets: b.markets.map((m) => ({ ...m, outcomes: m.outcomes.map(({ link, sid, ...o }) => o) })) })) }));
@@ -260,7 +261,10 @@ const chk = (key, price) => text(P.priceCheckText(d, { key, price }));
 console.log(`  ${chk(hk.key, '+150')}`);
 ok(chk(hk.key, '') === 'Hawks ML: fair 50%, which breaks even at -100 . Type a price to check it.', 'with no price: the fair, and what breaks even');
 ok(chk(hk.key, '+150') === 'At +150 : EV +25.0% on a 50% fair · ¼ Kelly 4.2% . Breaks even at -100.', 'a +150 boost on the Hawks: +25% EV, 4.2% at a quarter Kelly');
-ok(chk(hk.key, '+200') === 'At +200 : EV +50.0% on a 50% fair · ¼ Kelly 6.3% · more than your 5% daily cap. Breaks even at -100.', 'a stake past the daily cap says so');
+ok(chk(hk.key, '+190') === 'At +190 : EV +45.0% on a 50% fair · ¼ Kelly 5.9% · more than your 5% daily cap. Breaks even at -100.', 'a stake past the daily cap says so');
+// Halved at +200 or longer, as the edge bets are (2026-11-01).
+
+ok(chk(hk.key, '+200') === 'At +200 : EV +50.0% on a 50% fair · ⅛ Kelly 3.1% (half: +200 or longer). Breaks even at -100.', 'at +200 or longer, half the stake, and it says why');
 ok(chk(hk.key, '-120') === 'At -120 : EV -8.3% · no bet. Hawks ML needs -100 or better.', 'at -120: no bet, and the price it needs');
 ok(/under the 1\.5% the list asks of a game line/.test(chk(hk.key, '+102')), 'an edge under the bar says so');
 state.bank.amount = 500;

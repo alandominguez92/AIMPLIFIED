@@ -6325,7 +6325,8 @@
     const lines = [];
     for (const [k, label] of [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
       const e = d.entries && d.entries[k];
-      if (e) lines.push(`<li><span>${label}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
+      // An entry a void or tie cut down pays as the smaller one (2026-11-01).
+      if (e) lines.push(`<li><span>${label}${e.legs ? ` <i>as a ${e.legs}-pick</i>` : ''}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
     }
     const eb = edge && edge.byDay && edge.byDay[date];
     // Only the units take the colour: beating the close is good news on a
@@ -6515,12 +6516,14 @@
     const ev = Math.round((p * dec - 1) * 1000) / 10;
     if (!(ev > 0)) return `At <b>${esc(AM(am))}</b>: EV <b class="o">${esc(ev.toFixed(1))}%</b> · no bet. ${esc(x.label)} needs ${esc(AM(need))} or better.`;
     const k = d.kelly, bar = x.prop ? k.minProp : k.minLine;
-    let stake = Math.round(ev / 100 / (dec - 1) * k.fraction * 1000) / 10;
+    // Halved at +200 or longer, as the bets above are (2026-11-01).
+    const long = typeof k.longPrice === 'number' && am >= k.longPrice;
+    let stake = Math.round(ev / 100 / (dec - 1) * k.fraction * (long ? k.longFactor : 1) * 1000) / 10;
     const capped = !!x.prop && stake > k.propCap;
     if (capped) stake = k.propCap;
     // Past the day's cap, it says so: the list's bets are scaled to fit it.
     const cap = (state.bank && state.bank.cap) || 5;
-    return `At <b>${esc(AM(am))}</b>: EV <b class="u">+${esc(ev.toFixed(1))}%</b> on a ${esc(String(x.fair))}% fair · ¼ Kelly <b>${esc(stakeTxt(stake))}</b>${capped ? ' (cap)' : ''}`
+    return `At <b>${esc(AM(am))}</b>: EV <b class="u">+${esc(ev.toFixed(1))}%</b> on a ${esc(String(x.fair))}% fair · ${long ? '⅛' : '¼'} Kelly <b>${esc(stakeTxt(stake))}</b>${capped ? ' (cap)' : ''}${long ? ' (half: +200 or longer)' : ''}`
       + `${stake > cap ? ` · more than your ${esc(String(cap))}% daily cap` : ''}`
       + `${ev < bar ? ` · under the ${esc(String(bar))}% the list asks of ${x.prop ? 'a prop' : 'a game line'}` : ''}. Breaks even at ${esc(AM(need))}.`;
   }
@@ -6605,7 +6608,8 @@
       + `<span class="tc-l1"><b>${esc(b.label)}</b><span class="tc-p pk-ev-up">+${esc(String(b.ev))}%</span></span>`
       + `<span class="tc-l2"><span><span class="pk-sport">${esc(PICK_SPORT[b.sport] || b.sport)}</span> · ${esc(b.sub)} · <span class="pk-when">${esc(soccerKick(b.commence))}</span></span></span>`
       // The boards' own book names (2026-10-28): "betmgm" printed as it came.
-      + `<span class="tc-book">${esc(AM(b.price))} ${esc(bkLabel(b.book))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">¼ Kelly ${esc(stakeTxt(stakeOf(b)))}${b.capped ? ' (cap)' : ''}</span>`
+      // At +200 or longer the stake is halved, an eighth of Kelly (2026-11-01).
+      + `<span class="tc-book">${esc(AM(b.price))} ${esc(bkLabel(b.book))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">${b.longHalf ? '⅛' : '¼'} Kelly ${esc(stakeTxt(stakeOf(b)))}${b.capped ? ' (cap)' : ''}${b.longHalf ? ' (half: +200 or longer)' : ''}</span>`
       + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
       + priceSparkHtml(b.hist) + betLinkHtml(b.link) + booksHtml(b.books)
       + `</div></li>`).join('')}</ol>`

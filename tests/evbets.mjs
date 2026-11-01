@@ -91,8 +91,10 @@ for (const b of E) console.log(`  ${b.label} (${b.sub}) ${b.price} ${b.book}: fa
 ok(E.length === want.length && E.map((b) => b.ev).join() === want.join() && want.length >= 1,
   `every side whose price beats its sharp fair by enough, best first: ${E.map((b) => '+' + b.ev + '%').join(', ')}`);
 const tij = E.find((b) => /Tijuana/.test(b.label));
-ok(tij && tij.price === 600 && tij.fair === 14.6 && tij.ev === 2.2 && tij.stake === 0.1 && tij.betAt === 585,
-  `Tijuana +600 on a 14.6% sharp chance: +${tij && tij.ev}%, a quarter of Kelly (${tij && tij.stake}%), a bet at +${tij && tij.betAt} or better`);
+// At +200 or longer the stake is halved, an eighth of Kelly (2026-11-01): 0.1% became 0.
+ok(tij && tij.price === 600 && tij.fair === 14.6 && tij.ev === 2.2 && tij.stake === 0 && tij.longHalf === true && tij.betAt === 585,
+  `Tijuana +600 on a 14.6% sharp chance: +${tij && tij.ev}%, an eighth of Kelly at +200 or longer (${tij && tij.stake}%), a bet at +${tij && tij.betAt} or better`);
+ok(E.filter((b) => b.price >= 200).every((b) => b.longHalf) && E.filter((b) => b.price < 200).every((b) => !b.longHalf), 'every price +200 or longer, and only those, at half');
 // The card listed FC Cincinnati +410 here until 2026-10-28: its row had kept
 // the 5 AM price after the 1:30 PM read gave its game's lead to another side.
 ok(!E.some((b) => /Cincinnati/.test(b.label)) && readAt(F.gm.find((r) => r.pick === 'FC Cincinnati')) === '2026-10-27T12:05:55.302Z' && latestRead.mls === '2026-10-27T20:30:33.154Z',
@@ -138,7 +140,7 @@ const card = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'stat
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const html = card(p);
 console.log('  ' + text(html).slice(0, 420));
-ok(/Bets with an edge/.test(html) && (html.match(/<li>/g) || []).length === E.length && /Tijuana ML \+2\.2%/.test(text(html)) && /\+600 .*fair 15% \(\+585\) · ¼ Kelly 0\.1%/.test(text(html)),
+ok(/Bets with an edge/.test(html) && (html.match(/<li>/g) || []).length === E.length && /Tijuana ML \+2\.2%/.test(text(html)) && /\+600 .*fair 15% \(\+585\) · ⅛ Kelly 0% \(half: \+200 or longer\)/.test(text(html)),
   'the card: each bet, its edge, the price and the fair, its stake');
 ok(new RegExp(`¼ Kelly total ${Math.round(E.reduce((s, b) => s + b.stake, 0) * 10) / 10}%`).test(text(html)), "and the day's total stake");
 ok(/No price beats the sharp line/.test(card({ evBets: [] })), 'and says so when nothing does');
