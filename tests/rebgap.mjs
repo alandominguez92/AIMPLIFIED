@@ -73,6 +73,8 @@ console.log(`  ${[...new Map([...(d.legs || []), ...(d.ppPool || [])].filter((x)
 ok(dan && dan.title === 'Dyson Daniels Under 6 REB' && dan.p === 56.1 && dan.vsBook === 0.5 && dan.kindLabel === 'NBA rebounds Less, PrizePicks above the sharp line',
   "Dyson Daniels' 6 over the sharp books' 5.5 (Pinnacle's): a leg at the backtest's 56.1%");
 ok((d.ppPool || []).some((x) => x.legId === dan.legId) && dan.spec.side === 'Under' && dan.spec.pp.line === 6, 'a PrizePicks leg: in the pool, the Less at his line');
+// When its line was read (2026-10-31): the 3:40 PM pre-tip read.
+ok(dan.readAt === '2026-10-29T22:40:55.042Z', `and when PrizePicks' line was read: ${dan.readAt}`);
 ok(!legOf(d, 'C.J. McCollum') && !legOf(d, 'Toumani Camara'), "McCollum's 2.5 level with the books' 2.5 is not one; nor Camara's 3.5 before any book had posted");
 // (A bench player's is not one either -- the unders' own rotation bar, NBA_ROTATION_MIN
 // -- but none of these three days' rows above the sharp line was a bench player's.)
@@ -116,6 +118,18 @@ const all = Object.values(F).flat().filter((l) => l.bookUnders && l.min_proj >= 
 const hit = all.filter((x) => x.res === 'under').length;
 console.log(`  this season: ${rec && rec.hit} of ${rec && rec.n}; from the rows ${hit} of ${all.length}`);
 ok(rec && rec.n === all.length && rec.hit === hit && all.length > 15, `its record: this season's rebounds rows above the sharp line, ${hit} of ${all.length} under, pushes and voids aside`);
+
+// ---- the page: how old the line is (2026-10-31) -------------------------------------------------
+// Kris Dunn's 5.5 assists, read at 6:20 PM Oct 29, was 4.5 on PrizePicks the next day.
+console.log('\n-- the page --');
+const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
+const at = app.indexOf('  function readAgeTag(');
+const RA = new Function('Date', app.slice(at, app.indexOf('\n  }\n', at) + 4) + '\nreturn readAgeTag;')(globalThis.Date);
+NOW = RealDate.parse('2026-10-30T22:20:00Z');
+const dunn = { readAt: '2026-10-30T01:20:56.829Z' };
+ok(JSON.stringify(RA(dunn)) === JSON.stringify({ stale: true, text: 'PP line read 21h ago: check the app' }), `Dunn's line at 3:20 PM the next day: "${RA(dunn) && RA(dunn).text}"`);
+ok(JSON.stringify(RA({ readAt: '2026-10-30T21:55:00Z' })) === JSON.stringify({ stale: false, text: 'PP line read 25 min ago' }) && RA({}) === null, 'a fresh read says how fresh; no read, nothing');
+ok(/const ra = readAgeTag\(x\);\n\s+if \(ra\) tags\.push/.test(app) && /const ra = readAgeTag\(x\);\n\s+if \(ra\) notes\.push\(ra\.text\);/.test(app), "on the list's rows and the hero");
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

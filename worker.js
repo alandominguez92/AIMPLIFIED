@@ -9185,7 +9185,7 @@ async function picksCandidates(env, now) {
     if (!soon(r.commence) || r.model_under == null || r.model_under < PICK_KINDS.nba_pp.min) continue;
     if (!(r.min_proj >= NBA_ROTATION_MIN) || ppBelowBook(r)) continue;
     const p = r.sharp_under != null ? round1(NBA_PICK_MODEL_W * r.model_under + (1 - NBA_PICK_MODEL_W) * r.sharp_under) : r.model_under;
-    legs.push({ kind: 'nba_pp', gameKey: 'nba:' + r.game_id, p, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null,
+    legs.push({ kind: 'nba_pp', gameKey: 'nba:' + r.game_id, p, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null, readAt: r.close_at || r.captured_at || null,
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
       title: `${r.player} Under ${r.point} ${PICKS_NBA_MK[r.market] || r.market}`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
@@ -9208,7 +9208,7 @@ async function picksCandidates(env, now) {
     const r = ppCurrent(row);
     const gap = rebGapOf(r);
     if (!soon(r.commence) || gap == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
-    legs.push({ kind: 'nba_reb_gap', gameKey: 'nba:' + r.game_id, p: REB_GAP_P, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null,
+    legs.push({ kind: 'nba_reb_gap', gameKey: 'nba:' + r.game_id, p: REB_GAP_P, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null, readAt: r.close_at || r.captured_at || null,
       vsBook: gap, legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
       title: `${r.player} Under ${r.point} REB`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
       src: { date: r.date, game_id: r.game_id, player_key: r.player, market: r.market, team: r.team },
@@ -9225,7 +9225,7 @@ async function picksCandidates(env, now) {
   // do (ppMoreChance), and the chance the list states has to clear the bar as
   // well: 55% is near PrizePicks' break-even, and on Oct 26 Zach Edey's 55.8
   // More read 45.8 with the sharp books' 42.5 in it.
-  const moreLeg = (sport, r, p, mk) => ({ kind: sport === 'nba' ? 'nba_blk_more' : 'nhl_more', gameKey: `${sport}:${r.game_id}`, p,
+  const moreLeg = (sport, r, p, mk) => ({ kind: sport === 'nba' ? 'nba_blk_more' : 'nhl_more', gameKey: `${sport}:${r.game_id}`, p, readAt: r.close_at || r.captured_at || null,
     modelP: round1(100 - r.model_under), proj: r.proj, commence: r.commence, odds: null,
     legId: `${sport}pp:${r.game_id}:${r.player}:${r.market}:over`, title: `${r.player} Over ${r.point} ${mk}`,
     sub: sport === 'nhl' ? `${nhlNick(r.away)} @ ${nhlNick(r.home)}` : `${lastWord(r.away)} @ ${lastWord(r.home)}`,
@@ -9736,6 +9736,8 @@ async function picksBoard(env) {
       ...(l.proj != null ? { proj: l.proj } : {}),
       ...(l.link ? { link: l.link } : {}),
       ...(l.books ? { books: l.books } : {}),
+      // When PrizePicks' line shown was read (2026-10-31): it moves between reads.
+      ...(l.readAt ? { readAt: l.readAt } : {}),
       ...(hists.has(l.legId) ? { hist: hists.get(l.legId) } : {}),
       ...(trends.has(l.legId) ? { trend: trends.get(l.legId) } : {}),
     });

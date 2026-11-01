@@ -6011,6 +6011,8 @@
     if (mv) notes.push(mv.text);
     const tt = trendTag(x.trend);
     if (tt) notes.push(tt.text);
+    const ra = readAgeTag(x);
+    if (ra) notes.push(ra.text);
     // By the leg's own Pacific day (2026-10-21): the list looks a day ahead,
     // so its first leg is often tomorrow's -- Inter at noon read "Today's".
     const legDay = ptDayOf(Date.parse(x.commence));
@@ -6188,6 +6190,8 @@
       if (typeof x.modelP === 'number' && x.modelP !== x.p) tags.push(`<span class="tc-wait" title="The chance shown is a quarter the model's and three quarters the sharp books'">model ${esc(pct0(x.modelP))}</span>`);
       const tt = trendTag(x.trend);
       if (tt) tags.push(`<span class="${tt.good ? 'tc-gap' : 'tc-wait'}" title="His last games against this line. A run is context: the chance shown is the price's">${esc(tt.text)}</span>`);
+      const ra = readAgeTag(x);
+      if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
       if (x.sport === 'nba') tags.push('<span class="tc-wait">check injuries</span>');
       if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
       const mv = pickMoved(x);
@@ -6545,6 +6549,18 @@
     return `<span class="pk-spark" title="${esc(`${pts.length} reads since ${soccerKick(a[0])}: the gold line is the chance the price needs, the teal the sharp books' fair chance`)}">`
       + `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path class="sp-px" d="${step((p) => impPct(p[2]))}"/><path class="sp-fair" d="${step((p) => p[1])}"/></svg>`
       + `<span class="bw-cush">${px} · ${fair}</span></span>`;
+  }
+  // How old a PrizePicks line on the card is (2026-10-31). The log reads it
+  // when PrizePicks posts it and again inside 90 minutes of the start, and
+  // lines move between: Kris Dunn's 5.5 assists, read at 6:20 PM, was 4.5 on
+  // PrizePicks the next day, and Giannis' 12.5 rebounds 11.5. From three hours
+  // old it says to check the app before building on it.
+  function readAgeTag(x) {
+    const t = Date.parse((x && x.readAt) || '');
+    if (!isFinite(t)) return null;
+    const h = (Date.now() - t) / 3600e3;
+    const ago = h < 1 ? `${Math.max(1, Math.round(h * 60))} min ago` : `${Math.round(h)}h ago`;
+    return h >= 3 ? { stale: true, text: `PP line read ${ago}: check the app` } : { stale: false, text: `PP line read ${ago}` };
   }
   // A leg's run against its line, named when it is one (2026-10-29): five or
   // more games, seven in ten its way -- or three in ten or fewer, against it.
