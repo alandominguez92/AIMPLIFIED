@@ -303,6 +303,18 @@ const upd = (src.match(/UPDATE nfl_proj SET actual=\?, graded_at=\? WHERE event_
 const updPlan = upd ? sq.prepare('EXPLAIN QUERY PLAN ' + upd).all(1, 'x', 'e', 'p', 'm').map((r) => r.detail) : ['?'];
 ok(updPlan.some((d) => /nfl_proj_open/.test(d)), `the NFL grader's per-row UPDATE reads only open projections: ${updPlan.join(' | ')}`);
 
+// Picks and its kinds' record (2026-11-01): tonight's NBA rows read once for
+// the unders, the rebounds and the blocks, and the graded rows once for their
+// three records. Each had its own read of nbapp -- the records' a whole scan
+// each, three times the table after every grade, growing all season.
+console.log('\n-- Picks --');
+sq.prepare("UPDATE rec_dirty SET dirty = 1 WHERE k = 'pick-kinds'").run();
+const picks = await record(() => hit('/api/picks'));
+const nbOpen = picks.filter((e) => /FROM nbapp WHERE date IN \(\?, \?\) AND result IS NULL/.test(e.sql));
+const nbGraded = picks.filter((e) => /^SELECT .* FROM nbapp WHERE/.test(e.sql) && /result IN \('under','over'\)/.test(e.sql));
+ok(nbOpen.length === 1 && nbOpen[0].plan.some((d) => /nbapp_ungraded/.test(d)), `tonight's NBA rows: one read, through nbapp_ungraded (${nbOpen.map(short).join(' ;; ')})`);
+ok(nbGraded.length === 1, `the NBA kinds' records: one read of the graded rows (${nbGraded.map(short).join(' ;; ')})`);
+
 // ---- the same answers ----------------------------------------------------------
 // Each read the worker now runs, against the statement it replaced, on the
 // untouched copy: the new one with the new indexes, the old one inside a

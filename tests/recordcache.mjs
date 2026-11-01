@@ -166,7 +166,8 @@ fill('daypicks', range(40).map((i) => { const d = ptDay(NOW - (i % 10) * 864e5);
 
 const whole = (ran, tables) => tables.filter((t) => ran.some((s) => new RegExp(`^SELECT \\* FROM ${t}$`).test(s)));
 const MLB6 = ['picks', 'bpicks', 'mlpicks', 'rlpicks', 'totpicks', 'pppicks'];
-const KINDS = [/FROM mlpicks WHERE result IN \('win','loss'\)$/, /FROM pppicks WHERE result IN \('under','over'\) AND market IN/, /FROM gmpicks WHERE sport IN \('nba','nhl','nfl','soccer'\) AND result IN/, /FROM nbapp WHERE result IN \('under','over'\) AND market IN/];
+const KINDS = [/FROM mlpicks WHERE result IN \('win','loss'\)$/, /FROM pppicks WHERE result IN \('under','over'\) AND market IN/, /FROM gmpicks WHERE sport IN \('nba','nhl','nfl','soccer'\) AND result IN/, /FROM nbapp WHERE result IN \('under','over'\) OR close_result IN/];
+// (The NBA kinds' read was three, one a kind, until 2026-11-01: now one of the graded rows.)
 const kindScans = (ran) => KINDS.filter((re) => ran.some((s) => re.test(s))).length;
 const SOC = /FROM socprops WHERE result IN \('under','over','push'\)$/;
 const NBAREC = /FROM nbapp WHERE result IN \('under','over','push'\)$/;

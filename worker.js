@@ -9465,8 +9465,10 @@ async function picksCandidates(env, now) {
   // NBA PrizePicks unders: rotation players, as on the NBA card, in the
   // markets the list was built on (blocks and steals are logged only).
   await ensureNbaSchema(db);
-  const np = (await db.prepare(`SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
-    .bind(...days, ...NBA_PICK_MARKETS).all()).results || [];
+  // Tonight's rows read once for the unders, the rebounds and the blocks
+  // (2026-11-01), in the order the three reads had them.
+  const nbaOpen = (await db.prepare('SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
+  const np = nbaOpen.filter((r) => NBA_PICK_MARKETS.includes(r.market));
   for (const row of ppStanding(np)) {
     // At its latest line: the one that can be played now (ppCurrent).
     const r = ppCurrent(row);
@@ -9492,7 +9494,7 @@ async function picksCandidates(env, now) {
 
   // Rebounds Less where PrizePicks' line sits above the sharp main line
   // (2026-10-30, PICK_KINDS.nba_reb_gap). Rotation players, as the unders.
-  const rbs = (await db.prepare("SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL AND market = 'reb'").bind(...days).all()).results || [];
+  const rbs = nbaOpen.filter((r) => r.market === 'reb');
   for (const row of ppStanding(rbs)) {
     const r = ppCurrent(row);
     const gap = rebGapOf(r);
@@ -9523,7 +9525,7 @@ async function picksCandidates(env, now) {
     src: { date: r.date, game_id: r.game_id, player_key: r.player, market: r.market, team: r.team },
     spec: { sport, date: ptDateOf(Date.parse(r.commence)), gamePk: r.game_id, playerId: r.player_id || null, player: r.player, team: r.team || null,
       market: r.market, side: 'Over', book: { line: r.book_line != null ? r.book_line : null, price: null, under: null }, pp: { line: r.point, under: round1(100 - p) } } });
-  const blk = (await db.prepare("SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL AND market = 'blk'").bind(...days).all()).results || [];
+  const blk = nbaOpen.filter((r) => r.market === 'blk');
   for (const row of ppStanding(blk)) {
     const r = ppCurrent(row);
     if (!soon(r.commence) || r.model_under == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
@@ -9797,19 +9799,25 @@ async function pickKindBuild(db) {
   // The kind's record is the legs the list carries, so a blocks or steals leg,
   // or one under a PrizePicks line below the books', cannot vouch for a threes
   // leg beside it.
-  for (const r of ((await db.prepare(`SELECT model_under, min_proj, point, book_line, result FROM nbapp WHERE result IN ('under','over') AND market IN (${NBA_PICK_MARKETS.map(() => '?').join(',')})`)
-    .bind(...NBA_PICK_MARKETS).all()).results || [])) {
+  // The three NBA kinds from one read of the graded rows (2026-11-01): three
+  // reads of nbapp, which no index narrows, read the table three times over.
+  const nbaGraded = (await db.prepare("SELECT market, model_under, min_proj, point, book_line, result, close_point, close_result, book_unders FROM nbapp WHERE result IN ('under','over') OR close_result IN ('under','over')").all()).results || [];
+  const decided = (x) => x === 'under' || x === 'over';
+  for (const r of nbaGraded) {
+    if (!NBA_PICK_MARKETS.includes(r.market) || !decided(r.result)) continue;
     if (r.min_proj >= NBA_ROTATION_MIN && r.model_under >= PICK_KINDS.nba_pp.min && !ppBelowBook(r)) add('nba_pp', r.result === 'under');
   }
   // Rebounds Less above the sharp line (2026-10-30): at the line read last,
   // against the lines read with it, as the list shows them.
-  for (const r of ((await db.prepare("SELECT point, close_point, result, close_result, min_proj, book_unders FROM nbapp WHERE market = 'reb' AND book_unders IS NOT NULL AND (result IN ('under','over') OR close_result IN ('under','over'))").all()).results || [])) {
+  for (const r of nbaGraded) {
+    if (r.market !== 'reb' || r.book_unders == null) continue;
     const at = r.close_point != null ? { point: r.close_point, res: r.close_result } : { point: r.point, res: r.result };
-    if ((at.res === 'under' || at.res === 'over') && r.min_proj >= NBA_ROTATION_MIN && rebGapOf({ point: at.point, book_unders: r.book_unders }) != null) add('nba_reb_gap', at.res === 'under');
+    if (decided(at.res) && r.min_proj >= NBA_ROTATION_MIN && rebGapOf({ point: at.point, book_unders: r.book_unders }) != null) add('nba_reb_gap', at.res === 'under');
   }
   // The Mores (2026-10-28): graded at the first line, the More side, as the
   // cards' blkMore and more records count them.
-  for (const r of ((await db.prepare("SELECT model_under, min_proj, result FROM nbapp WHERE result IN ('under','over') AND market = 'blk'").all()).results || [])) {
+  for (const r of nbaGraded) {
+    if (r.market !== 'blk' || !decided(r.result)) continue;
     if (r.min_proj >= NBA_ROTATION_MIN && r.model_under != null && 100 - r.model_under >= PICK_KINDS.nba_blk_more.min) add('nba_blk_more', r.result === 'over');
   }
   for (const r of ((await db.prepare("SELECT model_under, result FROM nhlpp WHERE result IN ('under','over')").all()).results || [])) {
