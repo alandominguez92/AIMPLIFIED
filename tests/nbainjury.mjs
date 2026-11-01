@@ -9,6 +9,7 @@
 //     started the record says that is why
 //   - Out only where ESPN says so both ways: on Nov 1 it had Adou Thiero
 //     "Out" with a fantasy status of GTD
+//   - a moneyline names who each side is missing, the picked side first
 //
 // Real data: ESPN's Nov 1 scoreboard and the four games' feeds as read at 9
 // PM Pacific Oct 31 (tests/fixtures/espn-nba-sb-20261101.json,
@@ -17,7 +18,9 @@
 // PM read of Nets @ Pacers is the 9 PM one with two entries added, each a
 // copy of a real one beside it: Day'Ron Sharpe out (rest), as Mikel Brown Jr.
 // was, and Andrew Nembhard day-to-day (back soreness), as Obi Toppin was.
-// Real SQLite and the real worker.
+// Nov 1's moneylines are logged on the day, so the Clippers @ Warriors row is
+// shaped as Oct 31's were (production's gmpicks export), its teams and start
+// ESPN's. Real SQLite and the real worker.
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -68,6 +71,8 @@ for (const l of PP) {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('2026-11-01', l.game_id, l.player, l.market, 'reg', l.commence, home, away, l.team, ESPN_ID[l.player] || null,
     l.first.line, l.proj, l.first.under, l.min_proj, l.first.book, l.first.book_under, l.first.sharp, l.first.at);
 }
+sq.prepare(`INSERT INTO gmpicks (sport, date, game_id, market, league, commence, side, pick, home, away, win_prob, entry_price, close_price, result)
+  VALUES ('nba', '2026-11-01', 'f00dfeed00000000000000000000c1a5', 'h2h', 'reg', '2026-11-02T01:40:00Z', 'away', 'Los Angeles Clippers', 'Golden State Warriors', 'Los Angeles Clippers', 70.2, -230, -245, NULL)`).run();
 const cached = () => JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'nba_inj:2026-11-01'").get().data);
 const feedReads = (from) => asked.slice(from).filter((u) => /core\/nba\/game\?/.test(u)).map((u) => u.split('gameId=')[1]);
 const legsOf = (d) => [...(d.legs || []), ...(d.ppPool || [])];
@@ -95,6 +100,14 @@ const sh = leg(d, "Day'Ron Sharpe");
 console.log(`  ${legsOf(d).filter((x) => x.sport === 'nba').map((x) => `${x.title} ${JSON.stringify(x.inj || null)}`).join(' | ')}`);
 ok(sh && sh.inj && sh.inj.status === null && sh.inj.at === new RealDate(RealDate.parse('2026-11-01T19:00:00Z')).toISOString(),
   "Day'Ron Sharpe's assists: not on the report, as read at noon");
+const ml = leg(d, 'Clippers ML');
+const T = (ml && ml.inj && ml.inj.teams) || [];
+console.log(`  ${ml && ml.title}: ${JSON.stringify(T)}`);
+ok(T.length === 2 && T[0].team === 'Clippers' && T[1].team === 'Warriors'
+  && T[0].out.map((p) => p.n).join() === 'Niederhauser,Strus,Ingram,Beal,Miller' && T[0].gtd.length === 0
+  && T[1].out.map((p) => p.n).join() === 'Green,Curry,Porzingis,Moody' && T[1].gtd.map((p) => p.n).join() === 'Santos'
+  && T[1].out[0].what === 'rest' && T[1].out[3].what === 'knee surgery',
+  'the Clippers moneyline: who each side is missing, the picked side first, newest news first -- Warriors without Green and Curry (rest), Santos GTD');
 
 console.log('\n-- 12:35 PM: ESPN rules Sharpe out, Nembhard questionable --');
 const g4 = structuredClone(GAMES['401909904']);
@@ -131,7 +144,12 @@ const t1 = IT(nem), t2 = IT(sh), t3 = IT({ sport: 'nba', spec: { sport: 'nba', p
 ok(t1.warn && t1.text === 'GTD: back soreness' && t1.title === "ESPN's injury report, read 12 min ago", `Nembhard: "${t1.text}" (${t1.title})`);
 ok(!t2.warn && t2.text === 'no injury listed', `Sharpe at noon: "${t2.text}"`);
 ok(t3.warn && t3.text === 'check injuries' && t4 === null, 'a game not read yet keeps "check injuries"; an NHL leg, nothing');
-ok(/const it = injuryTag\(x\);\n\s+if \(it\) notes\.push\(it\.text\);/.test(app) && /const it = injuryTag\(x\);\n\s+if \(it\) tags\.push/.test(app) && !/'check injuries'\)/.test(app),
+const t5 = IT(ml);
+ok(t5.warn && JSON.stringify(t5.parts) === JSON.stringify(['Clippers out: Niederhauser, Strus, Ingram +2', 'Warriors out: Green, Curry, Porzingis +1', 'Warriors GTD: Santos'])
+  && /Curry \(rest\)/.test(t5.title) && /Moody \(knee surgery\)/.test(t5.title), `the moneyline row: ${(t5.parts || []).join(' | ')}`);
+const t6 = IT({ sport: 'nba', spec: { sport: 'nba', market: 'ml' }, inj: { teams: [{ team: 'Nets', out: [], gtd: [] }, { team: 'Pacers', out: [], gtd: [] }], at: ml.inj.at } });
+ok(!t6.warn && t6.text === 'no injuries listed', 'neither side listed: "no injuries listed"');
+ok(/const it = injuryTag\(x\);\n\s+if \(it\) notes\.push\(it\.text\);/.test(app) && /const it = injuryTag\(x\);\n\s+if \(it\) for \(const t of it\.parts \|\| \[it\.text\]\) tags\.push/.test(app) && !/'check injuries'\)/.test(app),
   "on the list's rows and the hero, where the fixed reminder was");
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

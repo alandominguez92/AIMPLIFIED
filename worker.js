@@ -9269,9 +9269,9 @@ const NBA_INJ_NEAR_MS = 12 * 3600e3;
 const NBA_INJ_EVERY_NEAR_MS = 30 * 60e3;
 const NBA_INJ_EVERY_FAR_MS = 3 * 3600e3;
 const NBA_INJ_PER_TICK = 2;
-// A game feed's report (pure): { [athlete id]: { name, s: ESPN's status, f:
-// its fantasy status, what: 'hamstring strain', ret: return date, upd: when
-// ESPN last changed it } }.
+// A game feed's report (pure): { [athlete id]: { name, ln: his surname, tm:
+// his team, s: ESPN's status, f: its fantasy status, what: 'hamstring strain',
+// ret: return date, upd: when ESPN last changed it } }.
 function nbaInjuriesOf(feed) {
   const out = {};
   for (const t of ((feed && feed.gamepackageJSON) || feed || {}).injuries || []) {
@@ -9279,7 +9279,8 @@ function nbaInjuriesOf(feed) {
       const a = i.athlete || {}, d = i.details || {};
       if (!a.id) continue;
       const what = [d.type, d.detail].filter((x) => x && !/^not specified$/i.test(x)).join(' ').toLowerCase() || null;
-      out[String(a.id)] = { name: a.displayName || null, s: i.status || null, f: (d.fantasyStatus || {}).abbreviation || null, what, ret: d.returnDate || null, upd: i.date || null };
+      out[String(a.id)] = { name: a.displayName || null, ln: a.lastName || null, tm: (t.team || {}).displayName || null,
+        s: i.status || null, f: (d.fantasyStatus || {}).abbreviation || null, what, ret: d.returnDate || null, upd: i.date || null };
     }
   }
   return out;
@@ -9333,14 +9334,25 @@ async function nbaInjuryDays(db, days) {
   return out;
 }
 // A leg's line on the report (pure): null until its game's report has been
-// read; then what it lists for him, or { status: null } for nothing.
+// read; then what it lists for him, or { status: null } for nothing. A
+// moneyline (2026-11-01): each side's players out and day-to-day, the picked
+// side first -- { teams: [{ team, out: [{ n, what }], gtd: [...] }] }.
 function nbaLegInjury(l, byDay) {
   const s = l.spec || {};
-  if (s.sport !== 'nba' || !s.playerId || !l.teams) return null;
+  if (s.sport !== 'nba' || !l.teams || !(s.playerId || s.market === 'ml')) return null;
   const g = (byDay.get(s.date) || []).find((x) => nbaMatch(x.home, l.teams.home) && nbaMatch(x.away, l.teams.away));
   if (!g || !g.at) return null;
-  const i = (g.inj || {})[String(s.playerId)];
   const at = new Date(g.at).toISOString();
+  if (s.market === 'ml') {
+    // Newest news first (ESPN's update time): a rest day ahead of a month-old surgery.
+    const all = Object.values(g.inj || {}).sort((a, b) => String(b.upd || '').localeCompare(String(a.upd || '')));
+    if (all.some((i) => !('tm' in i))) return null;              // read before the report kept teams
+    const who = (i) => ({ n: i.ln || lastWord(i.name), what: i.what });
+    const sides = s.side === 'away' ? ['away', 'home'] : ['home', 'away'];
+    return { teams: sides.map((sd) => { const mine = all.filter((i) => i.tm && nbaMatch(i.tm, l.teams[sd]));
+      return { team: lastWord(l.teams[sd]), out: mine.filter(nbaInjOut).map(who), gtd: mine.filter((i) => !nbaInjOut(i)).map(who) }; }), at };
+  }
+  const i = (g.inj || {})[String(s.playerId)];
   return i ? { status: i.f || i.s, out: nbaInjOut(i), what: i.what, ret: i.ret, upd: i.upd, at } : { status: null, at };
 }
 
@@ -9425,7 +9437,7 @@ async function picksCandidates(env, now) {
       src: { date: r.date, game_id: r.game_id, team: r.pick, market: r.market } };
     const book = { line: null, price, win: round1(r.win_prob) };
     if (kind === 'nba_ml') {
-      legs.push({ ...base, gameKey: 'nba:' + r.game_id, legId: `nba:ml:${r.game_id}:${r.side}`,
+      legs.push({ ...base, gameKey: 'nba:' + r.game_id, legId: `nba:ml:${r.game_id}:${r.side}`, teams: { home: r.home, away: r.away },
         title: `${lastWord(r.pick)} ML`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
         spec: { sport: 'nba', date: day, gamePk: r.game_id, player: r.pick, team: lastWord(r.pick), market: 'ml', side: r.side,
           logo: moneylineLogo('nba', r.pick), book, pp: null } });
@@ -14067,9 +14079,12 @@ const HIST_PROP_JOBS = {
     markets: { player_turnovers: 'tov', player_blocks_steals: 'blk_stl', player_frees_made: 'ftm' } },
   // The NHL (2026-11-01, the owner's call): the points and assists Mores on
   // Picks stand on the model alone; this is PrizePicks' lines against the
-  // sharp books', with shots on goal and saves beside them. Every other day.
-  nhl: { label: 'NHL 2025-26 player props', sport: 'icehockey_nhl', from: '2025-10-07', to: '2026-04-16', step: 2,
-    markets: { player_points: 'pts', player_assists: 'ast', player_shots_on_goal: 'sog', player_total_saves: 'saves', player_blocked_shots: 'blk' } },
+  // sharp books' (Pinnacle prices all three), with goalies' saves beside them.
+  // Every other day, 30 credits a game. Not shots on goal or blocked shots:
+  // the probe (Jan 15, Canadiens @ Sabres) had no PrizePicks line on either,
+  // and the books' quotes bill all the same.
+  nhl: { label: 'NHL 2025-26 points, assists, saves', sport: 'icehockey_nhl', from: '2025-10-07', to: '2026-04-16', step: 2,
+    markets: { player_points: 'pts', player_assists: 'ast', player_total_saves: 'saves' } },
   // ESPN's NFL scoreboard answers by week, never by date (see the yardage
   // grader): week 1 is the week of Tuesday Sep 2.
   nfl: { label: 'NFL 2025 player props', sport: 'americanfootball_nfl', from: '2025-09-04', to: '2026-01-04', year: 2025, week1: '2025-09-02',
@@ -14098,6 +14113,40 @@ function nflPropBoxRows(sum) {
   }
   return [...by.values()];
 }
+// An NHL box score's players for the backtest (pure): each skater's points
+// and assists, each goalie's saves. A goalie with no time on ice did not play.
+// The box names a player by initial and surname ("C. Ellis"), so legs match it
+// on that (nhlBoxKey); a key two players share in one game matches neither.
+function nhlPropBoxRows(box) {
+  const rows = [];
+  for (const side of ['awayTeam', 'homeTeam']) {
+    const t = (box && box.playerByGameStats && box.playerByGameStats[side]) || {};
+    for (const x of [...(t.forwards || []), ...(t.defense || [])]) rows.push({ player: (x.name || {}).default || '', pts: x.points, ast: x.assists, dnp: 0 });
+    for (const x of (t.goalies || [])) rows.push({ player: (x.name || {}).default || '', saves: x.saves, dnp: !x.toi || x.toi === '00:00' ? 1 : 0 });
+  }
+  const n = new Map();
+  for (const r of rows) n.set(nhlBoxKey(r.player), (n.get(nhlBoxKey(r.player)) || 0) + 1);
+  return rows.filter((r) => n.get(nhlBoxKey(r.player)) === 1);
+}
+const nhlBoxKey = (s) => { const w = nbaBaseName(s).split(/\s+/).filter(Boolean); return w.length ? `${w[0][0]} ${w[w.length - 1]}` : ''; };
+// The game's box from the NHL's own feed (ESPN's cdn has no NHL scoreboard):
+// the day's games from its score feed, kept in cache.espn as ESPN's are.
+// { rows } once read; { miss: true } where no game that day is this one.
+async function histNhlBox(cache, date, home, away) {
+  const key = `nhl/score/${date}`;
+  if (!cache.espn[key]) {
+    let games = [];
+    try { const r = await fetch(`https://api-web.nhle.com/v1/score/${date}`, { headers: { accept: 'application/json' } }); const j = r.ok ? await r.json() : null; games = (j && j.games) || []; } catch (e) { /* none */ }
+    cache.espn = { [key]: games.map((x) => ({ id: x.id, teams: [((x.homeTeam || {}).name || {}).default || '', ((x.awayTeam || {}).name || {}).default || ''] })) };
+  }
+  const hit = cache.espn[key].find((e) => e.teams.some((t) => nhlMatch(t, home)) && e.teams.some((t) => nhlMatch(t, away)));
+  if (!hit) return { miss: true };
+  try {
+    const r = await fetch(`https://api-web.nhle.com/v1/gamecenter/${hit.id}/boxscore`, { headers: { accept: 'application/json' } });
+    return r.ok ? { rows: nhlPropBoxRows(await r.json()) } : {};
+  } catch (e) { return {}; }
+}
+const histStatOf = (b, mk) => (b[mk] == null ? null : b[mk]);
 const HIST_PROP_LEAD_MIN = 60;      // read an hour before each game
 // &start=1 sets a job running on its own cron (HIST_CRON, every other minute,
 // HIST_PROP_PER_TICK games a run); &stop=1 pauses it; with neither, the
@@ -14107,7 +14156,7 @@ const HIST_PROP_LEAD_MIN = 60;      // read an hour before each game
 // hold a row a leg.
 const HIST_CRON = '1-59/2 * * * *';
 const HIST_PROP_PER_TICK = 3;
-const HIST_PROP_CAPS = { nba: 63000, nba3: 14000, nba4: 19000, nhl: 26000, nfl: 9000 };
+const HIST_PROP_CAPS = { nba: 63000, nba3: 14000, nba4: 19000, nhl: 23000, nfl: 9000 };
 // What the live site keeps (2026-10-29, the owner's call: the credits have to
 // last the whole month). A thousand for each day left before the quota renews
 // -- about half again the busiest day of the week before (658), the live
@@ -14244,11 +14293,11 @@ function histPropLegs(job, ev) {
 // play is void. So is one a box read in full does not name -- ESPN leaves an
 // inactive player out altogether, as De'Andre Hunter on Oct 22 2025 -- marked
 // v: 2, so a name the box spells its own way still shows (histPropOpen).
-function histPropGrade(legs, boxRows, statOf = nbaStat) {
-  const byName = new Map((boxRows || []).map((b) => [nbaName(b.player), b]));
+function histPropGrade(legs, boxRows, statOf = nbaStat, keyOf = nbaName) {
+  const byName = new Map((boxRows || []).map((b) => [keyOf(b.player), b]));
   for (const l of legs) {
     delete l.a; delete l.v;
-    const b = byName.get(nbaName(l.p));
+    const b = byName.get(keyOf(l.p));
     if (!b) { if (byName.size) l.v = 2; continue; }
     if (b.dnp) { l.v = 1; continue; }
     const v = statOf(b, l.mk);
@@ -14406,30 +14455,36 @@ async function histPropsRun(env, key, job, maxGames) {
     const j = await r.json();
     const legs = histPropLegs(job, j && j.data);
     // The game's ESPN id, from its scoreboard (the NBA's by day, the NFL's by
-    // week), kept for the other games on it.
+    // week), kept for the other games on it; the NHL's from its own feed.
     const nfl = job.sport === 'americanfootball_nfl';
     const sb = nfl ? `nfl/scoreboard?xhr=1&year=${job.year}&seasontype=2&week=${histNflWeek(g.date, job.week1)}` : `nba/scoreboard?xhr=1&date=${g.date.replace(/-/g, '')}`;
-    if (!state.espn[sb]) {
-      let evs = [];
-      try {
-        const sr = await fetch(`https://cdn.espn.com/core/${sb}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
-        const sj = sr.ok ? await sr.json() : null;
-        evs = (sj && sj.content && sj.content.sbData && sj.content.sbData.events) || [];
-      } catch (e) { /* none */ }
-      state.espn = { [sb]: evs.map((e) => { const c = (e.competitions || [])[0] || {};
-        return { id: e.id, teams: (c.competitors || []).map((t) => (t.team && (t.team.displayName || t.team.name)) || '') }; }) };
+    if (job.sport === 'icehockey_nhl') {
+      const box = await histNhlBox(state, g.date, g.home, g.away);
+      if (box.rows) histPropGrade(legs, box.rows, histStatOf, nhlBoxKey);
+      else if (box.miss && state.unmatched.length < 60) state.unmatched.push(`${g.date} ${g.away} @ ${g.home}`);
+    } else {
+      if (!state.espn[sb]) {
+        let evs = [];
+        try {
+          const sr = await fetch(`https://cdn.espn.com/core/${sb}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+          const sj = sr.ok ? await sr.json() : null;
+          evs = (sj && sj.content && sj.content.sbData && sj.content.sbData.events) || [];
+        } catch (e) { /* none */ }
+        state.espn = { [sb]: evs.map((e) => { const c = (e.competitions || [])[0] || {};
+          return { id: e.id, teams: (c.competitors || []).map((t) => (t.team && (t.team.displayName || t.team.name)) || '') }; }) };
+      }
+      const hit = (state.espn[sb] || []).find((e) => e.teams.some((t) => nbaMatch(t, g.home)) && e.teams.some((t) => nbaMatch(t, g.away)));
+      if (hit) {
+        try {
+          const br = await fetch(`https://cdn.espn.com/core/${nfl ? 'nfl' : 'nba'}/boxscore?xhr=1&gameId=${hit.id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
+          if (br.ok) {
+            const bj = await br.json();
+            if (nfl) histPropGrade(legs, nflPropBoxRows(bj), histStatOf);
+            else histPropGrade(legs, nbaBoxRows(bj, hit.id, g.date, 2));
+          }
+        } catch (e) { /* stays open */ }
+      } else if (state.unmatched.length < 60) state.unmatched.push(`${g.date} ${g.away} @ ${g.home}`);
     }
-    const hit = (state.espn[sb] || []).find((e) => e.teams.some((t) => nbaMatch(t, g.home)) && e.teams.some((t) => nbaMatch(t, g.away)));
-    if (hit) {
-      try {
-        const br = await fetch(`https://cdn.espn.com/core/${nfl ? 'nfl' : 'nba'}/boxscore?xhr=1&gameId=${hit.id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
-        if (br.ok) {
-          const bj = await br.json();
-          if (nfl) histPropGrade(legs, nflPropBoxRows(bj), (b, mk) => (b[mk] == null ? null : b[mk]));
-          else histPropGrade(legs, nbaBoxRows(bj, hit.id, g.date, 2));
-        }
-      } catch (e) { /* stays open */ }
-    } else if (state.unmatched.length < 60) state.unmatched.push(`${g.date} ${g.away} @ ${g.home}`);
     await db.prepare('INSERT OR REPLACE INTO histpropgames (job, event_id, date, commence, game, legs, graded) VALUES (?,?,?,?,?,?,?)')
       .bind(key, g.id, g.date, g.commence, `${g.away} @ ${g.home}`, JSON.stringify(legs), legs.some((l) => l.a != null || l.v) ? HIST_GRADE_VER : 0).run();
     state.games++;
@@ -14457,9 +14512,19 @@ async function histPropsRegrade(env, key, job) {
   const nfl = job.sport === 'americanfootball_nfl';
   const sbs = {};
   let done = 0, matched = 0;
+  const nhlCache = { espn: {} };
   for (const r of todo.slice(0, HIST_REGRADE_PER_CALL)) {
     const legs = JSON.parse(r.legs || '[]');
     const [away, home] = String(r.game || '').split(' @ ');
+    if (job.sport === 'icehockey_nhl') {
+      done++;
+      const box = await histNhlBox(nhlCache, r.date, home, away);
+      if (!box.rows) continue;
+      histPropGrade(legs, box.rows, histStatOf, nhlBoxKey);
+      await db.prepare('UPDATE histpropgames SET legs = ?, graded = ? WHERE job = ? AND event_id = ?').bind(JSON.stringify(legs), HIST_GRADE_VER, key, r.event_id).run();
+      matched++;
+      continue;
+    }
     const sb = nfl ? `nfl/scoreboard?xhr=1&year=${job.year}&seasontype=2&week=${histNflWeek(r.date, job.week1)}` : `nba/scoreboard?xhr=1&date=${r.date.replace(/-/g, '')}`;
     if (!sbs[sb]) {
       try { const sr = await fetch(`https://cdn.espn.com/core/${sb}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } }); const sj = sr.ok ? await sr.json() : null;
@@ -14473,7 +14538,7 @@ async function histPropsRegrade(env, key, job) {
       const br = await fetch(`https://cdn.espn.com/core/${nfl ? 'nfl' : 'nba'}/boxscore?xhr=1&gameId=${ev.id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
       if (!br.ok) continue;
       const bj = await br.json();
-      if (nfl) histPropGrade(legs, nflPropBoxRows(bj), (b, mk) => (b[mk] == null ? null : b[mk]));
+      if (nfl) histPropGrade(legs, nflPropBoxRows(bj), histStatOf);
       else histPropGrade(legs, nbaBoxRows(bj, ev.id, r.date, 2));
       await db.prepare('UPDATE histpropgames SET legs = ?, graded = ? WHERE job = ? AND event_id = ?').bind(JSON.stringify(legs), HIST_GRADE_VER, key, r.event_id).run();
       matched++;

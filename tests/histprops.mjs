@@ -21,6 +21,9 @@
 // hist-props-nba-20260115.json: that day's games, and Grizzlies @ Magic's
 // props an hour before tip) and ESPN's box score and scoreboard for it
 // (tests/fixtures/espn-nba-box-401810433.json, espn-nba-sb-20260115.json).
+// The NHL (2026-11-01): production's probe of the same day (hist-props-nhl-
+// 20260115.json, Canadiens @ Sabres) and the NHL's own score feed and box
+// score for it (nhl-score-20260115.json, nhl-box-2025020740.json).
 // Real SQLite and the real worker.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,6 +33,7 @@ globalThis.caches = { default: { match: async () => undefined, put: async () => 
 const fx = (n) => JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', n), 'utf8'));
 const P = fx('hist-props-nba-20260115.json'), BOX = fx('espn-nba-box-401810433.json'), SB = fx('espn-nba-sb-20260115.json');
 const NP = fx('hist-props-nfl-20251116.json'), NBOX = fx('espn-nfl-box-401772631.json'), NSB = fx('espn-nfl-sb-2025-w11.json');
+const HP = fx('hist-props-nhl-20260115.json'), HSC = fx('nhl-score-20260115.json'), HBOX = fx('nhl-box-2025020740.json');
 const RealDate = Date;
 const NOW = RealDate.parse('2026-10-29T08:00:00Z');
 globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } };
@@ -61,6 +65,22 @@ globalThis.fetch = async (u) => {
     remaining -= 30;
     return J(NP.odds, { 'x-requests-last': '30', 'x-requests-remaining': String(remaining) });
   }
+  if (/historical\/sports\/icehockey_nhl\/events\?/.test(s)) {
+    return J({ timestamp: HP.eventsTimestamp, data: HP.events.map((e) => { const [away, home] = e.game.split(' @ '); return { id: e.id, commence_time: e.commence, home_team: home, away_team: away }; }) },
+      { 'x-requests-last': '1', 'x-requests-remaining': String(--remaining) });
+  }
+  const h = s.match(/historical\/sports\/icehockey_nhl\/events\/([0-9a-f]+)\/odds/);
+  if (h) {
+    if (h[1] !== HP.odds.data.id) return new Response('{"message":"not recorded"}', { status: 404, headers: { 'x-requests-last': '0', 'x-requests-remaining': String(remaining) } });
+    // The probe asked for five markets; the feed answers with those asked.
+    const want = new URL(s).searchParams.get('markets').split(',');
+    const data = { ...HP.odds.data, bookmakers: HP.odds.data.bookmakers.map((b) => ({ ...b, markets: b.markets.filter((m) => want.includes(m.key)) })).filter((b) => b.markets.length) };
+    const n = new Set(data.bookmakers.flatMap((b) => b.markets.map((m) => m.key))).size * 10;
+    remaining -= n;
+    return J({ ...HP.odds, data }, { 'x-requests-last': String(n), 'x-requests-remaining': String(remaining) });
+  }
+  if (s === 'https://api-web.nhle.com/v1/score/2026-01-15') return J(HSC);
+  if (s === 'https://api-web.nhle.com/v1/gamecenter/2025020740/boxscore') return J(HBOX);
   if (/cdn\.espn\.com\/core\/nfl\/scoreboard\?xhr=1&year=2025&seasontype=2&week=11$/.test(s)) return J(NSB);
   if (/cdn\.espn\.com\/core\/nfl\/boxscore\?xhr=1&gameId=401772631/.test(s)) return J(NBOX);
   return new Response('{}', { status: 404 });
@@ -222,6 +242,37 @@ ok(nl('Tua Tagovailoa', 'rush_yds').a === 0 && nl("De'Von Achane", 'rush_yds').a
 ok(nlegs.every((l) => l.a != null || l.v) && nl('Nick Westbrook-Ikhine', 'rec').v === 2 && nl('John Bates', 'rec_yds').v === 2
   && nr.openNames.some((n) => /^Nick Westbrook-Ikhine/.test(n)),
   `every NFL leg graded or void: one a box read in full does not name sat out (v 2), and is listed to check (${nr.openNames.join(', ')})`);
+
+// ---- the NHL (2026-11-01) ---------------------------------------------------------------------------
+console.log('\n-- the NHL: Canadiens @ Sabres, Jan 15 2026 --');
+await get('/api/hist-props?job=nfl&stop=1');
+const h0 = await get('/api/hist-props?job=nhl&start=1');
+const nhlDays = []; for (let t = RealDate.parse('2025-10-07T12:00:00Z'); t <= RealDate.parse('2026-04-16T12:00:00Z'); t += 2 * 864e5) nhlDays.push(new RealDate(t).toISOString().slice(0, 10));
+ok(h0.progress === `0 of ${nhlDays.length} days` && h0.cap === 23000 && nhlDays.includes('2026-01-15'), `every other day of last season: ${h0.progress}, a 23,000 cap`);
+const hs = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nhl'").get().data);
+sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'hist_props:nhl'").run(JSON.stringify({ ...hs, day: nhlDays.indexOf('2026-01-15') }));
+const bh = asked.length;
+await tick();
+const hu = asked.slice(bh).find((u) => /icehockey_nhl\/events\/[0-9a-f]+\/odds/.test(u));
+const hr = await get('/api/hist-props?job=nhl');
+const hlegs = JSON.parse(sq.prepare("SELECT legs FROM histpropgames WHERE job = 'nhl'").get().legs);
+const hl = (who, mk) => hlegs.find((l) => l.p === who && l.mk === mk) || {};
+console.log(`  ${hr.games} game, ${hr.creditsSpent} credits: ${hlegs.map((l) => `${l.p} ${l.mk} ${l.pp}: ${l.a != null ? l.a : 'void ' + l.v}`).join(' | ')}`);
+ok(hu && new URL(hu).searchParams.get('markets') === 'player_points,player_assists,player_total_saves' && hr.creditsSpent === 31
+  && asked.slice(bh).includes('https://api-web.nhle.com/v1/gamecenter/2025020740/boxscore'),
+  "points, assists and saves (30 credits); graded from the NHL's own box score, found on its score feed");
+// The box's counts, by the box's own names.
+const boxOf = (abbr, mk) => { for (const sd of ['awayTeam', 'homeTeam']) { const t = HBOX.playerByGameStats[sd];
+  for (const x of [...t.forwards, ...t.defense, ...t.goalies]) if (x.name.default === abbr) return mk === 'saves' ? x.saves : mk === 'pts' ? x.points : x.assists; } return null; };
+ok(hl('Colten Ellis', 'saves').pp === 23.5 && hl('Colten Ellis', 'saves').a === boxOf('C. Ellis', 'saves') && hl('Jacob Fowler', 'saves').a === boxOf('J. Fowler', 'saves'),
+  `the goalies, by initial and surname: Ellis ${hl('Colten Ellis', 'saves').a} saves against 23.5, Fowler ${hl('Jacob Fowler', 'saves').a}`);
+ok(hl('Lane Hutson', 'ast').a === 2 && hl('Nick Suzuki', 'ast').a === 1 && hl('Ivan Demidov', 'pts').a === 1 && hl('Ryan McLeod', 'pts').a === 0 && hl('Josh Doan', 'pts').a === 2,
+  'the skaters: Hutson 2 assists, Suzuki 1; Demidov 1 point, McLeod 0, Doan 2');
+ok(hl('Josh Norris', 'pts').v === 2 && hlegs.filter((l) => l.a == null).length === 1,
+  'Josh Norris, priced an hour before and not in the box: void, the only leg not graded');
+const hrep = hr.report.byMarket;
+ok(hrep.pts && hrep.ast && hrep.saves && hr.report.all.priced >= 6, `the report by market, the sharp books' chance at PrizePicks' line on ${hr.report.all.priced} of ${hr.report.all.legs}`);
+await get('/api/hist-props?job=nhl&stop=1');
 
 // ---- names, a run cut off, and a regrade (2026-10-29) ------------------------------------------
 console.log('\n-- names --');

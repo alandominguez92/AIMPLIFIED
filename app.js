@@ -6194,7 +6194,7 @@
       const ra = readAgeTag(x);
       if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
       const it = injuryTag(x);
-      if (it) tags.push(`<span class="${it.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(it.title)}">${esc(it.text)}</span>`);
+      if (it) for (const t of it.parts || [it.text]) tags.push(`<span class="${it.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(it.title)}">${esc(t)}</span>`);
       if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
       const mv = pickMoved(x);
       if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
@@ -6568,8 +6568,9 @@
     return h >= 3 ? { stale: true, text: `PP line read ${ago}: check the app` } : { stale: false, text: `PP line read ${ago}` };
   }
   // ESPN's injury report on an NBA leg (2026-11-01): what it lists for him,
-  // or that it lists nothing once his game's report has been read. Before
-  // that, and on a team pick, the old reminder. One it lists out is not sent.
+  // or that it lists nothing once his game's report has been read; on a
+  // moneyline, who each side is missing. Before that, the old reminder. A
+  // player it lists out is not sent.
   function injuryTag(x) {
     if ((x.sport || (x.spec || {}).sport) !== 'nba') return null;
     const i = x.inj;
@@ -6577,6 +6578,18 @@
     const t = Date.parse(i.at || '');
     const ago = isFinite(t) ? Math.max(1, Math.round((Date.now() - t) / 60000)) : null;
     const read = ago == null ? '' : ago < 60 ? `, read ${ago} min ago` : `, read ${Math.round(ago / 60)}h ago`;
+    // A moneyline (2026-11-01): each side's outs and day-to-days, the picked side first.
+    if (Array.isArray(i.teams)) {
+      const few = (l) => l.slice(0, 3).map((p) => p.n).join(', ') + (l.length > 3 ? ` +${l.length - 3}` : '');
+      const full = (l) => l.map((p) => (p.what ? `${p.n} (${p.what})` : p.n)).join(', ');
+      const parts = [], lines = [];
+      for (const t of i.teams) {
+        if (t.out.length) { parts.push(`${t.team} out: ${few(t.out)}`); lines.push(`${t.team} out: ${full(t.out)}`); }
+        if (t.gtd.length) { parts.push(`${t.team} GTD: ${few(t.gtd)}`); lines.push(`${t.team} GTD: ${full(t.gtd)}`); }
+      }
+      if (!parts.length) return { warn: false, text: 'no injuries listed', title: `Neither side on ESPN's injury report${read}` };
+      return { warn: true, text: parts.join(' · '), parts, title: `${lines.join('. ')}. ESPN's injury report${read}` };
+    }
     if (!i.status) return { warn: false, text: 'no injury listed', title: `Not on ESPN's injury report${read}` };
     return { warn: true, text: `${i.status === 'Day-To-Day' ? 'GTD' : i.status}${i.what ? ': ' + i.what : ''}`, title: `ESPN's injury report${read}` };
   }
