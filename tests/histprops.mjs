@@ -148,17 +148,18 @@ ok(rep.byMarket.pts && rep.byMarket.pra && rep.all.byBand.length === 5 && rep.al
 
 // ---- the reserve (2026-10-29: the credits have to last the month) --------------------------------
 console.log('\n-- the reserve --');
-// The quota renews on the 3rd (2026-10-30; the 1st was assumed until then).
+// The quota renews on the 1st (the 3rd for a day from 2026-10-30, the plan's
+// renewal date; the meter showed the reset at 00:00 UTC Nov 1).
 const RV = new Function([cst('HIST_LIVE_PER_DAY'), cst('ODDS_RESET_DAY'), wlift('nextOddsReset'), cst('oddsDaysLeft'), wlift('histReserve')].join('\n') + '\nreturn histReserve;')();
-ok(RV(NOW) === 7000 && RV(RealDate.parse('2026-11-01T00:00:00Z')) === 4000 && RV(RealDate.parse('2026-11-03T00:00:00Z')) === 32000 && RV(RealDate.parse('2026-11-30T20:00:00Z')) === 5000,
-  'the live site keeps 1,000 a day to the renewal on the 3rd, and 2,000 more: 7,000 at 1 AM Pacific Oct 29, 4,000 on Nov 1, 32,000 on Nov 3, 5,000 on Nov 30');
-remaining = 7040;                                    // one more game and the reserve is reached
+ok(RV(NOW) === 5000 && RV(RealDate.parse('2026-11-01T00:00:00Z')) === 32000 && RV(RealDate.parse('2026-11-03T00:00:00Z')) === 30000 && RV(RealDate.parse('2026-11-30T20:00:00Z')) === 3000,
+  'the live site keeps 1,000 a day to the renewal on the 1st, and 2,000 more: 5,000 at 1 AM Pacific Oct 29, 32,000 on Nov 1, 30,000 on Nov 3, 3,000 on Nov 30');
+remaining = 5040;                                    // one more game and the reserve is reached
 const st2 = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'hist_props:nba'").get().data);
 sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'hist_props:nba'").run(JSON.stringify({ ...st2, day: days.indexOf('2026-01-15'), queue: [] }));
 sq.prepare('DELETE FROM histpropgames').run();
 await tick();
 r = await get('/api/hist-props?job=nba');
-ok(r.done === false && /^reserve: the live site keeps 7000 until the quota renews$/.test(r.paused) && r.remaining < 7000 && r.reserve === 7000,
+ok(r.done === false && /^reserve: the live site keeps 5000 until the quota renews$/.test(r.paused) && r.remaining < 5000 && r.reserve === 5000,
   `it pauses when the feed leaves less than the reserve: "${r.paused}" (${r.remaining} left)`);
 const n0 = asked.length;
 await tick();

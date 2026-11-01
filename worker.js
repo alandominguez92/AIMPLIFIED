@@ -11432,11 +11432,16 @@ function nhlPpLegs(ev, pri, cur) {
 async function logNhlPp(db, legs, close) {
   if (!legs.length) return 0;
   const stamp = new Date().toISOString();
-  const stmts = legs.map((l) => db.prepare(
+  // A re-read stands for the whole game, as logNbaPp's (2026-10-31).
+  const clear = close ? [...new Set(legs.map((l) => `${ptDateOf(Date.parse(l.commence))}|${l.game_id}`))].map((k) => {
+    const [day, gid] = k.split('|');
+    return db.prepare('UPDATE nhlpp SET close_point=NULL, close_under=NULL, close_book_line=NULL, close_book_under=NULL WHERE date=? AND game_id=? AND close_point IS NOT NULL').bind(day, gid);
+  }) : [];
+  const stmts = clear.concat(legs.map((l) => db.prepare(
     `INSERT OR IGNORE INTO nhlpp (date, game_id, player, market, commence, home, away, team, player_id, point, proj, model_under, gp_cur, prior_gp, toi_proj, book_line, book_under, captured_at, book_unders)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market, l.commence, l.home, l.away, l.team, l.player_id,
-    l.point, l.proj, l.model_under, l.gp_cur, l.prior_gp, l.toi_proj, l.book_line, l.book_under, stamp, l.book_unders || null));
+    l.point, l.proj, l.model_under, l.gp_cur, l.prior_gp, l.toi_proj, l.book_line, l.book_under, stamp, l.book_unders || null)));
   // The pre-tip read fills each leg's close_ columns (logNbaPp's rule), and
   // book_unders as last read.
   if (close) for (const l of legs) stmts.push(db.prepare(
@@ -11489,8 +11494,9 @@ async function nhlPpMaybeCapture(env) {
       const body = await r.json();
       if (!pri) { pri = await nhlSkaters(env, NHL_SEASONS.prior, null); cur = await nhlSkaters(env, NHL_SEASONS.current, 3 * 3600e3); }
       const hasPP = !!(body && (body.bookmakers || []).some((b) => b.key === 'prizepicks'));
-      logged += await logNhlPp(env.DB, nhlPpLegs(body, pri, cur), what === 'close');
+      logged += await logNhlPp(env.DB, nhlPpLegs(body, pri, cur), what === 'close' || what === 'refresh');
       if (what === 'close') st.close = now;
+      if (what === 'refresh') st.refreshed = now;
       if (hasPP) st.first = st.first || now; else { st.posted = null; st.checked = now; }
       // The last payload with PrizePicks on it, as it came (/api/nhl-pp?raw=1).
       if (hasPP) await saveFeedCache(env.DB, NHL_PP_RAW_KEY, { at: new Date().toISOString(), game: g.id, credits: Number(r.headers.get('x-requests-last')) || null, body });
@@ -11676,13 +11682,26 @@ const NBA_PP_PER_TICK = 5;                   // per-event calls a tick may make
 const PP_WATCH_MS = 36 * 3600e3;
 const PP_WATCH_EVERY_MS = 2 * 3600e3;
 const PP_CLOSE_MS = 90 * 60e3;
-// Pure: what one game needs now -- 'check', 'first', 'close' or nothing.
-// st is the game's read state: { checked, first, close } (times).
+// Game-day re-reads (2026-10-31, the owner's call, about 140 credits a day):
+// PrizePicks moved Kris Dunn's assists from 5.5 to 4.5 and Giannis' rebounds
+// from 12.5 to 11.5 between the night-before read and the pre-tip one, and the
+// card showed the old lines all day. Inside 8 hours of the start, every 3
+// hours since the last read, until 2.5 hours out -- about two a game, at 11 AM
+// and 2 PM Pacific for a 7 PM tip -- the full read again, as the pre-tip read
+// takes it: each leg's line as it stands now.
+const PP_REFRESH_WINDOW_MS = 8 * 3600e3;
+const PP_REFRESH_EVERY_MS = 3 * 3600e3;
+const PP_REFRESH_STOP_MS = 150 * 60e3;
+// Pure: what one game needs now -- 'check', 'first', 'refresh', 'close' or
+// nothing. st is the game's read state: { checked, first, refreshed, close } (times).
 function ppReadDue(commence, st, now) {
   const t = Date.parse(commence);
   if (!isFinite(t) || t <= now || t - now > PP_WATCH_MS) return null;
   if (t - now <= PP_CLOSE_MS) return st && st.close ? null : 'close';
-  if (st && st.first) return null;
+  if (st && st.first) {
+    const last = Math.max(Number(st.first) || 0, Number(st.refreshed) || 0);
+    return t - now <= PP_REFRESH_WINDOW_MS && t - now > PP_REFRESH_STOP_MS && now - last >= PP_REFRESH_EVERY_MS ? 'refresh' : null;
+  }
   if (st && st.posted) return 'first';           // seen up, its full read not yet taken
   if (st && st.checked && now - st.checked < PP_WATCH_EVERY_MS) return null;
   return 'check';
@@ -12202,6 +12221,13 @@ async function logNbaPp(db, lg, legs, close) {
   if (!legs.length) return 0;
   const stamp = new Date().toISOString();
   const stmts = [];
+  // A read after the first (a re-read or the pre-tip one) stands for the whole
+  // game: a leg it does not find is down now, even if an earlier re-read had it
+  // (2026-10-31). Its lines are cleared first; the read puts back what it saw.
+  if (close) for (const k of new Set(legs.map((l) => `${ptDateOf(Date.parse(l.commence))}|${l.game_id}`))) {
+    const [day, gid] = k.split('|');
+    stmts.push(db.prepare('UPDATE nbapp SET close_point=NULL, close_under=NULL, close_book_line=NULL, close_book_under=NULL, close_sharp_under=NULL WHERE date=? AND game_id=? AND close_point IS NOT NULL').bind(day, gid));
+  }
   for (const l of legs) {
     const day = ptDateOf(Date.parse(l.commence));
     stmts.push(db.prepare(
@@ -12270,8 +12296,9 @@ async function nbaPpMaybeCapture(env) {
       const body = await r.json();
       if (!pri) { pri = await nbaPriors(env); recent = await nbaRecentMap(env.DB); }
       const hasPP = !!(body && (body.bookmakers || []).some((b) => b.key === 'prizepicks'));
-      logged += await logNbaPp(env.DB, lg, nbaPpLegs(body, pri, recent), what === 'close');
+      logged += await logNbaPp(env.DB, lg, nbaPpLegs(body, pri, recent), what === 'close' || what === 'refresh');
       if (what === 'close') st.close = now;
+      if (what === 'refresh') st.refreshed = now;
       if (hasPP) st.first = st.first || now; else { st.posted = null; st.checked = now; }
       // The last payload with PrizePicks on it, kept as it came so a test can
       // replay a real one (/api/nba-pp?raw=1). No extra call, no extra credit.
@@ -13753,10 +13780,11 @@ const HIST_PROP_CAPS = { nba: 63000, nba3: 14000, nfl: 9000 };
 // 12,000 until then: in the month's last days it kept back far more than the
 // live site could use, and on the 1st far less than a month needs.)
 const HIST_LIVE_PER_DAY = 1000, HIST_LIVE_BUFFER = 2000;
-// The day of the month the Odds API quota renews: the 3rd (2026-10-30, the
-// owner's plan; the 1st was assumed until then). Midnight UTC that day; a
-// renewal later in the day only means the reserve waits a few hours more.
-const ODDS_RESET_DAY = 3;
+// The day of the month the Odds API quota renews: the 1st, at midnight UTC.
+// (The 3rd from 2026-10-30, on the plan's renewal date; the meter showed
+// 99,984 remaining from 00:00 UTC Nov 1, so the quota itself resets on the
+// 1st.) A renewal later in the day only means the reserve waits a few hours.
+const ODDS_RESET_DAY = 1;
 function nextOddsReset(now) {
   const d = new Date(now);
   const r = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), ODDS_RESET_DAY);
