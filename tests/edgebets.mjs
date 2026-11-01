@@ -266,8 +266,8 @@ ok(sq.prepare('SELECT result FROM edgebets WHERE key = ?').get(CIN).result === '
   "the log's FC Cincinnati +410 from production's first read is void, and counts for nothing");
 const rp = alift('renderPicks');
 // (Since later on 2026-10-28 the "Last night" recap leads: tests/flashy.mjs.)
-ok(/grid\.innerHTML = recapHtml\(d\.record && d\.record\.history, d\.edgeRecord\) \+ bankHtml\(\) \+ ppCard \+ evBetsHtml\(d\) \+ listCard \+ after;/.test(rp) && /<span class="tc-title">Your PrizePicks entry<\/span>/.test(rp) && /<span class="tc-title">Most likely to land<\/span>/.test(rp),
-  'Picks leads with the PrizePicks entry, then the sportsbook bets, then the likeliest legs');
+ok(/grid\.innerHTML = recapHtml\(d\.record && d\.record\.history, d\.edgeRecord\) \+ bankHtml\(\) \+ ppCard \+ mlCard \+ evBetsHtml\(d\) \+ listCard \+ after;/.test(rp) && /<span class="tc-title">Your PrizePicks entry<\/span>/.test(rp) && /<span class="tc-title">Most likely to land<\/span>/.test(rp),
+  'Picks leads with the PrizePicks entries (the moneyline one since 2026-11-01), then the sportsbook bets, then the likeliest legs');
 // (The state the books' links name rides with them since 2026-10-29: tests/betlinks.mjs.)
 ok(/if \(t\.dataset\.action === 'bank-amount' \|\| t\.dataset\.action === 'bank-cap'( \|\| t\.dataset\.action === 'bank-state')?\)/.test(app) && /localStorage\.setItem\('aimplified_bankroll'/.test(app), 'the bankroll is kept on the device');
 

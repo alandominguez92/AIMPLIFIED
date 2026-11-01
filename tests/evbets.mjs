@@ -122,7 +122,7 @@ console.log('\n-- the list\'s entries --');
 console.log('  ' + p.legs.map((l) => `${l.title} [${l.kind}${l.ppOk ? ', PrizePicks' : ''}]`).join(' | '));
 const pp = p.legs.filter((l) => l.ppOk);
 ok(p.legs.filter((l) => /^(nba|nhl|mlb)_ml$|^soccer_fav$/.test(l.kind)).every((l) => !l.ppOk) && pp.every((l) => /_pp$|^nfl_ptd$|^nfl_ml$/.test(l.kind)),
-  'NBA, NHL, MLB and soccer moneylines are sportsbook bets; PrizePicks legs are its player picks and one NFL team pick');
+  "the player-led entry's legs are its player picks and one NFL team pick; the other moneylines have an entry of their own (tests/mlentry.mjs)");
 ok(p.entries.length === Math.max(0, pp.length - 1), `entries come only from those legs (${pp.length} of ${p.legs.length}: ${p.entries.length} entries)`);
 
 // ---- the page -------------------------------------------------------------------------------------------

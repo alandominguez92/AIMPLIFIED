@@ -177,7 +177,7 @@ function lift(name) {
   throw new Error(`could not lift ${name}`);
 }
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const card = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'movedLineHtml', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
+const card = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
 const h = (await get('/api/picks')).record.history;
 const html = card(h);
 const dayHtml = html.split('<details class="pk-day">').find((x) => />Oct 26</.test(x)) || '';

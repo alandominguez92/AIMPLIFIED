@@ -3180,7 +3180,7 @@ const nflLiveSame = (espnAb, ours) => String(espnAb || '').toLowerCase() === (NF
 async function mlLiveCards(env, now, feeds) {
   const days = [ptDateOf(now), ptDateOf(now - 864e5)];
   await ensureDayPickSchema(env.DB);
-  const legs = ((await env.DB.prepare("SELECT * FROM daypicks WHERE date IN (?, ?) AND on_list = 1 AND kind IN ('nba_ml', 'nhl_ml', 'nfl_ml')").bind(...days).all()).results || [])
+  const legs = ((await env.DB.prepare("SELECT * FROM daypicks WHERE date IN (?, ?) AND (on_list = 1 OR in_ml = 1) AND kind IN ('nba_ml', 'nhl_ml', 'nfl_ml')").bind(...days).all()).results || [])
     .filter((r) => { const t = Date.parse(r.commence); return t <= now && t > now - LIVE_LOOKBACK_MS; });
   const cards = [];
   for (const r of legs) {
@@ -8813,7 +8813,11 @@ function entryStake(ps, type) {              // ps: chances 0-1
 // winner"), one an entry. The NBA, NHL, soccer and MLB moneylines are
 // sportsbook bets; priced at PrizePicks' payouts they made a 2-pick Power read
 // +62% and stake 7.8% of a bankroll, on an entry that could not be placed.
+// Corrected 2026-11-01, the owner: PrizePicks takes all moneylines. This entry
+// stays led by its player picks, with one NFL team pick; the moneylines have an
+// entry of their own (ML_ENTRY_KINDS, mlPoolOf).
 const PP_ENTRY_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nba_reb_gap', 'nhl_more', 'nfl_ptd']);
+const ML_ENTRY_KINDS = new Set(['mlb_ml', 'nba_ml', 'nhl_ml', 'nfl_ml', 'soccer_fav']);
 
 // ---- Bets with an edge (2026-10-27) -------------------------------------------
 // The list ranks by how likely a leg is to land; sharp betting asks where a
@@ -9267,6 +9271,9 @@ async function ensureDayPickSchema(db) {
   // one the list dropped.
   await addColumns(db, 'daypicks', [['in_pool', 'INTEGER'], ['pool_p', 'REAL'], ['pool_rank', 'INTEGER']]);
   await db.prepare('CREATE INDEX IF NOT EXISTS daypicks_pool_open ON daypicks (in_pool) WHERE in_pool = 1 AND result IS NULL').run();
+  // The moneyline-only entry's (2026-11-01, mlPoolOf), kept the same way.
+  await addColumns(db, 'daypicks', [['in_ml', 'INTEGER'], ['ml_p', 'REAL'], ['ml_rank', 'INTEGER']]);
+  await db.prepare('CREATE INDEX IF NOT EXISTS daypicks_ml_open ON daypicks (in_ml) WHERE in_ml = 1 AND result IS NULL').run();
 }
 
 // Every leg that clears its kind's bar, for games starting in the next day.
@@ -9613,6 +9620,17 @@ function ppPoolOf(legs) {
   }
   return pool;
 }
+// The moneyline-only entry's pool (2026-11-01, the owner's call): the best
+// moneyline of each game, any sport, from everything that clears its kind's bar.
+function mlPoolOf(legs) {
+  const pool = [], games = new Set();
+  for (const l of [...legs].sort(pickOrder)) {
+    if (pool.length >= PICKS_N || !ML_ENTRY_KINDS.has(l.kind) || games.has(l.gameKey)) continue;
+    games.add(l.gameKey);
+    pool.push(l);
+  }
+  return pool;
+}
 
 // What the list showed is what it is judged on. Each leg on it is written with
 // its rank; a leg that drops off before its game starts is marked off; once a
@@ -9621,7 +9639,7 @@ function ppPoolOf(legs) {
 // as text the feed's '...T23:00:00Z' sorts after '...T23:00:00.123Z', so a
 // read in the first second of a start minute -- when the cron fires -- took a
 // game that had just started for one still to come, and marked its leg off.
-async function logDayPicks(db, list, unavailable, now, pool = []) {
+async function logDayPicks(db, list, unavailable, now, pool = [], mlPool = []) {
   await ensureDayPickSchema(db);
   const nowIso = new Date(now).toISOString();
   const stmts = list.map((l, i) => db.prepare(
@@ -9640,25 +9658,29 @@ async function logDayPicks(db, list, unavailable, now, pool = []) {
       + (ids.length ? ` AND leg_id NOT IN (${ids.map(() => '?').join(',')})` : '')
       + (keep.length ? ` AND kind NOT IN (${keep.map(() => '?').join(',')})` : '')
   ).bind(ptDateOf(now), ptDateOf(now + 86400e3), nowIso, ...ids, ...keep));
-  // The entry's pool, after the list (2026-10-28). A leg on both keeps the
-  // list's label and chance; one only in the pool takes the pool's.
-  for (const [i, l] of pool.entries()) {
+  // Each entry's pool, after the list (2026-10-28). A leg on both keeps the
+  // list's label and chance; one only in a pool takes the pool's.
+  const logPool = (legs, inCol, pCol, rankCol) => {
+    for (const [i, l] of legs.entries()) {
+      stmts.push(db.prepare(
+        `INSERT INTO daypicks (date, leg_id, kind, src_date, game_id, player_key, market, team, label, p, commence, on_list, ${inCol}, ${pCol}, ${rankCol})
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,0,1,?,?)
+         ON CONFLICT(date, leg_id) DO UPDATE SET ${inCol} = 1, ${pCol} = excluded.${pCol}, ${rankCol} = excluded.${rankCol},
+           label = CASE WHEN daypicks.seen_at IS NULL THEN excluded.label ELSE daypicks.label END,
+           p = CASE WHEN daypicks.seen_at IS NULL THEN excluded.p ELSE daypicks.p END
+         WHERE julianday(daypicks.commence) > julianday(?)`
+      ).bind(ptDateOf(Date.parse(l.commence)), l.legId, l.kind, l.src.date, String(l.src.game_id), l.src.player_key || null,
+        l.src.market || null, l.src.team || null, l.title, l.p, l.commence, l.p, i + 1, nowIso));
+    }
+    const pids = legs.map((l) => l.legId);
     stmts.push(db.prepare(
-      `INSERT INTO daypicks (date, leg_id, kind, src_date, game_id, player_key, market, team, label, p, commence, on_list, in_pool, pool_p, pool_rank)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,0,1,?,?)
-       ON CONFLICT(date, leg_id) DO UPDATE SET in_pool = 1, pool_p = excluded.pool_p, pool_rank = excluded.pool_rank,
-         label = CASE WHEN daypicks.seen_at IS NULL THEN excluded.label ELSE daypicks.label END,
-         p = CASE WHEN daypicks.seen_at IS NULL THEN excluded.p ELSE daypicks.p END
-       WHERE julianday(daypicks.commence) > julianday(?)`
-    ).bind(ptDateOf(Date.parse(l.commence)), l.legId, l.kind, l.src.date, String(l.src.game_id), l.src.player_key || null,
-      l.src.market || null, l.src.team || null, l.title, l.p, l.commence, l.p, i + 1, nowIso));
-  }
-  const pids = pool.map((l) => l.legId);
-  stmts.push(db.prepare(
-    `UPDATE daypicks SET in_pool = 0, pool_rank = NULL WHERE date IN (?, ?) AND julianday(commence) > julianday(?) AND in_pool = 1`
-      + (pids.length ? ` AND leg_id NOT IN (${pids.map(() => '?').join(',')})` : '')
-      + (keep.length ? ` AND kind NOT IN (${keep.map(() => '?').join(',')})` : '')
-  ).bind(ptDateOf(now), ptDateOf(now + 86400e3), nowIso, ...pids, ...keep));
+      `UPDATE daypicks SET ${inCol} = 0, ${rankCol} = NULL WHERE date IN (?, ?) AND julianday(commence) > julianday(?) AND ${inCol} = 1`
+        + (pids.length ? ` AND leg_id NOT IN (${pids.map(() => '?').join(',')})` : '')
+        + (keep.length ? ` AND kind NOT IN (${keep.map(() => '?').join(',')})` : '')
+    ).bind(ptDateOf(now), ptDateOf(now + 86400e3), nowIso, ...pids, ...keep));
+  };
+  logPool(pool, 'in_pool', 'pool_p', 'pool_rank');
+  logPool(mlPool, 'in_ml', 'ml_p', 'ml_rank');
   await db.batch(stmts);
 }
 
@@ -9706,8 +9728,10 @@ async function gradeDayPicks(db, now) {
   const open = (await db.prepare('SELECT * FROM daypicks WHERE on_list = 1 AND result IS NULL AND commence < ?').bind(cut).all()).results || [];
   // And the entry's pool legs the list did not carry (2026-10-28).
   const pooled = (await db.prepare('SELECT * FROM daypicks WHERE in_pool = 1 AND result IS NULL AND on_list = 0 AND commence < ?').bind(cut).all()).results || [];
+  // And the moneyline entry's that neither carried (2026-11-01).
+  const inMl = (await db.prepare('SELECT * FROM daypicks WHERE in_ml = 1 AND result IS NULL AND on_list = 0 AND IFNULL(in_pool, 0) = 0 AND commence < ?').bind(cut).all()).results || [];
   const ups = [];
-  for (const r of [...open, ...pooled].slice(0, 40)) {
+  for (const r of [...open, ...pooled, ...inMl].slice(0, 40)) {
     const res = await dayPickResult(db, r);
     if (res) ups.push(db.prepare('UPDATE daypicks SET result = ? WHERE date = ? AND leg_id = ?').bind(res, r.date, r.leg_id));
   }
@@ -9903,15 +9927,17 @@ function histDayEntries(l, tots) {
 // not take, so its units graded entries that could not be placed. The days
 // before keep the list's own (listEntries), and the list's top-two count
 // stays the list's (listTotals).
-function pickHistory(rows, poolRows = []) {
-  const byDay = new Map(), poolDay = new Map();
+function pickHistory(rows, poolRows = [], mlRows = []) {
+  const byDay = new Map(), poolDay = new Map(), mlDay = new Map();
+  for (const r of mlRows) { if (!mlDay.has(r.date)) mlDay.set(r.date, []); mlDay.get(r.date).push({ ...r, p: r.ml_p != null ? r.ml_p : r.p }); }
+  const mlSince = mlDay.size ? [...mlDay.keys()].sort()[0] : null, mlTot = histTotals();
   for (const r of rows) { if (!byDay.has(r.date)) byDay.set(r.date, []); byDay.get(r.date).push(r); }
   for (const r of poolRows) { if (!poolDay.has(r.date)) poolDay.set(r.date, []); poolDay.get(r.date).push({ ...r, p: r.pool_p != null ? r.pool_p : r.p }); }
   const poolSince = poolDay.size ? [...poolDay.keys()].sort()[0] : null;
   const listAll = histTotals(), listBefore = histTotals(), pooled = histTotals();
   const legOut = (x) => ({ label: x.label, kind: x.kind, p: round1(x.p), first: x.first_p == null ? null : round1(x.first_p), result: x.result || null });
   const days = [];
-  for (const date of [...new Set([...byDay.keys(), ...poolDay.keys()])].sort()) {
+  for (const date of [...new Set([...byDay.keys(), ...poolDay.keys(), ...mlDay.keys()])].sort()) {
     const l = (byDay.get(date) || []).sort((a, b) => b.p - a.p);
     const fromPool = poolSince != null && date >= poolSince;
     let entries = histDayEntries(l, fromPool ? [listAll] : [listAll, listBefore]);
@@ -9921,9 +9947,12 @@ function pickHistory(rows, poolRows = []) {
       entries = histDayEntries(q, [pooled]);
       pool = q.map(legOut);
     }
+    // The moneyline-only entry, on its own units (2026-11-01).
+    const m = (mlDay.get(date) || []).sort((a, b) => b.p - a.p);
+    const mlEntries = m.length ? histDayEntries(m, [mlTot]) : null;
     const dec = l.filter((x) => x.result === 'hit' || x.result === 'miss');
     days.push({ date, hit: dec.filter((x) => x.result === 'hit').length, decided: dec.length, pending: l.filter((x) => x.result == null).length,
-      legs: l.map(legOut), entries, ...(pool ? { pool } : {}) });
+      legs: l.map(legOut), entries, ...(pool ? { pool } : {}), ...(m.length ? { ml: m.map(legOut), mlEntries } : {}) });
   }
   // Which way the market moved while each leg sat on the list (2026-10-22):
   // its first chance against its last before the start -- the close, with the
@@ -9942,6 +9971,7 @@ function pickHistory(rows, poolRows = []) {
     moved: mv.n ? { n: mv.n, avg: round1(mv.sum / mv.n), rose: mv.rose, fell: mv.fell, flat: mv.flat } : null,
     entries: histTotalsOut(poolSince ? pooled : listAll),
     ...(poolSince ? { entriesFrom: 'pool', poolSince, listEntries: histTotalsOut(listBefore) } : {}),
+    ...(mlSince ? { mlSince, mlEntries: histTotalsOut(mlTot) } : {}),
     listTotals: histTotalsOut(listAll),
     days: days.reverse().slice(0, PICK_HIST_DAYS),
   };
@@ -9953,12 +9983,12 @@ function pickHistory(rows, poolRows = []) {
 async function dayPickRecord(db) {
   await ensureDayPickSchema(db);
   // One read for the list's rows and the entry pool's (2026-10-28).
-  const both = (await db.prepare('SELECT date, kind, label, p, first_p, result, game_id, on_list, in_pool, pool_p FROM daypicks WHERE on_list = 1 OR in_pool = 1').all()).results || [];
+  const both = (await db.prepare('SELECT date, kind, label, p, first_p, result, game_id, on_list, in_pool, pool_p, in_ml, ml_p FROM daypicks WHERE on_list = 1 OR in_pool = 1 OR in_ml = 1').all()).results || [];
   const all = both.filter((r) => r.on_list === 1);
   const rows = all.filter((r) => r.result != null);
   const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
   const hit = dec.filter((r) => r.result === 'hit').length;
-  const history = pickHistory(all, both.filter((r) => r.in_pool === 1));
+  const history = pickHistory(all, both.filter((r) => r.in_pool === 1), both.filter((r) => r.in_ml === 1));
   // Beside each recent day, the legs that left the list before their start.
   const drops = await dayPickDrops(db, Date.now(), all).catch(() => []);
   for (const d of history.days) { const l = drops.filter((x) => x.date === d.date); if (l.length) d.dropped = l; }
@@ -9978,7 +10008,7 @@ async function dayPicksTick(env) {
   if (!env || !env.DB) return null;
   const now = Date.now();
   const { legs, unavailable } = await picksCandidates(env, now);
-  await logDayPicks(env.DB, pickList(legs), unavailable, now, ppPoolOf(legs));
+  await logDayPicks(env.DB, pickList(legs), unavailable, now, ppPoolOf(legs), mlPoolOf(legs));
   await gradeDayPicks(env.DB, now);
   // The edge bets (2026-10-28): their log and grades, and a fresh read of the
   // prices behind any shown on an old one.
@@ -10040,16 +10070,17 @@ async function picksBoard(env) {
       + 'Only kinds of leg whose stated chance has held up in the logs, at the bar where it held up.',
     asOf: new Date().toISOString(),
     rules: Object.fromEntries(pickKindsOn(Date.now()).map(([k, v]) => [k, `${v.label}, ${v.min}%+`])),
-    legs: [], qualifyingGames: 0, entries: [], kinds: {}, record: null,
+    legs: [], qualifyingGames: 0, entries: [], mlPool: [], mlEntries: [], kinds: {}, record: null,
   };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   try {
     const now = Date.now();
     const { legs, unavailable } = await picksCandidates(env, now);
-    const list = pickList(legs), pool = ppPoolOf(legs);
+    const list = pickList(legs), pool = ppPoolOf(legs), mlPool = mlPoolOf(legs);
+    const onCard = [...new Map([...list, ...pool, ...mlPool].map((l) => [l.legId, l])).values()];
     // Soccer marks are read while the log is written, and waited on only so long.
-    const logos = soccerPickLogos(list).catch(() => {});
-    try { await logDayPicks(env.DB, list, unavailable, now, pool); } catch (e) { out.logError = String((e && e.message) || e); }
+    const logos = soccerPickLogos(onCard).catch(() => {});
+    try { await logDayPicks(env.DB, list, unavailable, now, pool, mlPool); } catch (e) { out.logError = String((e && e.message) || e); }
     try { await gradeDayPicks(env.DB, now); } catch (e) { /* next read */ }
     // The records are read apart from the list (2026-10-22): a database refusal
     // there (D1 answered one read "out of memory: SQLITE_NOMEM" at 23:56 Pacific)
@@ -10073,7 +10104,6 @@ async function picksBoard(env) {
       }
     } catch (e) { /* the list stands without it */ }
     // The NBA player legs' last games, and the game lines' price history (2026-10-29).
-    const onCard = [...new Map([...list, ...pool].map((l) => [l.legId, l])).values()];
     const trends = new Map();
     const hists = new Map();
     for (const f of [nbaTrends, nhlTrends, ptdTrends]) {
@@ -10111,16 +10141,23 @@ async function picksBoard(env) {
     // The entry read: the top two as a 2-pick power (both have to land), and
     // the average leg of the top three to six against the flex break-even --
     // over that pool.
-    const ppLegs = out.ppPool;
-    for (let n = 2; n <= ppLegs.length; n++) {
-      const top = ppLegs.slice(0, n);
-      const [name, be] = PICKS_BREAK_EVEN[n];
-      out.entries.push({ legs: n, entry: name, perLegBreakEven: be,
-        avgLeg: round1(top.reduce((a, x) => a + x.p, 0) / n),
-        allLand: round1(top.reduce((a, x) => a * x.p / 100, 1) * 100),
-        // At PrizePicks' payouts, on each leg's Kelly chance (entryStake).
-        ...entryStake(top.map((x) => (x.kellyP != null ? x.kellyP : x.p) / 100), n === 2 ? 'power' : 'flex') });
-    }
+    const entriesOver = (ppLegs) => {
+      const rows = [];
+      for (let n = 2; n <= ppLegs.length; n++) {
+        const top = ppLegs.slice(0, n);
+        const [name, be] = PICKS_BREAK_EVEN[n];
+        rows.push({ legs: n, entry: name, perLegBreakEven: be,
+          avgLeg: round1(top.reduce((a, x) => a + x.p, 0) / n),
+          allLand: round1(top.reduce((a, x) => a * x.p / 100, 1) * 100),
+          // At PrizePicks' payouts, on each leg's Kelly chance (entryStake).
+          ...entryStake(top.map((x) => (x.kellyP != null ? x.kellyP : x.p) / 100), n === 2 ? 'power' : 'flex') });
+      }
+      return rows;
+    };
+    out.entries = entriesOver(out.ppPool);
+    // The moneyline-only entry, the same way (2026-11-01).
+    out.mlPool = mlPool.map(shown);
+    out.mlEntries = entriesOver(out.mlPool);
     // Prices that beat the sharp line, wherever they are (evBets), and Pick6
     // lines the market has moved past (pickemEdges).
     // Logged as shown, graded, and their record beside them (2026-10-28).

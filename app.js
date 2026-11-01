@@ -4848,6 +4848,8 @@
       // The entry ticket (2026-10-28): how many legs, and a picture of it.
       case 'ticket-n': state.ticketN = Number(target.dataset.n) || 3; renderPicks(); break;
       case 'ticket-save': saveTicketImage(); break;
+      case 'ticket-ml-n': state.ticketMlN = Number(target.dataset.n) || 3; renderPicks(); break;
+      case 'ticket-ml-save': saveTicketImage(true); break;
       // A book's link that needs the state: open the bankroll fold at it.
       case 'bank-open': {
         const f = document.querySelector('.pk-bank');
@@ -6115,6 +6117,7 @@
       // The PrizePicks entry's legs at each start (2026-10-28): the day's
       // Power and Flex units are theirs.
       const pool = (d.pool || []).length ? `<li class="pk-offh">The PrizePicks entry, best first</li>${d.pool.map(legRow).join('')}` : '';
+      const mlDay = (d.ml || []).length ? `<li class="pk-offh">The moneyline entry, best first</li>${d.ml.map(legRow).join('')}` : '';
       // Legs the list showed and dropped before their start (2026-10-27), with
       // why and how each went. Not in the day's count: the list is judged on
       // what it showed at each start.
@@ -6124,7 +6127,7 @@
         + `<span class="pk-lp">${pct0(x.p)}</span></li>`).join('');
       const offN = (d.dropped || []).length ? `${d.dropped.length} off before the start` : '';
       return `<details class="pk-day"><summary><span class="pk-dd"><b>${esc(shortDay(d.date))}</b> ${[count, playing, offN].filter(Boolean).join(' · ')}</span>`
-        + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}${pool}${off ? `<li class="pk-offh">Off the list before the start</li>${off}` : ''}</ul></details>`;
+        + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}${pool}${mlDay}${off ? `<li class="pk-offh">Off the list before the start</li>${off}` : ''}</ul></details>`;
     }).join('');
     // From the pool's first day the units are the PrizePicks entry's; the list's
     // own, from the days before, stay as a line.
@@ -6139,6 +6142,7 @@
       + `<div class="tc-sub">${what} Goblins, demons and boosts pay differently. Your own entries are on the Entries tab.</div>`
       + (sum ? `<ul class="pk-entries pk-hist-sum"><li class="pk-eh"><span>Entry</span><span>days</span><span>units</span><span>return</span></li>${sum}</ul>` : '')
       + (old ? `<div class="tc-sub pk-hist-old">Before ${esc(shortDay(h.poolSince))}, from the list's own top legs, moneylines included: ${old}.</div>` : '')
+      + ppEntryRecordHtml(h, true)
       + movedLineHtml(h.moved)
       + `<div class="pk-days">${days}</div></div>`;
   }
@@ -6183,7 +6187,9 @@
       return;
     }
     // One leg's row: the list's, and the PrizePicks pool's (2026-10-28).
-    const itemHtml = (x) => {
+    // compact: its chance and record, for the moneyline entry; the same legs
+    // sit with their prices and books in the list below it.
+    const legRow = (x, compact) => {
       const lg = pickLeg(x);
       const team = pickIsTeam(x);
       const on = !!state.slip[offerLeg(lg)];
@@ -6214,16 +6220,16 @@
         + `<span class="tc-l1"><b>${esc(x.title)}</b><span class="tc-p">${pct0(x.p)}</span></span>`
         // A soccer leg's league says the sport; the others name it.
         + `<span class="tc-l2"><span><span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
-        + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${team ? '' : pickEdgeHtml(x)}</span>` : ''}`
+        + `${!compact && typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${team ? '' : pickEdgeHtml(x)}</span>` : ''}`
         // A player leg's projection against its line, as the MLB board draws it;
         // a team's chance against its price.
-        + `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${team ? '' : betLinkHtml(legLink(x))}${booksHtml(x.books, team)}</span>`
+        + `${compact ? '' : `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${team ? '' : betLinkHtml(legLink(x))}${booksHtml(x.books, team)}`}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     };
+    const itemHtml = (x) => legRow(x, false);
     // Entry math over the legs still to come: the top two as a 2-pick power,
     // and the average leg of three to six against the flex break-even.
-    const ent = [];
     // An entry is built from the legs PrizePicks takes (2026-10-27): its
     // player picks and one NFL team pick -- since 2026-10-28 the worker's own
     // pool of them (ppPool), from everything that qualifies, not only the
@@ -6234,36 +6240,41 @@
     const ppLegs = allPool.filter((x) => Date.parse(x.commence) > Date.now());
     const whole = ppLegs.length === allPool.length;
     if (count && ppLegs.length) count.textContent = `${ppLegs.length}-leg entry`;
-    const evOf = (n) => {
-      const w = whole && (d.entries || []).find((e) => e.legs === n);
-      if (!w || typeof w.ev !== 'number') return '<span class="pk-ev"></span>';
-      return w.ev > 0 && w.stake > 0
-        ? `<span class="pk-ev up" title="Expected value at PrizePicks' payout; a quarter of the Kelly stake${w.capped ? ', held to the 2% an entry is allowed' : ''}">+${esc(String(w.ev))}% · ${esc(stakeTxt(w.stake))}${w.capped ? ' cap' : ''}</span>`
-        : '<span class="pk-ev">no edge</span>';
-    };
-    for (let n = 2; n <= ppLegs.length; n++) {
-      const top = ppLegs.slice(0, n);
-      const be = PP_BREAK_EVEN[n];
-      if (!be) continue;
-      // Three columns that never break mid-phrase: the entry, the chance, the
-      // bar. A 2-pick power pays only if both land, so its chance is both
-      // landing; a flex is read by its average leg.
-      const kind = be[0].replace(/^\d-pick /, '');
-      if (n === 2) {
-        const all = top.reduce((a, x) => a * x.p / 100, 1) * 100;
-        ent.push(`<li><span>Top 2 ${esc(kind)}</span><span class="pk-v"><b>${pct0(all)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span>${evOf(2)}</li>`);
-        // The two best legs at 75%+ (2026-10-25): legs that strong landed 28
-        // of 31 from Oct 10 to 24, those at 65-75% 20 of 29.
-        const hi = ppLegs.filter((x) => x.p >= 75).slice(0, 2);
-        if (hi.length === 2) {
-          const both = hi.reduce((a, x) => a * x.p / 100, 1) * 100;
-          ent.push(`<li class="pk-e75"><span>Top 2 ${esc(kind)}, 75%+</span><span class="pk-v"><b>${pct0(both)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span><span class="pk-ev"></span></li>`);
+    const entryRows = (entLegs, priced) => {
+      const rows = [];
+      const evOf = (n) => {
+        const w = priced && priced.find((e) => e.legs === n);
+        if (!w || typeof w.ev !== 'number') return '<span class="pk-ev"></span>';
+        return w.ev > 0 && w.stake > 0
+          ? `<span class="pk-ev up" title="Expected value at PrizePicks' payout; a quarter of the Kelly stake${w.capped ? ', held to the 2% an entry is allowed' : ''}">+${esc(String(w.ev))}% · ${esc(stakeTxt(w.stake))}${w.capped ? ' cap' : ''}</span>`
+          : '<span class="pk-ev">no edge</span>';
+      };
+      for (let n = 2; n <= entLegs.length; n++) {
+        const top = entLegs.slice(0, n);
+        const be = PP_BREAK_EVEN[n];
+        if (!be) continue;
+        // Three columns that never break mid-phrase: the entry, the chance, the
+        // bar. A 2-pick power pays only if both land, so its chance is both
+        // landing; a flex is read by its average leg.
+        const kind = be[0].replace(/^\d-pick /, '');
+        if (n === 2) {
+          const all = top.reduce((a, x) => a * x.p / 100, 1) * 100;
+          rows.push(`<li><span>Top 2 ${esc(kind)}</span><span class="pk-v"><b>${pct0(all)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span>${evOf(2)}</li>`);
+          // The two best legs at 75%+ (2026-10-25): legs that strong landed 28
+          // of 31 from Oct 10 to 24, those at 65-75% 20 of 29.
+          const hi = entLegs.filter((x) => x.p >= 75).slice(0, 2);
+          if (hi.length === 2) {
+            const both = hi.reduce((a, x) => a * x.p / 100, 1) * 100;
+            rows.push(`<li class="pk-e75"><span>Top 2 ${esc(kind)}, 75%+</span><span class="pk-v"><b>${pct0(both)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span><span class="pk-ev"></span></li>`);
+          }
+        } else {
+          const avg = top.reduce((a, x) => a + x.p, 0) / n;
+          rows.push(`<li><span>Top ${n} ${esc(kind)}</span><span class="pk-v"><b>${pct0(avg)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span>${evOf(n)}</li>`);
         }
-      } else {
-        const avg = top.reduce((a, x) => a + x.p, 0) / n;
-        ent.push(`<li><span>Top ${n} ${esc(kind)}</span><span class="pk-v"><b>${pct0(avg)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span>${evOf(n)}</li>`);
       }
-    }
+      return rows;
+    };
+    const ent = entryRows(ppLegs, whole && (d.entries || []));
     // The night's questions in the order they are asked (2026-10-28, the
     // owner's call): what goes in the PrizePicks entry, what to bet at the
     // sportsbook, and under both, the legs most likely to land of any kind.
@@ -6280,12 +6291,28 @@
         : (ppLegs.length ? `<div class="tc-sub pk-noentry">One leg PrizePicks takes clears its bar so far: an entry needs two.</div>` : ''))
       + ppEntryRecordHtml(d.record && d.record.history)
       + `</div>`;
+    // The moneyline-only entry (2026-11-01, the owner: PrizePicks takes all
+    // moneylines; DraftKings and FanDuel won't take moneyline-only picks). Its
+    // edge is at PrizePicks' standard payouts, so the card says to check them:
+    // a -480 favourite at a standard multiplier reads very high.
+    const allMl = d.mlPool || [];
+    const mlLegs = allMl.filter((x) => Date.parse(x.commence) > Date.now());
+    const mlWhole = mlLegs.length === allMl.length;
+    const mlEnt = entryRows(mlLegs, mlWhole && (d.mlEntries || []));
+    const mlCard = mlLegs.length < 2 ? '' : `<div class="nba-pp pk-card pk-ml">`
+      + `<div class="tc-head"><span class="tc-title">Moneyline-only entry</span></div>`
+      + `<div class="tc-sub pk-intro">The best moneyline in each game, any sport, best chance first. The edge assumes PrizePicks' standard payouts, so check what the app shows before you place it.</div>`
+      + `<ol class="tc-legs pk-pool">${mlLegs.map((x) => legRow(x, true)).join('')}</ol>`
+      + ticketHtml(ticketData(d, mlLegs, mlWhole, true), true)
+      + (mlEnt.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>At standard payouts</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${mlEnt.join('')}</ul>` : '')
+      + ppEntryRecordHtml(d.record && d.record.history, true)
+      + `</div>`;
     const listCard = `<div class="nba-pp pk-card pk-likely">`
       + `<div class="tc-head"><span class="tc-title">Most likely to land</span></div>`
       + `<div class="tc-sub">Every kind of leg, one a game, best chance first. Under a moneyline: its chance against the market's price.</div>`
       + `<ol class="tc-legs">${legs.map(itemHtml).join('')}</ol>`
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
-    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + bankHtml() + ppCard + evBetsHtml(d) + listCard + after;
+    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + bankHtml() + ppCard + mlCard + evBetsHtml(d) + listCard + after;
     picksAnimate(grid);
   }
   // The bars and the ring fill in once a page load (2026-10-28), after the
@@ -6369,11 +6396,11 @@
   // entry builds its record. Save image draws it for the phone's photos.
   const PP_PAY = { power: { 2: 3, 3: 5, 4: 10, 5: 20, 6: 37.5 },
     flex: { 3: { 3: 2.25, 2: 1.25 }, 4: { 4: 5, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } } };
-  function ticketData(d, legs, whole) {
+  function ticketData(d, legs, whole, ml) {
     if (!legs || legs.length < 2) return null;
-    const n = Math.max(2, Math.min(state.ticketN || 3, legs.length, 6));
+    const n = Math.max(2, Math.min((ml ? state.ticketMlN : state.ticketN) || 3, legs.length, 6));
     const top = legs.slice(0, n);
-    const e = (whole && (d.entries || []).find((x) => x.legs === n)) || {};
+    const e = (whole && ((ml ? d.mlEntries : d.entries) || []).find((x) => x.legs === n)) || {};
     const pays = n === 2 ? `both land ${PP_PAY.power[2]}x`
       : Object.entries(PP_PAY.flex[n]).sort((a, b) => b[0] - a[0]).map(([k, v]) => `${k} of ${n} ${v}x`).join(' · ');
     return {
@@ -6390,24 +6417,24 @@
       ev: typeof e.ev === 'number' ? e.ev : null, stake: typeof e.stake === 'number' ? e.stake : null, capped: !!e.capped,
     };
   }
-  function ticketHtml(t) {
+  function ticketHtml(t, ml) {
     if (!t) return '';
-    const sizes = t.sizes.map((k) => `<button type="button" class="tk-n${k === t.n ? ' on' : ''}" data-action="ticket-n" data-n="${k}" aria-pressed="${k === t.n}">${k}</button>`).join('');
+    const sizes = t.sizes.map((k) => `<button type="button" class="tk-n${k === t.n ? ' on' : ''}" data-action="ticket${ml ? '-ml' : ''}-n" data-n="${k}" aria-pressed="${k === t.n}">${k}</button>`).join('');
     const edge = t.ev == null ? '' : t.ev > 0 ? `<span class="tk-edge up">+${esc(String(t.ev))}% edge</span>` : '<span class="tk-edge">no edge</span>';
     return `<div class="pk-ticket"><div class="tk-head"><b class="tk-name">${esc(t.name)}</b>${edge}</div>`
       + `<div class="tk-legs">${t.legs.map((l) => `<div class="tk-leg">${pickFace(l.x, 40)}<b>${esc(l.short)}</b><span>${esc(l.pick)}</span><span class="tk-p">${esc(pct0(l.p))}</span></div>`).join('')}</div>`
       + `<div class="tk-foot"><div><span>All ${t.n} land</span><b>${esc(pct0(t.all))}</b></div><div><span>Pays</span><b>${esc(t.pays)}</b></div>`
       + (t.stake != null && t.stake > 0 ? `<div><span>¼ Kelly</span><b>${esc(stakeTxt(t.stake))}${t.capped ? ' cap' : ''}</b></div>` : '')
       + `</div><div class="tk-ctl"><span class="tk-sizes" role="group" aria-label="Legs in the entry">${sizes}</span>`
-      + `<button type="button" class="tk-save" data-action="ticket-save">Save image</button></div></div>`;
+      + `<button type="button" class="tk-save" data-action="ticket${ml ? '-ml' : ''}-save">Save image</button></div></div>`;
   }
   // The ticket drawn on a canvas, to share or keep: initials for faces (a
   // headshot from another site would taint the canvas), the page's own colours.
-  function saveTicketImage() {
+  function saveTicketImage(ml) {
     const d = state.picks || {};
-    const all = d.ppPool || [];
+    const all = (ml ? d.mlPool : d.ppPool) || [];
     const legs = all.filter((x) => Date.parse(x.commence) > Date.now());
-    const t = ticketData(d, legs, legs.length === all.length);
+    const t = ticketData(d, legs, legs.length === all.length, ml);
     if (!t) return;
     const css = getComputedStyle(document.documentElement);
     const col = (v, f) => (css.getPropertyValue(v).trim() || f);
@@ -6448,13 +6475,15 @@
 
   // The entry's own units since its pool was first logged (2026-10-28), from
   // "How the list did": the Power and the 3-pick Flex.
-  function ppEntryRecordHtml(h) {
-    if (!h || h.entriesFrom !== 'pool') return '';
+  function ppEntryRecordHtml(h, ml) {
+    const since = h && (ml ? h.mlSince : h.entriesFrom === 'pool' && h.poolSince);
+    if (!since) return '';
     const u = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
-    const done = (h.entries || []).filter((e) => e.days && /^(p2|f3|f6)$/.test(e.key));
+    const done = ((ml ? h.mlEntries : h.entries) || []).filter((e) => e.days && /^(p2|f3|f6)$/.test(e.key));
+    const who = ml ? 'The moneyline entry' : 'This entry';
     return `<div class="tc-sub pk-record">${done.length
-      ? `This entry since ${esc(shortDay(h.poolSince))}: ${done.map((e) => `${esc(e.label)} won <b>${e.won} of ${e.days}</b>, ${u(e.units)}`).join(' · ')}`
-      : `This entry is graded from ${esc(shortDay(h.poolSince))}: none settled yet.`}</div>`;
+      ? `${who} since ${esc(shortDay(since))}: ${done.map((e) => `${esc(e.label)} won <b>${e.won} of ${e.days}</b>, ${u(e.units)}`).join(' · ')}`
+      : `${who} is graded from ${esc(shortDay(since))}: none settled yet.`}</div>`;
   }
   // The book's own bet slip, from the odds feed's links (2026-10-29), with the
   // side already on it. DraftKings' and FanDuel's work as sent; BetMGM's,

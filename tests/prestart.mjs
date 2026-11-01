@@ -188,7 +188,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 const soccerKick = (iso) => (iso ? new RealDate(Z(iso) - 7 * 3600e3).toISOString().slice(11, 16) : '');
 let C;
 try {
-  C = new Function('esc', 'soccerKick', ['shortDay', 'pct0', 'pickMoved', 'HIST_DAY_KEYS', 'movedLineHtml', 'pickHistoryHtml'].map(lift).join('\n')
+  C = new Function('esc', 'soccerKick', ['shortDay', 'pct0', 'pickMoved', 'HIST_DAY_KEYS', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml'].map(lift).join('\n')
     + '\nreturn { pickMoved, movedLineHtml, pickHistoryHtml };')(esc, soccerKick);
 } catch (e) { console.log(`  FAIL  the card's functions lift out of app.js (${e.message})`); process.exit(1); }
 const m = C.pickMoved(legL);

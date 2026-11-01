@@ -184,6 +184,18 @@ ok(ml.length === 1 && rap && rap.sport === 'nba' && rap.onPicks, 'the Raptors, o
 ok(rap && rap.stat === '94–89' && rap.vs === 'up 5' && rap.matchup === 'TOR 94 – WSH 89' && rap.inning === 'Q4 7:28' && rap.state === 'cashing',
   `Raptors 94-89 with seven minutes left: "${rap && rap.vs}", ${rap && rap.state}`);
 
+// A leg of the moneyline-only entry that the list had no room for (2026-11-01):
+// followed all the same.
+sq.prepare(`INSERT INTO daypicks (date, leg_id, kind, src_date, game_id, market, team, label, p, commence, on_list, in_ml, ml_p, ml_rank)
+  VALUES ('2026-10-23', ?, 'nba_ml', '2026-10-23', ?, 'h2h', 'Boston Celtics', 'Celtics ML', 68.4, ?, 0, 1, 68.4, 2)`).run(`nba:ml:${NYK.game_id}:home`, NYK.game_id, NYK.commence);
+sq.prepare(`INSERT INTO gmpicks (sport, date, game_id, market, league, commence, side, pick, home, away, win_prob, entry_price, close_price)
+  VALUES ('nba', '2026-10-23', ?, 'h2h', 'reg', ?, 'home', 'Boston Celtics', 'Boston Celtics', 'New York Knicks', 68.4, -220, -220)`).run(NYK.game_id, NYK.commence);
+const cel = (await get('/api/live-now')).find((c) => c.name === 'Celtics ML');
+console.log('  ' + (cel ? `${cel.name} ${cel.stat} ${cel.vs} ${cel.state} [${cel.matchup} ${cel.inning}]` : 'no Celtics card'));
+ok(cel && cel.kind === 'ml' && cel.inning === 'Q4 9:59' && /BOS/.test(cel.matchup), 'a moneyline in the moneyline entry and not on the list is followed too');
+sq.prepare("UPDATE daypicks SET in_ml = 0 WHERE leg_id = ?").run(`nba:ml:${NYK.game_id}:home`);
+ok(!(await get('/api/live-now')).some((c) => c.name === 'Celtics ML'), 'and one that left it before the start is not');
+
 ok(!asked.some((u) => u.includes('the-odds-api.com')), `no odds read for any of it (${asked.length} feed reads, all ESPN and the NHL)`);
 ok(cards.every((c) => !('_pid' in c) && !('_edge' in c) && !('_started' in c)), 'and the ranking fields stay in the worker');
 
