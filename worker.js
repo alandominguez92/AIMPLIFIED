@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/pp-lines', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe',
 ]);
 
@@ -219,7 +219,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/pp-lines';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -526,6 +526,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/soccer-props') return cors(json(await socPropsBoard(env, url), 120));
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
   if (p === '/api/nhl-pp') return cors(json(await nhlPpBoard(env, url), 120));
+  if (p === '/api/pp-lines') return cors(json(await ppLinesDay(env, url), 120));
   if (p === '/api/nba-pp') {
     const raw = url && url.searchParams.get('raw');
     const day = url && url.searchParams.get('day');
@@ -9539,7 +9540,7 @@ async function picksCandidates(env, now) {
     const r = ppCurrent(row);
     const gap = rebGapOf(r);
     if (!soon(r.commence) || gap == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
-    legs.push({ kind: 'nba_reb_gap', gameKey: 'nba:' + r.game_id, p: REB_GAP_P, modelP: r.model_under, proj: r.proj, commence: r.commence, odds: null, readAt: r.close_at || r.captured_at || null,
+    legs.push({ kind: 'nba_reb_gap', gameKey: 'nba:' + r.game_id, p: REB_GAP_P, modelP: r.model_under, proj: r.proj, disp: NBA_DISP.reb, commence: r.commence, odds: null, readAt: r.close_at || r.captured_at || null,
       teams: { home: r.home, away: r.away },
       vsBook: gap, legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
       title: `${r.player} Under ${r.point} REB`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
@@ -10125,6 +10126,8 @@ async function picksBoard(env) {
       ...(l.modelP != null ? { modelP: l.modelP } : {}),
       // His projection, for the bar under a player leg (2026-10-28).
       ...(l.proj != null ? { proj: l.proj } : {}),
+      // And its spread, for a line set on the page (2026-11-01).
+      ...(l.disp != null ? { disp: l.disp } : {}),
       ...(l.link ? { link: l.link } : {}),
       ...(l.books ? { books: l.books } : {}),
       // When PrizePicks' line shown was read (2026-10-31): it moves between reads.
@@ -12652,6 +12655,51 @@ async function logNbaPp(db, lg, legs, close) {
   return legs.length;
 }
 
+// Each PrizePicks line as the reads found it, with the time (2026-11-01, the
+// owner's call). A re-read overwrites the last one, so nothing said when a line
+// moved, or whether PrizePicks trailed the books when it did. A row goes in only
+// when the leg's line, the books' or the sharp books' differs from its last row,
+// so a quiet leg is one row. The reads are already paid for: no odds credits.
+// NBA only: 242 of 242 NHL legs kept their line from first read to pre-tip.
+async function ensurePpLineLog(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS pplines (
+    sport TEXT NOT NULL, date TEXT NOT NULL, game_id TEXT NOT NULL, player TEXT NOT NULL, market TEXT NOT NULL, at TEXT NOT NULL,
+    commence TEXT, read TEXT, line REAL, book_line REAL, sharp_line REAL, ud_line REAL, p6_line REAL,
+    PRIMARY KEY (sport, game_id, player, market, at)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS pplines_date ON pplines (date)').run();
+}
+async function logPpLines(db, sport, legs, read) {
+  if (!legs.length) return;
+  await ensurePpLineLog(db);
+  const stamp = new Date().toISOString();
+  const stmts = legs.map((l) => db.prepare(
+    `INSERT OR IGNORE INTO pplines (sport, date, game_id, player, market, at, commence, read, line, book_line, sharp_line, ud_line, p6_line)
+     SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13 WHERE NOT EXISTS (SELECT 1 FROM pplines
+       WHERE sport = ?1 AND game_id = ?3 AND player = ?4 AND market = ?5 AND line IS ?9 AND book_line IS ?10 AND sharp_line IS ?11
+         AND at = (SELECT MAX(at) FROM pplines WHERE sport = ?1 AND game_id = ?3 AND player = ?4 AND market = ?5))`
+  ).bind(sport, ptDateOf(Date.parse(l.commence)), l.game_id, l.player, l.market, stamp, l.commence, read, l.point,
+    l.book_line == null ? null : l.book_line, sharpMainOf(l.book_unders), l.ud_line == null ? null : l.ud_line, l.p6_line == null ? null : l.p6_line));
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+}
+// GET /api/pp-lines?day=YYYY-MM-DD: the day's rows, and each move of PrizePicks'
+// own line with where the books stood when it was read.
+async function ppLinesDay(env, url) {
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  const day = url && url.searchParams.get('day');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return { error: 'day=YYYY-MM-DD' };
+  await ensurePpLineLog(env.DB);
+  const rows = (await env.DB.prepare('SELECT * FROM pplines WHERE date = ? ORDER BY sport, game_id, player, market, at').bind(day).all()).results || [];
+  const moves = [];
+  rows.forEach((r, i) => {
+    const p = rows[i - 1];
+    if (!p || p.sport !== r.sport || p.game_id !== r.game_id || p.player !== r.player || p.market !== r.market || p.line === r.line) return;
+    moves.push({ sport: r.sport, game_id: r.game_id, player: r.player, market: r.market, from: p.line, to: r.line, at: r.at, was: p.at, read: r.read,
+      book_before: p.book_line, book_after: r.book_line, sharp_before: p.sharp_line, sharp_after: r.sharp_line });
+  });
+  return { day, n: rows.length, moves, rows };
+}
+
 // Cron: each game watched from 36 hours out, read when PrizePicks posts it and
 // again before tip (ppReadDue), the games taken from the free events list and
 // the board's snapshot (ppWatchGames). A few calls a tick, pre-tip reads first.
@@ -12696,7 +12744,9 @@ async function nbaPpMaybeCapture(env) {
       const body = await r.json();
       if (!pri) { pri = await nbaPriors(env); recent = await nbaRecentMap(env.DB); }
       const hasPP = !!(body && (body.bookmakers || []).some((b) => b.key === 'prizepicks'));
-      logged += await logNbaPp(env.DB, lg, nbaPpLegs(body, pri, recent), what === 'close' || what === 'refresh');
+      const read = nbaPpLegs(body, pri, recent);
+      logged += await logNbaPp(env.DB, lg, read, what === 'close' || what === 'refresh');
+      await logPpLines(env.DB, 'nba', read, what === 'close' || what === 'refresh' ? what : 'first').catch(() => {});
       if (what === 'close') st.close = now;
       if (what === 'refresh') st.refreshed = now;
       if (hasPP) st.first = st.first || now; else { st.posted = null; st.checked = now; }
@@ -12902,6 +12952,8 @@ async function nbaPpBoard(env) {
       player: r.player, team: r.team, market: r.market, point: r.point, model_under: r.model_under, proj: r.proj,
       n_recent: r.n_recent, min_proj: r.min_proj, game: `${r.away} @ ${r.home}`, game_id: r.game_id, commence: r.commence, league: r.league,
       book_line: r.book_line, book_under: r.book_under, player_id: r.player_id,
+      // The spread the chance is worked out with, for a line set on the page.
+      disp: NBA_DISP[r.market] || null,
       // PrizePicks' number minus the books': above 0, its under is easier.
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       first_point: r.first_point, first_under: r.first_under, first_at: r.captured_at, close_at: r.close_at,

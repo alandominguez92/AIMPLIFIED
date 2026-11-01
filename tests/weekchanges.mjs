@@ -147,7 +147,7 @@ const dfs = new Function('esc', lift('dfsLinesHtml') + '\nreturn dfsLinesHtml;')
 const text = (x) => x.replace(/<[^>]+>/g, '').trim();
 ok(/class="tc-gap"/.test(dfs(5.5, 6.5, null)) && text(dfs(5.5, 6.5, null)) === 'UD 6.5', 'Underdog a point higher: tagged as the easier under');
 ok(/class="tc-dfs"/.test(dfs(5.5, 5.5, 5)) && text(dfs(5.5, 5.5, 5)).replace(/\s+/g, ' ') === 'UD 5.5 P6 5' && dfs(5.5, null, null) === '', 'level or lower: shown plain; none quoted: nothing');
-ok(/\$\{ppMovedTag\(x\)\}\$\{dfsLinesHtml\(x\.point, x\.ud_line, x\.p6_line\)\}/.test(lift('nbaPpCardHtml'))
+ok(/\$\{ppMovedTag\(x\)\}\$\{ppLineTags\(x\)\}\$\{dfsLinesHtml\(x\.point, x\.ud_line, x\.p6_line\)\}/.test(lift('nbaPpCardHtml'))
   && /dfsLinesHtml\(x\.spec\.pp\.line, x\.dfs\.ud, x\.dfs\.p6\)/.test(app), 'on the NBA card beside each leg, and on Picks of the day');
 // Over the legs PrizePicks takes since 2026-10-27 (tests/evbets.mjs).
 ok(/const hi = entLegs\.filter\(\(x\) => x\.p >= 75\)\.slice\(0, 2\);/.test(app) && /Top 2 \$\{esc\(kind\)\}, 75%\+/.test(app),

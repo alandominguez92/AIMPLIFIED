@@ -147,7 +147,7 @@ ok(/No price beats the sharp line/.test(card({ evBets: [] })), 'and says so when
 // The boards' book names (2026-10-28): Pelicans +165 printed "betmgm".
 ok(/\+600 MGM · fair/.test(text(card({ evBets: E.map((b) => ({ ...b, book: 'betmgm' })) }))) && /\+600 CZR · fair/.test(text(card({ evBets: E.map((b) => ({ ...b, book: 'williamhill_us' })) }))),
   'each book by the name the boards use: MGM, CZR');
-ok(/evBetsHtml\(d\) \+ after;/.test(app) && /As a PrizePicks entry/.test(app) && /const ppLegs = allPool\.filter\(\(x\) => Date\.parse\(x\.commence\) > Date\.now\(\)\);/.test(app),
+ok(/evBetsHtml\(d\) \+ after;/.test(app) && /As a PrizePicks entry/.test(app) && /const ppLegs = ppPoolAtLines\(allPool\)\.filter\(\(x\) => Date\.parse\(x\.commence\) > Date\.now\(\)\);/.test(app),
   'on the Picks tab under the list, with the entry table on the legs PrizePicks takes');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');

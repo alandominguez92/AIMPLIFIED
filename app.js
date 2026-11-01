@@ -284,6 +284,11 @@
     const savedSlip = JSON.parse(localStorage.getItem('aimplified_slip') || '{}');
     if (savedSlip && typeof savedSlip === 'object') state.slip = savedSlip;
   } catch (e) {}
+  // Up here because the load below runs as the page starts: further down, the
+  // name did not exist yet, the read threw inside its own try, and every line
+  // set on a leg came back empty after a reload.
+  const PP_LINE_STORE = 'aimplified_pp_lines';
+  state.ppLines = ppLinesLoad();
   try {
     const s = parseFloat(localStorage.getItem('aimplified_stake'));
     if (s > 0) state.stake = s;
@@ -4848,6 +4853,8 @@
       // The entry ticket (2026-10-28): how many legs, and a picture of it.
       case 'ticket-n': state.ticketN = Number(target.dataset.n) || 3; renderPicks(); break;
       case 'ticket-save': saveTicketImage(); break;
+      case 'pp-line': ppLineSet(target.dataset.key, Math.max(0.5, Number(target.dataset.line) + Number(target.dataset.d)), Number(target.dataset.read), target.dataset.commence); break;
+      case 'pp-line-reset': ppLineSet(target.dataset.key, null); break;
       case 'ticket-ml-n': state.ticketMlN = Number(target.dataset.n) || 3; renderPicks(); break;
       case 'ticket-ml-save': saveTicketImage(true); break;
       // A book's link that needs the state: open the bankroll fold at it.
@@ -5997,7 +6004,12 @@
     return `<svg class="hl-ring${tone}" viewBox="0 0 80 80" aria-hidden="true"><circle class="rg-t" cx="40" cy="40" r="34"/>`
       + `<circle class="rg-f" cx="40" cy="40" r="34" style="--rc:${Math.round(RING_C * 10) / 10};stroke-dasharray:${Math.round(RING_C * 10) / 10};stroke-dashoffset:${off}"/></svg>`;
   }
-  function heroLegHtml(x, opts) {
+  // What a line set on a Picks leg did to it.
+  const pickLineSetTag = (x) => (x.lineSet.off
+    ? `<span class="tc-wait">off the entry: ${esc(String(x.spec.pp.line))} is not above the sharp ${esc(String(x.lineSet.main))}</span>`
+    : `<span class="tc-gap">you set ${esc(String(x.spec.pp.line))}, read ${esc(String(x.lineSet.read))}</span>`);
+  function heroLegHtml(x0, opts) {
+    const x = pickAtLine(x0);
     const lg = pickLeg(x);
     const on = !!state.slip[offerLeg(lg)];
     const s = x.spec || {};
@@ -6019,8 +6031,9 @@
     if (mv) notes.push(mv.text);
     const tt = trendTag(x.trend);
     if (tt) notes.push(tt.text);
-    const ra = readAgeTag(x);
+    const ra = x.lineSet ? null : readAgeTag(x);
     if (ra) notes.push(ra.text);
+    if (x.lineSet) notes.push(pickLineSetTag(x).replace(/<[^>]+>/g, ''));
     // By the leg's own Pacific day (2026-10-21): the list looks a day ahead,
     // so its first leg is often tomorrow's -- Inter at noon read "Today's".
     const legDay = ptDayOf(Date.parse(x.commence));
@@ -6045,6 +6058,7 @@
       // No sportsbook line or button on a moneyline (the owner, 2026-11-01):
       // DraftKings and FanDuel won't take moneyline-only picks.
       + (!team && typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
+      + (x.kind === 'nba_reb_gap' && s.pp ? ppLineStepHtml(x.legId, s.pp.line, x.lineSet ? x.lineSet.read : s.pp.line, x.lineSet, x.commence) : '')
       + `<div class="hl-actions"><button type="button" class="hl-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? '★ In your slip' : '☆ Add to slip'}</button>`
       + (team ? '' : betLinkHtml(legLink(x)))
       + (opts && opts.link ? `<a href="#" class="hl-all" data-action="set-sport" data-sport="picks">All picks →</a>` : '')
@@ -6168,7 +6182,7 @@
     // the list did, once a day has graded.
     const after = socBestStripHtml() + pickHistoryHtml(d.record && d.record.history);
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + after; return; }
-    const legs = (d.legs || []).filter((x) => Date.parse(x.commence) > Date.now());
+    const legs = (d.legs || []).map(pickAtLine).filter((x) => Date.parse(x.commence) > Date.now());
     if (count) count.textContent = legs.length ? `${legs.length} leg${legs.length === 1 ? '' : 's'}` : '';
     const kinds = d.kinds || {};
     const rules = `<details class="pk-rules"><summary>What gets on the list</summary><ul>${Object.values(kinds).map((k) => {
@@ -6205,8 +6219,9 @@
       if (typeof x.modelP === 'number' && x.modelP !== x.p) tags.push(`<span class="tc-wait" title="The chance shown is a quarter the model's and three quarters the sharp books'">model ${esc(pct0(x.modelP))}</span>`);
       const tt = trendTag(x.trend);
       if (tt) tags.push(`<span class="${tt.good ? 'tc-gap' : 'tc-wait'}" title="His last games against this line. A run is context: the chance shown is the price's">${esc(tt.text)}</span>`);
-      const ra = readAgeTag(x);
+      const ra = x.lineSet ? null : readAgeTag(x);
       if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
+      if (x.lineSet) tags.push(pickLineSetTag(x));
       const it = injuryTag(x);
       if (it) for (const t of it.parts || [it.text]) tags.push(`<span class="${it.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(it.title)}">${esc(t)}</span>`);
       if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
@@ -6225,6 +6240,7 @@
         // a team's chance against its price.
         + `${compact ? '' : `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${team ? '' : betLinkHtml(legLink(x))}${booksHtml(x.books, team)}`}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
+        + (!compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '')
         + `</div></li>`;
     };
     const itemHtml = (x) => legRow(x, false);
@@ -6237,7 +6253,7 @@
     // stake are the worker's entryStake -- while the pool is the one it priced
     // (no leg of it under way yet).
     const allPool = d.ppPool || [];
-    const ppLegs = allPool.filter((x) => Date.parse(x.commence) > Date.now());
+    const ppLegs = ppPoolAtLines(allPool).filter((x) => Date.parse(x.commence) > Date.now());
     const whole = ppLegs.length === allPool.length;
     if (count && ppLegs.length) count.textContent = `${ppLegs.length}-leg entry`;
     const entryRows = (entLegs, priced) => {
@@ -6433,7 +6449,7 @@
   function saveTicketImage(ml) {
     const d = state.picks || {};
     const all = (ml ? d.mlPool : d.ppPool) || [];
-    const legs = all.filter((x) => Date.parse(x.commence) > Date.now());
+    const legs = (ml ? all : ppPoolAtLines(all)).filter((x) => Date.parse(x.commence) > Date.now());
     const t = ticketData(d, legs, legs.length === all.length, ml);
     if (!t) return;
     const css = getComputedStyle(document.documentElement);
@@ -6611,6 +6627,88 @@
     const h = (Date.now() - t) / 3600e3;
     const ago = h < 1 ? `${Math.max(1, Math.round(h * 60))} min ago` : `${Math.round(h)}h ago`;
     return h >= 3 ? { stale: true, text: `PP line read ${ago}: check the app` } : { stale: false, text: `PP line read ${ago}` };
+  }
+  // PrizePicks' line as its app shows it now (2026-11-01, the owner: Day'Ron
+  // Sharpe read Under 8.5 here and 8 on PrizePicks). Rebounds and assists move
+  // between reads, 26% and 20% of them from the first read to the pre-tip one;
+  // none of 436 threes, blocks or steals did. The number is set on the leg and
+  // the chance worked out at it, at once and with no odds credits. It stays on
+  // this device until the game starts, or until a later read knows better. The
+  // key is the leg's, so the NBA card and Picks share it.
+  const PP_LINE_MARKETS = new Set(['reb', 'ast']);
+  function ppLinesLoad() {
+    const out = {};
+    try {
+      const saved = JSON.parse(localStorage.getItem(PP_LINE_STORE) || '{}');
+      for (const [k, v] of Object.entries(saved || {})) if (v && typeof v.line === 'number' && Date.parse(v.commence) > Date.now()) out[k] = v;
+    } catch (e) {}
+    return out;
+  }
+  function ppLineOf(key, readAt) {
+    const v = state.ppLines && state.ppLines[key];
+    if (!v || typeof v.line !== 'number') return null;
+    const t = Date.parse(readAt || '');
+    return isFinite(t) && t > v.at ? null : v.line;
+  }
+  function ppLineSet(key, line, read, commence) {
+    const next = { ...(state.ppLines || {}) };
+    if (line == null || line === read) delete next[key];
+    else next[key] = { line, at: Date.now(), commence };
+    state.ppLines = next;
+    try { localStorage.setItem(PP_LINE_STORE, JSON.stringify(next)); } catch (e) {}
+    if (state.sport === 'nba') renderNba();
+    if (state.sport === 'picks') renderPicks();
+    // A starred leg is played at this number too: the render above re-offered it.
+    const offered = LEG_OFFERS.get(key);
+    if (state.slip[key] && offered) { state.slip = { ...state.slip, [key]: offered }; persistSlip(); renderSlip(); }
+  }
+  // At a whole number an exact tie takes the leg out of the entry, so each
+  // side's chance is of the results that decide it.
+  function ppChanceAt(line, proj, phi) {
+    const below = nbCdf(Math.ceil(line) - 1, proj, phi), above = 1 - nbCdf(Math.floor(line), proj, phi);
+    return { under: below / (below + above) * 100, over: above / (below + above) * 100, tie: Math.max(0, 1 - below - above) * 100 };
+  }
+  function nbaLegAtLine(x) {
+    const line = ppLineOf(`nbapp:${x.game_id}:${x.player}:${x.market}`, x.close_at || x.first_at);
+    if (line == null || line === x.point || !(x.proj > 0) || !(x.disp > 0)) return x;
+    const c = ppChanceAt(line, x.proj, x.disp);
+    // The sharp chance and his season against the line were at the old number.
+    return { ...x, point: line, model_under: r1(c.under), vsBook: x.book_line != null ? r1(line - x.book_line) : null,
+      sharp_under: null, sharp_src: null, l10_n: 0, l10_under: 0, lineSet: { read: x.point, under: c.under, over: c.over, tie: c.tie } };
+  }
+  // On Picks a rebounds Less stands on its line sitting above the sharp books'
+  // (PICK_KINDS.nba_reb_gap), so its chance stays the backtest's while that
+  // holds; when it does not, the leg is off the entry and its number is the
+  // model's, the backtest's being for the rule it just lost. Done twice, the same.
+  function pickAtLine(x) {
+    if (x.kind !== 'nba_reb_gap' || !x.spec || !x.spec.pp) return x;
+    const read = x.spec.pp.line, line = ppLineOf(x.legId, x.readAt);
+    if (line == null || line === read) return x;
+    const main = typeof x.vsBook === 'number' ? r1(read - x.vsBook) : null;
+    const gap = main == null ? null : r1(line - main);
+    const c = x.proj > 0 && x.disp > 0 ? ppChanceAt(line, x.proj, x.disp) : null;
+    const off = !(gap > 0);
+    return { ...x, title: x.title.replace(/ Under [\d.]+ /, ` Under ${line} `), vsBook: gap, sharp: null, trend: null, modelP: c ? r1(c.under) : null,
+      ...(off && c ? { p: r1(c.under) } : {}),
+      spec: { ...x.spec, pp: { ...x.spec.pp, line } },
+      lineSet: { read, main, off, under: c ? c.under : null, over: c ? c.over : null, tie: c ? c.tie : 0 } };
+  }
+  const ppPoolAtLines = (pool) => pool.map(pickAtLine).filter((x) => !(x.lineSet && x.lineSet.off));
+  // A rebounds or assists line read before any book had posted: from the first
+  // read to the pre-tip one, 193 of 382 of those moved, and 45 of 617 once a
+  // book was up (Oct 20-31). And how old the read is. Neither once a line is set.
+  function ppLineTags(x) {
+    if (x.lineSet || !PP_LINE_MARKETS.has(x.market)) return '';
+    const ra = readAgeTag({ readAt: x.close_at || x.first_at });
+    return (x.book_line == null ? ' <span class="tc-wait" title="Read before any book had posted: 193 of 382 of these moved before tip, against 45 of 617 with a book up">no book yet: half of these move</span>' : '')
+      + (ra ? ` <span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>` : '');
+  }
+  function ppLineStepHtml(key, line, read, set, commence) {
+    const btn = (d, sym, lab) => `<button type="button" class="sp-step" data-action="pp-line" data-key="${esc(key)}" data-line="${esc(String(line))}" data-read="${esc(String(read))}" data-commence="${esc(commence)}" data-d="${d}" aria-label="${lab}">${sym}</button>`;
+    return `<span class="sp-line pp-line"><span class="sp-lbl">${set ? 'You set' : 'PP shows'}</span>${btn(-0.5, '−', 'Half a point lower')}<b class="pp-line-v">${esc(String(line))}</b>${btn(0.5, '+', 'Half a point higher')}`
+      + (set ? `<button type="button" class="pp-line-reset" data-action="pp-line-reset" data-key="${esc(key)}">Back to ${esc(String(read))}</button>` : '')
+      + '</span>'
+      + (set && set.over != null ? `<span class="pp-line-read">Model at ${esc(String(line))}: Less ${pct0(set.under)} · More ${pct0(set.over)}${set.tie >= 0.5 ? ` · an exact ${esc(String(line))} voids the leg (${pct0(set.tie)})` : ''}</span>` : '');
   }
   // ESPN's injury report on an NBA leg (2026-11-01): what it lists for him,
   // or that it lists nothing once his game's report has been read; on a
@@ -6904,7 +7002,7 @@
       ppHi.n ? `PP line above book <b>${ppHi.hit} of ${ppHi.n}</b>` : null,
     ].filter(Boolean).join(' · ');
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span>${rec}</div>`
-      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. Logged, not posted.</div>`
+      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
       + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame);
     if (!top.length) {
@@ -6912,7 +7010,8 @@
         ? 'No rotation players among the logged lines yet.'
         : 'PrizePicks has not posted lines for the next games yet: they are read as soon as it does.'}</div></div>`;
     }
-    return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map((x) => {
+    return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map((x0) => {
+      const x = nbaLegAtLine(x0);
       const leg = nbaPpLeg(x);
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.player)} under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
@@ -6926,9 +7025,10 @@
         // The team code leads line two: beside the face on line one it cut
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
         // His projection against PrizePicks' line, as the MLB board draws it.
         + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x)}</span>`
+        + (PP_LINE_MARKETS.has(x.market) ? ppLineStepHtml(leg.id, x.point, x0.point, x.lineSet, x.commence) : '')
         + `</div></li>`;
     }).join('')}</ol>${nbaBlkMoreHtml(d, rot)}</div>`;
   }

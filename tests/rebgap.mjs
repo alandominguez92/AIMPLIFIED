@@ -148,7 +148,7 @@ NOW = RealDate.parse('2026-10-30T22:20:00Z');
 const dunn = { readAt: '2026-10-30T01:20:56.829Z' };
 ok(JSON.stringify(RA(dunn)) === JSON.stringify({ stale: true, text: 'PP line read 21h ago: check the app' }), `Dunn's line at 3:20 PM the next day: "${RA(dunn) && RA(dunn).text}"`);
 ok(JSON.stringify(RA({ readAt: '2026-10-30T21:55:00Z' })) === JSON.stringify({ stale: false, text: 'PP line read 25 min ago' }) && RA({}) === null, 'a fresh read says how fresh; no read, nothing');
-ok(/const ra = readAgeTag\(x\);\n\s+if \(ra\) tags\.push/.test(app) && /const ra = readAgeTag\(x\);\n\s+if \(ra\) notes\.push\(ra\.text\);/.test(app), "on the list's rows and the hero");
+ok(/const ra = x\.lineSet \? null : readAgeTag\(x\);\n\s+if \(ra\) tags\.push/.test(app) && /const ra = x\.lineSet \? null : readAgeTag\(x\);\n\s+if \(ra\) notes\.push\(ra\.text\);/.test(app), "on the list's rows and the hero");
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
