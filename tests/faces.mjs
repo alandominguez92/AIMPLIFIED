@@ -45,7 +45,7 @@ function lift(name, from = src) {
 const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
   // The hero's trend bars, price line and bet link (2026-10-29).
-  'trendTag', 'readAgeTag', 'injuryTag', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'heroLegHtml'];
+  'trendTag', 'readAgeTag', 'injuryTag', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'heroLegHtml'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const state = { slip: {} };
 const F = new Function('state', 'esc', names.map((n) => lift(n)).join('\n')
@@ -255,7 +255,7 @@ gm('soccer', 'evCHE', 'fav', 'epl', '2026-10-18T14:00:00Z', 'home', 'Chelsea', '
 const legOf = (d, t) => (d.legs || []).find((x) => x.title === t) || { spec: {} };
 let d1 = await picks();
 console.log('  ' + (d1.legs || []).map((x) => `${x.title} ${x.spec.logo || '-'}`).join(' | '));
-ok(legOf(d1, 'Celtics ML').spec.logo === 'nba/500/bos.png' && legOf(d1, 'WAS ML').spec.logo === 'nfl/500/wsh.png',
+ok(legOf(d1, 'Celtics ML').spec.logo === 'nba/500/bos.png' && legOf(d1, 'Commanders ML').spec.logo === 'nfl/500/wsh.png',
   'an NBA and an NFL moneyline carry their club\'s logo path');
 ok(legOf(d1, 'Arsenal ML').spec.logo === 'soccer/500/359.png' && legOf(d1, 'Bournemouth ML').spec.logo === 'soccer/500/349.png',
   'a soccer favourite carries the logo ESPN lists for that side of the fixture, matched as the grader matches clubs ("AFC Bournemouth")');

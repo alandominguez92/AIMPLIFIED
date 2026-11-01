@@ -137,7 +137,7 @@ const L = d.legs || [];
 console.log('  ' + L.map((x) => `${x.rank}. ${x.title} ${x.p}% [${x.kind}]`).join(' | '));
 const leg = (t) => L.find((x) => x.title.startsWith(t));
 ok(L.length === 6 && L.every((x, i) => i === 0 || L[i - 1].p >= x.p), `six legs, best first (${L.length})`);
-ok(L.map((x) => x.title.split(' ')[0]).join(',') === 'Celtics,DAL,R.,Jalen,J.,NYY',
+ok(L.map((x) => x.title.split(' ')[0]).join(',') === 'Celtics,Cowboys,R.,Jalen,J.,NYY',
   'Boston 78, Dallas 76, Grichuk 74, Brunson 72, Chourio 71, the Yankees 68 -- and the Dodgers at 66 are seventh, off the list');
 ok(leg('NYY ML') && leg('NYY ML').legId === 'ml:g849838:NYY' && leg('NYY ML').p === 68 && leg('NYY ML').spec.side === 'home',
   `the board led with Tampa Bay at 32%: the favourite is the Yankees, at 68, at home (${leg('NYY ML') && leg('NYY ML').legId})`);
@@ -151,8 +151,8 @@ ok(!L.some((x) => /Starter|Machado|Bench|Jazz|Heat|Arsenal|Chelsea|MIL ML/.test(
   'no strikeout under, nothing under its bar, no bench player, no preseason, nothing started, nothing past the next day');
 const bru = leg('Jalen Brunson');
 ok(bru && bru.vsBook === 1 && bru.legId === 'nbapp:evB:Jalen Brunson:ast', "an NBA under carries PrizePicks' number against the book's (+1)");
-const dal = leg('DAL ML');
-ok(dal && dal.legId === 'nfl:ml:evN:DAL' && dal.spec.gamePk === `TB @ DAL|${ptDay(NOW + 20 * H)}`,
+const dal = leg('Cowboys ML');
+ok(dal && dal.sub === 'Buccaneers @ Cowboys' && dal.spec.team === 'DAL' && dal.legId === 'nfl:ml:evN:DAL' && dal.spec.gamePk === `TB @ DAL|${ptDay(NOW + 20 * H)}`,
   'the NFL leg keys its game by matchup and day, as the NFL board\'s star does');
 ok(leg('Celtics ML') && leg('Celtics ML').legId === 'nba:ml:evA:home', 'and the NBA moneyline under the NBA board\'s id');
 
@@ -170,7 +170,7 @@ const e2 = (d.entries || [])[0];
 // sportsbook bets, so the top two are Dallas (the team pick) and Grichuk.
 ok(e2 && e2.entry === '2-pick power' && e2.allLand === Math.round(76 * 74 / 100 * 10) / 10 && e2.perLegBreakEven === 57.7,
   `the entry read: Dallas and Grichuk both land ${e2 && e2.allLand}% of the time, each needing 57.7% for a 2-pick power`);
-ok(leg('Celtics ML').ppOk === false && leg('NYY ML').ppOk === false && leg('DAL ML').ppOk === true && leg('R. Grichuk').ppOk === true,
+ok(leg('Celtics ML').ppOk === false && leg('NYY ML').ppOk === false && leg('Cowboys ML').ppOk === true && leg('R. Grichuk').ppOk === true,
   'the NBA and MLB moneylines are not PrizePicks legs; the NFL one is, as its team pick');
 
 // ---- the list's own record -------------------------------------------------------------

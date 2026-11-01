@@ -4279,7 +4279,7 @@ function passTdEntries(rows, week, seasonType) {
       price, book, fair_src: sf.src, sharp_n: sf.n, book_fairs: bookFairsJson(byBook),
       // The under's link at its best book, and every book's under (2026-10-29).
       link: g.books[book].link || null,
-      book_prices: bookPricesJson(bookPricesOf(['over', 'under'].map((sd) => Object.fromEntries(Object.entries(g.books).map(([bk, q]) => [bk, q[sd]]))), 1)),
+      book_prices: bookPricesJson(bookPricesOf(['over', 'under'].map((sd) => Object.fromEntries(Object.entries(g.books).map(([bk, q]) => [bk, q[sd]]))), 1, Object.fromEntries(Object.entries(g.books).map(([bk, q]) => [bk, q.link])))),
     });
   }
   return out;
@@ -8191,12 +8191,16 @@ function bookFairsJson(map) {
 // part of -- how far its prices add up past 100% -- for the "every book" fold
 // on Picks (2026-10-29). sides: each outcome's { book: price }; i: this
 // side's. A book missing an outcome has a price and no hold.
-function bookPricesOf(sides, i) {
+function bookPricesOf(sides, i, links) {
   const out = {};
   for (const bk of Object.keys(sides[i] || {})) {
     const ps = sides.map((x) => (x || {})[bk]);
     if (DFS_BOOKS.has(bk) || typeof ps[i] !== 'number') continue;
     out[bk] = [ps[i], ps.every((x) => typeof x === 'number') ? round1((ps.reduce((a, x) => a + amProb(x), 0) - 1) * 100) : null];
+    // Each book's own bet link behind its price (2026-11-01). A logged row's one
+    // link is its best price's, so DraftKings had no button when Caesars was
+    // five cents better.
+    if (links && links[bk] && !SHARP_MARK.has(bk)) out[bk].push(links[bk]);
   }
   return Object.keys(out).length ? out : null;
 }
@@ -8853,7 +8857,7 @@ const SHARP_MARK = new Set(['pinnacle', 'lowvig', 'betonlineag', 'novig', 'proph
 function booksOf(prices, links) {
   if (!prices) return null;
   const out = Object.entries(prices).filter(([, v]) => Array.isArray(v) && typeof v[0] === 'number')
-    .map(([book, [price, hold]]) => ({ book, price, hold: hold == null ? null : hold, ...(links && links[book] && !SHARP_MARK.has(book) ? { link: links[book] } : {}), ...(SHARP_MARK.has(book) ? { sharp: true } : {}) }));
+    .map(([book, [price, hold, own]]) => ({ book, price, hold: hold == null ? null : hold, ...(((links && links[book]) || own) && !SHARP_MARK.has(book) ? { link: (links && links[book]) || own } : {}), ...(SHARP_MARK.has(book) ? { sharp: true } : {}) }));
   return out.length ? out.sort((a, b) => amProb(a.price) - amProb(b.price)) : null;
 }
 const parseJsonOr = (s, d = null) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };
@@ -8921,11 +8925,11 @@ async function evScan(env, now) {
     const base = { commence: r.commence, fair: r.win_prob, price: now_.price, book: now_.book, fairSrc: r.fair_src, asOf: r.close_at || r.entry_at,
       link: r.link || null, hk: [r.sport, r.game_id, histSide(r.market, r.side, r.point)], books: now_.books };
     if (r.sport === 'nfl' && r.market === 'h2h') {
-      add({ ...base, key: `nfl:${r.game_id}:${r.pick}`, sport: 'nfl', market: 'ml', label: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`, grade: gmGrade(r) });
+      add({ ...base, key: `nfl:${r.game_id}:${r.pick}`, sport: 'nfl', market: 'ml', label: `${nflNick(r.pick)} ML`, sub: `${nflNick(r.away)} @ ${nflNick(r.home)}`, grade: gmGrade(r) });
     } else if (r.sport === 'nflptd') {
       const [, player] = String(r.game_id).split('|');
       add({ ...base, key: `ptd:${r.game_id}`, sport: 'nfl', market: 'pass_tds', prop: true, label: `${player} Under ${r.point} Pass TDs`,
-        sub: `${NFL_ABBR[r.away] || r.away} @ ${NFL_ABBR[r.home] || r.home}`, grade: gmGrade(r) });
+        sub: `${nflNick(r.away)} @ ${nflNick(r.home)}`, grade: gmGrade(r) });
     } else if (r.sport === 'soccer') {
       const league = (SOCCER_LEAGUES[r.league] && SOCCER_LEAGUES[r.league].label) || r.league || '';
       const label = r.market === 'totals' ? `${r.pick} goals` : r.side === 'draw' ? 'Draw' : `${r.pick} ML`;
@@ -9464,7 +9468,7 @@ async function picksCandidates(env, now) {
           logo: moneylineLogo('nhl', r.pick), book, pp: null } });
     } else if (kind === 'nfl_ml') {
       legs.push({ ...base, gameKey: 'nfl:' + r.game_id, legId: `nfl:ml:${r.game_id}:${r.pick}`,
-        title: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`,
+        title: `${nflNick(r.pick)} ML`, sub: `${nflNick(r.away)} @ ${nflNick(r.home)}`,
         // The NFL slip keys a game by matchup and day, as its board does.
         spec: { sport: 'nfl', date: day, gamePk: `${r.away} @ ${r.home}|${day}`, player: r.pick, team: r.pick, market: 'ml', side: r.side,
           logo: moneylineLogo('nfl', r.pick), book, pp: null } });
@@ -9476,7 +9480,7 @@ async function picksCandidates(env, now) {
       if (pp != null && pp !== r.point) continue;
       const away = NFL_ABBR[r.away] || r.away, home = NFL_ABBR[r.home] || r.home;
       legs.push({ ...base, gameKey: 'nfl:' + event, legId: `nfl:ptd:${event}:${player}`,
-        title: `${player} Under ${r.point} Pass TDs`, sub: `${away} @ ${home}${pp == null ? ` · check PrizePicks has ${r.point}` : ''}`,
+        title: `${player} Under ${r.point} Pass TDs`, sub: `${nflNick(r.away)} @ ${nflNick(r.home)}${pp == null ? ` · check PrizePicks has ${r.point}` : ''}`,
         spec: { sport: 'nfl', date: day, gamePk: `${away} @ ${home}|${day}`, player, team: null, market: 'pass_tds', side: 'Under', logo: null,
           book: { line: r.point, price, under: null }, pp: { line: r.point, under: round1(r.win_prob) } } });
     } else {
@@ -13691,7 +13695,7 @@ async function soccerBoardData(env, url, opts = {}) {
         return {
           selection: sel === 'Draw' ? 'Draw' : sel,
           fair: f != null ? Math.round(f * 1000) / 10 : null,
-          price: b.price, book: b.book, link: b.link, books: bookPricesOf(sides.map((x) => g.h2h[x] || {}), i),
+          price: b.price, book: b.book, link: b.link, books: bookPricesOf(sides.map((x) => g.h2h[x] || {}), i, g.links[`h2h|${sel}`]),
           implied: imp != null ? Math.round(imp * 1000) / 10 : null,
           value: (f != null && imp != null) ? Math.round((f - imp) * 1000) / 10 : null,
           bookFairs: bookFairsOf(sel),
@@ -15477,6 +15481,11 @@ const NFL_ABBR = {
 // Falls back to the full name rather than an invented abbreviation: a relocation
 // or a rename should read oddly and get fixed, not silently render as garbage.
 const nflAbbr = (n) => NFL_ABBR[n] || n || '';
+// What a leg says (2026-11-01): "Texans ML", "Colts @ Jaguars", as the other
+// sports read. The abbreviations stay in the slip's keys and the logo lookup.
+// Takes either form: the moneyline log keeps abbreviations, the props log names.
+const NFL_NICK = Object.fromEntries(Object.entries(NFL_ABBR).map(([n, a]) => [a, lastWord(n)]));
+const nflNick = (t) => NFL_NICK[t] || lastWord(t);
 // Novig joined on 2026-10-27 (Pikkit's 2024 NFL main markets: Circa, Pinnacle,
 // BookMaker, Novig), so a game Pinnacle has not hung still has two shops.
 const NFL_GAMELINE_POOL = ['pinnacle', 'novig', 'lowvig', 'betonlineag'];
@@ -16082,7 +16091,7 @@ async function nflBoardData(env, url) {
         home_price: bestB.price, home_book: bestB.book,
         // Each side's best price's link, and every book's price with its hold (2026-10-29).
         away_link: bestA.link, home_link: bestB.link,
-        away_books: bookPricesOf([g.h2h[a] || {}, g.h2h[b] || {}], 0), home_books: bookPricesOf([g.h2h[a] || {}, g.h2h[b] || {}], 1),
+        away_books: bookPricesOf([g.h2h[a] || {}, g.h2h[b] || {}], 0, g.links[a]), home_books: bookPricesOf([g.h2h[a] || {}, g.h2h[b] || {}], 1, g.links[b]),
         away_spread: sA, home_spread: sB, total,
         away_implied: impl(sA), home_implied: impl(sB),
         pickTeam, pickPrice, pickBook,

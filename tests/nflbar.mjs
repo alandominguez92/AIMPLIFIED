@@ -77,12 +77,12 @@ sq.prepare("UPDATE gmpicks SET result = NULL, home_score = NULL, away_score = NU
 NOW = RealDate.parse('2026-10-25T16:00:00Z');
 const p = await get('/api/picks');
 const nfl = (p.legs || []).filter((l) => l.kind === 'nfl_ml');
-const want = sunday.filter((x) => x.win_prob >= 75).map((x) => `${x.pick} ML`);
+const want = sunday.filter((x) => x.win_prob >= 75).map((x) => x.pick);
 console.log('  NFL legs: ' + nfl.map((l) => `${l.title} ${l.p}`).join(', '));
-ok(want.join() === 'HOU ML' && nfl.map((l) => l.title).join() === want.join(), 'the Texans alone, at 80.9%');
+ok(want.join() === 'HOU' && nfl.map((l) => l.spec.team).join() === want.join() && nfl[0].title === 'Texans ML', 'the Texans alone, at 80.9%');
 for (const t of ['MIN', 'DEN', 'NYJ']) {
   const x = sunday.find((s) => s.pick === t);
-  ok(x && x.win_prob >= 65 && x.win_prob < 75 && !nfl.some((l) => l.title === `${t} ML`), `${t} at ${x && x.win_prob}%: off the list`);
+  ok(x && x.win_prob >= 65 && x.win_prob < 75 && !nfl.some((l) => l.spec.team === t), `${t} at ${x && x.win_prob}%: off the list`);
 }
 const k = (p.kinds || {}).nfl_ml || {};
 const before = graded.filter((x) => x.date !== '2026-10-25' && x.win_prob >= 75);

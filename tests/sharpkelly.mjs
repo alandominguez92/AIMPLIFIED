@@ -172,7 +172,7 @@ for (const rows of [read('gmpicks-nflptd-20261027.json').rows, read('gmpicks-nfl
 sq.prepare("UPDATE gmpicks SET result = NULL WHERE date = '2026-10-25' AND sport IN ('nfl', 'nflptd')").run();
 const p = await get('/api/picks');
 for (const l of p.legs) console.log(`  ${l.title} ${l.p}% at ${l.odds}: Kelly chance ${l.kellyP}%, edge ${l.ev}%, stake ${l.stake}%, bet at ${l.betAt}`);
-const hou = p.legs.find((l) => l.title === 'HOU ML');
+const hou = p.legs.find((l) => l.title === 'Texans ML');
 const want = W.legStake(hou.p, hou.odds, p.kinds.nfl_ml.record);
 ok(hou && hou.ev === want.ev && hou.stake === 0 && hou.betAt === want.betAt && hou.ev < 0,
   `the Texans at ${hou.odds} on ${hou.p}%: no edge (${hou.ev}%), a bet at ${hou.betAt} or better`);

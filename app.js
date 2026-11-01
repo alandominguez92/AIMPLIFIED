@@ -373,7 +373,6 @@
   // ---------------------------------------------------------------------
 
   const el = {
-    themeToggle: document.querySelector('.theme-toggle'),
     ticker: document.getElementById('ticker'),
     winProbFill: document.getElementById('winProbFill'),
     winProbPct: document.getElementById('winProbPct'),
@@ -447,7 +446,10 @@
 
   function renderTheme() {
     document.documentElement.dataset.theme = state.theme;
-    el.themeToggle.textContent = state.theme === 'dark' ? 'Light mode' : 'Dark mode';
+    // The phone's status bar follows the page (--field in each theme). The
+    // button's icon is drawn in style.css.
+    const bar = document.querySelector('meta[name="theme-color"]');
+    if (bar) bar.content = state.theme === 'dark' ? '#0a0d12' : '#F2F4F8';
   }
 
   function renderTicker() {
@@ -4496,7 +4498,7 @@
     const price = team === g.pickTeam ? g.pickPrice : (home ? g.home_price : g.away_price);
     const fair = team === g.pickTeam ? g.pickFair : (home ? g.home_fair : g.away_fair);
     const imp = impliedPct(price);
-    return { id: `nfl:ml:${g.id}:${team}`, board: 'NFL ML', title: `${team} ML`, sub: `${g.away} @ ${g.home}`,
+    return { id: `nfl:ml:${g.id}:${team}`, board: 'NFL ML', title: `${nflNick(g, team)} ML`, sub: `${nflNick(g, g.away)} @ ${nflNick(g, g.home)}`,
       odds: typeof price === 'number' ? price : null, tier: null,
       edge: fair != null && imp != null ? r1(fair - imp) : null,
       spec: { sport: 'nfl', date: ptDayOf(Date.parse(g.commence)), gamePk: nflGameKey(`${g.away} @ ${g.home}`, g.commence),
@@ -4521,6 +4523,9 @@
   // NBA names are city plus nickname, and every nickname is unique; the
   // nickname is what fits a phone row (the "Trail Blazers" are "Blazers").
   const nbaNick = (name) => String(name || '').trim().split(/\s+/).pop();
+  // Each NFL club by its nickname, as the NBA and NHL rows show them. The game
+  // carries abbreviations and full names; the keys stay on the abbreviations.
+  const nflNick = (g, t) => nbaNick(t === g.home ? g.homeFull : t === g.away ? g.awayFull : t) || t;
   function nbaMlLeg(g, side) {
     const team = side === 'home' ? g.home : g.away;
     const price = side === 'home' ? g.homePrice : g.awayPrice;
@@ -5359,7 +5364,7 @@
     // win probability. Those cells stay empty rather than borrowing the market's
     // number and presenting it as ours.
     // Each club by its nickname and mark, as the NBA and NHL rows show them.
-    const nick = (t) => nbaNick(t === g.home ? g.homeFull : t === g.away ? g.awayFull : t) || t;
+    const nick = (t) => nflNick(g, t);
     const club = (t, logo) => `<span class="mc-club">${avatarHtml({ sport: 'nfl', isTeam: true, team: t, logo, name: nick(t), size: 22 })}<b>${esc(nick(t))}</b></span>`;
     const pick = isMkt ? '<span class="odds-blank">fewer than two sharp books</span>'
       : (g.pickTeam ? `<span class="ctx-pick">${esc(nick(g.pickTeam))}</span>` : '—');
@@ -5873,7 +5878,7 @@
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
   // sport switch and never changed back.
-  const DOC_TITLE = { mlb: document.title, picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', nhl: 'Aimplified — NHL Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
+  const DOC_TITLE = { mlb: 'Aimplified — MLB Board', picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', nhl: 'Aimplified — NHL Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
 
   // -------------------------------------------------------------------------
   // Picks of the day (2026-10-09)
@@ -6037,7 +6042,7 @@
       + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
       + (typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
       + `<div class="hl-actions"><button type="button" class="hl-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? '★ In your slip' : '☆ Add to slip'}</button>`
-      + betLinkHtml(x.link)
+      + betLinkHtml(legLink(x))
       + (opts && opts.link ? `<a href="#" class="hl-all" data-action="set-sport" data-sport="picks">All picks →</a>` : '')
       + `</div></article>`;
   }
@@ -6209,7 +6214,7 @@
         + `${typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${pickEdgeHtml(x)}</span>` : ''}`
         // A player leg's projection against its line, as the MLB board draws it;
         // a team's chance against its price.
-        + `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${betLinkHtml(x.link)}${booksHtml(x.books)}</span>`
+        + `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${betLinkHtml(legLink(x))}${booksHtml(x.books)}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + `</div></li>`;
     };
@@ -6470,6 +6475,14 @@
     if (/[\x7b\x7d]/.test(h)) return '';
     return `<a class="bet-at${small ? ' sm' : ''}" href="${esc(h)}" target="_blank" rel="noopener noreferrer"${small ? ` aria-label="Bet at ${esc(bk)}"` : ''}>${small ? 'Bet ↗' : `Bet at ${esc(bk)} ↗`}</a>`;
   }
+  // The button on a leg (2026-11-01): its best price's book, or, while no state
+  // is set, the best of the books that need none. "Set your state to open
+  // Caesars" was the only way to bet the Jaguars, a nickel from DraftKings.
+  function legLink(x) {
+    if (!String(x.link || '').includes(STATE_SLOT) || (state.bank && state.bank.state)) return x.link;
+    const free = (x.books || []).find((b) => b.link && !b.link.includes(STATE_SLOT));
+    return free ? free.link : x.link;
+  }
   // Every book's price of the side, best first, each with its hold -- how far
   // its prices on the market add up past 100% (2026-10-29). Folded, so a row
   // reads as before until it is opened. The sharp books make the fair; they
@@ -6639,7 +6652,7 @@
       // At +200 or longer the stake is halved, an eighth of Kelly (2026-11-01).
       + `<span class="tc-book">${esc(AM(b.price))} ${esc(bkLabel(b.book))} · fair ${esc(pct0(b.fair))} (${esc(AM(b.betAt))}) · <span class="pk-edge up">${b.longHalf ? '⅛' : '¼'} Kelly ${esc(stakeTxt(stakeOf(b)))}${b.capped ? ' (cap)' : ''}${b.longHalf ? ' (half: +200 or longer)' : ''}</span>`
       + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
-      + priceSparkHtml(b.hist) + betLinkHtml(b.link) + booksHtml(b.books)
+      + priceSparkHtml(b.hist) + betLinkHtml(legLink(b)) + booksHtml(b.books)
       + `</div></li>`).join('')}</ol>`
       : '<div class="tc-wait-note">No price beats the sharp line by enough right now.</div>';
     return `<div class="nba-pp pk-card pk-ev-card">${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}${priceCheckHtml(d)}</div>`;
@@ -7623,5 +7636,19 @@
       <div class="nfd-foot">Not modelled and not posted; the board's picks are logged and graded on the site's own record. The draw is a real outcome here, so a "value side" is one of three, not one of two.</div>
     </div>`;
   }
+
+  // A separator dot never starts a line (2026-11-01). Meta lines join their parts
+  // with " · ", and a phone wraps at the space before the dot as readily as the
+  // one after. Gluing the dot to what comes before it, once rendered, covers the
+  // page's strings and the worker's alike.
+  const glueDots = (s) => s.replace(/ · /g, ' · ');
+  function glueDotsIn(node) {
+    if (node.nodeType === 3) { if (node.data.includes(' · ')) node.data = glueDots(node.data); return; }
+    if (node.nodeType !== 1) return;
+    const walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    for (let t = walk.nextNode(); t; t = walk.nextNode()) if (t.data.includes(' · ')) t.data = glueDots(t.data);
+  }
+  glueDotsIn(document.body);
+  new MutationObserver((muts) => { for (const m of muts) m.addedNodes.forEach((n) => glueDotsIn(n)); }).observe(document.body, { childList: true, subtree: true });
 
 })();

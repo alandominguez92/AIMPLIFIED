@@ -85,16 +85,16 @@ ok(at60.length === 6 && ptd.length === 5 && ptd.every((l) => at60.includes(l.spe
 ok(!L.some((l) => /Brissett/.test(l.title)), 'Brissett, with PrizePicks at 0.5, is a different under: off');
 ok(!L.some((l) => l.kind === 'nfl_ptd' && l.p < 60) && sun.some((r) => r.win_prob < 60 && r.win_prob > 50), 'and none under 60%, though Sunday had several');
 const mah = ptd.find((l) => l.spec.player === 'Patrick Mahomes'), hunt = ptd.find((l) => l.spec.player === 'Tyler Huntley');
-ok(mah && mah.title === 'Patrick Mahomes Under 1.5 Pass TDs' && mah.sub === 'KC @ SEA' && mah.spec.side === 'Under' && mah.spec.pp.line === 1.5 && mah.spec.pp.under === 63.5,
+ok(mah && mah.title === 'Patrick Mahomes Under 1.5 Pass TDs' && mah.sub === 'Chiefs @ Seahawks' && mah.spec.gamePk.startsWith('KC @ SEA|') && mah.spec.side === 'Under' && mah.spec.pp.line === 1.5 && mah.spec.pp.under === 63.5,
   "Mahomes, with PrizePicks' 1.5 read: the leg as it plays");
-ok(hunt && hunt.sub === 'CIN @ BAL · check PrizePicks has 1.5' && hunt.legId === `nfl:ptd:${qb('Tyler Huntley').game_id.split('|')[0]}:Tyler Huntley`,
+ok(hunt && hunt.sub === 'Bengals @ Ravens · check PrizePicks has 1.5' && hunt.legId === `nfl:ptd:${qb('Tyler Huntley').game_id.split('|')[0]}:Tyler Huntley`,
   "Huntley, with PrizePicks' line not read: the leg says to check it");
-ok(L[0].title === 'HOU ML' && L.length === 6, 'the Texans at 80.9% lead; six legs');
+ok(L[0].title === 'Texans ML' && L[0].spec.team === 'HOU' && L.length === 6, 'the Texans at 80.9% lead; six legs');
 
 // One leg a game: had the Seahawks been 76%, their moneyline takes Mahomes' game.
 sq.prepare("UPDATE gmpicks SET win_prob = 76 WHERE sport = 'nfl' AND date = '2026-10-25' AND pick = 'SEA'").run();
 const p2 = await get('/api/picks');
-ok(p2.legs.some((l) => l.title === 'SEA ML') && !p2.legs.some((l) => /Mahomes/.test(l.title)), 'one leg a game: the moneyline at 76% takes the game from Mahomes at 63.5%');
+ok(p2.legs.some((l) => l.title === 'Seahawks ML') && !p2.legs.some((l) => /Mahomes/.test(l.title)), 'one leg a game: the moneyline at 76% takes the game from Mahomes at 63.5%');
 sq.prepare("UPDATE gmpicks SET win_prob = 59.9 WHERE sport = 'nfl' AND date = '2026-10-25' AND pick = 'SEA'").run();
 await get('/api/picks');                                        // the list back as it was
 
@@ -118,7 +118,7 @@ p = await get('/api/picks');
 const day = p.record.history.days.find((d) => d.date === '2026-10-25') || {};
 console.log('  ' + (day.legs || []).map((x) => `${x.label} ${x.result}`).join(', '));
 ok(day.legs && day.legs.filter((x) => x.kind === 'nfl_ptd').length === 5 && day.legs.filter((x) => x.kind === 'nfl_ptd').every((x) => x.result === 'hit')
-  && day.legs.find((x) => x.label === 'HOU ML').result === 'miss' && day.hit === 5 && day.decided === 6,
+  && day.legs.find((x) => x.label === 'Texans ML').result === 'miss' && day.hit === 5 && day.decided === 6,
   'graded from the log: the five unders landed, the Texans did not -- 5 of 6');
 ok(p.kinds.nfl_ptd.record.hit === 26 && p.kinds.nfl_ptd.record.n === 37, `with Sunday in, 26 of 37, as through Week 7 (${p.kinds.nfl_ptd.record.hit} of ${p.kinds.nfl_ptd.record.n})`);
 

@@ -162,6 +162,8 @@ ok(srow && srow.link === lead.link && !!srow.link, `the logged lead row (${che.l
 ok(['ml:home', 'ml:draw', 'ml:away'].every((s) => ph(che.id, s).length === 1), 'one point a side, the lead and favourite rows of one read together');
 const sbp = JSON.parse(srow && sq.prepare("SELECT book_prices FROM gmpicks WHERE sport = 'soccer' AND game_id = ? AND market = 'h2h'").get(che.id).book_prices);
 ok(sbp.draftkings[0] === 295 && sbp.draftkings[1] === hold(-120, 295, 300) && sbp.pinnacle[1] === hold(-120, 290, 300), "the draw's books, each with its three-way hold");
+ok(sbp.draftkings[2] === linkOf(EPL, 'draftkings', 'Draw') && sbp.fanduel[2] === linkOf(EPL, 'fanduel', 'Draw') && sbp.pinnacle.length === 2,
+  "and each book's own link behind its price, so a soccer moneyline can be bet at DraftKings or FanDuel when neither is the best price; the sharp book none (2026-11-01)");
 
 console.log('\n-- the Hawks\' last games, against a line --');
 const wlift = (name) => { let at = src.indexOf(`function ${name}(`); if (at < 0) throw new Error(`worker.js has no ${name}`); if (src.slice(at - 6, at) === "async ") at -= 6; let dd = 0;
@@ -214,8 +216,8 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 const state = { bank: { amount: null, cap: 5 } };
 let P;
 try {
-  P = new Function('esc', 'state', 'soccerKick', ['AM', 'BOOK_LABEL', 'bkLabel', 'moneyTxt', 'stakeTxt', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'booksHtml', 'priceCheckText', 'impPct', 'priceSparkHtml', 'trendBarsHtml'].map(alift).join('\n')
-    + '\nreturn { betLinkHtml, booksHtml, priceCheckText, priceSparkHtml, trendBarsHtml };')(esc, state, (iso) => iso);
+  P = new Function('esc', 'state', 'soccerKick', ['AM', 'BOOK_LABEL', 'bkLabel', 'moneyTxt', 'stakeTxt', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'booksHtml', 'priceCheckText', 'impPct', 'priceSparkHtml', 'trendBarsHtml'].map(alift).join('\n')
+    + '\nreturn { betLinkHtml, legLink, booksHtml, priceCheckText, priceSparkHtml, trendBarsHtml };')(esc, state, (iso) => iso);
 } catch (e) { console.log(`  FAIL  the page's pieces lift out of app.js (${e.message})`); process.exit(1); }
 const href = (h) => ((h.match(/href="([^"]*)"/) || [])[1] || '').replace(/&amp;/g, '&');
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -225,7 +227,14 @@ ok(href(h) === DK_ATL && text(h) === 'Bet at DraftKings ↗' && /target="_blank"
 ok(href(P.betLinkHtml(FD_ATL)) === FD_ATL, "FanDuel's too");
 h = P.betLinkHtml(MGM_ATL);
 ok(!/href=/.test(h) && /data-action="bank-open"/.test(h) && text(h) === 'Set your state to open BetMGM', 'BetMGM waits for the state, and says so');
+// The leg's own button (2026-11-01): the Jaguars at -480 read "Set your state to
+// open Caesars" with DraftKings at -485 and no way to bet there.
+const mgmBest = { link: MGM_ATL, books: [{ book: 'betmgm', link: MGM_ATL }, { book: 'pinnacle', sharp: true }, { book: 'fanduel', link: FD_ATL }, { book: 'draftkings', link: DK_ATL }] };
+ok(P.legLink(mgmBest) === FD_ATL, "no state set: the best price among the books that need none, not a button that only asks for one");
+ok(P.legLink({ link: MGM_ATL, books: [{ book: 'betmgm', link: MGM_ATL }, { book: 'pinnacle', sharp: true }] }) === MGM_ATL, 'with no such book it stays, and asks for the state');
+ok(P.legLink({ link: DK_ATL, books: mgmBest.books }) === DK_ATL && P.legLink({ link: null }) === null, "a best price that needs no state is left alone; no link stays no link");
 state.bank.state = 'nj';
+ok(P.legLink(mgmBest) === MGM_ATL, 'with a state set, the best price wherever it is');
 ok(href(P.betLinkHtml(MGM_ATL)) === MGM_ATL.replace('{state}', 'nj'), "with it, BetMGM's link names it");
 ok(href(P.betLinkHtml(CZR)) === CZR.replace('{state}', 'nj'), "Caesars' too");
 ok(href(P.betLinkHtml(BR)) === 'https://nj.betrivers.com/?page=sportsbook#event/1028754108', "BetRivers' slip wants a bet type and a stake: its event page instead");

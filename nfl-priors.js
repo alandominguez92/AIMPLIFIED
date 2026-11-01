@@ -56,11 +56,18 @@
     var saved = localStorage.getItem('aimplified_theme') || localStorage.getItem('aimplified-theme');
     if (saved === 'light' || saved === 'dark') document.documentElement.setAttribute('data-theme', saved);
   } catch (e) { /* private mode — the default is fine */ }
+  // The phone's status bar follows the page, as on the board (--field in each theme).
+  function paintStatusBar() {
+    var bar = document.querySelector('meta[name="theme-color"]');
+    if (bar) bar.content = document.documentElement.getAttribute('data-theme') === 'light' ? '#F2F4F8' : '#0a0d12';
+  }
+  paintStatusBar();
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-action="toggle-theme"]');
     if (!t) return;
     var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', next);
+    paintStatusBar();
     try { localStorage.setItem('aimplified_theme', next); localStorage.setItem('aimplified-theme', next); } catch (err) { /* not essential */ }
   });
 

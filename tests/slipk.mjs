@@ -36,7 +36,7 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const names = ['ptDayOf', 'pkOf', 'pct1', 'kLeadOf', 'kSpec', 'buildKPropLeg', 'kLegIdFor', 'buildKPitcherLeg',
-  'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nflMlLeg', 'nflYardsLeg', 'soccerMlLeg', 'gameStarted'];
+  'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nbaNick', 'nflNick', 'nflMlLeg', 'nflYardsLeg', 'soccerMlLeg', 'gameStarted'];
 const body = names.map(lift).join('\n');
 const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, nflYardsLeg, soccerMlLeg, gameStarted, entryLegFrom };`);
 const state = { logSides: {}, logPrices: {}, logLines: {}, logBook: 'pp', slip: {} };
@@ -118,13 +118,15 @@ ok(/Model.s average leg <b>59%<\/b> · a 2-pick power/.test(F.slipReadHtml([ml('
 
 console.log('\n-- legs from the NFL and soccer boards (2026-10-04) --');
 state.logBook = 'dk'; state.logSides = {};
-const nflGame = { id: 'ev1', away: 'DET', home: 'CAR', commence: '2026-10-05T00:20:00Z', pickTeam: 'DET', pickPrice: -180,
+const nflGame = { id: 'ev1', away: 'DET', home: 'CAR', awayFull: 'Detroit Lions', homeFull: 'Carolina Panthers', commence: '2026-10-05T00:20:00Z', pickTeam: 'DET', pickPrice: -180,
   pickFair: 63.9, away_price: -180, home_price: 168, away_fair: 63.9, home_fair: 36.1 };
 const detMl = F.nflMlLeg(nflGame, 'DET'), carMl = F.nflMlLeg(nflGame, 'CAR');
 ok(detMl.spec.sport === 'nfl' && detMl.spec.market === 'ml' && detMl.spec.side === 'away' && detMl.odds === -180 && detMl.spec.book.win === 63.9,
   `an NFL moneyline leg carries its side, price and the sharp fair (${detMl.title} ${detMl.odds}, ${detMl.spec.book.win}%)`);
 ok(carMl.odds === 168 && carMl.spec.book.win === 36.1 && carMl.edge === r(36.1 - 100 / 268 * 100),
   `the other side at its own price and fair, with its own value (${carMl.odds}, edge ${carMl.edge})`);
+ok(detMl.title === 'Lions ML' && detMl.sub === 'Lions @ Panthers' && detMl.id === 'nfl:ml:ev1:DET' && detMl.spec.team === 'DET' && /^DET @ CAR\|/.test(detMl.spec.gamePk),
+  `off the NFL tab it reads as it does on Picks (${detMl.title}, ${detMl.sub}), on the same keys`);
 function r(v) { return Math.round(v * 10) / 10; }
 const gibbs = F.nflYardsLeg({ player: 'Jahmyr Gibbs', team: 'DET', game: 'DET @ CAR', commence: nflGame.commence, line: 88.5, underPrice: -112 }, 'rushing');
 ok(gibbs.spec.market === 'rush_yds' && gibbs.spec.side === 'Under' && gibbs.spec.book.line === 88.5 && gibbs.odds === -112,

@@ -1,7 +1,7 @@
 {
   "name": "Aimplified",
   "short_name": "Aimplified",
-  "description": "Your MLB, NFL and soccer boards and your logged entries.",
+  "description": "Picks of the day across the NBA, NFL, NHL, MLB and soccer, and your logged entries.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

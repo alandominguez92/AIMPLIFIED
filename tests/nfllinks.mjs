@@ -126,13 +126,16 @@ await get('/api/nfl-ingest'); await get('/api/nfl-board');
 props = raise(PTD, 'fanduel', 'Under', 'Bryce Young', 120);
 await get('/api/nfl-capture');
 const d = await get('/api/picks');
-const ml = (d.evBets || []).find((b) => b.label === 'GB ML'), un = (d.evBets || []).find((b) => /^Bryce Young Under 1\.5/.test(b.label));
+const ml = (d.evBets || []).find((b) => b.label === 'Packers ML'), un = (d.evBets || []).find((b) => /^Bryce Young Under 1\.5/.test(b.label));
 for (const b of [ml, un]) if (b) console.log(`  ${b.label} ${b.price} ${b.book} · fair ${b.fair} · EV +${b.ev}% · ${b.link} · ${(b.books || []).map((x) => `${x.book} ${x.price}`).join(', ')}`);
 if (!ml || !un) console.log('  ' + JSON.stringify(d.evBets) + ' ' + (d.evError || ''));
 ok(ml && ml.price === -150 && ml.book === 'betmgm' && ml.link === out(TNF, 'betmgm', 'Green Bay Packers').link,
   "BetMGM's -150 on the Packers is an edge bet, at BetMGM, with BetMGM's link -- not DraftKings', the row's first book");
-ok(ml && ml.books && ml.books[0].book === 'betmgm' && ml.books.find((b) => b.book === 'pinnacle').sharp && ml.books.filter((b) => b.link).length === 1,
-  'its books, best first, the sharp one marked; the one link the row keeps is its best price\'s');
+ok(ml && ml.books && ml.books[0].book === 'betmgm' && ml.books.find((b) => b.book === 'pinnacle').sharp && !ml.books.find((b) => b.book === 'pinnacle').link,
+  'its books, best first, the sharp one marked and with no link');
+ok(ml && ml.books.find((b) => b.book === 'draftkings').link === out(TNF, 'draftkings', 'Green Bay Packers').link && ml.books.find((b) => b.book === 'fanduel').link === out(TNF, 'fanduel', 'Green Bay Packers').link,
+  "DraftKings and FanDuel each with their own link: the row's one link was its best price's, so a moneyline a nickel better at BetMGM left them no button (2026-11-01)");
+ok(un && un.books && un.books.find((b) => b.book === 'draftkings').link === by('draftkings', 'Bryce Young', 'Under'), "and DraftKings' under keeps its own link too");
 ok(un && un.price === 120 && un.book === 'fanduel' && un.link === by('fanduel', 'Bryce Young', 'Under') && un.books && un.books[0].book === 'fanduel',
   "FanDuel's +120 on Bryce Young's under is one too, with FanDuel's link and every book's under");
 
