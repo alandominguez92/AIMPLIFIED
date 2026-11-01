@@ -14065,6 +14065,11 @@ const HIST_PROP_JOBS = {
   // game.
   nba4: { label: 'NBA 2025-26 turnovers, blocks+steals, free throws', sport: 'basketball_nba', from: '2025-10-21', to: '2026-04-12', step: 2,
     markets: { player_turnovers: 'tov', player_blocks_steals: 'blk_stl', player_frees_made: 'ftm' } },
+  // The NHL (2026-11-01, the owner's call): the points and assists Mores on
+  // Picks stand on the model alone; this is PrizePicks' lines against the
+  // sharp books', with shots on goal and saves beside them. Every other day.
+  nhl: { label: 'NHL 2025-26 player props', sport: 'icehockey_nhl', from: '2025-10-07', to: '2026-04-16', step: 2,
+    markets: { player_points: 'pts', player_assists: 'ast', player_shots_on_goal: 'sog', player_total_saves: 'saves', player_blocked_shots: 'blk' } },
   // ESPN's NFL scoreboard answers by week, never by date (see the yardage
   // grader): week 1 is the week of Tuesday Sep 2.
   nfl: { label: 'NFL 2025 player props', sport: 'americanfootball_nfl', from: '2025-09-04', to: '2026-01-04', year: 2025, week1: '2025-09-02',
@@ -14102,7 +14107,7 @@ const HIST_PROP_LEAD_MIN = 60;      // read an hour before each game
 // hold a row a leg.
 const HIST_CRON = '1-59/2 * * * *';
 const HIST_PROP_PER_TICK = 3;
-const HIST_PROP_CAPS = { nba: 63000, nba3: 14000, nba4: 19000, nfl: 9000 };
+const HIST_PROP_CAPS = { nba: 63000, nba3: 14000, nba4: 19000, nhl: 26000, nfl: 9000 };
 // What the live site keeps (2026-10-29, the owner's call: the credits have to
 // last the whole month). A thousand for each day left before the quota renews
 // -- about half again the busiest day of the week before (658), the live
