@@ -145,5 +145,24 @@ const pj = await get('/api/hist-props?job=nba&player=Nikola%20Jokic');
 ok(pj.rows && pj.rows.length === 53 && pj.rows.every((r, i, a) => !i || a[i - 1].commence <= r.commence) && pj.rows.every((r) => JSON.parse(r.legs).every((l) => l.p === 'Nikola Jokic')),
   "one player's games by date, his legs only");
 
+// ---- a page of the legs -----------------------------------------------------------------------
+// For a read too big to run in the Worker: every game once, in pages, the sharp read worked out,
+// and without the books' quotes, which are most of a stored leg's size.
+const seenIds = [];
+let pageAt = '', pages = 0;
+while (pageAt != null && pages < 40) {
+  const pg = await get(`/api/hist-props?job=nba&rows=1&limit=20${pageAt ? `&after=${encodeURIComponent(pageAt)}` : ''}`);
+  if (!pg.rows) break;
+  for (const r of pg.rows) seenIds.push(r.id);
+  pageAt = pg.next; pages++;
+}
+ok(pages > 1 && seenIds.length === games.size && new Set(seenIds).size === games.size, `every game once, over ${pages} pages: ${seenIds.length} of ${games.size}`);
+const onePage = await get('/api/hist-props?job=nba&rows=1&limit=5000');
+ok(onePage.rows && onePage.rows.length === 50 && onePage.next === onePage.rows[49].id, 'a page holds 50 games, however many it asks for');
+const slim = onePage.rows ? onePage.rows[0].legs[0] : null;
+console.log(`  ${JSON.stringify(slim)}`);
+ok(slim && slim.p && slim.mk && typeof slim.pp === 'number' && !('q' in slim) && 'under' in slim && 'gap' in slim, 'a leg: player, market, line, result, the sharp read; no quotes');
+ok(onePage.rows && onePage.rows.some((r) => r.legs.some((l) => typeof l.under === 'number')), 'priced legs carry the sharp chance');
+
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

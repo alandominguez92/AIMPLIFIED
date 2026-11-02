@@ -14273,6 +14273,7 @@ const HIST_PROP_LEAD_MIN = 60;      // read an hour before each game
 // hold a row a leg.
 const HIST_CRON = '1-59/2 * * * *';
 const HIST_PROP_PER_TICK = 3;
+const HIST_ROWS_PAGE = 50;           // games on one page of ?rows=1
 const HIST_PROP_CAPS = { nba: 63000, nba3: 14000, nba4: 19000, nhl: 23000, nfl: 9000 };
 // What the live site keeps (2026-10-29, the owner's call: the credits have to
 // last the whole month). A thousand for each day left before the quota renews
@@ -14328,6 +14329,19 @@ async function histProps(env, url) {
     const state = histPropState(st.present && st.data);
     state.active = url.searchParams.get('start') === '1';
     await saveFeedCache(env.DB, stateKey, state);
+  }
+  // A page of the stored legs (2026-11-01, the owner's call), for a read too big
+  // to run here: a player's minutes and who was out sit in the season's box
+  // scores. Slim, the sharp read already worked out, and paged on the primary
+  // key so a page reads only its own rows. Spends nothing.
+  if (url.searchParams.get('rows') === '1') {
+    const limit = Math.min(Number(url.searchParams.get('limit')) || HIST_ROWS_PAGE, HIST_ROWS_PAGE);
+    const page = (await env.DB.prepare('SELECT event_id, date, commence, game, legs FROM histpropgames WHERE job = ? AND event_id > ? ORDER BY event_id LIMIT ?')
+      .bind(key, url.searchParams.get('after') || '', limit).all()).results || [];
+    return { job: key, rows: page.map((r) => ({ id: r.event_id, date: r.date, t: r.commence, game: r.game, legs: JSON.parse(r.legs || '[]').map((l) => {
+      const h = histPropRead(l);
+      return { p: l.p, mk: l.mk, pp: l.pp, a: l.a == null ? null : l.a, v: l.v || 0, under: h.under, gap: h.gap };
+    }) })), next: page.length === limit ? page[page.length - 1].event_id : null };
   }
   // Form against the line (histPropForm), and one player's legs by date.
   const form = url.searchParams.get('form'), who = url.searchParams.get('player'), lines = url.searchParams.get('lines');
