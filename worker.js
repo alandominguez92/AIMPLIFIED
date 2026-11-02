@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/pp-lines', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/pp-lines', '/api/nba-cause', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe',
 ]);
 
@@ -219,7 +219,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/pp-lines';
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/pp-lines';
     const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
@@ -265,6 +265,9 @@ export default {
     ctx.waitUntil(nbaPpMaybeCapture(env).catch(() => null));
     // ESPN's injury report for the NBA legs on Picks (2026-11-01), free.
     ctx.waitUntil(nbaInjuryTick(env).catch(() => null));
+    // A streak with a cause, logged only (2026-11-01): pays for a game only if
+    // someone in it passes the free box-score read first.
+    ctx.waitUntil(nbaCauseTick(env).catch(() => null));
     // NHL PrizePicks points and assists unders: read the same way, graded
     // hourly from the NHL's box scores.
     ctx.waitUntil(nhlPpMaybeCapture(env).catch(() => null));
@@ -527,6 +530,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
   if (p === '/api/nhl-pp') return cors(json(await nhlPpBoard(env, url), 120));
   if (p === '/api/pp-lines') return cors(json(await ppLinesDay(env, url), 120));
+  if (p === '/api/nba-cause') return cors(json(await nbaCauseRoute(env, url), 120));
   if (p === '/api/nba-pp') {
     const raw = url && url.searchParams.get('raw');
     const day = url && url.searchParams.get('day');
@@ -9332,8 +9336,9 @@ async function nbaInjuryTick(env, now = Date.now()) {
           st.games = evs.filter((ev) => ev && ev.id).map((ev) => {
             const cs = ((ev.competitions || [])[0] || {}).competitors || [];
             const nm = (side) => ((cs.find((x) => x.homeAway === side) || {}).team || {}).displayName || null;
+            const ab = (side) => ((cs.find((x) => x.homeAway === side) || {}).team || {}).abbreviation || null;
             const old = was.get(String(ev.id)) || {};
-            return { id: String(ev.id), home: nm('home'), away: nm('away'), commence: ev.date, at: old.at || 0, inj: old.inj || {} };
+            return { id: String(ev.id), home: nm('home'), away: nm('away'), homeAb: ab('home'), awayAb: ab('away'), commence: ev.date, at: old.at || 0, inj: old.inj || {} };
           });
         }
         st.sbAt = now; dirty = true;
@@ -12765,6 +12770,213 @@ async function nbaPpMaybeCapture(env) {
   }
   await saveFeedCache(env.DB, 'nba_pp_games', states);
   return { logged, calls, due: due.length };
+}
+
+// A streak with a cause, logged and nothing else (2026-11-01, the owner's call).
+// Hot alone is no edge: 8+ of his last ten over the number beat the sharp books by
+// 0.3. Last season's legs where he had cleared tonight's number 6+ of his last ten,
+// his minutes were up 4+ (last five against the fifteen before) and a key teammate
+// (26+ minutes over 5+ games) had missed the last 1 to 5 games and sat again went
+// Over 55.4% where the sharp books said 50.0 (551 priced legs, the interval -0.1 to
+// +10.8; 53.1% of all 912). One lead from some fifteen groups tried, so the numbers
+// stay as tested and nothing here reaches a page.
+//   - Each game is read once, about an hour before tip as the backtest's were, and
+//     only if someone in it passes all the box scores can say, so a night with no
+//     one spends nothing. Seven credits a game read.
+//   - A leg below the form bar is logged too: the backtest's 4-5 of 10 did nothing,
+//     and whether that holds says as much as the rule does.
+//   - Out is the report's word before the game (listed, either way) and the box
+//     score's after it: `held` says he really sat, as the backtest counted it.
+const NBA_CAUSE_MARKETS = { player_points: 'pts', player_points_rebounds_assists: 'pra', player_points_rebounds: 'pts_reb',
+  player_points_assists: 'pts_ast', player_rebounds_assists: 'reb_ast', player_rebounds: 'reb', player_threes: 'threes' };
+const NBA_CAUSE_KEY_MIN = 26;                // a key teammate: minutes a game for this team
+const NBA_CAUSE_KEY_GAMES = 5;               // ... over at least this many games
+const NBA_CAUSE_OUT_MAX = 5;                 // team games missed in a row before tonight: 1 to this
+const NBA_CAUSE_ROT_MIN = 20;                // the player: minutes over his last five
+const NBA_CAUSE_MIN_UP = 4;                  // ... that many up on the fifteen before them
+const NBA_CAUSE_PRIOR = 10;                  // games he has played, for the form to mean anything
+const NBA_CAUSE_FORM_BAR = 6;                // cleared tonight's number, of his last ten
+const NBA_CAUSE_LEAD_MS = 65 * 60e3;         // read inside this before tip
+const NBA_CAUSE_STOP_MS = 10 * 60e3;         // ... and not this close to it
+const NBA_CAUSE_RETRY_MS = 20 * 60e3;        // PrizePicks not up yet: once more, this much later
+const NBA_CAUSE_TRIES = 2;
+const NBA_CAUSE_PER_TICK = 3;                // games a tick may read
+const NBA_CAUSE_GRADE_PER_TICK = 6;          // games a tick may grade
+const NBA_CAUSE_NO_BOX_DAYS = 4;             // no box score by then: postponed, so void
+const NBA_CAUSE_STATE = 'nba_cause_games';   // feed_cache: which games have had their read
+async function ensureNbaCauseSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nbacause (
+    event_id TEXT NOT NULL, player TEXT NOT NULL, market TEXT NOT NULL,
+    espn_id TEXT, player_id TEXT, team TEXT, date TEXT, commence TEXT, home TEXT, away TEXT,
+    pp_line REAL, sharp_under REAL, sharp_src TEXT, gap REAL,
+    form INTEGER, min5 REAL, min_before REAL, outs TEXT, read_at TEXT,
+    actual REAL, result TEXT, held INTEGER, graded_at TEXT,
+    PRIMARY KEY (event_id, player, market)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nbacause_open ON nbacause (espn_id) WHERE result IS NULL').run();
+}
+// Each team's games in order and each player's, from box rows ordered by date (pure).
+function nbaCauseState(rows) {
+  const teams = new Map(), players = new Map();
+  for (const r of rows || []) {
+    if (!(r.min > 0) || !r.team) continue;
+    if (!teams.has(r.team)) teams.set(r.team, new Map());
+    const t = teams.get(r.team);
+    if (!t.has(r.game_id)) t.set(r.game_id, new Map());
+    t.get(r.game_id).set(r.player_id, r.min);
+    if (!players.has(r.player_id)) players.set(r.player_id, { id: r.player_id, name: r.player, team: r.team, games: [] });
+    const p = players.get(r.player_id);
+    p.team = r.team; p.name = r.player || p.name;
+    p.games.push(r);
+  }
+  return { teams, players };
+}
+// Who on this team passes everything but tonight's number (pure): each with the
+// key teammates behind it. `inj` is the game's report, by ESPN id.
+function nbaCauseCandidates(st, team, inj) {
+  const games = st.teams.get(team);
+  if (!games) return [];
+  const list = [...games.values()], report = inj || {}, tally = new Map();
+  list.forEach((g, i) => { for (const [id, min] of g) {
+    const s = tally.get(id) || { sum: 0, n: 0, last: -1 };
+    s.sum += min; s.n++; s.last = i;
+    tally.set(id, s);
+  } });
+  const outs = [];
+  for (const [id, s] of tally) {
+    const missed = list.length - 1 - s.last;
+    if (s.n < NBA_CAUSE_KEY_GAMES || s.sum / s.n < NBA_CAUSE_KEY_MIN || missed < 1 || missed > NBA_CAUSE_OUT_MAX || !report[id]) continue;
+    outs.push({ id, name: (st.players.get(id) || {}).name || null, min: round1(s.sum / s.n), missed, status: report[id].f || report[id].s || null });
+  }
+  if (!outs.length) return [];
+  const avg = (rs) => rs.reduce((a, r) => a + r.min, 0) / rs.length;
+  const out = [];
+  for (const p of st.players.values()) {
+    if (p.team !== team || p.games.length < NBA_CAUSE_PRIOR || (report[p.id] && nbaInjOut(report[p.id]))) continue;
+    const mine = outs.filter((o) => o.id !== p.id);
+    if (!mine.length) continue;
+    const min5 = avg(p.games.slice(-5)), before = avg(p.games.slice(-20, -5));
+    if (min5 < NBA_CAUSE_ROT_MIN || min5 - before < NBA_CAUSE_MIN_UP) continue;
+    out.push({ id: p.id, name: p.name, team, min5: round1(min5), minBefore: round1(before), last10: p.games.slice(-10), outs: mine });
+  }
+  return out;
+}
+// One game's payload against its candidates (pure): a row for each leg PrizePicks
+// posted on one of them, the sharp read as the backtest took it (histPropRead).
+function nbaCauseRows(cands, ev, g, at) {
+  const byName = new Map(cands.map((c) => [nbaName(c.name), c]));
+  const rows = [];
+  for (const l of histPropLegs({ markets: NBA_CAUSE_MARKETS }, ev)) {
+    const c = byName.get(nbaName(l.p));
+    if (!c) continue;
+    const read = histPropRead(l);
+    rows.push({ event_id: ev.id, player: l.p, market: l.mk, espn_id: g.id, player_id: c.id, team: c.team, date: ptDateOf(Date.parse(ev.commence_time)),
+      commence: ev.commence_time, home: ev.home_team, away: ev.away_team, pp_line: l.pp, sharp_under: read.under, sharp_src: read.src || null, gap: read.gap,
+      form: c.last10.filter((b) => { const v = nbaStat(b, l.mk); return v != null && v > l.pp; }).length,
+      min5: c.min5, min_before: c.minBefore, outs: JSON.stringify(c.outs), read_at: at });
+  }
+  return rows;
+}
+async function gradeNbaCause(env, now) {
+  const open = (await env.DB.prepare('SELECT espn_id, MIN(date) AS date FROM nbacause WHERE result IS NULL GROUP BY espn_id').all()).results || [];
+  const at = new Date(now).toISOString();
+  let graded = 0;
+  for (const o of open.slice(0, NBA_CAUSE_GRADE_PER_TICK)) {
+    const box = (await env.DB.prepare('SELECT player_id, min, dnp, pts, reb, ast, threes FROM nba_box WHERE game_id = ?').bind(o.espn_id).all()).results || [];
+    if (!box.length) {
+      if (now - Date.parse(`${o.date}T12:00:00Z`) > NBA_CAUSE_NO_BOX_DAYS * 86400e3) {
+        await env.DB.prepare("UPDATE nbacause SET result = 'void', graded_at = ? WHERE espn_id = ? AND result IS NULL").bind(at, o.espn_id).run();
+      }
+      continue;
+    }
+    const played = new Map(box.filter((b) => !b.dnp && b.min > 0).map((b) => [b.player_id, b]));
+    const legs = (await env.DB.prepare('SELECT * FROM nbacause WHERE espn_id = ? AND result IS NULL').bind(o.espn_id).all()).results || [];
+    const stmts = legs.map((l) => {
+      const me = played.get(l.player_id), actual = me ? nbaStat(me, l.market) : null;
+      const held = JSON.parse(l.outs || '[]').some((x) => !played.has(x.id)) ? 1 : 0;
+      graded++;
+      return env.DB.prepare('UPDATE nbacause SET result = ?, actual = ?, held = ?, graded_at = ? WHERE event_id = ? AND player = ? AND market = ?')
+        .bind(actual == null ? 'void' : ppSide(actual, l.pp_line), actual, held, at, l.event_id, l.player, l.market);
+    });
+    for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+  }
+  return graded;
+}
+async function nbaCauseTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  await ensureNbaCauseSchema(env.DB);
+  const graded = await gradeNbaCause(env, now).catch(() => 0);
+  if (!env.ODDS_API_KEY) return { graded };
+  const hit = await loadFeedCache(env.DB, NBA_CAUSE_STATE);
+  const st = (hit.present && hit.data) || {};
+  const byDay = await nbaInjuryDays(env.DB, [ptDateOf(now), ptDateOf(now + 86400e3)]);
+  const due = [...byDay.values()].flat().filter((g) => { const t = Date.parse(g.commence), s = st[g.id] || {};
+    return t - now <= NBA_CAUSE_LEAD_MS && t - now > NBA_CAUSE_STOP_MS && g.at && g.homeAb && g.awayAb && !s.done && !(s.next > now); })
+    .sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence)).slice(0, NBA_CAUSE_PER_TICK);
+  if (!due.length) return { graded };
+  await ensureNbaSchema(env.DB);
+  const box = nbaCauseState((await env.DB.prepare('SELECT game_id, player_id, player, team, min, pts, reb, ast, threes FROM nba_box WHERE season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date, game_id')
+    .bind(NBA_SEASON_FROM).all()).results);
+  let logged = 0, reads = 0, dirty = false;
+  const at = new Date(now).toISOString();
+  for (const g of due) {
+    const cands = [...nbaCauseCandidates(box, g.homeAb, g.inj), ...nbaCauseCandidates(box, g.awayAb, g.inj)];
+    if (!cands.length) { st[g.id] = { done: at, why: 'no one' }; dirty = true; continue; }
+    if (await oddsLean(env.DB, now)) break;
+    const ev = (await ppWatchGames(env, 'nba', 'reg', NBA_LEAGUES.reg, now)).find((x) => nbaMatch(x.home, g.home) && nbaMatch(x.away, g.away) && Math.abs(Date.parse(x.commence) - Date.parse(g.commence)) < 6 * 3600e3);
+    if (!ev) continue;
+    try {
+      reads++;
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${NBA_LEAGUES.reg}/events/${ev.id}/odds?apiKey=${env.ODDS_API_KEY}&markets=${Object.keys(NBA_CAUSE_MARKETS).join(',')}&oddsFormat=american&dateFormat=iso&bookmakers=${HIST_PROP_BOOKS.join(',')}`,
+        { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, 'nba:reg:cause');
+      const body = r.ok ? await r.json() : null;
+      const s = st[g.id] = { ...(st[g.id] || {}), tries: ((st[g.id] || {}).tries || 0) + 1 };
+      dirty = true;
+      if (!(body && (body.bookmakers || []).some((b) => b.key === 'prizepicks'))) {
+        if (s.tries >= NBA_CAUSE_TRIES) { s.done = at; s.why = 'no PrizePicks'; } else s.next = now + NBA_CAUSE_RETRY_MS;
+        continue;
+      }
+      const rows = nbaCauseRows(cands, body, g, at);
+      const stmts = rows.map((x) => env.DB.prepare(`INSERT OR IGNORE INTO nbacause (event_id, player, market, espn_id, player_id, team, date, commence, home, away,
+          pp_line, sharp_under, sharp_src, gap, form, min5, min_before, outs, read_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(x.event_id, x.player, x.market, x.espn_id, x.player_id, x.team, x.date, x.commence, x.home, x.away, x.pp_line, x.sharp_under, x.sharp_src, x.gap, x.form, x.min5, x.min_before, x.outs, x.read_at));
+      for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+      logged += rows.length;
+      s.done = at; s.legs = rows.length;
+    } catch (e) { /* this game's next tick */ }
+  }
+  if (dirty) {
+    for (const k of Object.keys(st)) if (st[k].done && now - Date.parse(st[k].done) > 3 * 86400e3) delete st[k];
+    await saveFeedCache(env.DB, NBA_CAUSE_STATE, st);
+  }
+  return { graded, due: due.length, reads, logged };
+}
+// How it has gone: the rule, the legs under its form bar, and the sharp books'
+// chance beside each. Only games the teammate really sat count, as they did in the
+// backtest. One player's legs in a game are nearly one bet, so `games` is the real
+// sample.
+function buildNbaCauseRecord(rows) {
+  const decided = rows.filter((r) => r.result === 'over' || r.result === 'under');
+  const cell = (ls) => {
+    const pr = ls.filter((r) => r.sharp_under != null), rate = (a) => (a.length ? round1(a.filter((r) => r.result === 'over').length / a.length * 100) : null);
+    const said = pr.length ? round1(pr.reduce((a, r) => a + (100 - r.sharp_under), 0) / pr.length) : null;
+    return { n: ls.length, games: new Set(ls.map((r) => `${r.event_id}|${r.player}`)).size, over: ls.filter((r) => r.result === 'over').length, overRate: rate(ls),
+      priced: { n: pr.length, overRate: rate(pr), sharpSaid: said, beat: pr.length ? round1(rate(pr) - said) : null } };
+  };
+  const held = decided.filter((r) => r.held === 1);
+  return { note: 'LOGGED ONLY: the Over where a streak has a cause. Last season: 55.4% where the sharp books said 50.0 (551 priced legs), 53.1% of all 912; 4-5 of 10 beat them by 0.6.',
+    logged: rows.length, pending: rows.filter((r) => r.result == null).length, voided: rows.filter((r) => r.result === 'void').length, pushed: rows.filter((r) => r.result === 'push').length,
+    teammatePlayed: decided.filter((r) => r.held === 0).length,
+    rule: cell(held.filter((r) => r.form >= NBA_CAUSE_FORM_BAR)), underBar: cell(held.filter((r) => r.form < NBA_CAUSE_FORM_BAR)) };
+}
+// GET /api/nba-cause[?day=YYYY-MM-DD]: the record, and that day's rows.
+async function nbaCauseRoute(env, url) {
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  await ensureNbaCauseSchema(env.DB);
+  const rows = (await env.DB.prepare('SELECT * FROM nbacause').all()).results || [];
+  const day = url.searchParams.get('day');
+  return { record: buildNbaCauseRecord(rows), ...(day ? { day, rows: rows.filter((r) => r.date === day).map((r) => ({ ...r, outs: JSON.parse(r.outs || '[]') })) } : {}) };
 }
 
 // Pure: one ESPN box score in, one row per player out.
