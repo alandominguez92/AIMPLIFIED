@@ -13,7 +13,8 @@
 //   - each leg keeps how often he cleared that number, of his last ten, and the record
 //     splits on it; the table already in production gains the column (2026-11-02)
 //   - graded from the box scores; a leg he did not play is void
-//   - nothing reaches a page: /api/nba-cause alone reads it
+//   - its record reaches no page: /api/nba-cause alone has it. The NBA tab's Hot players
+//     section (tests/nbahotlist.mjs) takes tonight's numbers from these rows
 //
 // Real data: the league's real box rows to Jan 15 2026 (nba-box-league-to-20260115.json) and
 // that night's real results. Jazz @ Mavericks is the night it should fire: Naji Marshall had 5
@@ -151,7 +152,7 @@ ok(rows.every((r) => r.form === clearedOf(r)), `how often each cleared his numbe
 ok(w('pra').form === 0 && w('pts').form === 0, 'Williams against lines far over anything he had done: 0 of 10, the kind the number has run past');
 ok(leg('Naji Marshall', 'pts').form >= 6, `Marshall at 13 points: ${leg('Naji Marshall', 'pts').form} of 10, still clearing it`);
 const nba = await get('/api/nba-pp');
-ok(!JSON.stringify(nba).includes('nbahot') && !/nbahot|hotRun/.test(fs.readFileSync(BOARD + '/app.js', 'utf8')), 'nothing on a page');
+ok(!JSON.stringify(nba).includes('hotRun') && !/nbahot|hotRun/.test(fs.readFileSync(BOARD + '/app.js', 'utf8')), 'the record on no page');
 NOW += 10 * 60e3;
 await tick();
 ok(S.reads.length === 1, 'read once: the next tick spends nothing');

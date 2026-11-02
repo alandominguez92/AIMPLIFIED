@@ -4774,6 +4774,11 @@
       }
       // Its own toggle, not the NFL one: sharing 'nfl-toggle' re-rendered the NFL
       // grid, so a soccer row opened its panel into a board nobody was looking at.
+      case 'nba-hot-all': {
+        state.nbaHotAll = !state.nbaHotAll;
+        renderNba();
+        break;
+      }
       case 'nba-toggle': {
         const nid = target.dataset.id;
         state.nbaOpen = state.nbaOpen === nid ? null : nid;
@@ -7051,6 +7056,54 @@
       + ppMoreLineHtml(m, 'Blocks')
       + (top.length ? ppMoreListHtml(top, 'nba') : `<div class="tc-wait-note">No blocks More at ${PP_MORE_MIN}%+ in the next games yet.</div>`);
   }
+  // ---- Hot players (2026-11-02, the owner's call) ------------------------------
+  // Players on 5+ games in a row above their own average, the team they play ranked for
+  // that stat: soft teams first, the rest a tap away. Last season the number had usually
+  // caught up with them by then, so each run says which side held, at PrizePicks' number
+  // once one is read. A lead, so no star: off Picks and out of the entries.
+  const NBA_HOT_MK = { pts: 'Points', pra: 'Pts+Reb+Ast', pts_reb: 'Pts+Reb', pts_ast: 'Pts+Ast', reb_ast: 'Reb+Ast', reb: 'Rebounds', threes: 'Threes' };
+  const NBA_HOT_TOP = 5;
+  const nbaHotOrd = (n) => { const t = n % 100; return n + (t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'); };
+  function nbaHotReadHtml(p, m, be) {
+    const r = m.read, said = `hit ${r.rate.toFixed(1)}% last season, sharp books ${r.sharp.toFixed(1)}`, title = `${r.n} priced legs last season`;
+    if (!r.side) return `<span class="hot-line hot-read" title="${title}">No side: the Under ${said}</span>`;
+    const why = r.side === 'Over' && p.outs && p.outs.length ? ` · minutes up, ${esc(p.outs.join(', '))} out` : '';
+    return r.clears
+      ? `<span class="hot-line hot-read up" title="${title}"><b>Lean ${r.side}</b>: ${said}${why}</span>`
+      : `<span class="hot-line hot-read" title="${title}">Slight ${r.side}: ${said}; a flex needs ${be}${why}</span>`;
+  }
+  function nbaHotMarketHtml(p, m, be) {
+    const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1;
+    const allows = `${esc(nbaNick(p.oppName))} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(NBA_HOT_MK[m.market].toLowerCase())}`;
+    const sharp = sharpTag(m.sharp);
+    const num = m.line != null
+      ? `PP ${esc(String(m.line))} · cleared it ${m.cleared} of his last 10${sharp ? ` · ${sharp}` : ''}`
+      : m.third === 'soft' ? "PrizePicks' number: read about an hour before tip" : "No PrizePicks number read yet";
+    return `<span class="hot-mk"><span class="hot-line"><b>${esc(NBA_HOT_MK[m.market])}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${esc(String(m.seasonAvg))} season</span>`
+      + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${allows} <span class="tc-dfs">${m.third} team</span></span>`
+      + `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`;
+  }
+  function nbaHotCardHtml() {
+    const h = state.nbaPp && state.nbaPp.hot;
+    if (!h) return '';
+    const head = `<div class="tc-head"><span class="tc-title">Hot players</span></div>`
+      + `<div class="tc-sub">Five or more games in a row above his own average, with the team he plays tonight ranked for that stat. Last season the number had usually caught up with him by then: the Under beat the Over, most of all against the softest teams. A lead, not a pick: off Picks and out of the entries, read again in January.</div>`;
+    if (!h.ready) {
+      return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games yet. A player needs ${h.gamesNeeded} games, and opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}: ${h.teamsReady} have so far.</div></div>`;
+    }
+    if (!h.players.length) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">No one is on a run of 5 or more in the next games.</div></div>`;
+    const isSoft = (m) => m.third === 'soft', soft = h.players.filter((p) => p.markets.some(isSoft));
+    const all = !!state.nbaHotAll, shown = all ? h.players : soft.slice(0, NBA_HOT_TOP);
+    const list = shown.length ? `<ol class="tc-legs">${shown.map((p) => `<li><div class="tc-leg has-hs">${avatarHtml({ sport: 'nba', playerId: p.id, team: p.team, name: p.name })}`
+      + `<span class="tc-l1"><b>${esc(p.name)}</b></span>`
+      + `<span class="tc-l2"><span><b class="tc-team">${esc(p.team)}</b> · ${p.isHome ? 'v' : '@'} ${esc(nbaNick(p.oppName))} · ${esc(soccerKick(p.commence))}${nbaCardInjTag(p)}</span></span>`
+      + (all ? p.markets : p.markets.filter(isSoft)).map((m) => nbaHotMarketHtml(p, m, h.flexBreakEven)).join('')
+      + `</div></li>`).join('')}</ol>` : `<div class="tc-wait-note">No one is on a run against a soft team in the next games.</div>`;
+    // More to see: a player left off, or a shown player's runs against other teams.
+    const toggle = all || h.players.length > shown.length || shown.some((p) => !p.markets.every(isSoft))
+      ? `<button type="button" class="pp-line-reset hot-all" data-action="nba-hot-all">${all ? 'Soft teams only' : `Show every run (${h.players.length} player${h.players.length === 1 ? '' : 's'})`}</button>` : '';
+    return `<div class="nba-pp nba-hot">${head}${list}${toggle}</div>`;
+  }
   function renderNba() {
     const grid = document.getElementById('nbaGrid');
     if (!grid) return;
@@ -7068,12 +7121,12 @@
         + (pre ? ' · preseason: starters sit, and Pinnacle is the only sharp book' : '');
     }
     if (!games.length) {
-      grid.innerHTML = nbaPpCardHtml() + `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+      grid.innerHTML = nbaPpCardHtml() + nbaHotCardHtml() + `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
     }
     const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    grid.innerHTML = nbaPpCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
+    grid.innerHTML = nbaPpCardHtml() + nbaHotCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map((g) => mlTabRow(g, 'nba')).join('')}</div>`
       + `</div></div>`;

@@ -268,6 +268,8 @@ export default {
     // A streak with a cause, logged only (2026-11-01): pays for a game only if
     // someone in it passes the free box-score read first.
     ctx.waitUntil(nbaCauseTick(env).catch(() => null));
+    // The Hot players section's list, from the box scores: free (2026-11-02).
+    ctx.waitUntil(nbaHotListTick(env).catch(() => null));
     // NHL PrizePicks points and assists unders: read the same way, graded
     // hourly from the NHL's box scores.
     ctx.waitUntil(nhlPpMaybeCapture(env).catch(() => null));
@@ -12823,6 +12825,7 @@ async function ensureNbaCauseSchema(db) {
     PRIMARY KEY (event_id, player, market)
   )`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nbahot_open ON nbahot (espn_id) WHERE result IS NULL').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nbahot_date ON nbahot (date)').run();
   await addColumns(db, 'nbahot', [['form', 'INTEGER']]);
 }
 // Each team's games in order and each player's, from box rows ordered by date (pure).
@@ -12894,7 +12897,7 @@ function nbaCauseRows(cands, ev, g, at) {
 // third for allowing that stat, went 57.0% where they said 50.5 (741 priced legs, the
 // interval +1.6 to +11.3; 56.4% of all 1,241). One lead from some fifty groups tried, and
 // the same run against the tough third went 53.4, so the numbers stay as tested and
-// nothing here reaches a page.
+// the record reaches no page. The runs themselves do, since 2026-11-02 (nbaHotBoard).
 //   - It shares the read above: a game either log wants is read once, seven credits.
 //   - Runs of 3 and 4, and 5+ against other teams, come free with a read and are logged
 //     too: whether the opponent matters is what they can say.
@@ -13029,6 +13032,8 @@ async function gradeNbaLog(env, now, table) {
   }
   return graded;
 }
+const nbaSeasonBoxRows = async (db) => (await db.prepare('SELECT game_id, date, player_id, player, team, min, pts, reb, ast, threes FROM nba_box WHERE season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date, game_id')
+  .bind(NBA_SEASON_FROM).all()).results;
 async function nbaCauseTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   await ensureNbaCauseSchema(env.DB);
@@ -13042,8 +13047,7 @@ async function nbaCauseTick(env, now = Date.now()) {
     .sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence)).slice(0, NBA_CAUSE_PER_TICK);
   if (!due.length) return { graded };
   await ensureNbaSchema(env.DB);
-  const boxRows = (await env.DB.prepare('SELECT game_id, date, player_id, player, team, min, pts, reb, ast, threes FROM nba_box WHERE season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date, game_id')
-    .bind(NBA_SEASON_FROM).all()).results;
+  const boxRows = await nbaSeasonBoxRows(env.DB);
   const box = nbaCauseState(boxRows), allowed = nbaHotAllowed(boxRows);
   let logged = 0, reads = 0, dirty = false;
   const at = new Date(now).toISOString();
@@ -13133,6 +13137,99 @@ async function nbaCauseRoute(env, url) {
   const day = url.searchParams.get('day');
   return { record: buildNbaCauseRecord(rows), hotRun: buildNbaHotRecord(hot),
     ...(day ? { day, rows: rows.filter((r) => r.date === day).map((r) => ({ ...r, outs: JSON.parse(r.outs || '[]') })), hotRows: hot.filter((r) => r.date === day) } : {}) };
+}
+
+// The Hot players section on the NBA tab (2026-11-02, the owner's call: they expected to see
+// these players, and the log above showed them nowhere). The same runs, before the game: 5+
+// in a row above his own average, the team he plays ranked for that stat. No credits: the
+// runs come from the box scores and tonight's number from what the reads already stored. No
+// page reads a box score either, a season being 26,000 rows by April: the cron keeps one
+// feed_cache row, and the page reads that, the report and tonight's numbers.
+const NBA_HOTLIST_KEY = 'nba_hot_list';     // feed_cache: the next two days' runs
+const NBA_HOTLIST_EVERY_MS = 3 * 3600e3;    // box scores come in overnight; this is for the report
+const NBA_HOTLIST_FLEX_BE = 54.2;                // what a 5-6 flex needs of a leg
+// What last season said of a run like each: 5+ in a row, priced legs, the Under's rate and
+// the sharp books' chance at that line, [rate, sharp, legs]. The live functions replayed over
+// the season, 2026-11-02. By the opponent's third, then by how often he cleared the number of
+// his last ten (low is 5 or fewer) once the number is known. Found after looking, so a lead:
+// the middle's two sides sit 10 points apart, the tough third's not at all.
+const NBA_HOTLIST_BACKTEST = {
+  soft: { any: [57.0, 50.5, 741], low: [59.3, 50.4, 440], high: [53.5, 50.6, 301] },
+  middle: { any: [53.5, 50.5, 719], low: [58.5, 50.8, 364], high: [48.5, 50.3, 355] },
+  tough: { any: [53.4, 50.5, 723], low: [52.7, 50.5, 283], high: [53.9, 50.5, 440] },
+};
+// The one place the Over held: 6+ of ten with the streak log's cause, its rate and its sharp.
+const NBA_HOTLIST_CAUSE_OVER = [56.5, 49.8, 168];
+const nbaHotThird = (rank) => (rank >= NBA_HOT_SOFT ? 'soft' : rank < 1 / 3 ? 'tough' : 'middle');
+function nbaHotRead(rank, cleared, cause) {
+  const said = (side, [rate, sharp, n]) => ({ side: rate > 50 ? side : null, rate, sharp, n, clears: rate >= NBA_HOTLIST_FLEX_BE });
+  if (cleared != null && cleared >= NBA_CAUSE_FORM_BAR && cause) return said('Over', NBA_HOTLIST_CAUSE_OVER);
+  const g = NBA_HOTLIST_BACKTEST[nbaHotThird(rank)];
+  return said('Under', cleared == null ? g.any : cleared < NBA_CAUSE_FORM_BAR ? g.low : g.high);
+}
+// The next games' runs (pure): a row a player, his markets at 5+, his last ten in each for a
+// number read later to be held against. The report reaches this only for the streak log's
+// cause; who is out tonight is applied when the page asks, on the newest report.
+function nbaHotList(box, allowed, games, now) {
+  const players = [], rankers = new Map();
+  for (const g of games) {
+    const date = ptDateOf(Date.parse(g.commence));
+    if (!rankers.has(date)) rankers.set(date, nbaHotRanker(allowed, date));
+    const rankOf = rankers.get(date);
+    const cause = new Map([g.homeAb, g.awayAb].flatMap((t) => nbaCauseCandidates(box, t, g.inj)).map((c) => [c.id, c.outs.map((o) => o.name).filter(Boolean)]));
+    for (const [team, opp, oppName, isHome] of [[g.homeAb, g.awayAb, g.away, true], [g.awayAb, g.homeAb, g.home, false]]) {
+      for (const c of nbaHotCandidates(box, rankOf, team, opp)) {
+        const markets = Object.entries(c.markets).filter(([, m]) => m.run >= NBA_HOT_RUN).map(([market, m]) => ({ market, run: m.run, rank: m.rank, of: rankOf(market, false).size,
+          seasonAvg: m.seasonAvg, last5: m.last5, last10: c.last10.map((b) => nbaStat(b, market)) }));
+        if (markets.length) players.push({ id: c.id, name: c.name, team, oppName, isHome, date, home: g.home, away: g.away, commence: g.commence, outs: cause.get(c.id) || null, markets });
+      }
+    }
+  }
+  const today = ptDateOf(now);
+  return { builtAt: now, teamsReady: [...allowed.values()].filter((l) => l.filter((e) => e.date < today).length >= NBA_HOT_OPP_GAMES).length, players };
+}
+async function nbaHotListTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const hit = await loadFeedCache(env.DB, NBA_HOTLIST_KEY);
+  if (hit.present && hit.data && now - hit.data.builtAt < NBA_HOTLIST_EVERY_MS) return null;
+  const byDay = await nbaInjuryDays(env.DB, [ptDateOf(now), ptDateOf(now + 86400e3)]);
+  const games = [...byDay.values()].flat().filter((g) => Date.parse(g.commence) > now && g.homeAb && g.awayAb);
+  if (!games.length) return null;
+  await ensureNbaSchema(env.DB);
+  const boxRows = await nbaSeasonBoxRows(env.DB);
+  await saveFeedCache(env.DB, NBA_HOTLIST_KEY, nbaHotList(nbaCauseState(boxRows), nbaHotAllowed(boxRows), games, now));
+  return true;
+}
+// What the tab shows: the earliest day with a game to come, on the newest report, each run with
+// tonight's number where a read has stored one. The log's own read is the later of the two;
+// rebounds and threes also have the PrizePicks log's, hours earlier (`legs`, already read).
+async function nbaHotBoard(db, legs, injDays, now) {
+  const hit = await loadFeedCache(db, NBA_HOTLIST_KEY);
+  if (!hit.present || !hit.data) return null;
+  const list = hit.data, base = { ready: list.teamsReady >= NBA_HOT_OPP_TEAMS, teamsReady: list.teamsReady, teamsNeeded: NBA_HOT_OPP_TEAMS, gamesNeeded: NBA_HOT_OPP_GAMES, flexBreakEven: NBA_HOTLIST_FLEX_BE, players: [] };
+  const coming = list.players.filter((p) => Date.parse(p.commence) > now);
+  if (!coming.length) return base;
+  const day = coming.map((p) => p.date).sort()[0];
+  const stored = (await db.prepare('SELECT player_id, market, pp_line, sharp_under FROM nbahot WHERE date = ?').bind(day).all().catch(() => ({ results: [] }))).results || [];
+  const read = new Map(stored.map((r) => [`${r.player_id}|${r.market}`, r]));
+  const logged = new Map(legs.map((l) => [`${nbaName(l.player)}|${l.market}`, l]));
+  const report = injDays.has(day) ? injDays : await nbaInjuryDays(db, [day]).catch(() => new Map());
+  const soft = (m) => m.third === 'soft', best = (p) => Math.max(...p.markets.map((m) => m.run));
+  for (const p of coming) {
+    if (p.date !== day) continue;
+    const inj = nbaLegInjury({ spec: { sport: 'nba', playerId: p.id, date: p.date, market: p.markets[0].market }, teams: { home: p.home, away: p.away } }, report);
+    if (inj && inj.out) continue;
+    const markets = p.markets.map((m) => {
+      const r = read.get(`${p.id}|${m.market}`), l = logged.get(`${nbaName(p.name)}|${m.market}`);
+      const line = r ? r.pp_line : l ? l.point : null, sharp = r ? r.sharp_under : l ? l.sharp_under : null;
+      const cleared = line == null ? null : m.last10.filter((v) => v != null && v > line).length;
+      return { market: m.market, run: m.run, pos: Math.round((1 - m.rank) * (m.of - 1)) + 1, of: m.of, third: nbaHotThird(m.rank), seasonAvg: m.seasonAvg, last5: m.last5,
+        line, sharp: sharp == null ? null : sharp, cleared, read: nbaHotRead(m.rank, cleared, !!p.outs) };
+    }).sort((a, b) => soft(b) - soft(a) || b.run - a.run);
+    base.players.push({ id: p.id, name: p.name, team: p.team, oppName: p.oppName, isHome: p.isHome, commence: p.commence, outs: p.outs, inj: inj && inj.status ? inj : undefined, markets });
+  }
+  base.players.sort((a, b) => soft(b.markets[0]) - soft(a.markets[0]) || best(b) - best(a) || Date.parse(a.commence) - Date.parse(b.commence));
+  return base;
 }
 
 // Pure: one ESPN box score in, one row per player out.
@@ -13410,6 +13507,8 @@ async function nbaPpBoard(env) {
     // projected past last season and nothing grades.
     const ig = await env.DB.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM nba_box_games').first();
     out.ingest = { games: Number((ig && ig.n) || 0), read: Number((ig && ig.d) || 0), lastDay: (ig && ig.last) || null };
+    // A list it cannot read costs the section, never the board.
+    out.hot = await nbaHotBoard(env.DB, out.legs, injDays, now).catch(() => null);
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }

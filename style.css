@@ -3020,6 +3020,15 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-check-out b.o { color:var(--danger); }
 /* NBA blocks More (2026-10-27): its own section under the unders. */
 .pp-more-head { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+/* Hot players (2026-11-02): a run a block, no star to leave room for. */
+.nba-hot .tc-legs li .tc-l1 { padding-right:0; }
+.hot-mk { display:block; margin-top:8px; padding-top:7px; border-top:1px solid var(--border); font-size:12.5px; line-height:1.45; color:var(--textDim); }
+.hot-line { display:block; }
+.hot-mk .hot-line:first-child b { color:var(--text); font-weight:600; }
+.hot-read { margin-top:2px; }
+.hot-read.up { color:var(--text); }
+.hot-read.up b { color:var(--positive); font-weight:600; }
+.hot-all { display:block; margin-top:8px; }
 /* Legs dropped before their start (2026-10-27): dimmed, the reason under. */
 .pk-legs li.pk-offh { display:block; margin-top:6px; padding-top:6px; border-top:1px solid var(--border); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--textDim); }
 .pk-legs li.pk-off { color:var(--textDim); }
