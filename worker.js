@@ -12946,6 +12946,9 @@ async function nbaPpBoard(env) {
     await ensureNbaSchema(env.DB);
     const rows = ((await env.DB.prepare('SELECT * FROM nbapp WHERE date >= ? ORDER BY model_under DESC').bind(slateDateOffset(-1)).all()).results || []);
     const now = Date.now();
+    // ESPN's report beside each leg, as on Picks (2026-11-01): one row a day. A
+    // report it cannot read costs the flags, never the board.
+    const injDays = await nbaInjuryDays(env.DB, [...new Set(rows.filter((r) => Date.parse(r.commence) > now).map((r) => r.date))]).catch(() => new Map());
     // Each leg at its latest line (the pre-tip read's, once taken: the one that
     // can be played now), with the first line and chance beside it.
     out.legs = ppStanding(rows.filter((r) => Date.parse(r.commence) > now)).map((r) => ppCurrent(r)).map((r) => ({
@@ -12954,6 +12957,7 @@ async function nbaPpBoard(env) {
       book_line: r.book_line, book_under: r.book_under, player_id: r.player_id,
       // The spread the chance is worked out with, for a line set on the page.
       disp: NBA_DISP[r.market] || null,
+      inj: nbaLegInjury({ spec: { sport: 'nba', playerId: r.player_id, date: r.date, market: r.market }, teams: { home: r.home, away: r.away } }, injDays) || undefined,
       // PrizePicks' number minus the books': above 0, its under is easier.
       vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       first_point: r.first_point, first_under: r.first_under, first_at: r.captured_at, close_at: r.close_at,

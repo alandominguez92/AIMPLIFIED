@@ -100,7 +100,7 @@ const ui = { nbaPp: b, nhlPp: null, slip: {} };
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'NHL_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
   'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
-  'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'readAgeTag', 'ppLineTags', 'ppLineStepHtml', 'nbaPpCardHtml', 'nhlPpCardHtml'];
+  'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'readAgeTag', 'injuryTag', 'nbaCardInjTag', 'ppLineTags', 'ppLineStepHtml', 'nbaPpCardHtml', 'nhlPpCardHtml'];
 let C;
 try {
   C = new Function('state', 'esc', CARD.map(lift).join('\n') + '\nreturn { nbaPpCardHtml, nhlPpCardHtml, LEG_OFFERS, liveVs: null };')(ui, esc);

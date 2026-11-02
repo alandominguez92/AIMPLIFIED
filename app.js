@@ -6662,11 +6662,13 @@
     const offered = LEG_OFFERS.get(key);
     if (state.slip[key] && offered) { state.slip = { ...state.slip, [key]: offered }; persistSlip(); renderSlip(); }
   }
-  // At a whole number an exact tie takes the leg out of the entry, so each
-  // side's chance is of the results that decide it.
+  // The number the worker's own read gives at this line (model_under), where an
+  // exact tie counts as a miss, so a set line and the next read agree: leaving
+  // ties out showed Sharpe at 72% at 8 and the read 64.7%. The tie is shown
+  // beside it, since at a whole number it takes the leg out of the entry.
   function ppChanceAt(line, proj, phi) {
     const below = nbCdf(Math.ceil(line) - 1, proj, phi), above = 1 - nbCdf(Math.floor(line), proj, phi);
-    return { under: below / (below + above) * 100, over: above / (below + above) * 100, tie: Math.max(0, 1 - below - above) * 100 };
+    return { under: below * 100, over: above * 100, tie: Math.max(0, 1 - below - above) * 100 };
   }
   function nbaLegAtLine(x) {
     const line = ppLineOf(`nbapp:${x.game_id}:${x.player}:${x.market}`, x.close_at || x.first_at);
@@ -6710,6 +6712,13 @@
       + '</span>'
       + (set && set.over != null ? `<span class="pp-line-read">Model at ${esc(String(line))}: Less ${pct0(set.under)} · More ${pct0(set.over)}${set.tie >= 0.5 ? ` · an exact ${esc(String(line))} voids the leg (${pct0(set.tie)})` : ''}</span>` : '');
   }
+  // The report on the NBA tab (2026-11-01): only for a player it lists, since
+  // "no injury listed" on every row says nothing a clean row does not.
+  function nbaCardInjTag(x) {
+    if (!x.inj || !x.inj.status) return '';
+    const t = injuryTag({ ...x, sport: 'nba' });
+    return ` <span class="tc-wait" title="${esc(t.title)}">${esc(t.text)}</span>`;
+  }
   // ESPN's injury report on an NBA leg (2026-11-01): what it lists for him,
   // or that it lists nothing once his game's report has been read; on a
   // moneyline, who each side is missing. Before that, the old reminder. A
@@ -6734,7 +6743,7 @@
       return { warn: true, text: parts.join(' · '), parts, title: `${lines.join('. ')}. ESPN's injury report${read}` };
     }
     if (!i.status) return { warn: false, text: 'no injury listed', title: `Not on ESPN's injury report${read}` };
-    return { warn: true, text: `${i.status === 'Day-To-Day' ? 'GTD' : i.status}${i.what ? ': ' + i.what : ''}`, title: `ESPN's injury report${read}` };
+    return { warn: true, text: `${i.status === 'Day-To-Day' ? 'GTD' : /^out$/i.test(i.status) ? 'Out' : i.status}${i.what ? ': ' + i.what : ''}`, title: `ESPN's injury report${read}` };
   }
   // A leg's run against its line, named when it is one (2026-10-29): five or
   // more games, seven in ten its way -- or three in ten or fewer, against it.
@@ -6968,7 +6977,7 @@
       // (projLineHtml, 2026-10-28) -- an NHL skater's is points a game.
       return `<li>${star}<div class="tc-leg has-hs">${face}`
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(ppMoreP(x))}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${same}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}</span>`
         + `${projLineHtml(x.proj, x.point, 'Over')}</span>`
         + `</div></li>`;
     }).join('')}</ol>`;
@@ -7002,7 +7011,7 @@
       ppHi.n ? `PP line above book <b>${ppHi.hit} of ${ppHi.n}</b>` : null,
     ].filter(Boolean).join(' · ');
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span>${rec}</div>`
-      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. Logged, not posted.</div>`
+      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. A player on ESPN's injury report is flagged. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
       + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame);
     if (!top.length) {
@@ -7025,7 +7034,7 @@
         // The team code leads line two: beside the face on line one it cut
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
         // His projection against PrizePicks' line, as the MLB board draws it.
         + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x)}</span>`
         + (PP_LINE_MARKETS.has(x.market) ? ppLineStepHtml(leg.id, x.point, x0.point, x.lineSet, x.commence) : '')

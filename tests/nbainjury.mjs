@@ -85,6 +85,11 @@ const feedReads = (from) => asked.slice(from).filter((u) => /core\/nba\/game\?/.
 const legsOf = (d) => [...(d.legs || []), ...(d.ppPool || [])];
 const leg = (d, who) => legsOf(d).find((x) => x.title.startsWith(who));
 
+// The NBA tab, the same report (2026-11-01, the owner's call). Nothing read yet: no flag.
+const npLeg = (dd, who, m) => dd.legs.find((l) => l.player === who && l.market === m);
+const np0 = await get('/api/nba-pp');
+ok(np0.legs.length > 0 && np0.legs.every((l) => l.inj === undefined), 'the NBA tab before any report is read: no flags');
+
 console.log('-- noon Pacific: the first tick --');
 let a0 = asked.length;
 await tick();
@@ -134,6 +139,14 @@ ok(!leg(d, "Day'Ron Sharpe"), 'Sharpe, out: off the list and the pool');
 ok(ell && ell.inj && ell.inj.status === 'GTD' && ell.inj.what === 'back soreness' && !ell.inj.out && (d.ppPool || []).some((x) => x.legId === ell.legId),
   "Ellis's rebounds take the game's place, flagged GTD (back soreness)");
 
+// On the NBA tab: Toppin as ESPN really had him, unlike the two copies above.
+const npd = await get('/api/nba-pp');
+const tTop = npLeg(npd, 'Obi Toppin', 'reb'), tSh = npLeg(npd, "Day'Ron Sharpe", 'reb'), tNem = npLeg(npd, 'Andrew Nembhard', 'ast');
+console.log(`  ${JSON.stringify(tTop && tTop.inj)} | ${JSON.stringify(tSh && tSh.inj)} | ${JSON.stringify(tNem && tNem.inj)}`);
+ok(tTop && tTop.inj.status === 'GTD' && tTop.inj.what === 'back soreness' && !tTop.inj.out, 'the NBA tab: Obi Toppin GTD (back soreness)');
+ok(tSh && tSh.inj.out === true && tSh.inj.what === 'rest', 'Sharpe, out: still on the tab, unlike Picks, and says so');
+ok(tNem && tNem.inj.status === null, 'Nembhard: read, and not on the report');
+
 console.log('\n-- after tip --');
 NOW = RealDate.parse('2026-11-01T22:30:00Z');
 d = await get('/api/picks');
@@ -156,6 +169,17 @@ ok(t5.warn && JSON.stringify(t5.parts) === JSON.stringify(['Clippers out: Nieder
   && /Curry \(rest\)/.test(t5.title) && /Moody \(knee surgery\)/.test(t5.title), `the moneyline row: ${(t5.parts || []).join(' | ')}`);
 const t6 = IT({ sport: 'nba', spec: { sport: 'nba', market: 'ml' }, inj: { teams: [{ team: 'Nets', out: [], gtd: [] }, { team: 'Pacers', out: [], gtd: [] }], at: ml.inj.at } });
 ok(!t6.warn && t6.text === 'no injuries listed', 'neither side listed: "no injuries listed"');
+// The NBA tab's rows: a listed player only.
+const cardAt = app.indexOf('  function nbaCardInjTag(');
+const CT = new Function('esc', 'injuryTag', app.slice(cardAt, app.indexOf('\n  }\n', cardAt) + 4) + '\nreturn nbaCardInjTag;')((s) => String(s), IT);
+const flagged = CT(tTop);
+console.log(`  ${flagged}`);
+ok(/class="tc-wait"/.test(flagged) && />GTD: back soreness</.test(flagged) && /ESPN's injury report, read /.test(flagged), 'the NBA tab flags Toppin, with when it was read');
+ok(/>Out: rest</.test(CT(tSh)), 'and an out player reads Out');
+ok(CT(tNem) === '' && CT({ player: 'x' }) === '', 'not listed or not read: no tag, on a tab of a few rows that would all carry one');
+const cardFn = app.slice(app.indexOf('  function nbaPpCardHtml('), app.indexOf('  function nbaBlkMoreHtml('));
+const moreFn = app.slice(app.indexOf('  function ppMoreListHtml('), app.indexOf('  function ppMoreLineHtml('));
+ok(/soccerKick\(x\.commence\)\)\}\$\{nbaCardInjTag\(x\)\}\$\{same\}\$\{gap\}/.test(cardFn) && /soccerKick\(x\.commence\)\)\}\$\{nbaCardInjTag\(x\)\}\$\{same\}<\/span>/.test(moreFn), 'on the under rows and the blocks Overs');
 ok(/const it = injuryTag\(x\);\n\s+if \(it\) notes\.push\(it\.text\);/.test(app) && /const it = injuryTag\(x\);\n\s+if \(it\) for \(const t of it\.parts \|\| \[it\.text\]\) tags\.push/.test(app) && !/'check injuries'\)/.test(app),
   "on the list's rows and the hero, where the fixed reminder was");
 

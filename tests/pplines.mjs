@@ -8,7 +8,8 @@
 //     read; no extra odds calls. /api/pp-lines reads a day back, with its moves
 //   - a line set on a leg works out the chance at that number from his projection
 //     and spread, at once. A whole number can tie, and a tie takes the leg out of
-//     the entry, so each side's chance is of the results that decide it
+//     the entry; the chance counts it as a miss, as the worker's read does, so
+//     a set line and the next read agree, and the tie's share is shown beside it
 //   - the leg then carries that number everywhere: its title, the slip, the moved
 //     tag. What was true of the old number goes (the sharp chance, his season)
 //   - it is kept on the device until the start, and a later read knows better
@@ -163,7 +164,7 @@ const penv = {
   LEG_OFFERS: new Map(), persistSlip: () => { penv.persisted++; }, renderSlip: () => {}, renderPicks: () => { penv.drawn++; }, renderNba: () => { penv.drawn++; },
   MARKET_SHORT: { reb: 'REB', ast: 'AST', blk: 'BLK', threes: '3PM' }, ptDayOf: (ms) => new RealDate(ms).toISOString().slice(0, 10), persisted: 0, drawn: 0,
 };
-const names = ['nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'PP_LINE_STORE', 'ppLinesLoad', 'ppLineOf', 'ppLineSet', 'ppChanceAt', 'nbaLegAtLine', 'pickAtLine', 'ppPoolAtLines', 'readAgeTag', 'ppLineTags', 'ppLineStepHtml', 'nbaPpLeg', 'pickLineSetTag', 'ppMovedTag'];
+const names = ['nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'PP_LINE_STORE', 'ppLinesLoad', 'ppLineOf', 'ppLineSet', 'ppChanceAt', 'nbaLegAtLine', 'pickAtLine', 'ppPoolAtLines', 'readAgeTag', 'injuryTag', 'nbaCardInjTag', 'ppLineTags', 'ppLineStepHtml', 'nbaPpLeg', 'pickLineSetTag', 'ppMovedTag'];
 let P;
 try {
   P = new Function(...Object.keys(penv), names.map(lift).join('\n') + `\nreturn { ${names.filter((n) => !/^[A-Z]/.test(n)).join(', ')} };`)(...Object.values(penv));
@@ -179,21 +180,24 @@ ok(sharpe.point === 8.5 && sharpe.model_under === 75.9 && sharpe.book_line == nu
 // The negative binomial by its own recurrence, worked out here.
 const pmf = (mean, phi) => { const r = mean / (phi - 1), q = mean / (r + mean); const out = [Math.pow(r / (r + mean), r)]; for (let i = 1; i < 60; i++) out.push(out[i - 1] * (r + i - 1) / i * q); return out; };
 const nb = pmf(6.7, 1.2), upto = (k) => nb.slice(0, k + 1).reduce((a, b) => a + b, 0);
-const under8 = upto(7) / (upto(7) + 1 - upto(8)) * 100, tie8 = nb[8] * 100;
+const under8 = upto(7) * 100, tie8 = nb[8] * 100;
 console.log(`  at 8: under ${under8.toFixed(1)}%, tie ${tie8.toFixed(1)}%; at 8.5 by the rounded projection ${(upto(8) * 100).toFixed(1)}%`);
 ok(Math.abs(upto(8) * 100 - 75.9) < 1, 'the page holds his projection to a tenth, and it lands within a point of the 75.9 the worker worked out');
 ok(P.nbaLegAtLine(sharpe) === sharpe, 'no line set: the leg as read');
 P.ppLineSet(key, 8, 8.5, sharpe.commence);
 let x = P.nbaLegAtLine(sharpe);
 console.log(`  ${x.player} Under ${x.point}: ${x.model_under}%; ${text(P.ppLineStepHtml(key, x.point, 8.5, x.lineSet, x.commence))}`);
-ok(x.point === 8 && Math.abs(x.model_under - under8) < 0.06 && Math.abs(x.lineSet.tie - tie8) < 0.01 && Math.abs(x.lineSet.under + x.lineSet.over - 100) < 1e-6, `set to 8: ${x.model_under}%, the tie out of it, and the two sides add to 100`);
+ok(x.point === 8 && Math.abs(x.model_under - under8) < 0.06 && Math.abs(x.lineSet.tie - tie8) < 0.01 && Math.abs(x.lineSet.under + x.lineSet.over + x.lineSet.tie - 100) < 1e-6, `set to 8: ${x.model_under}%, a tie counted as a miss, and both sides and the tie add to 100`);
+// What production's own read said at 8 that afternoon, /api/nba-pp?day=2026-11-01: 64.7.
+// The stepper had 72% when it left ties out.
+ok(Math.abs(x.model_under - 64.7) < 1, `and that is what the worker's read at 8 said: ${x.model_under}% against 64.7`);
 ok(sharpe.point === 8.5, 'the leg as read is untouched');
 const moved8 = text(P.ppMovedTag(x));
 ok(/8\.5/.test(moved8) && /8/.test(moved8) && /lower/.test(P.ppMovedTag(x)), `marked as moved: "${moved8}", in the colour of a harder under`);
 const half = P.ppChanceAt(9.5, 6.7, 1.2);
 ok(half.tie < 1e-9 && Math.abs(half.under - upto(9) * 100) < 1e-6, 'at a half point nothing can tie, and the chance is the plain one');
 const stepSet = P.ppLineStepHtml(key, x.point, 8.5, x.lineSet, x.commence);
-ok(/You set/.test(stepSet) && /Back to 8\.5/.test(stepSet) && /Less 72% · More 28%/.test(text(stepSet)) && /an exact 8 voids the leg \(11%\)/.test(text(stepSet)), 'the row says what was set, both sides, and what an exact 8 does');
+ok(/You set/.test(stepSet) && /Back to 8\.5/.test(stepSet) && /Less 64% · More 25%/.test(text(stepSet)) && /an exact 8 voids the leg \(11%\)/.test(text(stepSet)), 'the row says what was set, both sides, and what an exact 8 does');
 const stepOff = P.ppLineStepHtml(key, 8.5, 8.5, null, sharpe.commence);
 ok(/PP shows/.test(stepOff) && !/Back to/.test(stepOff) && !/Less/.test(stepOff) && (stepOff.match(/data-action="pp-line"/g) || []).length === 2 && /data-d="-0\.5"/.test(stepOff) && /data-d="0\.5"/.test(stepOff), 'with none set: a label and half-point steps, one tap each');
 ok(/case 'pp-line': ppLineSet\(target\.dataset\.key, Math\.max\(0\.5, Number\(target\.dataset\.line\) \+ Number\(target\.dataset\.d\)\), Number\(target\.dataset\.read\), target\.dataset\.commence\); break;/.test(app) && /case 'pp-line-reset': ppLineSet\(target\.dataset\.key, null\); break;/.test(app), 'both wired up');
