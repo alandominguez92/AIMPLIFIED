@@ -12814,6 +12814,15 @@ async function ensureNbaCauseSchema(db) {
     PRIMARY KEY (event_id, player, market)
   )`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nbacause_open ON nbacause (espn_id) WHERE result IS NULL').run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nbahot (
+    event_id TEXT NOT NULL, player TEXT NOT NULL, market TEXT NOT NULL,
+    espn_id TEXT, player_id TEXT, team TEXT, opp TEXT, date TEXT, commence TEXT, home TEXT, away TEXT,
+    pp_line REAL, sharp_under REAL, sharp_src TEXT, gap REAL,
+    run INTEGER, opp_rank REAL, opp_rank_usual REAL, season_avg REAL, last5 REAL, min5 REAL, read_at TEXT,
+    actual REAL, result TEXT, graded_at TEXT,
+    PRIMARY KEY (event_id, player, market)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nbahot_open ON nbahot (espn_id) WHERE result IS NULL').run();
 }
 // Each team's games in order and each player's, from box rows ordered by date (pure).
 function nbaCauseState(rows) {
@@ -12877,26 +12886,137 @@ function nbaCauseRows(cands, ev, g, at) {
   }
   return rows;
 }
-async function gradeNbaCause(env, now) {
-  const open = (await env.DB.prepare('SELECT espn_id, MIN(date) AS date FROM nbacause WHERE result IS NULL GROUP BY espn_id').all()).results || [];
+// A long run against a soft team, logged beside it (2026-11-01, the owner's idea: a
+// player only counts with several good games in a row, and only with the team he plays
+// taken into account). Over on that had nothing: 48.8% where the sharp books said 49.6.
+// The Under after 5+ games in a row above his own average, against a team in the top
+// third for allowing that stat, went 57.0% where they said 50.5 (741 priced legs, the
+// interval +1.6 to +11.3; 56.4% of all 1,241). One lead from some fifty groups tried, and
+// the same run against the tough third went 53.4, so the numbers stay as tested and
+// nothing here reaches a page.
+//   - It shares the read above: a game either log wants is read once, seven credits.
+//   - Runs of 3 and 4, and 5+ against other teams, come free with a read and are logged
+//     too: whether the opponent matters is what they can say.
+const NBA_HOT_RUN = 5;                       // games in a row above his own average to then
+const NBA_HOT_NEAR = 3;                      // ... logged from here, for the comparison
+const NBA_HOT_AVG_FROM = 5;                  // a game counts once this many came before it
+const NBA_HOT_SOFT = 2 / 3;                  // the opponent's rank: 0 allows the least, 1 the most
+const NBA_HOT_OPP_GAMES = 10;                // team games for a team to be ranked
+const NBA_HOT_OPP_TEAMS = 20;                // teams ranked, or no ranks at all
+// Games in a row above his own average up to each one (pure).
+function nbaHotRun(games, market) {
+  const vals = games.map((b) => nbaStat(b, market)), sums = [0];
+  vals.forEach((v, i) => sums.push(sums[i] + v));
+  let run = 0;
+  for (let j = vals.length - 1; j >= NBA_HOT_AVG_FROM && vals[j] > sums[j] / j; j--) run++;
+  return run;
+}
+// What each team has let opponents do, a game at a time (pure): their totals, and how
+// far above their own usual they went, which allows for who it has faced. Rows by date.
+function nbaHotAllowed(rows) {
+  const parts = ['pts', 'reb', 'ast', 'threes'], usual = ['dpts', 'dreb', 'dast', 'dthrees'];
+  const sides = new Map(), seen = new Map(), out = new Map();
+  for (const r of rows || []) {
+    if (!(r.min > 0) || !r.team) continue;
+    const g = sides.get(r.game_id);
+    if (!g) sides.set(r.game_id, { a: r.team, b: null, ea: null, eb: null });
+    else if (g.a !== r.team) g.b = r.team;
+  }
+  const entry = (team, date) => {
+    const e = { date, pts: 0, reb: 0, ast: 0, threes: 0, dpts: 0, dreb: 0, dast: 0, dthrees: 0 };
+    if (!out.has(team)) out.set(team, []);
+    out.get(team).push(e);
+    return e;
+  };
+  for (const r of rows || []) {
+    if (!(r.min > 0) || !r.team) continue;
+    const g = sides.get(r.game_id);
+    if (!g.b) continue;
+    const e = r.team === g.a ? (g.eb || (g.eb = entry(g.b, r.date))) : (g.ea || (g.ea = entry(g.a, r.date)));
+    let me = seen.get(r.player_id);
+    if (!me) { me = { n: 0, pts: 0, reb: 0, ast: 0, threes: 0 }; seen.set(r.player_id, me); }
+    for (let i = 0; i < 4; i++) {
+      const k = parts[i], v = r[k] || 0;
+      e[k] += v;
+      if (me.n >= NBA_HOT_AVG_FROM) e[usual[i]] += v - me[k] / me.n;
+      me[k] += v;
+    }
+    me.n++;
+  }
+  return out;
+}
+// Every team's rank for a market going into a day (pure), games that day left out.
+function nbaHotRanks(allowed, day, market, usual) {
+  const parts = (NBA_COMBOS[market] || [market]).map((p) => (usual ? `d${p}` : p)), avg = [];
+  for (const [team, list] of allowed) {
+    let n = 0, sum = 0;
+    for (const e of list) { if (e.date >= day) continue; n++; for (const p of parts) sum += e[p]; }
+    if (n >= NBA_HOT_OPP_GAMES) avg.push([team, sum / n]);
+  }
+  if (avg.length < NBA_HOT_OPP_TEAMS) return new Map();
+  avg.sort((a, b) => a[1] - b[1]);
+  return new Map(avg.map(([team], i) => [team, i / (avg.length - 1)]));
+}
+const nbaHotRanker = (allowed, day) => { const memo = new Map();
+  return (market, usual) => { const k = market + (usual ? '+' : ''); if (!memo.has(k)) memo.set(k, nbaHotRanks(allowed, day, market, usual)); return memo.get(k); }; };
+// Who on this team is on a run tonight, market by market (pure). `soft` is whether any
+// of it is what a read is paid for: the rest only comes along if the game gets read.
+function nbaHotCandidates(st, rankOf, team, opp, inj) {
+  const report = inj || {}, avg = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length, out = [];
+  for (const p of st.players.values()) {
+    if (p.team !== team || p.games.length < NBA_CAUSE_PRIOR || (report[p.id] && nbaInjOut(report[p.id]))) continue;
+    const min5 = avg(p.games.slice(-5).map((b) => b.min));
+    if (min5 < NBA_CAUSE_ROT_MIN) continue;
+    const markets = {};
+    let soft = false;
+    for (const mk of Object.values(NBA_CAUSE_MARKETS)) {
+      const run = nbaHotRun(p.games, mk);
+      if (run < NBA_HOT_NEAR) continue;
+      const rank = rankOf(mk, false).get(opp), usual = rankOf(mk, true).get(opp);
+      if (rank == null) continue;
+      if (run >= NBA_HOT_RUN && rank >= NBA_HOT_SOFT) soft = true;
+      markets[mk] = { run, rank: Math.round(rank * 1000) / 1000, usual: usual == null ? null : Math.round(usual * 1000) / 1000,
+        seasonAvg: round1(avg(p.games.map((b) => nbaStat(b, mk)))), last5: round1(avg(p.games.slice(-5).map((b) => nbaStat(b, mk)))) };
+    }
+    if (Object.keys(markets).length) out.push({ id: p.id, name: p.name, team, opp, min5: round1(min5), soft, markets });
+  }
+  return out;
+}
+// One game's payload against them (pure): a row for each leg PrizePicks posted on a
+// market he has a run in, the sharp read as the backtest took it.
+function nbaHotRows(cands, ev, g, at) {
+  const byName = new Map(cands.map((c) => [nbaName(c.name), c]));
+  const rows = [];
+  for (const l of histPropLegs({ markets: NBA_CAUSE_MARKETS }, ev)) {
+    const c = byName.get(nbaName(l.p)), m = c && c.markets[l.mk];
+    if (!m) continue;
+    const read = histPropRead(l);
+    rows.push({ event_id: ev.id, player: l.p, market: l.mk, espn_id: g.id, player_id: c.id, team: c.team, opp: c.opp, date: ptDateOf(Date.parse(ev.commence_time)),
+      commence: ev.commence_time, home: ev.home_team, away: ev.away_team, pp_line: l.pp, sharp_under: read.under, sharp_src: read.src || null, gap: read.gap,
+      run: m.run, opp_rank: m.rank, opp_rank_usual: m.usual, season_avg: m.seasonAvg, last5: m.last5, min5: c.min5, read_at: at });
+  }
+  return rows;
+}
+async function gradeNbaLog(env, now, table) {
+  const open = (await env.DB.prepare(`SELECT espn_id, MIN(date) AS date FROM ${table} WHERE result IS NULL GROUP BY espn_id`).all()).results || [];
   const at = new Date(now).toISOString();
   let graded = 0;
   for (const o of open.slice(0, NBA_CAUSE_GRADE_PER_TICK)) {
     const box = (await env.DB.prepare('SELECT player_id, min, dnp, pts, reb, ast, threes FROM nba_box WHERE game_id = ?').bind(o.espn_id).all()).results || [];
     if (!box.length) {
       if (now - Date.parse(`${o.date}T12:00:00Z`) > NBA_CAUSE_NO_BOX_DAYS * 86400e3) {
-        await env.DB.prepare("UPDATE nbacause SET result = 'void', graded_at = ? WHERE espn_id = ? AND result IS NULL").bind(at, o.espn_id).run();
+        await env.DB.prepare(`UPDATE ${table} SET result = 'void', graded_at = ? WHERE espn_id = ? AND result IS NULL`).bind(at, o.espn_id).run();
       }
       continue;
     }
     const played = new Map(box.filter((b) => !b.dnp && b.min > 0).map((b) => [b.player_id, b]));
-    const legs = (await env.DB.prepare('SELECT * FROM nbacause WHERE espn_id = ? AND result IS NULL').bind(o.espn_id).all()).results || [];
+    const legs = (await env.DB.prepare(`SELECT * FROM ${table} WHERE espn_id = ? AND result IS NULL`).bind(o.espn_id).all()).results || [];
     const stmts = legs.map((l) => {
       const me = played.get(l.player_id), actual = me ? nbaStat(me, l.market) : null;
-      const held = JSON.parse(l.outs || '[]').some((x) => !played.has(x.id)) ? 1 : 0;
+      const held = table === 'nbacause' ? [JSON.parse(l.outs || '[]').some((x) => !played.has(x.id)) ? 1 : 0] : [];
       graded++;
-      return env.DB.prepare('UPDATE nbacause SET result = ?, actual = ?, held = ?, graded_at = ? WHERE event_id = ? AND player = ? AND market = ?')
-        .bind(actual == null ? 'void' : ppSide(actual, l.pp_line), actual, held, at, l.event_id, l.player, l.market);
+      return env.DB.prepare(`UPDATE ${table} SET result = ?, actual = ?${held.length ? ', held = ?' : ''}, graded_at = ? WHERE event_id = ? AND player = ? AND market = ?`)
+        .bind(actual == null ? 'void' : ppSide(actual, l.pp_line), actual, ...held, at, l.event_id, l.player, l.market);
     });
     for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
   }
@@ -12905,7 +13025,7 @@ async function gradeNbaCause(env, now) {
 async function nbaCauseTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   await ensureNbaCauseSchema(env.DB);
-  const graded = await gradeNbaCause(env, now).catch(() => 0);
+  const graded = (await gradeNbaLog(env, now, 'nbacause').catch(() => 0)) + (await gradeNbaLog(env, now, 'nbahot').catch(() => 0));
   if (!env.ODDS_API_KEY) return { graded };
   const hit = await loadFeedCache(env.DB, NBA_CAUSE_STATE);
   const st = (hit.present && hit.data) || {};
@@ -12915,13 +13035,16 @@ async function nbaCauseTick(env, now = Date.now()) {
     .sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence)).slice(0, NBA_CAUSE_PER_TICK);
   if (!due.length) return { graded };
   await ensureNbaSchema(env.DB);
-  const box = nbaCauseState((await env.DB.prepare('SELECT game_id, player_id, player, team, min, pts, reb, ast, threes FROM nba_box WHERE season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date, game_id')
-    .bind(NBA_SEASON_FROM).all()).results);
+  const boxRows = (await env.DB.prepare('SELECT game_id, date, player_id, player, team, min, pts, reb, ast, threes FROM nba_box WHERE season_type IN (2,3) AND dnp = 0 AND date >= ? ORDER BY date, game_id')
+    .bind(NBA_SEASON_FROM).all()).results;
+  const box = nbaCauseState(boxRows), allowed = nbaHotAllowed(boxRows);
   let logged = 0, reads = 0, dirty = false;
   const at = new Date(now).toISOString();
   for (const g of due) {
     const cands = [...nbaCauseCandidates(box, g.homeAb, g.inj), ...nbaCauseCandidates(box, g.awayAb, g.inj)];
-    if (!cands.length) { st[g.id] = { done: at, why: 'no one' }; dirty = true; continue; }
+    const rankOf = nbaHotRanker(allowed, ptDateOf(Date.parse(g.commence)));
+    const hot = [...nbaHotCandidates(box, rankOf, g.homeAb, g.awayAb, g.inj), ...nbaHotCandidates(box, rankOf, g.awayAb, g.homeAb, g.inj)];
+    if (!cands.length && !hot.some((c) => c.soft)) { st[g.id] = { done: at, why: 'no one' }; dirty = true; continue; }
     if (await oddsLean(env.DB, now)) break;
     const ev = (await ppWatchGames(env, 'nba', 'reg', NBA_LEAGUES.reg, now)).find((x) => nbaMatch(x.home, g.home) && nbaMatch(x.away, g.away) && Math.abs(Date.parse(x.commence) - Date.parse(g.commence)) < 6 * 3600e3);
     if (!ev) continue;
@@ -12929,7 +13052,7 @@ async function nbaCauseTick(env, now = Date.now()) {
       reads++;
       const r = await fetch(`https://api.the-odds-api.com/v4/sports/${NBA_LEAGUES.reg}/events/${ev.id}/odds?apiKey=${env.ODDS_API_KEY}&markets=${Object.keys(NBA_CAUSE_MARKETS).join(',')}&oddsFormat=american&dateFormat=iso&bookmakers=${HIST_PROP_BOOKS.join(',')}`,
         { headers: { accept: 'application/json' } });
-      await recordOddsUsage(env, r, 'nba:reg:cause');
+      await recordOddsUsage(env, r, cands.length ? 'nba:reg:cause' : 'nba:reg:hot');
       const body = r.ok ? await r.json() : null;
       const s = st[g.id] = { ...(st[g.id] || {}), tries: ((st[g.id] || {}).tries || 0) + 1 };
       dirty = true;
@@ -12941,9 +13064,13 @@ async function nbaCauseTick(env, now = Date.now()) {
       const stmts = rows.map((x) => env.DB.prepare(`INSERT OR IGNORE INTO nbacause (event_id, player, market, espn_id, player_id, team, date, commence, home, away,
           pp_line, sharp_under, sharp_src, gap, form, min5, min_before, outs, read_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
         .bind(x.event_id, x.player, x.market, x.espn_id, x.player_id, x.team, x.date, x.commence, x.home, x.away, x.pp_line, x.sharp_under, x.sharp_src, x.gap, x.form, x.min5, x.min_before, x.outs, x.read_at));
+      const hotRows = nbaHotRows(hot, body, g, at);
+      for (const x of hotRows) stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO nbahot (event_id, player, market, espn_id, player_id, team, opp, date, commence, home, away,
+          pp_line, sharp_under, sharp_src, gap, run, opp_rank, opp_rank_usual, season_avg, last5, min5, read_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(x.event_id, x.player, x.market, x.espn_id, x.player_id, x.team, x.opp, x.date, x.commence, x.home, x.away, x.pp_line, x.sharp_under, x.sharp_src, x.gap, x.run, x.opp_rank, x.opp_rank_usual, x.season_avg, x.last5, x.min5, x.read_at));
       for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
-      logged += rows.length;
-      s.done = at; s.legs = rows.length;
+      logged += rows.length + hotRows.length;
+      s.done = at; s.legs = rows.length; s.hot = hotRows.length;
     } catch (e) { /* this game's next tick */ }
   }
   if (dirty) {
@@ -12970,13 +13097,32 @@ function buildNbaCauseRecord(rows) {
     teammatePlayed: decided.filter((r) => r.held === 0).length,
     rule: cell(held.filter((r) => r.form >= NBA_CAUSE_FORM_BAR)), underBar: cell(held.filter((r) => r.form < NBA_CAUSE_FORM_BAR)) };
 }
-// GET /api/nba-cause[?day=YYYY-MM-DD]: the record, and that day's rows.
+// How the run has gone, as the Under: the rule, and beside it what says whether the
+// opponent matters and whether the run's length does. One player's legs in a game are
+// nearly one bet, so `games` is the real sample.
+function buildNbaHotRecord(rows) {
+  const decided = rows.filter((r) => r.result === 'over' || r.result === 'under');
+  const cell = (ls) => {
+    const pr = ls.filter((r) => r.sharp_under != null), rate = (a) => (a.length ? round1(a.filter((r) => r.result === 'under').length / a.length * 100) : null);
+    const said = pr.length ? round1(pr.reduce((a, r) => a + r.sharp_under, 0) / pr.length) : null;
+    return { n: ls.length, games: new Set(ls.map((r) => `${r.event_id}|${r.player}`)).size, under: ls.filter((r) => r.result === 'under').length, underRate: rate(ls),
+      priced: { n: pr.length, underRate: rate(pr), sharpSaid: said, beat: pr.length ? round1(rate(pr) - said) : null } };
+  };
+  const long = (r) => r.run >= NBA_HOT_RUN, soft = (r) => r.opp_rank >= NBA_HOT_SOFT;
+  return { note: 'LOGGED ONLY: the Under after 5+ games in a row above his own average, against a team in the top third for allowing that stat. Last season: 57.0% where the sharp books said 50.5 (741 priced legs), 56.4% of all 1,241; the same run against the tough third 53.4.',
+    logged: rows.length, pending: rows.filter((r) => r.result == null).length, voided: rows.filter((r) => r.result === 'void').length, pushed: rows.filter((r) => r.result === 'push').length,
+    rule: cell(decided.filter((r) => long(r) && soft(r))), ruleAllowingForOpponents: cell(decided.filter((r) => long(r) && r.opp_rank_usual != null && r.opp_rank_usual >= NBA_HOT_SOFT)),
+    longRunOtherTeams: cell(decided.filter((r) => long(r) && !soft(r))), shortRunSoftTeam: cell(decided.filter((r) => !long(r) && soft(r))) };
+}
+// GET /api/nba-cause[?day=YYYY-MM-DD]: both records, and that day's rows.
 async function nbaCauseRoute(env, url) {
   if (!env || !env.DB) return { error: 'no DB binding' };
   await ensureNbaCauseSchema(env.DB);
   const rows = (await env.DB.prepare('SELECT * FROM nbacause').all()).results || [];
+  const hot = (await env.DB.prepare('SELECT * FROM nbahot').all()).results || [];
   const day = url.searchParams.get('day');
-  return { record: buildNbaCauseRecord(rows), ...(day ? { day, rows: rows.filter((r) => r.date === day).map((r) => ({ ...r, outs: JSON.parse(r.outs || '[]') })) } : {}) };
+  return { record: buildNbaCauseRecord(rows), hotRun: buildNbaHotRecord(hot),
+    ...(day ? { day, rows: rows.filter((r) => r.date === day).map((r) => ({ ...r, outs: JSON.parse(r.outs || '[]') })), hotRows: hot.filter((r) => r.date === day) } : {}) };
 }
 
 // Pure: one ESPN box score in, one row per player out.
