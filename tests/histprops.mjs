@@ -181,9 +181,11 @@ await tick();
 r = await get('/api/hist-props?job=nba');
 ok(r.done === false && /^reserve: the live site keeps 5000 until the quota renews$/.test(r.paused) && r.remaining < 5000 && r.reserve === 5000,
   `it pauses when the feed leaves less than the reserve: "${r.paused}" (${r.remaining} left)`);
-const n0 = asked.length;
+// The odds feed: the same trigger's Hot players reads are ESPN's and the NHL's, free.
+const oddsAsked = () => asked.filter((u) => /the-odds-api\.com/.test(u)).length;
+const n0 = oddsAsked();
 await tick();
-ok(asked.length === n0, 'and while the remaining stays under it, reads nothing');
+ok(oddsAsked() === n0, 'and while the remaining stays under it, reads nothing');
 // The reset: the live boards' next read records the month's new remaining.
 sq.prepare("INSERT OR REPLACE INTO odds_usage (day, remaining, low, calls, updated_at) VALUES ('2026-11-01', 100000, 100000, 1, '2026-11-01T07:05:00Z')").run();
 remaining = 100000;

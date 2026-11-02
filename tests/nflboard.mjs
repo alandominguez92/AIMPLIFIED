@@ -129,8 +129,8 @@ const document = { getElementById: (id) => (els[id] = els[id] || fakeEl()) };
 const el = { nflBoardTitle: fakeEl(), nflCount: fakeEl() };
 let tabled = null;
 const esc = (s) => String(s == null ? '' : s);
-const draw = new Function('document', 'el', 'esc', 'soccerKick', 'nflTable', lift('gmRecordHtml') + '\n' + lift('renderNflMoneyline') + '\nreturn renderNflMoneyline;')(
-  document, el, esc, (iso) => iso, (games) => { tabled = games; return '<table>'; });
+const draw = new Function('document', 'el', 'esc', 'soccerKick', 'nflTable', 'hotCardHtml', lift('gmRecordHtml') + '\n' + lift('renderNflMoneyline') + '\nreturn renderNflMoneyline;')(
+  document, el, esc, (iso) => iso, (games) => { tabled = games; return '<table>'; }, () => '');
 draw({ ...REC.board, record: b.record }, false);
 ok(tabled && tabled.map((x) => `${x.away}@${x.home}`).join() === 'KC@SEA',
   `at 3:18 PM the table is tonight's game alone; the ten under way or over, Panthers +3000 among them, are left out (${tabled && tabled.length})`);

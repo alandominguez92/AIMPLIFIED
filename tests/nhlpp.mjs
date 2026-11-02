@@ -226,7 +226,7 @@ const gid = Object.fromEntries(order.map((p, i) => [p, ['ga', 'ga', 'gb', 'gc', 
 ui.nhlPp = { ...ui.nhlPp, legs: ui.nhlPp.legs.map((x) => ({ ...x, game_id: gid[x.player] || 'gz' })) };
 html = card();
 ok(order.length === 5 && (html.match(/same game/g) || []).length === 4, 'with three games on the card, the legs that share one are marked');
-ok(/const rec = nhlRecordHtml\(d\.record\) \+ nhlPpCardHtml\(\);/.test(app) && /fetchJson\('\/api\/nhl-pp'\)/.test(app),
+ok(/const rec = nhlRecordHtml\(d\.record\) \+ nhlPpCardHtml\(\)/.test(app) && /fetchJson\('\/api\/nhl-pp'\)/.test(app),
   'the NHL tab reads /api/nhl-pp and draws the card under the moneyline record');
 ok(/id: `\$\{sport\}pp:\$\{x\.game_id\}:\$\{x\.player\}:\$\{x\.market\}:over`/.test(app) && /market: x\.market, side: 'Over'/.test(app),
   'each leg stars into the slip as a PrizePicks Over, under its own id');

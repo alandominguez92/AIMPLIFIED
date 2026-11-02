@@ -185,6 +185,8 @@
     logLines: {},          // legId -> the line actually taken, when it differs from the board's
     logStake: null,
     manualLegs: 1,         // rows in the "add by hand" form
+    hot: {},               // /api/hot-players, a league at a time
+    hotAll: {},            // the Hot players tap, a league at a time
     soccer: null,          // /api/soccer-board payload, loaded on first visit
     soccerLeague: 'all',   // 'all' or a league key from the payload ('epl', 'ucl', 'uel', ...)
     socProps: null,        // /api/soccer-props
@@ -1976,6 +1978,8 @@
     if (!n) return null;
     if (sport === 'mlb') return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_120,q_auto:best/v1/people/${n}/headshot/67/current`;
     if (sport === 'nba' || sport === 'soccer') return `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${n}.png&w=96&h=70`;
+    // The Hot players list has the NFL player's ESPN id; everywhere else has the other one.
+    if (sport === 'nfl-espn') return `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${n}.png&w=96&h=70`;
     // The NHL's own photos (2026-10-22), filed by season and club: the NHL id
     // and the club the stats API gives the leg.
     const club = String(team || '').toUpperCase();
@@ -4779,6 +4783,14 @@
         renderNba();
         break;
       }
+      case 'hot-all': {
+        const s = target.dataset.sport;
+        state.hotAll = { ...state.hotAll, [s]: !state.hotAll[s] };
+        if (s === 'nhl') renderNhl();
+        if (s === 'nfl') renderNfl();
+        if (s === 'soccer') renderSoccer();
+        break;
+      }
       case 'nba-toggle': {
         const nid = target.dataset.id;
         state.nbaOpen = state.nbaOpen === nid ? null : nid;
@@ -5212,12 +5224,15 @@
 
   async function refreshNfl() {
     if (!LIVE_MODE) return;
+    const hot = fetchJson('/api/hot-players?sport=nfl').catch(() => null);
     try {
       const d = await fetchJson('/api/nfl-board');
       state.nfl = (d && Array.isArray(d.games)) ? d : { games: [], empty: true };
     } catch (e) {
       state.nfl = { games: [], empty: true, error: 'unreachable' };
     }
+    const h = await hot;
+    state.hot = { ...state.hot, nfl: (h && h.hot) || null };
     renderNfl();
   }
 
@@ -5317,7 +5332,7 @@
       + (pre ? ' · preseason: starters sit' : '');
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
     const rec = gmRecordHtml(d.record, 'Record: logged from Week 1, graded from ESPN’s finals each morning.');
-    grid.innerHTML = rec + (games.length ? nflTable(games)
+    grid.innerHTML = rec + hotCardHtml('nfl') + (games.length ? nflTable(games)
       : `<div class="nfl-empty">No NFL games left on this slate${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`);
   }
 
@@ -7086,6 +7101,23 @@
       + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${allows} <span class="tc-dfs">${m.third} team</span></span>`
       + (m.line == null && !m.read ? `<span class="hot-line">${num} · not tested, so no side</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
   }
+  // Each league's list has one shape. What differs: the runs' lines, and whether it is the
+  // NBA's, whose rule has been tested and whose report and numbers are on it.
+  function hotBodyHtml(h, head, all, tapAttrs, sport, oppLine, rowHtml) {
+    if (!h.players.length) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">No one is on a run of 5 or more in the next games.</div></div>`;
+    const isSoft = (m) => m.third === 'soft', soft = h.players.filter((p) => p.markets.some(isSoft));
+    const shown = all ? h.players : soft.slice(0, NBA_HOT_TOP);
+    const list = shown.length ? `<ol class="tc-legs">${shown.map((p) => `<li><div class="tc-leg has-hs">${avatarHtml({ sport, playerId: p.id, team: p.team, name: p.name })}`
+      + `<span class="tc-l1"><b>${esc(p.name)}</b></span>`
+      + `<span class="tc-l2"><span><b class="tc-team">${esc(p.team)}</b> · ${p.isHome ? 'v' : '@'} ${oppLine(p)}</span></span>`
+      + (p.role ? `<span class="hot-line hot-role">Bigger role: ${esc(String(Math.round(p.role.min)))} ${esc(p.role.unit || 'minutes')} a game, ${esc(String(Math.round(p.role.before)))} last season</span>` : '')
+      + (all ? p.markets : p.markets.filter(isSoft)).map((m) => rowHtml(p, m)).join('')
+      + `</div></li>`).join('')}</ol>` : `<div class="tc-wait-note">No one is on a run against a soft team in the next games.</div>`;
+    // More to see: a player left off, or a shown player's runs against other teams.
+    const toggle = all || h.players.length > shown.length || shown.some((p) => !p.markets.every(isSoft))
+      ? `<button type="button" class="pp-line-reset hot-all" ${tapAttrs}>${all ? 'Soft teams only' : `Show every run (${h.players.length} player${h.players.length === 1 ? '' : 's'})`}</button>` : '';
+    return `<div class="nba-pp nba-hot">${head}${list}${toggle}</div>`;
+  }
   function nbaHotCardHtml() {
     const h = state.nbaPp && state.nbaPp.hot;
     if (!h) return '';
@@ -7096,19 +7128,26 @@
     if (!h.ready) {
       return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games yet. A player needs ${h.gamesNeeded} games, and opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}: ${h.teamsReady} have so far.</div></div>`;
     }
-    if (!h.players.length) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">No one is on a run of 5 or more in the next games.</div></div>`;
-    const isSoft = (m) => m.third === 'soft', soft = h.players.filter((p) => p.markets.some(isSoft));
-    const all = !!state.nbaHotAll, shown = all ? h.players : soft.slice(0, NBA_HOT_TOP);
-    const list = shown.length ? `<ol class="tc-legs">${shown.map((p) => `<li><div class="tc-leg has-hs">${avatarHtml({ sport: 'nba', playerId: p.id, team: p.team, name: p.name })}`
-      + `<span class="tc-l1"><b>${esc(p.name)}</b></span>`
-      + `<span class="tc-l2"><span><b class="tc-team">${esc(p.team)}</b> · ${p.isHome ? 'v' : '@'} ${esc(nbaNick(p.oppName))} · ${esc(soccerKick(p.commence))}${nbaCardInjTag(p)}</span></span>`
-      + (p.role ? `<span class="hot-line hot-role">Bigger role: ${esc(String(Math.round(p.role.min)))} minutes a game, ${esc(String(Math.round(p.role.before)))} last season</span>` : '')
-      + (all ? p.markets : p.markets.filter(isSoft)).map((m) => nbaHotMarketHtml(p, m, h.flexBreakEven)).join('')
-      + `</div></li>`).join('')}</ol>` : `<div class="tc-wait-note">No one is on a run against a soft team in the next games.</div>`;
-    // More to see: a player left off, or a shown player's runs against other teams.
-    const toggle = all || h.players.length > shown.length || shown.some((p) => !p.markets.every(isSoft))
-      ? `<button type="button" class="pp-line-reset hot-all" data-action="nba-hot-all">${all ? 'Soft teams only' : `Show every run (${h.players.length} player${h.players.length === 1 ? '' : 's'})`}</button>` : '';
-    return `<div class="nba-pp nba-hot">${head}${list}${toggle}</div>`;
+    return hotBodyHtml(h, head, !!state.nbaHotAll, 'data-action="nba-hot-all"', 'nba', (p) => `${esc(nbaNick(p.oppName))} · ${esc(soccerKick(p.commence))}${nbaCardInjTag(p)}`, (p, m) => nbaHotMarketHtml(p, m, h.flexBreakEven));
+  }
+  const HOT_LEAGUE = {
+    nhl: { name: 'the NHL', games: 'games', face: 'nhl', mk: { pts: 'Points', ast: 'Assists', goals: 'Goals', sog: 'Shots on goal' } },
+    nfl: { name: 'the NFL', games: 'games', face: 'nfl-espn', mk: { pass_yds: 'Passing yards', pass_td: 'Passing TDs', rush_yds: 'Rushing yards', rec: 'Receptions', rec_yds: 'Receiving yards' } },
+    soccer: { name: 'soccer', games: 'starts', face: 'soccer', mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' } },
+  };
+  function hotRowHtml(p, m, mk) {
+    const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1, label = mk[m.market];
+    const against = m.lastSeason != null ? `${esc(String(m.lastSeason))} last season` : `${esc(String(m.seasonAvg))} season`;
+    return `<span class="hot-mk"><span class="hot-line"><b>${esc(label)}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
+      + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${esc(p.oppNick)} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(label.toLowerCase())} <span class="tc-dfs">${m.third} team</span></span></span>`;
+  }
+  function hotCardHtml(sport) {
+    const h = state.hot[sport], lg = HOT_LEAGUE[sport];
+    if (!h) return '';
+    const head = `<div class="tc-head"><span class="tc-title">Hot players</span></div>`
+      + `<div class="tc-sub">Five or more ${lg.games} in a row above his own average, or above last season's average with under 10 ${lg.games}, with the team he plays ranked for that stat${h.early ? ` on ${h.gamesNeeded}+ games` : ''}. Not tested in ${lg.name}, so it shows no side. A lead, not a pick: off Picks and out of the entries.</div>`;
+    if (!h.ready) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games read yet: opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}, and ${h.teamsReady} have so far.</div></div>`;
+    return hotBodyHtml(h, head, !!state.hotAll[sport], `data-action="hot-all" data-sport="${sport}"`, lg.face, (p) => `${esc(p.oppNick)} · ${esc(soccerKick(p.commence))}`, (p, m) => hotRowHtml(p, m, lg.mk));
   }
   function renderNba() {
     const grid = document.getElementById('nbaGrid');
@@ -7221,12 +7260,14 @@
   // backtest (65%+ favourites won 114 of 171, stated 69.1%).
   async function refreshNhl() {
     if (!LIVE_MODE) return;
-    const [d, pp] = await Promise.all([
+    const [d, pp, hot] = await Promise.all([
       fetchJson('/api/nhl-board').catch(() => null),
       fetchJson('/api/nhl-pp').catch(() => null),
+      fetchJson('/api/hot-players?sport=nhl').catch(() => null),
     ]);
     state.nhl = d && Array.isArray(d.games) ? d : { games: [], empty: true, error: d ? undefined : 'unreachable' };
     state.nhlPp = pp && Array.isArray(pp.legs) ? pp : null;
+    state.hot = { ...state.hot, nhl: (hot && hot.hot) || null };
     renderNhl();
   }
   // NHL PrizePicks points and assists (2026-10-22), the NBA card's shape: the
@@ -7283,7 +7324,7 @@
     const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
     if (count) count.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}` : '';
     if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '');
-    const rec = nhlRecordHtml(d.record) + nhlPpCardHtml();
+    const rec = nhlRecordHtml(d.record) + nhlPpCardHtml() + hotCardHtml('nhl');
     if (!games.length) {
       grid.innerHTML = rec + `<div class="nfl-empty">No NHL games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
@@ -7301,14 +7342,16 @@
   // -------------------------------------------------------------------------
   async function refreshSoccer() {
     if (!LIVE_MODE) return;
-    const [d, pp] = await Promise.all([
+    const [d, pp, hot] = await Promise.all([
       fetchJson('/api/soccer-board').catch(() => 'unreachable'),
       fetchJson('/api/soccer-props').catch(() => null),
+      fetchJson('/api/hot-players?sport=soccer').catch(() => null),
     ]);
     state.soccer = d === 'unreachable' ? { games: [], empty: true, error: 'unreachable' }
       : ((d && Array.isArray(d.games)) ? d : { games: [], empty: true });
     state.socProps = pp && Array.isArray(pp.matches) ? pp : null;
     state.socPropsAt = Date.now();
+    state.hot = { ...state.hot, soccer: (hot && hot.hot) || null };
     renderSoccer();
     socSavedLoad();
   }
@@ -7677,7 +7720,7 @@
     if (!d) { el.soccerGrid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
     // The player-props card leads the tab in every state: it has its own feed,
     // and a day with no priced fixture can still have lineups posted.
-    const props = socPropsCardHtml();
+    const props = socPropsCardHtml() + hotCardHtml('soccer');
     if (d.error) { el.soccerGrid.innerHTML = props + `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
     const games = (d.games || []).filter((g) => state.soccerLeague === 'all' || g.league === state.soccerLeague);
     if (el.soccerCount) {
