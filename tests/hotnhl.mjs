@@ -219,13 +219,14 @@ ok(S.boxCalls.join() === '2026020001' && inDb && inDb.team === REAL_BOX.awayTeam
 const skaters = ['awayTeam', 'homeTeam'].flatMap((s) => [...REAL_BOX.playerByGameStats[s].forwards, ...REAL_BOX.playerByGameStats[s].defense]);
 ok(boxRow.length === skaters.filter((x) => x.toi && x.toi !== '00:00').length && !boxRow.some((r) => REAL_BOX.playerByGameStats.awayTeam.goalies.some((g) => String(g.playerId) === r.player_id)), `one row a skater who played, no goalies: ${boxRow.length}`);
 ok(gamesDb()[0].done === 1, 'and the game marked read');
-const callsThen = S.boxCalls.length;
+const callsThen = S.boxCalls.length, START_READ = NOW;
 for (let i = 0; i < 12; i++) { NOW += 5 * 60e3; await tick(); }
 ok(S.boxCalls.length === callsThen + 5, 'every finished game read once, at most four a tick');
 ok(new Set(S.boxCalls).size === S.boxCalls.length, 'none twice');
 const atEnd = S.scoreCalls.length;
 const scanRow = () => JSON.parse(S.sq.prepare("SELECT data FROM feed_cache WHERE key = 'nhl_box_scan'").get().data);
 ok(scanRow().from > '2026-11-01', 'the backfill reached yesterday');
+ok(scanRow().readAt > START_READ, 'and it says when it last read a game, which is what brings the list up to date');
 NOW += 10 * 60e3; await tick();
 ok(S.scoreCalls.length === atEnd, 'then no scan inside the hour');
 NOW += 3600e3; await tick();

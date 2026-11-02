@@ -265,6 +265,24 @@ ok(S.boxCalls.length === 0, 'the five-minute cron does not read box scores');
 await tick();
 ok(S.boxCalls.length === 4, 'the two-minute one does');
 
+console.log('\n-- the list waits for a backfill, then follows it --');
+S = scene({ rows: [], weeks: { now: WK8 } });
+await loadWorker();
+await tick();
+const listRow = () => { const r = S.sq.prepare("SELECT data FROM feed_cache WHERE key = 'hot_list:nfl'").get(); return r && JSON.parse(r.data); };
+ok(S.boxCalls.length === 4 && !listRow(), `${finals.length - 4} games still to read: no list yet, it would be the season's oldest games`);
+NOW += 2 * 60e3; await tick();
+ok(S.boxCalls.length === 8 && !!listRow(), `${finals.length - 8} left: a few stragglers do not hold it, or one stuck game would`);
+const built1 = listRow().builtAt;
+for (let i = 0; i < 3; i++) { NOW += 2 * 60e3; await tick(); }
+ok(S.boxCalls.length === finals.length && listRow().builtAt === built1, 'the rest come in, and inside the hour it is kept');
+NOW = built1 + 61 * 60e3; await tick();
+const built2 = listRow().builtAt;
+ok(built2 === NOW, 'an hour on, with games it has not seen: built again, not left for six hours');
+NOW = built2 + 61 * 60e3; await tick();
+ok(listRow().builtAt === built2, 'and an hour after that, nothing new: kept');
+NOW = START;
+
 console.log('\n-- a backtest comes first --');
 S = scene({ rows: [], weeks: { now: WK8, 1: wk1 } });
 await loadWorker();

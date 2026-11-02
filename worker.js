@@ -13286,7 +13286,19 @@ async function nbaHotBoard(db, legs, injDays, now) {
 // the page reads only that row.
 const HOT_LIST_KEY = 'hot_list:';
 const HOT_LIST_EVERY_MS = 6 * 3600e3;
-const HOT_LIST_FILLING_MS = 3600e3;         // while a league's box scores are still coming in
+const HOT_LIST_FILLING_MS = 3600e3;         // once games have come in that the list hasn't seen
+const HOT_LIST_STRAGGLERS = 8;              // this many waiting isn't a backfill, or one stuck game would hold the list
+// Is a league's list due? Six hours on, or an hour on with games it hasn't seen. Not during a
+// backfill, which reads the oldest first: the list would be weeks behind and look current.
+async function hotListDue(db, hit, scanKey, gamesTable, now) {
+  const age = hit.present && hit.data ? now - hit.data.builtAt : Infinity;
+  if (age < HOT_LIST_FILLING_MS) return false;
+  const scan = await loadFeedCache(db, scanKey);
+  const fresh = age === Infinity || (scan.present && scan.data && scan.data.readAt > hit.data.builtAt);
+  if (age < HOT_LIST_EVERY_MS && !fresh) return false;
+  const left = await db.prepare(`SELECT COUNT(*) AS n FROM ${gamesTable} WHERE done = 0`).first();
+  return !(Number(left && left.n) > HOT_LIST_STRAGGLERS);
+}
 function hotRunOwn(vals) {
   const sums = [0];
   vals.forEach((v, i) => sums.push(sums[i] + v));
@@ -13448,7 +13460,7 @@ async function nhlBoxIngest(env, now = Date.now()) {
       if (stmts.length) await db.batch(stmts);
       if (behind) from = hotDayAfter(day);
     }
-    await saveFeedCache(db, 'nhl_box_scan', { from, checked: now });
+    await saveFeedCache(db, 'nhl_box_scan', { ...st, from, checked: now });
   }
   const todo = (await db.prepare('SELECT game_id, date FROM nhl_box_games WHERE done = 0 ORDER BY date LIMIT ?').bind(NHL_BOX_PER_TICK).all()).results || [];
   let read = 0;
@@ -13465,6 +13477,7 @@ async function nhlBoxIngest(env, now = Date.now()) {
       read++;
     } catch (e) { /* next tick */ }
   }
+  if (read) { const s = await loadFeedCache(db, 'nhl_box_scan'); await saveFeedCache(db, 'nhl_box_scan', { ...s.data, readAt: now }); }
   return { read };
 }
 // Last season by NHL id, with the shots the Picks reads' copy leaves out. Kept for good: one request.
@@ -13482,11 +13495,9 @@ async function nhlHotPrior(env) {
 async function nhlHotTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   const db = env.DB, key = HOT_LIST_KEY + 'nhl';
-  const hit = await loadFeedCache(db, key), age = hit.present && hit.data ? now - hit.data.builtAt : Infinity;
-  if (age < HOT_LIST_FILLING_MS) return null;
+  const hit = await loadFeedCache(db, key);
   await ensureNhlBoxSchema(db);
-  const left = await db.prepare('SELECT COUNT(*) AS n FROM nhl_box_games WHERE done = 0').first();
-  if (age < HOT_LIST_EVERY_MS && !(Number(left && left.n) > 0)) return null;
+  if (!(await hotListDue(db, hit, 'nhl_box_scan', 'nhl_box_games', now))) return null;
   const slate = [];
   for (const day of [ptDateOf(now), ptDateOf(now + 86400e3)]) {
     try {
@@ -13573,7 +13584,7 @@ async function nflBoxIngest(env, now = Date.now()) {
         .map((e) => db.prepare('INSERT OR IGNORE INTO nfl_box_games (game_id, date, done) VALUES (?,?,0)').bind(String(e.id), ptDateOf(Date.parse(e.date))));
       if (stmts.length) await db.batch(stmts);
       const wk = !behind && evs[0] && evs[0].week && evs[0].season && evs[0].season.type === 2 ? evs[0].week.number : null;
-      await saveFeedCache(db, 'nfl_box_scan', { week: behind ? st.week + 1 : st.week, current: wk != null ? wk : st.current, checked: behind ? st.checked : now });
+      await saveFeedCache(db, 'nfl_box_scan', { ...st, week: behind ? st.week + 1 : st.week, current: wk != null ? wk : st.current, checked: behind ? st.checked : now });
     }
   }
   const todo = (await db.prepare('SELECT game_id, date FROM nfl_box_games WHERE done = 0 ORDER BY date LIMIT ?').bind(NFL_BOX_PER_TICK).all()).results || [];
@@ -13591,6 +13602,7 @@ async function nflBoxIngest(env, now = Date.now()) {
       read++;
     } catch (e) { /* next tick */ }
   }
+  if (read) { const s = await loadFeedCache(db, 'nfl_box_scan'); await saveFeedCache(db, 'nfl_box_scan', { ...s.data, readAt: now }); }
   return { read };
 }
 let NFL_HOT_PRIORS = null;
@@ -13605,11 +13617,9 @@ async function nflHotPriors(env) {
 async function nflHotTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   const db = env.DB, key = HOT_LIST_KEY + 'nfl';
-  const hit = await loadFeedCache(db, key), age = hit.present && hit.data ? now - hit.data.builtAt : Infinity;
-  if (age < HOT_LIST_FILLING_MS) return null;
+  const hit = await loadFeedCache(db, key);
   await ensureNflBoxSchema(db);
-  const left = await db.prepare('SELECT COUNT(*) AS n FROM nfl_box_games WHERE done = 0').first();
-  if (age < HOT_LIST_EVERY_MS && !(Number(left && left.n) > 0)) return null;
+  if (!(await hotListDue(db, hit, 'nfl_box_scan', 'nfl_box_games', now))) return null;
   // This week's games still to come, and next week's: the week's last game is on a Monday night.
   const cur = await espnScoreboard('nfl/scoreboard?xhr=1').catch(() => []);
   const wk = cur[0] && cur[0].week && cur[0].season && cur[0].season.type === 2 ? cur[0].week.number : null;
@@ -13714,6 +13724,7 @@ async function socHotBackfill(env, now = Date.now()) {
     stmts.push(db.prepare('DELETE FROM feed_cache WHERE key = ?').bind(`soc_box_meta:${g.game_id}`));
   } else if (tried > 0 && rows.length === 0) stmts.push(giveUp);
   if (stmts.length) await db.batch(stmts);
+  if (rows.length) await saveFeedCache(db, key, { ...st, readAt: now });
   return null;
 }
 
@@ -13724,8 +13735,10 @@ async function socHotTick(env, now = Date.now()) {
   const db = env.DB, key = HOT_LIST_KEY + 'soccer';
   const hit = await loadFeedCache(db, key);
   await ensureSocHotSchema(db);
-  const filling = await db.prepare('SELECT 1 AS x FROM soc_hot_games WHERE done = 0 LIMIT 1').first();
-  if (hit.present && hit.data && now - hit.data.builtAt < (filling ? HOT_LIST_FILLING_MS : HOT_LIST_EVERY_MS)) return null;
+  const back = await loadFeedCache(db, 'soc_hot_back');
+  // The backfill reads newest first, so a list built during it is short of history, not behind.
+  const fresh = hit.present && hit.data && back.present && back.data && back.data.readAt > hit.data.builtAt;
+  if (hit.present && hit.data && now - hit.data.builtAt < (fresh ? HOT_LIST_FILLING_MS : HOT_LIST_EVERY_MS)) return null;
   // ESPN's soccer scoreboard takes one date, a range is a 400, so a week of seven leagues is 49
   // reads: a few a tick, kept in a row, and the list is built when the last one is in.
   const from = ptDateOf(now), scan = await loadFeedCache(db, 'soc_hot_slate');
