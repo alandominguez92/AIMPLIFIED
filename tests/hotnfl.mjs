@@ -246,6 +246,8 @@ const sbThen = S.sbCalls.length;
 NOW += 10 * 60e3; await tick();
 ok(S.sbCalls.filter((w) => w !== 'now' && w !== '9').length === 7 && S.sbCalls.slice(sbThen).every((w) => w === 'now' || w === '9'), 'caught up: no week read again');
 const scanRow = () => JSON.parse(S.sq.prepare("SELECT data FROM feed_cache WHERE key = 'nfl_box_scan'").get().data);
+const prog = (await get('/api/hot-players?sport=nfl&ingest=1')).ingest;
+ok(prog && prog.games === finals.length && prog.read === finals.length, `how far it has got, when asked: ${prog && prog.read} of ${prog && prog.games}`);
 ok(scanRow().week === 8 && scanRow().current === 8, 'the cursor sits on the current week');
 S.weeks.now = { content: { sbData: { events: events(WK9) } } };
 NOW += 3600e3; await tick();
@@ -262,6 +264,17 @@ await cron('*/5 * * * *');
 ok(S.boxCalls.length === 0, 'the five-minute cron does not read box scores');
 await tick();
 ok(S.boxCalls.length === 4, 'the two-minute one does');
+
+console.log('\n-- a backtest comes first --');
+S = scene({ rows: [], weeks: { now: WK8, 1: wk1 } });
+await loadWorker();
+await tick();
+S.sq.prepare("INSERT OR REPLACE INTO feed_cache (key, data, updated_at) VALUES ('hist_props:nba', ?, ?)").run(JSON.stringify({ active: true, done: false }), NOW);
+const sb4 = S.sbCalls.length, bx4 = S.boxCalls.length;
+NOW += 2 * 3600e3;
+await tick();
+ok(S.sbCalls.length === sb4 && S.boxCalls.length === bx4, 'a running backtest has the invocation to itself');
+NOW = START;
 
 console.log('\n-- the page --');
 S = scene();

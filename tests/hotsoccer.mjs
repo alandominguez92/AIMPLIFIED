@@ -7,6 +7,8 @@
 //   - a keeper for saves, everyone else for the rest; one team match missed is rotation, two is out
 //   - ESPN's soccer scoreboard takes one date, a range is a real 400, so seven leagues' week is
 //     49 reads: a few a tick, each once, and the list is built when the last is in
+//   - the site's own box scores start around Oct 9, so the season before that is read into a
+//     table of its own, newest first, and the one the props model reads is left alone
 //   - nothing claims a side: this has not been tested in soccer
 //   - no call to the odds feed, no page reads a box score, not on the five-minute cron
 //
@@ -20,7 +22,7 @@ const BOARD = path.join(import.meta.dirname, '..');
 const FIX = path.join(BOARD, 'tests', 'fixtures');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
 const read = (f) => JSON.parse(fs.readFileSync(path.join(FIX, f), 'utf8'));
-const LEAGUE = read('soc-box-epl-to-20261102.json'), SLATES = read('espn-soc-slate-20261102.json');
+const LEAGUE = read('soc-box-epl-to-20261102.json'), SLATES = read('espn-soc-slate-20261102.json'), REC = read('espn-soc-740870.json');
 const PRIORS = JSON.parse(fs.readFileSync(path.join(BOARD, 'soccer-priors.json'), 'utf8'));
 const ROWS = LEAGUE.rows.map((r) => ({ game_id: LEAGUE.games[r[0]][0], league: 'epl', date: LEAGUE.games[r[0]][1], player_id: LEAGUE.players[r[1]][0], player: LEAGUE.players[r[1]][1], team: r[2], opp: r[3], starter: r[4], min: r[5], gk: r[6], shots: r[7], sot: r[8], passes: r[9], tackles: r[10], clear: r[11], fouls: r[12], saves: r[13] }))
   .sort((a, b) => a.date.localeCompare(b.date) || a.game_id.localeCompare(b.game_id));
@@ -45,7 +47,7 @@ function scene({ rows = ROWS, assets = true } = {}) {
     all: async () => exec(s.sql, s.args, 'all'), first: async (c) => { const r = exec(s.sql, s.args, 'first'); return c && r ? r[c] : r; },
     run: async () => exec(s.sql, s.args, 'run') }; return s; }, batch: async (sts) => sts.map((x) => exec(x.sql, x.args, 'run')) };
   const ASSETS = { fetch: async (req) => (assets && new URL(req.url).pathname === '/soccer-priors.json' ? J(PRIORS) : new Response('nope', { status: 404 })) };
-  return { sq, sqls, env: { DB, ASSETS }, rows, oddsCalls: 0, sbCalls: [], ranges: 0 };
+  return { sq, sqls, env: { DB, ASSETS }, rows, oddsCalls: 0, sbCalls: [], ranges: 0, past: {}, fail: new Set(), recCalls: [] };
 }
 globalThis.fetch = async (u) => {
   const url = String(u);
@@ -54,8 +56,10 @@ globalThis.fetch = async (u) => {
   if (sb) {
     S.sbCalls.push(`${sb[1]}/${sb[2]}`);
     if (sb[2].includes('-')) { S.ranges++; return RANGE_400(); }
-    return J((SLATES[sb[1]] && SLATES[sb[1]][sb[2]]) || { events: [] });
+    if (S.fail.has(`${sb[1]}/${sb[2]}`)) return new Response('nope', { status: 500 });
+    return J(S.past[`${sb[1]}/${sb[2]}`] || (SLATES[sb[1]] && SLATES[sb[1]][sb[2]]) || { events: [] });
   }
+  if (REC[url]) { S.recCalls.push(url); return J(REC[url]); }
   return new Response('{}', { status: 404 });
 };
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n');
@@ -70,7 +74,7 @@ const insBox = (rows) => { const ins = S.sq.prepare(`INSERT INTO soc_box (${COLS
 const hasList = () => !!S.sq.prepare("SELECT 1 AS x FROM feed_cache WHERE key = 'hot_list:soccer'").get();
 const fill = async () => { let n = 0; do { await tick(); n++; } while (!hasList() && n < 20); return n; };
 // The table comes with the first list, which is empty; then the real rows, and the real one.
-const prep = async () => { await loadWorker(); await fill(); S.sq.prepare("DELETE FROM feed_cache WHERE key IN ('hot_list:soccer', 'soc_hot_slate')").run(); S.sbCalls.length = 0; insBox(S.rows); };
+const prep = async () => { await loadWorker(); await fill(); S.sq.prepare("DELETE FROM feed_cache WHERE key IN ('hot_list:soccer', 'soc_hot_slate', 'soc_hot_back')").run(); S.sbCalls.length = 0; insBox(S.rows); };
 const begin = async () => { await prep(); await fill(); };
 
 let fail = 0;
@@ -124,34 +128,35 @@ const key = (x) => `${x.id}|${x.mk || x.market}|${x.run}`;
 const same = (hot, want) => JSON.stringify(flat(hot).map(key).sort()) === JSON.stringify(want.map(key).sort());
 
 console.log('-- the slate is read a day at a time --');
+const slate = () => S.sbCalls.filter((c) => c.split('/')[1] >= '20261102');
 S = scene();
 await prep();
 await tick();
 ok(S.ranges === 0, 'never a date range: ESPN answers that with a 400');
-ok(S.sbCalls.length === 8 && !hasList(), 'eight reads the first tick, and no list yet');
+ok(slate().length === 8 && !hasList(), 'eight reads the first tick, and no list yet');
 const firstScan = JSON.parse(S.sq.prepare("SELECT data FROM feed_cache WHERE key = 'soc_hot_slate'").get().data);
 ok(firstScan.read === 8 && firstScan.from === '2026-11-02', 'where it got to is kept in a row');
 let ticks = 1, most = 8;
-while (!hasList() && ticks < 20) { const b = S.sbCalls.length; await tick(); ticks++; most = Math.max(most, S.sbCalls.length - b); }
+while (!hasList() && ticks < 20) { const b = slate().length; await tick(); ticks++; most = Math.max(most, slate().length - b); }
 const WANT_READS = 7 * 7;
-ok(hasList() && ticks === 7 && S.sbCalls.length === WANT_READS && most <= 8, `${WANT_READS} reads over ${ticks} ticks, the most in one ${most}: the list built on the last`);
-ok(new Set(S.sbCalls).size === WANT_READS, 'each league and day once');
-ok(['eng.1', 'esp.1', 'ita.1', 'ger.1', 'usa.1', 'uefa.champions', 'uefa.europa'].every((lg) => S.sbCalls.filter((c) => c.startsWith(lg + '/')).length === 7) && S.sbCalls.includes('eng.1/20261108'), 'all seven leagues, today and the six days after');
-const atList = S.sbCalls.length;
+ok(hasList() && ticks === 7 && slate().length === WANT_READS && most <= 8, `${WANT_READS} reads over ${ticks} ticks, the most in one ${most}: the list built on the last`);
+ok(new Set(slate()).size === WANT_READS, 'each league and day once');
+ok(['eng.1', 'esp.1', 'ita.1', 'ger.1', 'usa.1', 'uefa.champions', 'uefa.europa'].every((lg) => slate().filter((c) => c.startsWith(lg + '/')).length === 7) && slate().includes('eng.1/20261108'), 'all seven leagues, today and the six days after');
+const atList = slate().length;
 NOW += 30 * 60e3; await tick();
-ok(S.sbCalls.length === atList, 'half an hour on: no read');
+ok(slate().length === atList, 'half an hour on: no read');
 const scans = () => S.sqls.filter((q) => /FROM soc_box WHERE date/.test(q)).length;
 const scansThen = scans();
 await get('/api/hot-players?sport=soccer');
 ok(scans() === scansThen, 'no page reads a box score');
 NOW = START + 6 * 3600e3 + 60e3;
 await tick();
-ok(S.sbCalls.length === atList + 8, 'six hours on: the reads start over');
+ok(slate().length === atList + 8, 'six hours on: the reads start over');
 const shown = (await get('/api/hot-players?sport=soccer')).hot;
 ok(shown && shown.players.length > 0, 'and the list it has stays up meanwhile');
 let again = 0;
 while (S.sq.prepare("SELECT data FROM feed_cache WHERE key = 'soc_hot_slate'").get().data !== '{}' && again < 20) { await tick(); again++; }
-ok(S.sbCalls.length === atList + WANT_READS && again === 6 && scans() === scansThen + 1, 'all of them again, and built once');
+ok(slate().length === atList + WANT_READS && again === 6 && scans() === scansThen + 1, 'all of them again, and built once');
 NOW = START;
 
 console.log('\n-- the coming week, on this season\'s real matches --');
@@ -220,6 +225,87 @@ await begin();
 hot = (await get('/api/hot-players?sport=soccer')).hot;
 ok(same(hot, want), 'last spring\'s matches in the same table change nothing: the season starts when it starts');
 
+console.log('\n-- the season before the site\'s box scores start --');
+const SINCE = '2026-10-09';
+const recent = ROWS.filter((r) => r.date >= SINCE), older = ROWS.filter((r) => r.date < SINCE);
+const teamsRecent = [...allowedTable(recent, 'shots')].filter(([, g]) => g.size >= 5).length;
+S = scene({ rows: recent });
+await begin();
+hot = (await get('/api/hot-players?sport=soccer')).hot;
+ok(hot.ready === false && hot.players.length === 0 && hot.teamsReady === teamsRecent && teamsRecent < 14, `the site's rows alone, from Oct 9: ${teamsRecent} teams with 5 matches, none listed`);
+S = scene({ rows: recent });
+await prep();
+const insHot = S.sq.prepare(`INSERT INTO soc_hot_box (${COLS.join(',')}) VALUES (${COLS.map(() => '?').join(',')})`);
+for (const r of older) insHot.run(...COLS.map((c) => r[c]));
+await fill();
+hot = (await get('/api/hot-players?sport=soccer')).hot;
+ok(hot.ready === true && same(hot, want), `with the older matches in their own table: the whole list, the long way, ${want.length} runs`);
+ok(S.sq.prepare('SELECT COUNT(*) AS n FROM soc_box').get().n === recent.length, 'and the table the props model reads holds what it held');
+
+console.log('\n-- the backfill reads the season, newest first --');
+const SB = Object.entries(REC).find(([k]) => /scoreboard/.test(k))[1];
+const playedOn = (date) => ({ ...SB, events: SB.events.map((e) => ({ ...e, date })) });
+const back = () => S.sbCalls.filter((c) => c.split('/')[1] < '20261102');
+const cursor = () => JSON.parse(S.sq.prepare("SELECT data FROM feed_cache WHERE key = 'soc_hot_back'").get().data);
+const THE_MATCH = SB.events[0].id;
+S = scene({ rows: [] });
+await prep();
+S.past = { 'eng.1/20261001': playedOn('2026-10-01T14:00Z') };
+await tick();
+ok(back().length === 6 && back().every((c) => c.endsWith('/20261030')), 'six reads a tick, from three days back');
+ok(['eng.1', 'esp.1', 'ita.1', 'ger.1', 'uefa.champions', 'uefa.europa'].every((lg) => back().includes(`${lg}/20261030`)) && !back().some((c) => c.startsWith('usa.1')), 'the four leagues and the two cups, not MLS');
+let walk = 1;
+while (!S.sq.prepare('SELECT 1 AS x FROM soc_hot_games').get() && walk < 60) { await tick(); walk++; }
+const gameRow = () => S.sq.prepare('SELECT * FROM soc_hot_games WHERE game_id = ?').get(THE_MATCH);
+ok(walk === 30 && gameRow().league === 'epl' && gameRow().date === '2026-10-01', `a finished match found on day ${walk} of the walk, kept with its league and date`);
+const stats = () => S.recCalls.filter((u) => /statistics/.test(u)).length;
+const inHot = () => S.sq.prepare('SELECT COUNT(*) AS n FROM soc_hot_box').get().n;
+ok(stats() <= 15 && inHot() === stats(), `fifteen players a tick at most: ${stats()}`);
+const apps = ['370', '367'].flatMap((c) => Object.values(REC).filter(() => true) && REC[Object.keys(REC).find((k) => k.endsWith(`competitors/${c}/roster`))].entries).filter((p) => p.starter || (p.subbedIn && p.subbedIn.didSub));
+let reading = 0;
+while (gameRow().done !== 1 && reading < 10) { await tick(); reading++; }
+ok(gameRow().done === 1 && inHot() === apps.length && stats() === apps.length, `then done, one row a player who appeared: ${apps.length}, over ${reading + 1} ticks`);
+const sampleP = apps.find((p) => p.starter);
+const hotRow = S.sq.prepare('SELECT * FROM soc_hot_box WHERE player_id = ?').get(String(sampleP.playerId));
+const rawCats = REC[Object.keys(REC).find((k) => k.includes(`roster/${sampleP.playerId}/statistics`))].splits.categories;
+const rawNum = (cat, n) => Number(rawCats.find((c) => c.name === cat).stats.find((s) => s.name === n).value);
+ok(hotRow.league === 'epl' && hotRow.date === '2026-10-01' && hotRow.starter === 1 && hotRow.min === rawNum('general', 'minutes') && hotRow.passes === rawNum('offensive', 'totalPasses') && hotRow.shots === rawNum('offensive', 'totalShots') && hotRow.tackles === rawNum('defensive', 'totalTackles'), `the real statistics parsed: ${hotRow.player}, ${hotRow.min} minutes, ${hotRow.passes} passes`);
+ok(S.sq.prepare('SELECT COUNT(*) AS n FROM soc_box').get().n === 0, 'none of it in the table the props model reads');
+ok(!S.sq.prepare('SELECT 1 AS x FROM feed_cache WHERE key = ?').get(`soc_box_meta:${THE_MATCH}`), 'and its working row cleared');
+const readThen = stats();
+while (cursor().day >= '2026-08-01' && walk < 200) { await tick(); walk++; }
+const days = 91;
+ok(back().length === days * 6 && new Set(back()).size === back().length && cursor().day === '2026-07-31', `back to Aug 1, each league and day once: ${back().length} reads`);
+const atEnd = back().length;
+await tick();
+ok(back().length === atEnd && stats() === readThen, 'then it stops, and nothing is read twice');
+S = scene({ rows: [] });
+await prep();
+S.past = { 'eng.1/20261030': playedOn('2026-10-30T14:00Z') };
+S.sq.prepare("INSERT INTO soc_box_games (game_id, league, date, home, away, home_cid, away_cid, done, tries) VALUES (?, 'epl', '2026-10-30', 'FUL', 'TOT', '370', '367', 1, 0)").run(THE_MATCH);
+await tick();
+ok(!gameRow() && S.recCalls.length === 0 && back().includes('eng.1/20261030'), 'a match the site has already read is left to it');
+S = scene({ rows: [] });
+await prep();
+S.fail.add('eng.1/20261030');
+await tick();
+ok(cursor().day === '2026-10-30' && cursor().i === 0 && cursor().fails === 1, 'a read that fails holds the walk');
+await tick();
+await tick();
+ok(cursor().i === 0 && cursor().day === '2026-10-29' && cursor().fails === 0, 'three failures and it moves on, so one bad day cannot stop it');
+S = scene({ rows: [] });
+await prep();
+await fill();
+const count0 = slate().length;
+NOW += 30 * 60e3; await tick();
+ok(slate().length === count0, 'nothing waiting: the list keeps its six hours');
+S.sq.prepare("INSERT INTO soc_hot_games (game_id, league, date, home, away, home_cid, away_cid, done, tries) VALUES ('nope', 'epl', '2026-09-01', 'FUL', 'TOT', '370', '367', 0, 0)").run();
+NOW += 31 * 60e3; await tick();
+ok(slate().length === count0 + 8, 'matches still to read: rebuilt on the hour, so the list fills as they come in');
+NOW = START;
+const pg = await get('/api/hot-players?sport=soccer&ingest=1');
+ok(pg.ingest && pg.ingest.games === 1 && (await get('/api/hot-players?sport=soccer')).ingest === undefined, 'how far it has got, only when asked');
+
 console.log('\n-- too early --');
 const early = ROWS.filter((r) => r.date <= allDates[Math.floor(allDates.length / 4)]);
 const earlyTeams = [...allowedTable(early, 'shots')].filter(([, g]) => g.size >= 5).length;
@@ -230,22 +316,22 @@ ok(earlyTeams < 14 && hot.ready === false && hot.players.length === 0 && hot.tea
 S = scene({ rows: [] });
 const hold = SLATES['eng.1'], holdU = SLATES['uefa.champions'];
 SLATES['eng.1'] = {}; SLATES['uefa.champions'] = {};
-await loadWorker();
+await prep();
 await fill();
 hot = (await get('/api/hot-players?sport=soccer')).hot;
-const readsNone = S.sbCalls.length;
+const readsNone = slate().length;
 await tick();
-ok(hot && hot.players.length === 0 && S.sbCalls.length === readsNone && readsNone === WANT_READS, 'no fixtures anywhere: an empty list, held for six hours like any other');
+ok(hot && hot.players.length === 0 && slate().length === readsNone && readsNone === WANT_READS, 'no fixtures anywhere: an empty list, held for six hours like any other');
 SLATES['eng.1'] = hold; SLATES['uefa.champions'] = holdU;
 
 console.log('\n-- on its own request budget --');
 S = scene();
 await loadWorker();
 await cron('*/5 * * * *');
-const listed = () => S.sq.prepare("SELECT key FROM feed_cache WHERE key IN ('soc_hot_slate', 'hot_list:soccer')").all();
+const listed = () => S.sq.prepare("SELECT key FROM feed_cache WHERE key IN ('soc_hot_slate', 'soc_hot_back', 'hot_list:soccer')").all();
 ok(listed().length === 0, 'the five-minute cron does not touch it');
 await tick();
-ok(listed().some((r) => r.key === 'soc_hot_slate'), 'the two-minute one does');
+ok(listed().some((r) => r.key === 'soc_hot_slate') && listed().some((r) => r.key === 'soc_hot_back'), 'the two-minute one does');
 
 console.log('\n-- the page --');
 S = scene();

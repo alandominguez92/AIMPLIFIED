@@ -248,9 +248,10 @@ export default {
     if (event && event.cron === HIST_CRON) {
       // The other leagues' Hot players (2026-11-02), each from its own free box scores: reads
       // the five-minute invocation, which grades and captures, has no requests to spare for.
-      // In turn, so a running backtest has first call on this one's.
+      // A running backtest has this invocation's to itself.
       ctx.waitUntil((async () => {
-        for (const job of [histPropsTick, nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick]) await job(env).catch(() => null);
+        if (await histPropsTick(env).catch(() => null)) return;
+        for (const job of [nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill]) await job(env).catch(() => null);
       })());
       return;
     }
@@ -13374,13 +13375,17 @@ function hotListBuild({ rows, allowedRows = rows, stat, markets, slate, now, pri
   return { builtAt: now, ranksFrom, teamsReady: teamsAt(ranksFrom), teamsNeeded: needed, players: hotSort(list) };
 }
 // GET /api/hot-players?sport=nhl: what the tab shows, those whose games are still to come.
+const HOT_INGEST = { nhl: 'nhl_box_games', nfl: 'nfl_box_games', soccer: 'soc_hot_games' };
 async function hotPlayersRoute(env, url) {
   if (!env || !env.DB) return { error: 'no DB binding' };
-  const hit = await loadFeedCache(env.DB, HOT_LIST_KEY + url.searchParams.get('sport'));
-  if (!hit.present || !hit.data) return { hot: null };
+  const sport = url.searchParams.get('sport');
+  const hit = await loadFeedCache(env.DB, HOT_LIST_KEY + sport);
+  // How far a backfill has got, for checking from outside. No page asks.
+  const ingest = url.searchParams.get('ingest') && HOT_INGEST[sport] ? await env.DB.prepare(`SELECT COUNT(*) AS games, SUM(done) AS read FROM ${HOT_INGEST[sport]}`).first().catch(() => null) : undefined;
+  if (!hit.present || !hit.data) return { hot: null, ingest };
   const l = hit.data, now = Date.now();
   return { hot: { ready: l.teamsReady >= l.teamsNeeded, early: l.ranksFrom < NBA_HOT_OPP_GAMES, teamsReady: l.teamsReady, teamsNeeded: l.teamsNeeded, gamesNeeded: l.ranksFrom,
-    players: l.players.filter((p) => Date.parse(p.commence) > now) } };
+    players: l.players.filter((p) => Date.parse(p.commence) > now) }, ingest };
 }
 const hotDayAfter = (d) => new Date(Date.parse(`${d}T12:00:00Z`) + 86400e3).toISOString().slice(0, 10);
 
@@ -13392,7 +13397,9 @@ const NHL_BOX_SCAN_DAYS = 3;
 const NHL_HOT_MARKETS = ['pts', 'ast', 'goals', 'sog'];
 const NHL_HOT_PRIOR_GP = 20;                // last season's games, for its average to mean anything
 const NHL_HOT_ROLE_MIN = 3;                 // minutes a game above last season: a bigger role
+let NHL_BOX_READY = false;
 async function ensureNhlBoxSchema(db) {
+  if (NHL_BOX_READY) return;
   await db.prepare(`CREATE TABLE IF NOT EXISTS nhl_box (
     game_id TEXT NOT NULL, date TEXT NOT NULL, player_id TEXT NOT NULL, player TEXT, team TEXT, opp TEXT,
     min REAL, goals INTEGER, ast INTEGER, pts INTEGER, sog INTEGER,
@@ -13401,6 +13408,7 @@ async function ensureNhlBoxSchema(db) {
   await db.prepare('CREATE INDEX IF NOT EXISTS nhl_box_date ON nhl_box (date)').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS nhl_box_games (game_id TEXT PRIMARY KEY, date TEXT NOT NULL, done INTEGER NOT NULL)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nhl_box_games_todo ON nhl_box_games (date) WHERE done = 0').run();
+  NHL_BOX_READY = true;
 }
 // Pure: one NHL box score in, one row per skater who played.
 function nhlBoxRows(box, gameId, date) {
@@ -13514,7 +13522,9 @@ const NFL_HOT_PRIOR_G = 6;                  // last season's games, for its aver
 const NFL_HOT_ROLE_TOUCHES = 5;             // carries and targets a game above last season: a bigger role
 const NFL_HOT_ROLE_PASSES = 10;             // passes a game above last season, for a quarterback
 const NFL_HOT_MIN = { pass_att: 15, car: 8, tgt: 4 };   // a game over his last five, to count as a regular
+let NFL_BOX_READY = false;
 async function ensureNflBoxSchema(db) {
+  if (NFL_BOX_READY) return;
   await db.prepare(`CREATE TABLE IF NOT EXISTS nfl_box (
     game_id TEXT NOT NULL, date TEXT NOT NULL, player_id TEXT NOT NULL, player TEXT, team TEXT, opp TEXT,
     pass_att INTEGER, pass_yds INTEGER, pass_td INTEGER, car INTEGER, rush_yds INTEGER, tgt INTEGER, rec INTEGER, rec_yds INTEGER,
@@ -13523,6 +13533,7 @@ async function ensureNflBoxSchema(db) {
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_box_date ON nfl_box (date)').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS nfl_box_games (game_id TEXT PRIMARY KEY, date TEXT NOT NULL, done INTEGER NOT NULL)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nfl_box_games_todo ON nfl_box_games (date) WHERE done = 0').run();
+  NFL_BOX_READY = true;
 }
 // Pure: one ESPN NFL box score in, one row per player with a line.
 function nflBoxRows(sum, gameId, date) {
@@ -13636,13 +13647,85 @@ const SOC_HOT_MARKETS = ['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 
 const SOC_HOT_TEAMS = { epl: 20, laliga: 20, seriea: 20, bundesliga: 18, mls: 30, ucl: 36, uel: 36 };
 const SOC_HOT_PRIOR_STARTS = 10;            // last season's starts, for its average to mean anything
 const SOC_HOT_MIN = 60;                     // minutes a start over his last five, to count as a regular
+// The site's own soccer box scores start around Oct 9, when the props card did, which leaves
+// every league under 5 matches a team until late November. So the list reads the season before
+// that for itself, into tables of its own: soc_box feeds the props model, and this must not move
+// its numbers. Newest first, a few days and a few players a tick, free. MLS is left out: hundreds
+// of matches, and its season is ending.
+const SOC_HOT_BACK_FROM = '2026-08-01';
+const SOC_HOT_BACK_LEAGUES = ['epl', 'laliga', 'seriea', 'bundesliga', 'ucl', 'uel'];
+const SOC_HOT_BACK_READS = 6;
+const SOC_HOT_BACK_PLAYERS = 15;
+const hotDayBefore = (d) => new Date(Date.parse(`${d}T12:00:00Z`) - 86400e3).toISOString().slice(0, 10);
+let SOC_HOT_READY = false;
+async function ensureSocHotSchema(db) {
+  if (SOC_HOT_READY) return;
+  await ensureSocPropSchema(db);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS soc_hot_box (
+    game_id TEXT NOT NULL, league TEXT, date TEXT, player_id TEXT NOT NULL, player TEXT, team TEXT, opp TEXT, starter INTEGER, min INTEGER, gk INTEGER,
+    shots INTEGER, sot INTEGER, passes INTEGER, tackles INTEGER, clear INTEGER, fouls INTEGER, saves INTEGER,
+    PRIMARY KEY (game_id, player_id)
+  )`).run();
+  await db.prepare('CREATE TABLE IF NOT EXISTS soc_hot_games (game_id TEXT PRIMARY KEY, league TEXT, date TEXT, home TEXT, away TEXT, home_cid TEXT, away_cid TEXT, done INTEGER, tries INTEGER)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS soc_hot_games_todo ON soc_hot_games (date) WHERE done = 0').run();
+  SOC_HOT_READY = true;
+}
+async function socHotBackfill(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB;
+  await ensureSocHotSchema(db);
+  const key = 'soc_hot_back', hit = await loadFeedCache(db, key);
+  // From three days back: anything nearer may yet be picked up by the box-score ingest itself.
+  const st = (hit.present && hit.data) || { day: ptDateOf(now - 3 * 86400e3), i: 0, fails: 0 };
+  if (st.day >= SOC_HOT_BACK_FROM) {
+    const from = { day: st.day, i: st.i }, reads = [];
+    while (reads.length < SOC_HOT_BACK_READS && st.day >= SOC_HOT_BACK_FROM) {
+      reads.push([SOC_HOT_BACK_LEAGUES[st.i], st.day]);
+      if (++st.i === SOC_HOT_BACK_LEAGUES.length) { st.i = 0; st.day = hotDayBefore(st.day); }
+    }
+    const got = await Promise.all(reads.map(([lg, d]) => socJson(`${ESPN_SOC_SITE}/${SOC_PROP_LEAGUES[lg]}/scoreboard?dates=${d.replace(/-/g, '')}`)));
+    const found = [];
+    got.forEach((sb, i) => {
+      for (const e of (sb && sb.events) || []) {
+        if (!(e.status && e.status.type && e.status.type.completed)) continue;
+        const cs = (e.competitions && e.competitions[0] && e.competitions[0].competitors) || [];
+        const h = cs.find((c) => c.homeAway === 'home'), a = cs.find((c) => c.homeAway === 'away');
+        if (!h || !a) continue;
+        found.push(db.prepare('INSERT OR IGNORE INTO soc_hot_games (game_id, league, date, home, away, home_cid, away_cid, done, tries) SELECT ?,?,?,?,?,?,?,0,0 WHERE NOT EXISTS (SELECT 1 FROM soc_box_games WHERE game_id = ?)')
+          .bind(String(e.id), reads[i][0], ptDateOf(Date.parse(e.date)), h.team.abbreviation, a.team.abbreviation, String(h.id), String(a.id), String(e.id)));
+      }
+    });
+    if (found.length) await db.batch(found);
+    // A read that failed is tried twice more before the walk moves on.
+    if (got.some((x) => !x) && ++st.fails < 3) Object.assign(st, from); else st.fails = 0;
+    await saveFeedCache(db, key, st);
+  }
+  const g = await db.prepare('SELECT * FROM soc_hot_games WHERE done = 0 ORDER BY date DESC LIMIT 1').first();
+  if (!g) return null;
+  const giveUp = db.prepare('UPDATE soc_hot_games SET tries = tries + 1, done = CASE WHEN tries >= 2 THEN 1 ELSE 0 END WHERE game_id = ?').bind(g.game_id);
+  const meta = await socMatchMeta(db, g);
+  if (!meta) { await giveUp.run(); return null; }
+  const have = new Set(((await db.prepare('SELECT player_id FROM soc_hot_box WHERE game_id = ?').bind(g.game_id).all()).results || []).map((r) => r.player_id));
+  const { rows, tried } = await socReadSome(g, meta, have, SOC_HOT_BACK_PLAYERS);
+  const cols = ['game_id', 'league', 'date', 'player_id', 'player', 'team', 'opp', 'starter', 'min', 'gk', ...SOC_HOT_MARKETS];
+  const stmts = rows.map((r) => db.prepare(`INSERT OR REPLACE INTO soc_hot_box (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).bind(...cols.map((c) => (r[c] == null ? null : r[c]))));
+  if (meta.apps.filter((a) => a.ref && !have.has(a.id)).length - rows.length <= 0) {
+    stmts.push(db.prepare('UPDATE soc_hot_games SET done = 1 WHERE game_id = ?').bind(g.game_id));
+    stmts.push(db.prepare('DELETE FROM feed_cache WHERE key = ?').bind(`soc_box_meta:${g.game_id}`));
+  } else if (tried > 0 && rows.length === 0) stmts.push(giveUp);
+  if (stmts.length) await db.batch(stmts);
+  return null;
+}
+
 const SOC_HOT_DAYS = 7;
 const SOC_HOT_READS = 8;                    // a tick's share of the outside requests
 async function socHotTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   const db = env.DB, key = HOT_LIST_KEY + 'soccer';
   const hit = await loadFeedCache(db, key);
-  if (hit.present && hit.data && now - hit.data.builtAt < HOT_LIST_EVERY_MS) return null;
+  await ensureSocHotSchema(db);
+  const filling = await db.prepare('SELECT 1 AS x FROM soc_hot_games WHERE done = 0 LIMIT 1').first();
+  if (hit.present && hit.data && now - hit.data.builtAt < (filling ? HOT_LIST_FILLING_MS : HOT_LIST_EVERY_MS)) return null;
   // ESPN's soccer scoreboard takes one date, a range is a 400, so a week of seven leagues is 49
   // reads: a few a tick, kept in a row, and the list is built when the last one is in.
   const from = ptDateOf(now), scan = await loadFeedCache(db, 'soc_hot_slate');
@@ -13665,9 +13748,9 @@ async function socHotTick(env, now = Date.now()) {
   await saveFeedCache(db, 'soc_hot_slate', {});
   const slates = new Map();
   for (const g of st.games) slates.set(g.league, [...(slates.get(g.league) || []), g]);
-  await ensureSocPropSchema(db);
-  const rows = ((await db.prepare(`SELECT game_id, league, date, player_id, player, team, opp, starter, min, gk, ${SOC_HOT_MARKETS.join(', ')} FROM soc_box WHERE date >= ? ORDER BY date, game_id`)
-    .bind('2026-01-01').all()).results || []).filter((r) => SOC_SEASON_FROM[r.league] && r.date >= SOC_SEASON_FROM[r.league]);
+  const boxOf = async (table) => (await db.prepare(`SELECT game_id, league, date, player_id, player, team, opp, starter, min, gk, ${SOC_HOT_MARKETS.join(', ')} FROM ${table} WHERE date >= ?`).bind('2026-01-01').all()).results || [];
+  const rows = [...await boxOf('soc_hot_box'), ...await boxOf('soc_box')].filter((r) => SOC_SEASON_FROM[r.league] && r.date >= SOC_SEASON_FROM[r.league])
+    .sort((a, b) => a.date.localeCompare(b.date) || a.game_id.localeCompare(b.game_id));
   const starts = rows.filter((r) => r.starter === 1 && r.min > 0), pri = await socPriors(env);
   const stat = (r, m) => ((m === 'saves') === !!r.gk ? r[m] : null);
   const mean = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
