@@ -1,4 +1,4 @@
-"""Build nba-priors.json: every NBA player's per-game threes, assists,
+"""Build nba-priors.json: every NBA player's per-game points, threes, assists,
 rebounds, blocks and steals from the last completed regular season, and the
 team he is on now.
 
@@ -74,6 +74,7 @@ def season_averages(season):
             'tm25': ath.get('teamShortName') or None,
             'gp': int(gp) if gp is not None else 0,
             'min': stat(a, 'general', 'avgMinutes'),
+            'pts': stat(a, 'offensive', 'avgPoints'),
             'threes': stat(a, 'offensive', 'avgThreePointFieldGoalsMade'),
             'ast': stat(a, 'offensive', 'avgAssists'),
             'reb': stat(a, 'general', 'avgRebounds'),
@@ -117,7 +118,7 @@ def main():
     # listed with no averages, so the log knows them and projects nothing yet.
     for aid, cur in rosters.items():
         if aid not in players:
-            players[aid] = {'n': cur['n'], 'tm': cur['tm'], 'tm25': None, 'gp': 0, 'min': None, 'threes': None, 'ast': None, 'reb': None,
+            players[aid] = {'n': cur['n'], 'tm': cur['tm'], 'tm25': None, 'gp': 0, 'min': None, 'pts': None, 'threes': None, 'ast': None, 'reb': None,
                             'blk': None, 'stl': None}
 
     doc = {

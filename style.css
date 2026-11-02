@@ -3026,6 +3026,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .hot-line { display:block; }
 .hot-mk .hot-line:first-child b { color:var(--text); font-weight:600; }
 .hot-read { margin-top:2px; }
+.hot-role { margin-top:4px; font-size:12.5px; color:var(--textDim); }
 .hot-read.up { color:var(--text); }
 .hot-read.up b { color:var(--positive); font-weight:600; }
 .hot-all { display:block; margin-top:8px; }

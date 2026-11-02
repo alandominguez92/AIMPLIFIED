@@ -9,7 +9,8 @@
 //   - each run says what last season said of a run like it, by the opponent's third and how
 //     often he cleared the number. The Over only where the streak log's cause is behind it
 //   - on the newest report: out, he leaves the list; day-to-day, he is flagged
-//   - too few games, it says how far off; a list it cannot read costs the section, not the tab
+//   - too few games, it says how far off (tests/nbahotearly.mjs has the first weeks); a list it
+//     cannot read costs the section, not the tab
 //   - the page shows soft teams first and the rest behind a tap, and offers no star
 //
 // Real data: the league's real box rows to Jan 15 2026 (nba-box-league-to-20260115.json), that
@@ -279,14 +280,14 @@ ok(causeLow.every((x) => x.read.side === 'Under'), 'the cause with 5 or fewer of
 
 console.log('\n-- too few games --');
 NOW = TIP[MAVS] - 8 * 3600e3;
-const EARLY = '2026-11-06';
+const EARLY = '2026-10-27';
 const earlyRows = HISTORY.filter((r) => r.date <= EARLY);
 S = scene({ games: [MAVS], rows: earlyRows, key: null });
 await begin(NOW);
 hot = (await get('/api/nba-pp')).hot;
-const readyLong = [...allowedTable('pts', earlyRows.filter((r) => r.min > 0))].filter(([, c]) => c.n >= 10).length;
-ok(hot && hot.ready === false && hot.players.length === 0, 'the box scores to Nov 6: nothing listed');
-ok(hot.teamsReady === readyLong && readyLong < 20 && hot.teamsNeeded === 20 && hot.gamesNeeded === 10, `and it says how far off: ${hot.teamsReady} teams of the 20 needed, counted the long way`);
+const readyLong = [...allowedTable('pts', earlyRows.filter((r) => r.min > 0))].filter(([, c]) => c.n >= 5).length;
+ok(hot && hot.ready === false && hot.players.length === 0, 'the box scores to Oct 27: nothing listed');
+ok(hot.teamsReady === readyLong && readyLong < 20 && hot.teamsNeeded === 20 && hot.gamesNeeded === 5, `and it says how far off: ${hot.teamsReady} teams of the 20 needed, counted the long way`);
 
 console.log('\n-- what it cannot read --');
 NOW = TIP[MAVS] - 8 * 3600e3;
@@ -295,7 +296,7 @@ await begin(NOW);
 S.sq.exec('DROP TABLE nbahot');
 board = await get('/api/nba-pp');
 ok(board.hot && board.hot.players.length > 0 && !board.error, 'the log unreadable: the runs still show, without numbers');
-S.sq.prepare("UPDATE feed_cache SET data = '{not json' WHERE key = 'nba_hot_list'").run();
+S.sq.prepare("UPDATE feed_cache SET data = '{not json' WHERE key = 'nba_hot_list_v2'").run();
 board = await get('/api/nba-pp');
 ok(board.hot === null && !board.error && Array.isArray(board.legs), 'the list unreadable: no section, the tab as it was');
 NOW = TIP[MAVS] - 8 * 3600e3;
@@ -357,8 +358,8 @@ state.nbaPp.hot = overPayload;
 ok(/<b>Lean Over<\/b>: hit 56\.5% last season, sharp books 49\.8 · minutes up, Ja Morant out/.test(liOf(card(), 'Jock Landale')), 'the Over names who is behind it');
 ok(/Memphis|<b class="tc-team">MEM<\/b> · @ Magic/.test(liOf(card(), 'Jock Landale')), 'and an away game reads @');
 state.nbaHotAll = false;
-state.nbaPp.hot = { ...payload, ready: false, teamsReady: 12, players: [] };
-ok(/Not enough games yet/.test(card()) && /12 have so far/.test(card()) && /10 games/.test(card()), 'too early: how far off, in the numbers');
+state.nbaPp.hot = { ...payload, ready: false, early: true, gamesNeeded: 5, teamsReady: 12, players: [] };
+ok(/Not enough games yet/.test(card()) && /12 have so far/.test(card()) && /5 games/.test(card()), 'too early: how far off, in the numbers');
 state.nbaPp.hot = { ...payload, players: [] };
 ok(/No one is on a run of 5 or more/.test(card()), 'no one on a run: it says so');
 state.nbaPp.hot = { ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map((m) => ({ ...m, third: 'tough' })) })) };

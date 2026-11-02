@@ -12955,19 +12955,19 @@ function nbaHotAllowed(rows) {
   return out;
 }
 // Every team's rank for a market going into a day (pure), games that day left out.
-function nbaHotRanks(allowed, day, market, usual) {
+function nbaHotRanks(allowed, day, market, usual, minGames = NBA_HOT_OPP_GAMES) {
   const parts = (NBA_COMBOS[market] || [market]).map((p) => (usual ? `d${p}` : p)), avg = [];
   for (const [team, list] of allowed) {
     let n = 0, sum = 0;
     for (const e of list) { if (e.date >= day) continue; n++; for (const p of parts) sum += e[p]; }
-    if (n >= NBA_HOT_OPP_GAMES) avg.push([team, sum / n]);
+    if (n >= minGames) avg.push([team, sum / n]);
   }
   if (avg.length < NBA_HOT_OPP_TEAMS) return new Map();
   avg.sort((a, b) => a[1] - b[1]);
   return new Map(avg.map(([team], i) => [team, i / (avg.length - 1)]));
 }
-const nbaHotRanker = (allowed, day) => { const memo = new Map();
-  return (market, usual) => { const k = market + (usual ? '+' : ''); if (!memo.has(k)) memo.set(k, nbaHotRanks(allowed, day, market, usual)); return memo.get(k); }; };
+const nbaHotRanker = (allowed, day, minGames) => { const memo = new Map();
+  return (market, usual) => { const k = market + (usual ? '+' : ''); if (!memo.has(k)) memo.set(k, nbaHotRanks(allowed, day, market, usual, minGames)); return memo.get(k); }; };
 // Who on this team is on a run tonight, market by market (pure). `soft` is whether any
 // of it is what a read is paid for: the rest only comes along if the game gets read.
 function nbaHotCandidates(st, rankOf, team, opp, inj) {
@@ -13145,7 +13145,14 @@ async function nbaCauseRoute(env, url) {
 // runs come from the box scores and tonight's number from what the reads already stored. No
 // page reads a box score either, a season being 26,000 rows by April: the cron keeps one
 // feed_cache row, and the page reads that, the report and tonight's numbers.
-const NBA_HOTLIST_KEY = 'nba_hot_list';     // feed_cache: the next two days' runs
+// Early in the season (same day, their call: start from 5 games, move to 10): a run above his
+// own average takes 10 games, so with 5 to 9 it is his games in a row above last season's
+// average, and teams are ranked on 5+ games until 20 have played 10. That version has not been
+// tested, so it says no side. Above last season can only mean more minutes: `role` says so.
+const NBA_HOTLIST_KEY = 'nba_hot_list_v2'; // feed_cache: the next two days' runs
+const NBA_HOTLIST_EARLY = 5;               // games for a player to be listed and a team ranked
+const NBA_HOTLIST_PRIOR_GP = 20;           // last season's games, for its average to mean anything
+const NBA_HOTLIST_ROLE_MIN = 5;            // minutes a game above last season: a bigger role
 const NBA_HOTLIST_EVERY_MS = 3 * 3600e3;    // box scores come in overnight; this is for the report
 const NBA_HOTLIST_FLEX_BE = 54.2;                // what a 5-6 flex needs of a leg
 // What last season said of a run like each: 5+ in a row, priced legs, the Under's rate and
@@ -13167,26 +13174,56 @@ function nbaHotRead(rank, cleared, cause) {
   const g = NBA_HOTLIST_BACKTEST[nbaHotThird(rank)];
   return said('Under', cleared == null ? g.any : cleared < NBA_CAUSE_FORM_BAR ? g.low : g.high);
 }
+// Last season's average in a market (pure); a part missing is none.
+function nbaPriorAvg(pr, market) {
+  let s = 0;
+  for (const k of NBA_COMBOS[market] || [market]) { if (pr[k] == null) return null; s += pr[k]; }
+  return round1(s);
+}
+// Who on this team has 5 to 9 games, the last five or more above last season in a market (pure).
+function nbaHotEarlyRuns(st, priors, rankOf, team, opp) {
+  const avg = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length, out = [];
+  for (const p of st.players.values()) {
+    if (p.team !== team || p.games.length < NBA_HOTLIST_EARLY || p.games.length >= NBA_CAUSE_PRIOR) continue;
+    const pr = priors && priors.players && priors.players[p.id];
+    if (!pr || !(pr.gp >= NBA_HOTLIST_PRIOR_GP)) continue;
+    const min5 = avg(p.games.slice(-5).map((b) => b.min));
+    if (min5 < NBA_CAUSE_ROT_MIN) continue;
+    const markets = [];
+    for (const market of Object.values(NBA_CAUSE_MARKETS)) {
+      const lastSeason = nbaPriorAvg(pr, market), rank = rankOf(market, false).get(opp);
+      if (lastSeason == null || rank == null) continue;
+      let run = 0;
+      for (let j = p.games.length - 1; j >= 0 && nbaStat(p.games[j], market) > lastSeason; j--) run++;
+      if (run >= NBA_HOT_RUN) markets.push({ market, run, rank: Math.round(rank * 1000) / 1000, of: rankOf(market, false).size, lastSeason,
+        last5: round1(avg(p.games.slice(-5).map((b) => nbaStat(b, market)))), last10: p.games.slice(-10).map((b) => nbaStat(b, market)) });
+    }
+    if (markets.length) out.push({ id: p.id, name: p.name, markets, role: pr.min != null && min5 - pr.min >= NBA_HOTLIST_ROLE_MIN ? { min: round1(min5), before: pr.min } : null });
+  }
+  return out;
+}
 // The next games' runs (pure): a row a player, his markets at 5+, his last ten in each for a
 // number read later to be held against. The report reaches this only for the streak log's
 // cause; who is out tonight is applied when the page asks, on the newest report.
-function nbaHotList(box, allowed, games, now) {
-  const players = [], rankers = new Map();
+function nbaHotList(box, allowed, games, now, priors) {
+  const players = [], rankers = new Map(), today = ptDateOf(now);
+  const teamsAt = (n) => [...allowed.values()].filter((l) => l.filter((e) => e.date < today).length >= n).length;
+  const ranksFrom = teamsAt(NBA_HOT_OPP_GAMES) >= NBA_HOT_OPP_TEAMS ? NBA_HOT_OPP_GAMES : NBA_HOTLIST_EARLY;
   for (const g of games) {
     const date = ptDateOf(Date.parse(g.commence));
-    if (!rankers.has(date)) rankers.set(date, nbaHotRanker(allowed, date));
+    if (!rankers.has(date)) rankers.set(date, nbaHotRanker(allowed, date, ranksFrom));
     const rankOf = rankers.get(date);
     const cause = new Map([g.homeAb, g.awayAb].flatMap((t) => nbaCauseCandidates(box, t, g.inj)).map((c) => [c.id, c.outs.map((o) => o.name).filter(Boolean)]));
     for (const [team, opp, oppName, isHome] of [[g.homeAb, g.awayAb, g.away, true], [g.awayAb, g.homeAb, g.home, false]]) {
       for (const c of nbaHotCandidates(box, rankOf, team, opp)) {
         const markets = Object.entries(c.markets).filter(([, m]) => m.run >= NBA_HOT_RUN).map(([market, m]) => ({ market, run: m.run, rank: m.rank, of: rankOf(market, false).size,
           seasonAvg: m.seasonAvg, last5: m.last5, last10: c.last10.map((b) => nbaStat(b, market)) }));
-        if (markets.length) players.push({ id: c.id, name: c.name, team, oppName, isHome, date, home: g.home, away: g.away, commence: g.commence, outs: cause.get(c.id) || null, markets });
+        if (markets.length) players.push({ id: c.id, name: c.name, team, oppName, isHome, date, home: g.home, away: g.away, commence: g.commence, outs: cause.get(c.id) || null, role: null, markets });
       }
+      for (const c of nbaHotEarlyRuns(box, priors, rankOf, team, opp)) players.push({ id: c.id, name: c.name, team, oppName, isHome, date, home: g.home, away: g.away, commence: g.commence, outs: null, role: c.role, markets: c.markets });
     }
   }
-  const today = ptDateOf(now);
-  return { builtAt: now, teamsReady: [...allowed.values()].filter((l) => l.filter((e) => e.date < today).length >= NBA_HOT_OPP_GAMES).length, players };
+  return { builtAt: now, ranksFrom, teamsReady: teamsAt(ranksFrom), players };
 }
 async function nbaHotListTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
@@ -13197,7 +13234,7 @@ async function nbaHotListTick(env, now = Date.now()) {
   if (!games.length) return null;
   await ensureNbaSchema(env.DB);
   const boxRows = await nbaSeasonBoxRows(env.DB);
-  await saveFeedCache(env.DB, NBA_HOTLIST_KEY, nbaHotList(nbaCauseState(boxRows), nbaHotAllowed(boxRows), games, now));
+  await saveFeedCache(env.DB, NBA_HOTLIST_KEY, nbaHotList(nbaCauseState(boxRows), nbaHotAllowed(boxRows), games, now, await nbaPriors(env)));
   return true;
 }
 // What the tab shows: the earliest day with a game to come, on the newest report, each run with
@@ -13206,7 +13243,8 @@ async function nbaHotListTick(env, now = Date.now()) {
 async function nbaHotBoard(db, legs, injDays, now) {
   const hit = await loadFeedCache(db, NBA_HOTLIST_KEY);
   if (!hit.present || !hit.data) return null;
-  const list = hit.data, base = { ready: list.teamsReady >= NBA_HOT_OPP_TEAMS, teamsReady: list.teamsReady, teamsNeeded: NBA_HOT_OPP_TEAMS, gamesNeeded: NBA_HOT_OPP_GAMES, flexBreakEven: NBA_HOTLIST_FLEX_BE, players: [] };
+  const list = hit.data, early = list.ranksFrom < NBA_HOT_OPP_GAMES;
+  const base = { ready: list.teamsReady >= NBA_HOT_OPP_TEAMS, early, teamsReady: list.teamsReady, teamsNeeded: NBA_HOT_OPP_TEAMS, gamesNeeded: list.ranksFrom, flexBreakEven: NBA_HOTLIST_FLEX_BE, players: [] };
   const coming = list.players.filter((p) => Date.parse(p.commence) > now);
   if (!coming.length) return base;
   const day = coming.map((p) => p.date).sort()[0];
@@ -13223,12 +13261,12 @@ async function nbaHotBoard(db, legs, injDays, now) {
       const r = read.get(`${p.id}|${m.market}`), l = logged.get(`${nbaName(p.name)}|${m.market}`);
       const line = r ? r.pp_line : l ? l.point : null, sharp = r ? r.sharp_under : l ? l.sharp_under : null;
       const cleared = line == null ? null : m.last10.filter((v) => v != null && v > line).length;
-      return { market: m.market, run: m.run, pos: Math.round((1 - m.rank) * (m.of - 1)) + 1, of: m.of, third: nbaHotThird(m.rank), seasonAvg: m.seasonAvg, last5: m.last5,
-        line, sharp: sharp == null ? null : sharp, cleared, read: nbaHotRead(m.rank, cleared, !!p.outs) };
+      return { market: m.market, run: m.run, pos: Math.round((1 - m.rank) * (m.of - 1)) + 1, of: m.of, third: nbaHotThird(m.rank), seasonAvg: m.seasonAvg, lastSeason: m.lastSeason, last5: m.last5,
+        line, sharp: sharp == null ? null : sharp, cleared, seen: m.last10.length, read: early || m.lastSeason != null ? null : nbaHotRead(m.rank, cleared, !!p.outs) };
     }).sort((a, b) => soft(b) - soft(a) || b.run - a.run);
-    base.players.push({ id: p.id, name: p.name, team: p.team, oppName: p.oppName, isHome: p.isHome, commence: p.commence, outs: p.outs, inj: inj && inj.status ? inj : undefined, markets });
+    base.players.push({ id: p.id, name: p.name, team: p.team, oppName: p.oppName, isHome: p.isHome, commence: p.commence, outs: p.outs, role: p.role, inj: inj && inj.status ? inj : undefined, markets });
   }
-  base.players.sort((a, b) => soft(b.markets[0]) - soft(a.markets[0]) || best(b) - best(a) || Date.parse(a.commence) - Date.parse(b.commence));
+  base.players.sort((a, b) => soft(b.markets[0]) - soft(a.markets[0]) || !!a.role - !!b.role || best(b) - best(a) || Date.parse(a.commence) - Date.parse(b.commence));
   return base;
 }
 
