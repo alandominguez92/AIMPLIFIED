@@ -12823,6 +12823,7 @@ async function ensureNbaCauseSchema(db) {
     PRIMARY KEY (event_id, player, market)
   )`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nbahot_open ON nbahot (espn_id) WHERE result IS NULL').run();
+  await addColumns(db, 'nbahot', [['form', 'INTEGER']]);
 }
 // Each team's games in order and each player's, from box rows ordered by date (pure).
 function nbaCauseState(rows) {
@@ -12897,6 +12898,11 @@ function nbaCauseRows(cands, ev, g, at) {
 //   - It shares the read above: a game either log wants is read once, seven credits.
 //   - Runs of 3 and 4, and 5+ against other teams, come free with a read and are logged
 //     too: whether the opponent matters is what they can say.
+//   - How often he cleared tonight's number, of his last ten, is kept (2026-11-02). Found
+//     after looking, so it changes nothing that gets read: at 5 or fewer the rule's Under
+//     went 59.3% where the sharp books said 50.4 (440 priced), at 6+ 53.5% to 50.6 (301).
+//     The number has caught up with him. It also keeps this log from clashing with the
+//     streak log's Over, which needs 6+.
 const NBA_HOT_RUN = 5;                       // games in a row above his own average to then
 const NBA_HOT_NEAR = 3;                      // ... logged from here, for the comparison
 const NBA_HOT_AVG_FROM = 5;                  // a game counts once this many came before it
@@ -12978,7 +12984,7 @@ function nbaHotCandidates(st, rankOf, team, opp, inj) {
       markets[mk] = { run, rank: Math.round(rank * 1000) / 1000, usual: usual == null ? null : Math.round(usual * 1000) / 1000,
         seasonAvg: round1(avg(p.games.map((b) => nbaStat(b, mk)))), last5: round1(avg(p.games.slice(-5).map((b) => nbaStat(b, mk)))) };
     }
-    if (Object.keys(markets).length) out.push({ id: p.id, name: p.name, team, opp, min5: round1(min5), soft, markets });
+    if (Object.keys(markets).length) out.push({ id: p.id, name: p.name, team, opp, min5: round1(min5), soft, markets, last10: p.games.slice(-10) });
   }
   return out;
 }
@@ -12993,7 +12999,8 @@ function nbaHotRows(cands, ev, g, at) {
     const read = histPropRead(l);
     rows.push({ event_id: ev.id, player: l.p, market: l.mk, espn_id: g.id, player_id: c.id, team: c.team, opp: c.opp, date: ptDateOf(Date.parse(ev.commence_time)),
       commence: ev.commence_time, home: ev.home_team, away: ev.away_team, pp_line: l.pp, sharp_under: read.under, sharp_src: read.src || null, gap: read.gap,
-      run: m.run, opp_rank: m.rank, opp_rank_usual: m.usual, season_avg: m.seasonAvg, last5: m.last5, min5: c.min5, read_at: at });
+      run: m.run, opp_rank: m.rank, opp_rank_usual: m.usual, season_avg: m.seasonAvg, last5: m.last5, min5: c.min5, read_at: at,
+      form: c.last10.filter((b) => { const v = nbaStat(b, l.mk); return v != null && v > l.pp; }).length });
   }
   return rows;
 }
@@ -13066,8 +13073,8 @@ async function nbaCauseTick(env, now = Date.now()) {
         .bind(x.event_id, x.player, x.market, x.espn_id, x.player_id, x.team, x.date, x.commence, x.home, x.away, x.pp_line, x.sharp_under, x.sharp_src, x.gap, x.form, x.min5, x.min_before, x.outs, x.read_at));
       const hotRows = nbaHotRows(hot, body, g, at);
       for (const x of hotRows) stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO nbahot (event_id, player, market, espn_id, player_id, team, opp, date, commence, home, away,
-          pp_line, sharp_under, sharp_src, gap, run, opp_rank, opp_rank_usual, season_avg, last5, min5, read_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-        .bind(x.event_id, x.player, x.market, x.espn_id, x.player_id, x.team, x.opp, x.date, x.commence, x.home, x.away, x.pp_line, x.sharp_under, x.sharp_src, x.gap, x.run, x.opp_rank, x.opp_rank_usual, x.season_avg, x.last5, x.min5, x.read_at));
+          pp_line, sharp_under, sharp_src, gap, run, opp_rank, opp_rank_usual, season_avg, last5, min5, read_at, form) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(x.event_id, x.player, x.market, x.espn_id, x.player_id, x.team, x.opp, x.date, x.commence, x.home, x.away, x.pp_line, x.sharp_under, x.sharp_src, x.gap, x.run, x.opp_rank, x.opp_rank_usual, x.season_avg, x.last5, x.min5, x.read_at, x.form));
       for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
       logged += rows.length + hotRows.length;
       s.done = at; s.legs = rows.length; s.hot = hotRows.length;
@@ -13109,10 +13116,13 @@ function buildNbaHotRecord(rows) {
       priced: { n: pr.length, underRate: rate(pr), sharpSaid: said, beat: pr.length ? round1(rate(pr) - said) : null } };
   };
   const long = (r) => r.run >= NBA_HOT_RUN, soft = (r) => r.opp_rank >= NBA_HOT_SOFT;
-  return { note: 'LOGGED ONLY: the Under after 5+ games in a row above his own average, against a team in the top third for allowing that stat. Last season: 57.0% where the sharp books said 50.5 (741 priced legs), 56.4% of all 1,241; the same run against the tough third 53.4.',
+  const low = (r) => r.form != null && r.form < NBA_CAUSE_FORM_BAR, high = (r) => r.form != null && r.form >= NBA_CAUSE_FORM_BAR;
+  return { note: 'LOGGED ONLY: the Under after 5+ games in a row above his own average, against a team in the top third for allowing that stat. Last season: 57.0% where the sharp books said 50.5 (741 priced legs), 56.4% of all 1,241; the same run against the tough third 53.4. Found after looking: clearing tonight\'s number 5 or fewer of his last ten 59.3% to 50.4 (440 priced), 6+ 53.5% to 50.6 (301); any opponent, 5 or fewer, 57.3% to 50.5 (1,089 priced).',
     logged: rows.length, pending: rows.filter((r) => r.result == null).length, voided: rows.filter((r) => r.result === 'void').length, pushed: rows.filter((r) => r.result === 'push').length,
     rule: cell(decided.filter((r) => long(r) && soft(r))), ruleAllowingForOpponents: cell(decided.filter((r) => long(r) && r.opp_rank_usual != null && r.opp_rank_usual >= NBA_HOT_SOFT)),
-    longRunOtherTeams: cell(decided.filter((r) => long(r) && !soft(r))), shortRunSoftTeam: cell(decided.filter((r) => !long(r) && soft(r))) };
+    longRunOtherTeams: cell(decided.filter((r) => long(r) && !soft(r))), shortRunSoftTeam: cell(decided.filter((r) => !long(r) && soft(r))),
+    ruleClearing5OrFewer: cell(decided.filter((r) => long(r) && soft(r) && low(r))), ruleClearing6Plus: cell(decided.filter((r) => long(r) && soft(r) && high(r))),
+    longRunClearing5OrFewer: cell(decided.filter((r) => long(r) && low(r))) };
 }
 // GET /api/nba-cause[?day=YYYY-MM-DD]: both records, and that day's rows.
 async function nbaCauseRoute(env, url) {

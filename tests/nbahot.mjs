@@ -10,6 +10,8 @@
 //     teams ranked; 5+ in a row against the top third is what pays for a read
 //   - with a read paid for, runs of 3 and 4 and runs against other teams come along too,
 //     so the record can say whether the opponent and the run's length matter
+//   - each leg keeps how often he cleared that number, of his last ten, and the record
+//     splits on it; the table already in production gains the column (2026-11-02)
 //   - graded from the box scores; a leg he did not play is void
 //   - nothing reaches a page: /api/nba-cause alone reads it
 //
@@ -143,6 +145,11 @@ ok(rows.some((r) => r.player === 'Anthony Davis') && rows.some((r) => r.player =
 ok(!rows.some((r) => r.player === 'Daniel Gafford'), 'Gafford, 5 in a row in rebounds alone, no rebounds market on this payload: no leg');
 ok(!rows.some((r) => r.player === 'Klay Thompson'), 'Thompson, posted, no run: no');
 ok(rows.length === 14, `the whole list, ${rows.length} legs`);
+const STAT_OF = { pts: (r) => r.pts, pra: (r) => r.pts + r.reb + r.ast, pts_reb: (r) => r.pts + r.reb, pts_ast: (r) => r.pts + r.ast, reb_ast: (r) => r.reb + r.ast };
+const clearedOf = (l) => HISTORY.filter((r) => r.player_id === l.player_id).slice(-10).filter((r) => STAT_OF[l.market](r) > l.pp_line).length;
+ok(rows.every((r) => r.form === clearedOf(r)), `how often each cleared his number, of his last ten, counted the long way: ${rows.map((r) => `${r.player.split(' ').pop()} ${r.market} ${r.form}`).join(', ')}`);
+ok(w('pra').form === 0 && w('pts').form === 0, 'Williams against lines far over anything he had done: 0 of 10, the kind the number has run past');
+ok(leg('Naji Marshall', 'pts').form >= 6, `Marshall at 13 points: ${leg('Naji Marshall', 'pts').form} of 10, still clearing it`);
 const nba = await get('/api/nba-pp');
 ok(!JSON.stringify(nba).includes('nbahot') && !/nbahot|hotRun/.test(fs.readFileSync(BOARD + '/app.js', 'utf8')), 'nothing on a page');
 NOW += 10 * 60e3;
@@ -175,6 +182,13 @@ ok(rec.rule.priced.n === 5 && rec.rule.priced.underRate === 40 && near(rec.rule.
 ok(rec.longRunOtherTeams.n === 2 && rec.longRunOtherTeams.under === 2, "Williams's other two legs: the same run, not the top third");
 ok(rec.shortRunSoftTeam.n === 1 && rec.shortRunSoftTeam.under === 0, 'Nembhard: a short run, a soft team');
 ok(rec.ruleAllowingForOpponents.n === 8 && rec.ruleAllowingForOpponents.under === 4, 'allowing for who they faced, Williams all count: eight legs, four under');
+const inRule = graded.filter((r) => (r.result === 'over' || r.result === 'under') && r.run >= 5 && r.opp_rank >= 2 / 3);
+const lowForm = inRule.filter((r) => r.form < 6), highForm = inRule.filter((r) => r.form >= 6);
+ok(rec.ruleClearing5OrFewer.n === lowForm.length && rec.ruleClearing5OrFewer.under === lowForm.filter((r) => r.result === 'under').length && lowForm.some((r) => r.player === 'Cody Williams'), `the rule at 5 or fewer of ten: ${rec.ruleClearing5OrFewer.n} legs, ${rec.ruleClearing5OrFewer.under} under, Williams among them`);
+ok(rec.ruleClearing6Plus.n === highForm.length && rec.ruleClearing5OrFewer.n + rec.ruleClearing6Plus.n === rec.rule.n, `at 6+: ${rec.ruleClearing6Plus.n}; the two make the rule`);
+const longLow = graded.filter((r) => (r.result === 'over' || r.result === 'under') && r.run >= 5 && r.form < 6);
+ok(rec.longRunClearing5OrFewer.n === longLow.length && rec.longRunClearing5OrFewer.n > rec.ruleClearing5OrFewer.n, `any opponent, 5 or fewer: ${rec.longRunClearing5OrFewer.n} legs, Williams's other two with them`);
+ok(/59\.3%/.test(rec.note) && /57\.3%/.test(rec.note), 'the note says what was found, and that it was found after looking');
 ok(body.record && body.record.logged === 0 && /Over where a streak has a cause/.test(body.record.note), 'the streak log answers as it did');
 const day = await get('/api/nba-cause?day=2027-01-15');
 ok(day.hotRows && day.hotRows.length === 15 && day.rows.length === 0, "?day= gives that day's rows from both");
@@ -208,6 +222,27 @@ const rec2 = (await get('/api/nba-cause')).hotRun;
 ok(rec2.rule.n === 0 && rec2.longRunOtherTeams.n === 1 && rec2.longRunOtherTeams.under === 0, "Spencer's 18 against 10.5: over, and it stands apart from the rule");
 ok(all("SELECT * FROM nbacause WHERE result IS NOT NULL AND held = 1").length === 4, 'both logs graded, the streak log\'s teammate check still on');
 ok(all("SELECT actual, result FROM nbahot WHERE player = 'Cam Spencer' AND market = 'pts_ast'")[0].result === 'under', "Spencer's 18 against 20.5: under, what production has for him");
+
+console.log('\n-- the table as production already has it, no form column --');
+S = scene({ games: [MAVS] });
+S.sq.exec(`CREATE TABLE nbahot (
+    event_id TEXT NOT NULL, player TEXT NOT NULL, market TEXT NOT NULL,
+    espn_id TEXT, player_id TEXT, team TEXT, opp TEXT, date TEXT, commence TEXT, home TEXT, away TEXT,
+    pp_line REAL, sharp_under REAL, sharp_src TEXT, gap REAL,
+    run INTEGER, opp_rank REAL, opp_rank_usual REAL, season_avg REAL, last5 REAL, min5 REAL, read_at TEXT,
+    actual REAL, result TEXT, graded_at TEXT,
+    PRIMARY KEY (event_id, player, market)
+  )`);
+S.sq.prepare("INSERT INTO nbahot (event_id, player, market, espn_id, date, pp_line, sharp_under, run, opp_rank, opp_rank_usual, actual, result) VALUES ('old','Old Row','pts','old','2027-01-10',10,50,5,1,1,8,'under')").run();
+ok(!S.sq.prepare('PRAGMA table_info(nbahot)').all().some((c) => c.name === 'form'), 'no form column to begin with');
+await start(MAVS);
+ok(S.sq.prepare('PRAGMA table_info(nbahot)').all().some((c) => c.name === 'form'), 'the tick adds it');
+const widened = all('SELECT * FROM nbahot');
+ok(S.reads.length === 1 && widened.length === 15 && widened.filter((r) => r.player !== 'Old Row').every((r) => r.form != null), 'the read writes every new leg with its form');
+const oldRow = widened.find((r) => r.player === 'Old Row');
+ok(oldRow.form === null && oldRow.result === 'under', 'an older row stands, its form unknown');
+const recOld = (await get('/api/nba-cause')).hotRun;
+ok(recOld.rule.n === 1 && recOld.ruleClearing5OrFewer.n === 0 && recOld.ruleClearing6Plus.n === 0, 'counted in the rule, in neither side of the split');
 
 console.log('\n-- too few teams with a rank --');
 const fewTeams = new Set([...new Set(HISTORY.map((r) => r.team))].filter((t) => !['DAL', 'UTAH'].includes(t)).slice(0, 15).concat(['DAL', 'UTAH']));
