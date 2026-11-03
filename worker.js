@@ -13705,9 +13705,9 @@ async function nflHotTick(env, now = Date.now()) {
 const SOC_HOT_MARKETS = ['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves'];
 const SOC_HOT_TEAMS = { epl: 20, laliga: 20, seriea: 20, bundesliga: 18, mls: 30, ucl: 36, uel: 36 };
 const SOC_HOT_PRIOR_STARTS = 10;            // last season's starts, for its average to mean anything
-// A cup's teams play too few to rank on 5 until late in its league phase, so the Champions League
-// ranks on 3 until then (2026-11-03, the owner's call: "previous 3 games"). Each row says so.
-const SOC_HOT_RANK_EARLY = { ucl: 3 };
+// A cup's teams play too few to rank on 5 until late in its league phase, so the Champions and
+// Europa Leagues rank on 3 until then (2026-11-03, the owner's call: "previous 3 games"). Each row says so.
+const SOC_HOT_RANK_EARLY = { ucl: 3, uel: 3 };
 const SOC_HOT_MIN = 60;                     // minutes a start over his last five, to count as a regular
 // The site's own soccer box scores start around Oct 9, when the props card did, which leaves
 // every league under 5 matches a team until late November. So the list reads the season before

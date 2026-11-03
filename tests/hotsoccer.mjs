@@ -2,7 +2,7 @@
 // previous 5 games, moving to 10). What has to hold:
 //   - a player's starts count in every competition; the team he plays is ranked on that league's
 //     matches only, so a cup tie lists no one until the cup has 5 matches a team, and the Champions
-//     League 3 (the owner's call, 2026-11-03), each row saying so, until 24 of its 36 clubs have 5
+//     and Europa Leagues 3 (the owner's call, 2026-11-03), each row saying so, until 24 of 36 clubs have 5
 //   - with 5 to 9 starts he is listed on five or more in a row above last season's average per
 //     start. 60+ minutes a start over his last five, 10+ starts last season
 //   - a keeper for saves, everyone else for the rest; one team match missed is rotation, two is out
@@ -276,12 +276,15 @@ S = scene({ rows: fiveUp });
 await begin();
 hot = (await get('/api/hot-players?sport=soccer')).hot;
 ok(flat(hot).filter((x) => x.league === 'ucl').length > 0 && flat(hot).every((x) => !('ranksOn' in x)), 'at 5 the label goes, by itself');
-// The Europa League's table reads the same, and stays on 5.
+// The same real matches and fixtures under the Europa League's name: it ranks on 3 as well.
 const asEuropa = withCup.map((r) => (r.league === 'ucl' ? { ...r, league: 'uel' } : r));
 S = scene({ rows: asEuropa });
+for (const [d, sb] of Object.entries(SLATES['uefa.champions'])) S.past[`uefa.europa/${d}`] = sb;
 await begin();
 hot = (await get('/api/hot-players?sport=soccer')).hot;
-ok(flat(hot).every((x) => x.league !== 'uel' && !('ranksOn' in x)), 'the Europa League stays on 5: 3 was asked of the Champions League');
+const uelRuns = flat(hot).filter((x) => x.league === 'uel');
+ok(uelRuns.length >= 1 && JSON.stringify(uelRuns.map(key).sort()) === JSON.stringify(wantCup3.map(key).sort()), `the Europa League ranks on 3 as well, the same runs the long way: ${uelRuns.length}`);
+ok(uelRuns.every((x) => x.ranksOn === 3 && x.of >= 24), 'and each of its rows says so');
 
 console.log('\n-- every competition counts for him, one league for the team he plays --');
 const allDates = [...new Set(ROWS.map((r) => r.date))].sort();
