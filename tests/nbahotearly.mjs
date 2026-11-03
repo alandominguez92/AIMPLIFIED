@@ -289,9 +289,9 @@ ok(/in a row · [\d.]+ last five, [\d.]+ last season/.test(html), 'each run agai
 ok(/No PrizePicks number yet<\/span>/.test(html) && !/Lean |Slight |No side:|[Nn]ot tested/.test(html), 'no side anywhere');
 // A bar on the chance (2026-11-03, the owner's call): the same on every run under 10 games, because
 // each one's sharp number did worse than this rate on teams held out.
-const runsShown = (html.match(/class="hot-mk"/g) || []).length;
-ok(runsShown >= 2 && (html.match(/Chance at PrizePicks' number: about even, the Over about 53%/g) || []).length === runsShown, 'every run with the same chance, no number needed');
-ok((html.match(/<span class="uz" style="width:53\.1%"><\/span><span class="tick" style="left:54\.2%"><\/span>/g) || []).length === runsShown, 'the bar fills to it, just short of what a flex needs');
+const runsShown = (html.match(/class="hot-mk"/g) || []).length, thinShown = (html.match(/too few legs on this stat/g) || []).length;
+ok(runsShown >= 2 && (html.match(/Chance at PrizePicks' number: about even, the Over about 53%/g) || []).length === runsShown - thinShown, 'every run with the same chance, no number needed');
+ok((html.match(/<span class="uz" style="width:53\.1%"><\/span><span class="tick" style="left:54\.2%"><\/span>/g) || []).length === runsShown - thinShown, 'the bar fills to it, just short of what a flex needs');
 ok(/tick: a flex needs <b>54\.2%<\/b> · sharp books 49\.5/.test(html), 'and says what the tick is');
 ok(!/landed about 4 points under/.test(html), 'that rate is November\'s own, so no word about November running lower');
 ok(!/read about an hour before tip/.test(html), 'and it does not promise a read no one is paying for');
@@ -320,7 +320,11 @@ state.nbaPp.hot = payload;
 ok(!/Bigger role/.test(liOf(html, 'Aaron Wiggins')), 'and steady minutes do not say it');
 const pts = flat(payload).find((x) => x.market === 'reb');
 state.nbaPp.hot = { ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map((m) => (m.market === 'reb' ? { ...m, line: 4.5, cleared: 3 } : m)) })) };
-ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /Chance at PrizePicks' number: about even, the Over about 53%/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
+ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /Chance at PrizePicks' number: too few legs on this stat last season to say/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
+// Rebounds and threes (2026-11-03): last season's numbers on them start Dec 20, so 8 of the 452 legs.
+const thinRuns = flat(payload).filter((x) => ['reb', 'threes'].includes(x.market)).length;
+ok(thinRuns >= 1 && (card().match(/too few legs on this stat last season to say/g) || []).length === thinRuns, 'every rebounds or threes run under 10 games says too few legs');
+ok((card().match(/class="bmini"/g) || []).length === flat(payload).length - thinRuns && (card().match(/about even, the Over about 53%/g) || []).length === flat(payload).length - thinRuns, 'and has no bar and no 53%; the other stats keep theirs');
 const ownAverage = (line) => ({ ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map(({ lastSeason, ...m }) => ({ ...m, seasonAvg: 5, ...line })) })) });
 state.nbaPp.hot = ownAverage({});
 ok(/No PrizePicks number yet · not tested, so no side/.test(card()) && !/class="bmini"|Chance at PrizePicks/.test(card()), 'ten games while teams are ranked on five: not what the replay covered, so not what it found');

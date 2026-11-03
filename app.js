@@ -7089,10 +7089,13 @@
   // one's sharp number on it did worse than this rate on teams held out (at 54.2+ it said 56 and
   // landed 47). Nearly all of it was November, the weeks it applies to.
   const NBA_HOT_EARLY_LAND = { side: 'Over', rate: 53.1, sharp: 49.5, n: 452, even: true };
+  // Rebounds and threes aren't in it: last season's numbers on them start Dec 20, 8 of those legs.
+  const NBA_HOT_EARLY_THIN = new Set(['reb', 'threes']);
   // The chance with a bar (2026-11-03, the owner's call), the way Picks shows one: the fill the
   // chance at PrizePicks' number, the tick what a flex needs.
   function nbaHotReadHtml(p, m, be) {
     if (!m.read && m.lastSeason == null) return `<span class="hot-line hot-read">${NBA_HOT_UNTESTED}</span>`;
+    if (!m.read && NBA_HOT_EARLY_THIN.has(m.market)) return `<span class="hot-line hot-read">${NBA_HOT_LAND}: too few legs on this stat last season to say</span>`;
     const r = m.read || NBA_HOT_EARLY_LAND, chance = `about ${Math.round(r.rate)}%`;
     const said = r.even || !r.side ? `about even, the ${r.side || 'Under'} ${chance}` : r.clears ? `<b>${r.side} ${chance}</b>` : `${r.side} ${chance}`;
     const why = r.side === 'Over' && p.outs && p.outs.length ? ` · minutes up, ${esc(p.outs.join(', '))} out` : '';
