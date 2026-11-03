@@ -353,6 +353,7 @@ const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 console.log(`  ${text(html).slice(0, 900)}`);
 ok(/Hot players/.test(html) && /Five or more starts in a row/.test(html) && /with under 10 starts/.test(html) && /Not tested in soccer, so it shows no side/.test(html) && /off Picks and out of the entries/.test(html), 'in starts, and says it is untested and off Picks');
 ok(/ranked for that stat on 5\+ games/.test(html), 'the team ranked on its games, not its starts');
+ok(/No season replayed yet, so no percentage on these yet/.test(html) && !/Run goes on/.test(html), 'no percentage without a season behind it, and it says why');
 ok(/data-sport="soccer"/.test(html), 'each face from the soccer photos');
 ok(/ in a row · [\d.]+ last five, [\d.]+ last season/.test(html), 'the run in plain words');
 ok(/allow the (\d+\w\w )?(most|fewest) /.test(html) && /(soft|middle|tough) team/.test(html), 'and the team he plays');

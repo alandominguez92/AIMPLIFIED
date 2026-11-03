@@ -145,6 +145,9 @@ const row = (name, mk, h = hot) => flat(h).find((x) => x.name === name && x.mark
 const wig = row('Aaron Wiggins', 'pts');
 ok(wig && wig.run === 7 && wig.lastSeason === PRIORS[wig.id].pts && wig.last5 === round1(gamesOf(NOW_ROWS, wig.id).slice(-5).reduce((a, r) => a + r.pts, 0) / 5), `Wiggins, ${wig && wig.run} in a row above last season's ${wig && wig.lastSeason} points, ${wig && wig.last5} over his last five`);
 ok(flat(hot).every((x) => x.read === null && x.seasonAvg == null), 'not one early row claims a side, or a season average it has not got');
+// A chance on each run (2026-11-03): the table typed out here.
+const earlyGoes = (x) => { const gap = (x.last5 - x.lastSeason) / x.lastSeason; return Math.floor(((gap < 0.5 ? 196 / 279 : 377 / 456) * 100 + (x.market === 'threes' ? -13 : 0)) / 5) * 5; };
+ok(flat(hot).length >= 2 && flat(hot).every((x) => x.goesOn && x.goesOn.pct === earlyGoes(x)), `every early run says how often runs like it went on: ${flat(hot).slice(0, 5).map((x) => `${x.name} ${x.market} ${x.last5} v ${x.lastSeason}: ${x.goesOn && x.goesOn.pct}`).join(' | ')}`);
 ok(flat(hot).every((x) => x.seen >= 5 && x.seen < 10 && gamesOf(NOW_ROWS, x.id).length === x.seen), 'each says how many games it has');
 ok(!flat(hot).some((x) => gamesOf(NOW_ROWS, x.id).length >= 10), 'no one here has 10 games');
 ok(flat(hot).every((x) => { const v = gamesOf(NOW_ROWS, x.id).map(STAT[x.market]); return JSON.stringify(x.last10) === JSON.stringify(v) && JSON.stringify(x.up) === JSON.stringify(v.map((y) => (y > x.lastSeason ? 1 : 0))); }), 'each run has its games, and which beat last season, the long way');
@@ -272,6 +275,8 @@ const liOf = (h, name) => h.split('<li>').find((x) => x.includes(name)) || '';
 console.log(`  ${text(html).slice(0, 1100)}`);
 ok(/Early in the season: five or more games in a row above last season's average, with the team he plays ranked for that stat on 5\+ games/.test(html) && /At 10 games a player moves to his own average/.test(html) && /Replayed on last season's games, that leaned neither way \(the Under hit 46\.9%, sharp books 50\.5\), so no side/.test(html) && !/been tested|A lead/.test(html), 'it says what the early list is, what comes next, and what the replay found');
 ok(!/the Under beat the Over/.test(html), 'and leaves last season\'s finding, which is about the other rule, for when that rule applies');
+ok(/Last season runs like these went on about 77% of the time, but the Over at PrizePicks' number landed 53%: the number has usually moved up by then/.test(html), 'a run going on is not the bet, in the early numbers');
+ok(/Run goes on: about <b>\d+%<\/b>/.test(html), 'each run says how often runs like it went on');
 ok(!/tonight/.test(html), 'and no "tonight": on a night with no games the list is already on tomorrow\'s');
 ok((html.match(/<li>/g) || []).length === Math.min(5, softOnes.length), 'soft teams first, five at most');
 const boxesOf = (m) => m.last10.map((v, i) => `<i class="${m.up[i] === 1 ? 'h' : m.up[i] === 0 ? 'm' : 'n'}">${v}</i>`).join('');
@@ -307,7 +312,7 @@ state.nbaPp.hot = payload;
 ok(!/Bigger role/.test(liOf(html, 'Aaron Wiggins')), 'and steady minutes do not say it');
 const pts = flat(payload).find((x) => x.market === 'reb');
 state.nbaPp.hot = { ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map((m) => (m.market === 'reb' ? { ...m, line: 4.5, cleared: 3 } : m)) })) };
-ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /No lean last season, so no side/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
+ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /Chance at PrizePicks' number: about even, so no side/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
 const ownAverage = (line) => ({ ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map(({ lastSeason, ...m }) => ({ ...m, seasonAvg: 5, ...line })) })) });
 state.nbaPp.hot = ownAverage({});
 ok(/No PrizePicks number yet · not tested, so no side/.test(card()) && !/no lean last season/i.test(card()), 'ten games while teams are ranked on five: not what the replay covered, so not what it found');

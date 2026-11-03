@@ -312,6 +312,7 @@ const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 console.log(`  ${text(html).slice(0, 900)}`);
 ok(/Hot players/.test(html) && /Not tested in the NFL, so it shows no side/.test(html) && /off Picks and out of the entries/.test(html), 'titled, and says it is untested and off Picks');
 ok(/ranked for that stat on 5\+ games/.test(html), 'and what the teams are ranked on');
+ok(/Too few runs last season to put a percentage on them yet/.test(html) && !/Run goes on/.test(html), 'no percentage on 140 runs, and it says why');
 ok(/data-sport="nfl-espn"/.test(html) && /sport === 'nfl-espn'\) return `https:\/\/a\.espncdn\.com\/combiner\/i\?img=\/i\/headshots\/nfl\/players\/full\/\$\{n\}\.png/.test(app), 'each face from ESPN\'s NFL photos, by the ESPN id');
 ok(/ in a row · [\d.]+ last five, [\d.]+ last season/.test(html) && /Bigger role: \d+ (carries and targets|passes) a game, \d+ last season/.test(html), 'the run and the role in plain words');
 ok(/allow the (\d+\w\w )?(most|fewest) /.test(html) && /(soft|middle|tough) team/.test(html), 'and the team he plays');

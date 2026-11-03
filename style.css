@@ -3028,6 +3028,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .hot-mk .hot-line:first-child b { color:var(--text); font-weight:600; }
 .hot-read { margin-top:2px; }
 .hot-role { margin-top:4px; font-size:12.5px; color:var(--textDim); }
+.hot-goes b { color:var(--text); font-weight:600; }
 .hot-also { margin-top:6px; font-size:12.5px; line-height:1.45; color:var(--textDim); }
 .nba-hot .tc-leg.has-hs > .hot-boxes { grid-column:1 / -1; }
 .hot-boxes .tb-boxes { gap:3px; }

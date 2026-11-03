@@ -261,6 +261,7 @@ const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 const softAny = payload.players.filter((p) => p.markets.some((m) => m.third === 'soft'));
 ok(/Hot players/.test(html) && /Not tested in the NHL, so it shows no side/.test(html) && /off Picks and out of the entries/.test(html), 'titled, and says it is untested and off Picks');
 ok((html.match(/<li>/g) || []).length === Math.min(5, softAny.length), 'soft teams first, five at most');
+ok(/Last season runs like these went on about 47% of the time, whatever their length, so there is no percentage for each player/.test(html) && !/Run goes on/.test(html), 'one rate for the league: replayed, it did not change with the run, and a table for each player did worse than it');
 state.hotAll = { nhl: true };
 html = card('nhl');
 const boxesOf = (m) => m.last10.map((v, i) => `<i class="${m.up[i] === 1 ? 'h' : m.up[i] === 0 ? 'm' : 'n'}">${v}</i>`).join('');

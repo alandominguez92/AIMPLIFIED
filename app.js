@@ -7085,14 +7085,15 @@
   // are still ranked on 5 games, which wasn't.
   const nbaHotNoSide = (m) => (m.lastSeason != null ? 'No lean last season, so no side' : 'Not tested, so no side');
   const nbaHotOrd = (n) => { const t = n % 100; return n + (t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'); };
+  const NBA_HOT_LAND = "Chance at PrizePicks' number";
   function nbaHotReadHtml(p, m, be) {
-    if (!m.read) return `<span class="hot-line hot-read">${nbaHotNoSide(m)}</span>`;
-    const r = m.read, said = `hit ${r.rate.toFixed(1)}% last season, sharp books ${r.sharp.toFixed(1)}`, title = `${r.n} priced legs last season`;
-    if (!r.side) return `<span class="hot-line hot-read" title="${title}">No side: the Under ${said}</span>`;
+    if (!m.read) return `<span class="hot-line hot-read">${m.lastSeason != null ? `${NBA_HOT_LAND}: about even, so no side` : nbaHotNoSide(m)}</span>`;
+    const r = m.read, sharp = `sharp books ${r.sharp.toFixed(1)}`, chance = `${r.side} about ${Math.round(r.rate)}%`, title = `${r.n} priced legs last season`;
+    if (!r.side) return `<span class="hot-line hot-read" title="${title}">${NBA_HOT_LAND}: about even, the Under ${r.rate.toFixed(1)}% · ${sharp}</span>`;
     const why = r.side === 'Over' && p.outs && p.outs.length ? ` · minutes up, ${esc(p.outs.join(', '))} out` : '';
     return r.clears
-      ? `<span class="hot-line hot-read up" title="${title}"><b>Lean ${r.side}</b>: ${said}${why}</span>`
-      : `<span class="hot-line hot-read" title="${title}">Slight ${r.side}: ${said}; a flex needs ${be}${why}</span>`;
+      ? `<span class="hot-line hot-read up" title="${title}">${NBA_HOT_LAND}: <b>${chance}</b> · ${sharp}${why}</span>`
+      : `<span class="hot-line hot-read" title="${title}">${NBA_HOT_LAND}: ${chance} · ${sharp}; a flex needs ${be}${why}</span>`;
   }
   function nbaHotMarketHtml(p, m, be) {
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1;
@@ -7104,6 +7105,7 @@
     const against = m.lastSeason != null ? `${esc(String(m.lastSeason))} last season` : `${esc(String(m.seasonAvg))} season`;
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(NBA_HOT_MK[m.market])}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
       + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${allows} <span class="tc-dfs">${m.third} team</span></span>`
+      + (m.goesOn ? `<span class="hot-line hot-goes" title="${m.goesOn.n} runs like it last season">Run goes on: about <b>${m.goesOn.pct}%</b></span>` : '')
       + (m.line == null && !m.read ? `<span class="hot-line">${num} · ${nbaHotNoSide(m).toLowerCase()}</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
   }
   // A run's last games (2026-11-03, the owner's call): the boxes a pick has, filled where the
@@ -7145,16 +7147,18 @@
     const head = `<div class="tc-head"><span class="tc-title">Hot players</span></div>`
       + (h.early ? `<div class="tc-sub">Early in the season: five or more games in a row above last season's average, with the team he plays ranked for that stat on ${h.gamesNeeded}+ games. ${NBA_HOT_EARLY_READ} At 10 games a player moves to his own average, the version that did lean. Not a pick: off Picks and out of the entries.</div>`
       : `<div class="tc-sub">Five or more games in a row above his own average, with the team he plays ranked for that stat. Last season the number had usually caught up with him by then: the Under beat the Over, most of all against the softest teams. A lead, not a pick: off Picks and out of the entries, read again in January.</div>`
-      + (h.players.some((p) => p.markets.some((m) => m.lastSeason != null)) ? `<div class="tc-sub">Under 10 games: five or more in a row above last season's average. ${NBA_HOT_EARLY_READ}</div>` : ''));
+      + (h.players.some((p) => p.markets.some((m) => m.lastSeason != null)) ? `<div class="tc-sub">Under 10 games: five or more in a row above last season's average. ${NBA_HOT_EARLY_READ}</div>` : ''))
+      // A run going on isn't the bet (2026-11-03): the owner wants the odds of it landing.
+      + `<div class="tc-sub">Last season runs like these went on about ${h.early ? "77% of the time, but the Over at PrizePicks' number landed 53%" : "64% of the time, but the Over at PrizePicks' number landed 45%"}: the number has usually moved up by then.</div>`;
     if (!h.ready) {
       return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games yet. A player needs ${h.gamesNeeded} games, and opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}: ${h.teamsReady} have so far.</div></div>`;
     }
     return hotBodyHtml(h, head, !!state.nbaHotAll, 'data-action="nba-hot-all"', 'nba', (p) => `${esc(nbaNick(p.oppName))} · ${esc(soccerKick(p.commence))}${nbaCardInjTag(p)}`, (p, m) => nbaHotMarketHtml(p, m, h.flexBreakEven), (m) => NBA_HOT_MK[m.market]);
   }
   const HOT_LEAGUE = {
-    nhl: { name: 'the NHL', games: 'games', face: 'nhl', mk: { pts: 'Points', ast: 'Assists', goals: 'Goals', sog: 'Shots on goal' } },
-    nfl: { name: 'the NFL', games: 'games', face: 'nfl-espn', mk: { pass_yds: 'Passing yards', pass_td: 'Passing TDs', rush_yds: 'Rushing yards', rec: 'Receptions', rec_yds: 'Receiving yards' } },
-    soccer: { name: 'soccer', games: 'starts', face: 'soccer', mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' } },
+    nhl: { name: 'the NHL', games: 'games', face: 'nhl', rated: 'Last season runs like these went on about 47% of the time, whatever their length, so there is no percentage for each player.', mk: { pts: 'Points', ast: 'Assists', goals: 'Goals', sog: 'Shots on goal' } },
+    nfl: { name: 'the NFL', games: 'games', face: 'nfl-espn', rated: 'Too few runs last season to put a percentage on them yet.', mk: { pass_yds: 'Passing yards', pass_td: 'Passing TDs', rush_yds: 'Rushing yards', rec: 'Receptions', rec_yds: 'Receiving yards' } },
+    soccer: { name: 'soccer', games: 'starts', face: 'soccer', rated: 'No season replayed yet, so no percentage on these yet.', mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' } },
   };
   function hotRowHtml(p, m, mk) {
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1, label = mk[m.market];
@@ -7166,7 +7170,7 @@
     const h = state.hot[sport], lg = HOT_LEAGUE[sport];
     if (!h) return '';
     const head = `<div class="tc-head"><span class="tc-title">Hot players</span></div>`
-      + `<div class="tc-sub">Five or more ${lg.games} in a row above his own average, or above last season's average with under 10 ${lg.games}, with the team he plays ranked for that stat${h.early ? ` on ${h.gamesNeeded}+ games` : ''}. Not tested in ${lg.name}, so it shows no side. A lead, not a pick: off Picks and out of the entries.</div>`;
+      + `<div class="tc-sub">Five or more ${lg.games} in a row above his own average, or above last season's average with under 10 ${lg.games}, with the team he plays ranked for that stat${h.early ? ` on ${h.gamesNeeded}+ games` : ''}. Not tested in ${lg.name}, so it shows no side. ${lg.rated} A lead, not a pick: off Picks and out of the entries.</div>`;
     if (!h.ready) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games read yet: opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}, and ${h.teamsReady} have so far.</div></div>`;
     return hotBodyHtml(h, head, !!state.hotAll[sport], `data-action="hot-all" data-sport="${sport}"`, lg.face, (p) => `${esc(p.oppNick)} · ${esc(soccerKick(p.commence))}`, (p, m) => hotRowHtml(p, m, lg.mk), (m) => lg.mk[m.market]);
   }

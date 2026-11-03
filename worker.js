@@ -13181,6 +13181,29 @@ function nbaHotRead(rank, cleared, cause) {
   const g = NBA_HOTLIST_BACKTEST[nbaHotThird(rank)];
   return said('Under', cleared == null ? g.any : cleared < NBA_CAUSE_FORM_BAR ? g.low : g.high);
 }
+// How often a run went on last season (2026-11-03, the owner's call: a percentage on each run):
+// the next game above what the run is measured by. Through the site's own list a day at a time:
+// [last five above that number by under this, went on, runs], 6,435 runs on these six stats.
+// Threes ran 13 points under the same table (530 runs). By the games he has played, because it
+// climbs through a season (10-19 games 57%, 40+ 69%), then how far his last five sit above the
+// number. Rounded down to a 5: against last season's months that reads about 2 points high in
+// December and up to 4 low from February. Running on, not the bet: at PrizePicks' number the Over
+// landed 45% of these on his own average, 53% on last season's. One season, so "about".
+const NBA_HOTLIST_GOES_ON = {
+  early: [[0.5, 196, 279], [Infinity, 377, 456]],
+  10: [[0.3, 182, 326], [Infinity, 318, 526]],
+  20: [[0.3, 200, 420], [0.5, 350, 593], [Infinity, 796, 1120]],
+  40: [[0.3, 205, 416], [0.5, 399, 645], [Infinity, 1244, 1654]],
+};
+const NBA_HOTLIST_GOES_ON_THREES = -13;
+function nbaHotGoesOn(m) {
+  const base = m.lastSeason != null ? m.lastSeason : m.seasonAvg;
+  if (!(base > 0)) return null;
+  const rows = m.lastSeason != null ? NBA_HOTLIST_GOES_ON.early : NBA_HOTLIST_GOES_ON[m.gp >= 40 ? 40 : m.gp >= 20 ? 20 : m.gp >= 10 ? 10 : ''];
+  if (!rows) return null;
+  const [, went, n] = rows.find(([under]) => (m.last5 - base) / base < under);
+  return { pct: Math.floor((went / n * 100 + (m.market === 'threes' ? NBA_HOTLIST_GOES_ON_THREES : 0)) / 5) * 5, n };
+}
 // Last season's average in a market (pure); a part missing is none.
 function nbaPriorAvg(pr, market) {
   let s = 0;
@@ -13224,7 +13247,7 @@ function nbaHotList(box, allowed, games, now, priors) {
     for (const [team, opp, oppName, isHome] of [[g.homeAb, g.awayAb, g.away, true], [g.awayAb, g.homeAb, g.home, false]]) {
       for (const c of nbaHotCandidates(box, rankOf, team, opp)) {
         const markets = Object.entries(c.markets).filter(([, m]) => m.run >= NBA_HOT_RUN).map(([market, m]) => ({ market, run: m.run, rank: m.rank, of: rankOf(market, false).size,
-          seasonAvg: m.seasonAvg, last5: m.last5, ...hotBoxes(box.players.get(c.id).games.map((b) => nbaStat(b, market))) }));
+          seasonAvg: m.seasonAvg, last5: m.last5, gp: box.players.get(c.id).games.length, ...hotBoxes(box.players.get(c.id).games.map((b) => nbaStat(b, market))) }));
         if (markets.length) players.push({ id: c.id, name: c.name, team, oppName, isHome, date, home: g.home, away: g.away, commence: g.commence, outs: cause.get(c.id) || null, role: null, markets });
       }
       for (const c of nbaHotEarlyRuns(box, priors, rankOf, team, opp)) players.push({ id: c.id, name: c.name, team, oppName, isHome, date, home: g.home, away: g.away, commence: g.commence, outs: null, role: c.role, markets: c.markets });
@@ -13269,7 +13292,7 @@ async function nbaHotBoard(db, legs, injDays, now) {
       const line = r ? r.pp_line : l ? l.point : null, sharp = r ? r.sharp_under : l ? l.sharp_under : null;
       const cleared = line == null ? null : m.last10.filter((v) => v != null && v > line).length;
       return { market: m.market, run: m.run, pos: Math.round((1 - m.rank) * (m.of - 1)) + 1, of: m.of, third: nbaHotThird(m.rank), seasonAvg: m.seasonAvg, lastSeason: m.lastSeason, last5: m.last5,
-        line, sharp: sharp == null ? null : sharp, cleared, seen: m.last10.length, last10: m.last10, up: m.up, read: early || m.lastSeason != null ? null : nbaHotRead(m.rank, cleared, !!p.outs) };
+        line, sharp: sharp == null ? null : sharp, cleared, seen: m.last10.length, last10: m.last10, up: m.up, goesOn: nbaHotGoesOn(m), read: early || m.lastSeason != null ? null : nbaHotRead(m.rank, cleared, !!p.outs) };
     }).sort((a, b) => soft(b) - soft(a) || b.run - a.run);
     base.players.push({ id: p.id, name: p.name, team: p.team, oppName: p.oppName, isHome: p.isHome, commence: p.commence, outs: p.outs, role: p.role, inj: inj && inj.status ? inj : undefined, markets });
   }

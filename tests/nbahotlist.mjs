@@ -165,6 +165,22 @@ const player = hot.players.find((p) => p.name === 'Naji Marshall');
 ok(player.team === 'DAL' && player.isHome === true && player.oppName === 'Utah Jazz' && Date.parse(player.commence) === TIP[MAVS], 'Marshall at home to the Jazz, at the real tip');
 ok(marshall.line === null && marshall.cleared === null && marshall.sharp === null, 'no number read yet, and none made up');
 ok(marshall.read.side === 'Under' && marshall.read.rate === 57 && marshall.read.sharp === 50.5 && marshall.read.n === 741 && marshall.read.clears === true, 'until there is one: what soft teams went, the Under 57.0% to the sharp books 50.5');
+// A chance on each run (2026-11-03): the table typed out here, each run's games counted here.
+const floor5 = (v) => Math.floor(v / 5) * 5;
+const goesLong = (x) => {
+  const gp = gamesOf(x.id).length, gap = (x.last5 - x.seasonAvg) / x.seasonAvg;
+  const rate = gp >= 40 ? (gap < 0.3 ? 205 / 416 : gap < 0.5 ? 399 / 645 : 1244 / 1654) : gp >= 20 ? (gap < 0.3 ? 200 / 420 : gap < 0.5 ? 350 / 593 : 796 / 1120) : gap < 0.3 ? 182 / 326 : 318 / 526;
+  return floor5(rate * 100 + (x.market === 'threes' ? -13 : 0));
+};
+console.log(`  goes on: ${flat(hot).slice(0, 6).map((x) => `${x.name} ${x.market} ${gamesOf(x.id).length} games ${x.last5} v ${x.seasonAvg}: ${x.goesOn && x.goesOn.pct}`).join(' | ')}`);
+ok(flat(hot).length >= 8 && flat(hot).every((x) => x.goesOn && x.goesOn.pct === goesLong(x) && x.goesOn.n > 100), 'every run says how often runs like it went on, by his games and how far his last five sit above his average');
+const goesOnOf = new Function(`${/const NBA_HOTLIST_GOES_ON = [\s\S]*?\nfunction nbaHotGoesOn\(m\) \{[\s\S]*?\n\}\n/.exec(src)[0]}\nreturn nbaHotGoesOn;`)();
+const pctOf = (m) => (goesOnOf(m) || {}).pct;
+ok(pctOf({ market: 'pra', last5: 20, lastSeason: 11.3 }) === 80 && pctOf({ market: 'reb_ast', last5: 11.8, lastSeason: 8.7 }) === 70, 'under 10 games, against last season: 77% above about 80, 36% above about 70');
+ok(pctOf({ market: 'threes', last5: 3.8, lastSeason: 2.7 }) === 55, 'threes run 13 points lower');
+ok([[15, 12], [15, 16], [25, 12], [25, 14], [25, 16], [50, 12], [50, 14], [50, 16]].map(([gp, last5]) => pctOf({ market: 'pts', gp, last5, seasonAvg: 10 })).join() === '55,60,45,55,70,45,60,75', 'it climbs with his games: 50%+ above is about 60 at 15 games, 70 at 25, 75 at 50');
+ok(goesOnOf({ market: 'pts', last5: 20, seasonAvg: 10 }) === null, 'a list built before this has no games to go by: no percentage, not a wrong one');
+ok(goesOnOf({ market: 'pts', gp: 8, last5: 20, seasonAvg: 10 }) === null && goesOnOf({ market: 'threes', last5: 1, lastSeason: 0 }) === null, 'nor under 10 games on his own average, nor against an average of nothing');
 const williams = of(hot, 'Cody Williams', 'pts_ast');
 ok(williams.third === 'middle' && williams.read.rate === 53.5 && williams.read.clears === false, 'Williams against the middle third: the Under 53.5%, short of what a flex needs');
 const softFirst = hot.players.map((p) => p.markets[0].third === 'soft');
@@ -348,8 +364,10 @@ ok(/Naji Marshall/.test(html) && /<b class="tc-team">DAL<\/b> · v Jazz · 5:40 
 ok(/<b>Points<\/b> · 5 in a row · 18\.4 last five, 13\.8 season/.test(html), 'the run, against his season');
 ok(/Jazz allow the most points/.test(html) && /soft team/.test(html), 'the opponent in plain words');
 ok(/PP 13 · cleared it 7 of his last 10/.test(html), 'the number and how often he cleared it');
-ok(/Slight Under: hit 53\.5% last season, sharp books 50\.6; a flex needs 54\.2/.test(html), 'a side short of break-even says so');
-ok(/<b>Lean Under<\/b>: hit 59\.3% last season, sharp books 50\.4/.test(html), 'and one past it leans');
+ok(/Chance at PrizePicks' number: Under about 54% · sharp books 50\.6; a flex needs 54\.2/.test(html), 'a side short of break-even says so');
+ok(/Chance at PrizePicks' number: <b>Under about 59%<\/b> · sharp books 50\.4/.test(html), 'and one past it leans');
+ok(/Run goes on: about <b>\d+%<\/b>/.test(html) && (html.match(/Run goes on:/g) || []).length === (html.match(/class="hot-mk"/g) || []).length, 'each run shown says how often runs like it went on');
+ok(/Last season runs like these went on about 64% of the time, but the Over at PrizePicks' number landed 45%: the number has usually moved up by then/.test(html), 'and that a run going on is not the bet');
 ok(!/data-action="leg-add"|tc-add/.test(html), 'no star: a lead does not go on a slip from here');
 const liCount = (h) => (h.match(/<li>/g) || []).length;
 ok(liCount(html) === Math.min(5, softPlayers.length) && softPlayers.length >= 1, `soft teams only, five at most: ${liCount(html)} of ${payload.players.length}`);
@@ -360,9 +378,9 @@ state.nbaHotAll = true;
 html = card();
 ok(liCount(html) === payload.players.length, `the tap: all ${payload.players.length}`);
 ok(/<b>Points<\/b>/.test(liOf(html, 'Cody Williams')) && /Soft teams only/.test(html), 'his every run, and the way back');
-ok(/No side: the Under hit 48\.5% last season, sharp books 50\.3/.test(liOf(html, 'Jusuf Nurkic')), 'no side says so');
+ok(/Chance at PrizePicks' number: about even, the Under 48\.5% · sharp books 50\.3/.test(liOf(html, 'Jusuf Nurkic')), 'no side says so');
 state.nbaPp.hot = overPayload;
-ok(/<b>Lean Over<\/b>: hit 56\.5% last season, sharp books 49\.8 · minutes up, Ja Morant out/.test(liOf(card(), 'Jock Landale')), 'the Over names who is behind it');
+ok(/Chance at PrizePicks' number: <b>Over about 57%<\/b> · sharp books 49\.8 · minutes up, Ja Morant out/.test(liOf(card(), 'Jock Landale')), 'the Over names who is behind it');
 ok(/Memphis|<b class="tc-team">MEM<\/b> · @ Magic/.test(liOf(card(), 'Jock Landale')), 'and an away game reads @');
 state.nbaHotAll = false;
 state.nbaPp.hot = { ...payload, ready: false, early: true, gamesNeeded: 5, teamsReady: 12, players: [] };
@@ -386,7 +404,7 @@ const render = app.slice(app.indexOf('  function renderNba('), app.indexOf('  //
 ok((render.match(/nbaPpCardHtml\(\) \+ nbaHotCardHtml\(\)/g) || []).length === 2, 'on the tab, under the PrizePicks card, with games or without');
 ok(/case 'nba-hot-all': \{\n\s+state\.nbaHotAll = !state\.nbaHotAll;\n\s+renderNba\(\);/.test(app), 'the tap redraws the tab');
 const css = fs.readFileSync(BOARD + '/style.css', 'utf8');
-ok(/\.hot-mk \{/.test(css) && /\.hot-read\.up b \{/.test(css), 'styled');
+ok(/\.hot-mk \{/.test(css) && /\.hot-read\.up b \{/.test(css) && /\.hot-goes b \{/.test(css), 'styled');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
