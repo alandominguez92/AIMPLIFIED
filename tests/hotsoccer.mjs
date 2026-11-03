@@ -429,7 +429,15 @@ const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 console.log(`  ${text(html).slice(0, 900)}`);
 ok(/Hot players/.test(html) && /Five or more starts in a row/.test(html) && /with under 10 starts/.test(html) && /Not tested in soccer, so it shows no side/.test(html) && /off Picks and out of the entries/.test(html), 'in starts, and says it is untested and off Picks');
 ok(/ranked for that stat on 5\+ games/.test(html), 'the team ranked on its games, not its starts');
-ok(/No season replayed yet, so no percentage on these yet/.test(html) && !/Run goes on/.test(html), 'no percentage without a season behind it, and it says why');
+// The replay of Nov 3: the site's own list on 2024-25 and 2025-26, ESPN only.
+const goesLines = html.match(/Run goes on: about <b>\d+%<\/b>/g) || [];
+ok(goesLines.length === flat(payload).length, `a run's chance of going on, on every one: ${goesLines.length}`);
+ok(flat(payload).every((m) => m.lastSeason != null) && goesLines.every((x) => x.includes('60%')), 'under 10 starts, about 60%');
+state.hot.soccer = { ...payload, players: [{ ...payload.players[0], markets: [{ ...payload.players[0].markets[0], lastSeason: undefined, seasonAvg: 1.2 }] }] };
+ok(/Run goes on: about <b>46%<\/b>/.test(card('soccer')) && !/about <b>60%/.test(card('soccer')), 'with 10 or more, about 46%');
+state.hot.soccer = payload;
+ok(/not PrizePicks' number, which we have no history of in soccer/.test(html) && /came back to about his average/.test(html), 'and it says that is not the number you would bet');
+ok(!/No season replayed/.test(html), 'the old line is gone');
 ok(/data-sport="soccer"/.test(html), 'each face from the soccer photos');
 ok(/ in a row · [\d.]+ last five, [\d.]+ last season/.test(html), 'the run in plain words');
 ok(/allow the (\d+\w\w )?(most|fewest) /.test(html) && /(soft|middle|tough) team/.test(html), 'and the team he plays');

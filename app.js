@@ -7165,13 +7165,16 @@
   const HOT_LEAGUE = {
     nhl: { name: 'the NHL', games: 'games', face: 'nhl', rated: 'Last season runs like these went on about 47% of the time, whatever their length, so there is no percentage for each player.', mk: { pts: 'Points', ast: 'Assists', goals: 'Goals', sog: 'Shots on goal' } },
     nfl: { name: 'the NFL', games: 'games', face: 'nfl-espn', rated: 'Too few runs last season to put a percentage on them yet.', mk: { pass_yds: 'Passing yards', pass_td: 'Passing TDs', rush_yds: 'Rushing yards', rec: 'Receptions', rec_yds: 'Receiving yards' } },
-    soccer: { name: 'soccer', games: 'starts', face: 'soccer', rated: 'No season replayed yet, so no percentage on these yet. Shots, shots on target, fouls and saves only: ESPN stopped sending the other stats on Oct 12.', mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' } },
+    // Replayed through the site's own list, Nov 3, ESPN only. With 10+ starts 46.4% of 647 runs in 2024-25 and 45.9% of 704 in 2025-26.
+    // With 5-9, measured against last season's average, 61.4% of 264 in 2025-26, 59-65 on teams held out. Nothing by stat, gap, length or opponent beat these across seasons.
+    soccer: { name: 'soccer', games: 'starts', face: 'soccer', goesOn: (m) => (m.lastSeason != null ? { pct: 60, of: '264 runs like it last season' } : { pct: 46, of: '1,351 runs like it, the last two seasons' }), rated: "“Run goes on” is his next start beating his average, not PrizePicks' number, which we have no history of in soccer. With 10+ starts the next start came back to about his average. Shots, shots on target, fouls and saves only: ESPN stopped sending the other stats on Oct 12.", mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' } },
   };
-  function hotRowHtml(p, m, mk) {
-    const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1, label = mk[m.market];
+  function hotRowHtml(p, m, lg) {
+    const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1, label = lg.mk[m.market], goes = lg.goesOn ? lg.goesOn(m) : null;
     const against = m.lastSeason != null ? `${esc(String(m.lastSeason))} last season` : `${esc(String(m.seasonAvg))} season`;
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(label)}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
-      + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${esc(p.oppNick)} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(label.toLowerCase())} <span class="tc-dfs">${m.third} team</span>${m.ranksOn ? ` · ranked on ${m.ranksOn} matches` : ''}</span></span>`;
+      + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${esc(p.oppNick)} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(label.toLowerCase())} <span class="tc-dfs">${m.third} team</span>${m.ranksOn ? ` · ranked on ${m.ranksOn} matches` : ''}</span>`
+      + (goes ? `<span class="hot-line hot-goes" title="${goes.of}">Run goes on: about <b>${goes.pct}%</b></span>` : '') + '</span>';
   }
   function hotCardHtml(sport) {
     const h = state.hot[sport], lg = HOT_LEAGUE[sport];
@@ -7179,7 +7182,7 @@
     const head = `<div class="tc-head"><span class="tc-title">Hot players</span></div>`
       + `<div class="tc-sub">Five or more ${lg.games} in a row above his own average, or above last season's average with under 10 ${lg.games}, with the team he plays ranked for that stat${h.early ? ` on ${h.gamesNeeded}+ games` : ''}. Not tested in ${lg.name}, so it shows no side. ${lg.rated} A lead, not a pick: off Picks and out of the entries.</div>`;
     if (!h.ready) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games read yet: opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}, and ${h.teamsReady} have so far.</div></div>`;
-    return hotBodyHtml(h, head, !!state.hotAll[sport], `data-action="hot-all" data-sport="${sport}"`, lg.face, (p) => `${esc(p.oppNick)} · ${esc(soccerKick(p.commence))}`, (p, m) => hotRowHtml(p, m, lg.mk), (m) => lg.mk[m.market]);
+    return hotBodyHtml(h, head, !!state.hotAll[sport], `data-action="hot-all" data-sport="${sport}"`, lg.face, (p) => `${esc(p.oppNick)} · ${esc(soccerKick(p.commence))}`, (p, m) => hotRowHtml(p, m, lg), (m) => lg.mk[m.market]);
   }
   function renderNba() {
     const grid = document.getElementById('nbaGrid');
