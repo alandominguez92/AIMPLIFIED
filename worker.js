@@ -13439,6 +13439,8 @@ async function hotPlayersRoute(env, url) {
     ingest.listed = await q('SELECT league, COUNT(*) AS n FROM soc_hot_games GROUP BY league');
     ingest.oldest = (await env.DB.prepare('SELECT MIN(date) AS d FROM soc_hot_games WHERE done = 1').first().catch(() => null) || {}).d;
     ingest.lastFail = (await loadFeedCache(env.DB, 'soc_hot_fail')).data;
+    // And whether the props job's own table still gets rows, day by day.
+    ingest.boxDays = (await env.DB.prepare('SELECT date, COUNT(DISTINCT game_id) AS games, COUNT(*) AS n FROM soc_box GROUP BY date ORDER BY date DESC LIMIT 30').all().catch(() => ({ results: null }))).results;
   }
   return { hot: { ready: l.teamsReady >= l.teamsNeeded, early: l.ranksFrom < NBA_HOT_OPP_GAMES, teamsReady: l.teamsReady, teamsNeeded: l.teamsNeeded, gamesNeeded: l.ranksFrom,
     players: l.players.filter((p) => Date.parse(p.commence) > now) }, ingest };
@@ -16749,6 +16751,12 @@ async function nflGrade(env, url) {
       ['cdn.espn', 'https://cdn.espn.com/core/nfl/scoreboard?xhr=1&dates=20260910'],
       ['sports.core', 'https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events?dates=20260910'],
       ['github', 'https://raw.githubusercontent.com/nflverse/nflverse-data/master/README.md'],
+      // Soccer's player stats come from the core host, which refused the Hot backfill (2026-11-03).
+      ['soccer core', 'https://sports.core.api.espn.com/v2/sports/soccer/leagues/eng.1/events/401879288/competitions/401879288/competitors/373/roster'],
+      ['soccer core stats', 'https://sports.core.api.espn.com/v2/sports/soccer/leagues/eng.1/events/401879288/competitions/401879288/competitors/373/roster/246244/statistics/0?lang=en&region=us'],
+      ['soccer core http', 'http://sports.core.api.espn.com/v2/sports/soccer/leagues/eng.1/events/401879288/competitions/401879288/competitors/373/roster'],
+      ['soccer site', 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary?event=401879288'],
+      ['soccer cdn', 'https://cdn.espn.com/core/soccer/lineups?xhr=1&gameId=401879288'],
     ];
     const res = {};
     for (const [name, u] of cands) {
@@ -16757,7 +16765,7 @@ async function nflGrade(env, url) {
         try {
           const r = await fetch(u, { headers: withUa ? { accept: 'application/json', 'user-agent': UA } : { accept: 'application/json' } });
           const body = r.ok ? await r.text() : '';
-          res[tag] = { status: r.status, bytes: body.length };
+          res[tag] = { status: r.status, bytes: body.length, server: r.headers.get('server') };
         } catch (e) { res[tag] = { error: String((e && e.message) || e) }; }
       }
     }
