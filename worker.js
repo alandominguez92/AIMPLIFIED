@@ -13432,6 +13432,13 @@ async function hotPlayersRoute(env, url) {
   const l = hit.data, now = Date.now();
   // And when the list was last built, since an empty one looks the same fresh or stuck.
   if (ingest) ingest.builtAt = new Date(l.builtAt).toISOString();
+  // Soccer's `read` also counts a match given up on, so how many have stats behind them, by league.
+  if (ingest && sport === 'soccer') {
+    const q = (sql) => env.DB.prepare(sql).all().then((r) => Object.fromEntries((r.results || []).map((x) => [x.league, x.n]))).catch(() => null);
+    ingest.withStats = await q('SELECT league, COUNT(DISTINCT game_id) AS n FROM soc_hot_box GROUP BY league');
+    ingest.listed = await q('SELECT league, COUNT(*) AS n FROM soc_hot_games GROUP BY league');
+    ingest.oldest = (await env.DB.prepare('SELECT MIN(date) AS d FROM soc_hot_games WHERE done = 1').first().catch(() => null) || {}).d;
+  }
   return { hot: { ready: l.teamsReady >= l.teamsNeeded, early: l.ranksFrom < NBA_HOT_OPP_GAMES, teamsReady: l.teamsReady, teamsNeeded: l.teamsNeeded, gamesNeeded: l.ranksFrom,
     players: l.players.filter((p) => Date.parse(p.commence) > now) }, ingest };
 }

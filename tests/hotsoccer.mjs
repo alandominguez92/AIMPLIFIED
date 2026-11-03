@@ -311,6 +311,7 @@ NOW = START;
 const pg = await get('/api/hot-players?sport=soccer&ingest=1');
 ok(pg.ingest && pg.ingest.games === 1 && (await get('/api/hot-players?sport=soccer')).ingest === undefined, 'how far it has got, only when asked');
 ok(typeof pg.ingest.builtAt === 'string' && Date.parse(pg.ingest.builtAt) > 0, `and when the list was built: ${pg.ingest.builtAt}`);
+ok(pg.ingest.withStats && pg.ingest.listed && pg.ingest.listed[Object.keys(pg.ingest.listed)[0]] === 1, `and how many have stats behind them, by league: ${JSON.stringify(pg.ingest)}`);
 
 console.log('\n-- too early --');
 const early = ROWS.filter((r) => r.date <= allDates[Math.floor(allDates.length / 4)]);
