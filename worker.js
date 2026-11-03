@@ -13438,6 +13438,7 @@ async function hotPlayersRoute(env, url) {
     ingest.withStats = await q('SELECT league, COUNT(DISTINCT game_id) AS n FROM soc_hot_box GROUP BY league');
     ingest.listed = await q('SELECT league, COUNT(*) AS n FROM soc_hot_games GROUP BY league');
     ingest.oldest = (await env.DB.prepare('SELECT MIN(date) AS d FROM soc_hot_games WHERE done = 1').first().catch(() => null) || {}).d;
+    ingest.lastFail = (await loadFeedCache(env.DB, 'soc_hot_fail')).data;
   }
   return { hot: { ready: l.teamsReady >= l.teamsNeeded, early: l.ranksFrom < NBA_HOT_OPP_GAMES, teamsReady: l.teamsReady, teamsNeeded: l.teamsNeeded, gamesNeeded: l.ranksFrom,
     players: l.players.filter((p) => Date.parse(p.commence) > now) }, ingest };
@@ -13757,7 +13758,13 @@ async function socHotBackfill(env, now = Date.now()) {
   if (!g) return null;
   const giveUp = db.prepare('UPDATE soc_hot_games SET tries = tries + 1, done = CASE WHEN tries >= 2 THEN 1 ELSE 0 END WHERE game_id = ?').bind(g.game_id);
   const meta = await socMatchMeta(db, g);
-  if (!meta) { await giveUp.run(); return null; }
+  // Why a read failed, kept for ?ingest=1: every match was being given up on (2026-11-03).
+  const why = async (u, stage) => {
+    let said;
+    try { const r = await fetch(u, { headers: { accept: 'application/json' } }); said = String(r.status); } catch (e) { said = String((e && e.message) || e).slice(0, 160); }
+    await saveFeedCache(db, 'soc_hot_fail', { at: new Date(now).toISOString(), game: g.game_id, league: g.league, date: g.date, stage, said, url: u });
+  };
+  if (!meta) { await why(`${ESPN_SOC_SITE}/${SOC_PROP_LEAGUES[g.league]}/summary?event=${g.game_id}`, 'meta'); await giveUp.run(); return null; }
   const have = new Set(((await db.prepare('SELECT player_id FROM soc_hot_box WHERE game_id = ?').bind(g.game_id).all()).results || []).map((r) => r.player_id));
   const { rows, tried } = await socReadSome(g, meta, have, SOC_HOT_BACK_PLAYERS);
   const cols = ['game_id', 'league', 'date', 'player_id', 'player', 'team', 'opp', 'starter', 'min', 'gk', ...SOC_HOT_MARKETS];
@@ -13765,8 +13772,8 @@ async function socHotBackfill(env, now = Date.now()) {
   if (meta.apps.filter((a) => a.ref && !have.has(a.id)).length - rows.length <= 0) {
     stmts.push(db.prepare('UPDATE soc_hot_games SET done = 1 WHERE game_id = ?').bind(g.game_id));
     stmts.push(db.prepare('DELETE FROM feed_cache WHERE key = ?').bind(`soc_box_meta:${g.game_id}`));
-  } else if (tried > 0 && rows.length === 0) stmts.push(giveUp);
-  if (stmts.length) await db.batch(stmts);
+  } else if (tried > 0 && rows.length === 0) { await why(meta.apps.find((a) => a.ref && !have.has(a.id)).ref, 'stats'); stmts.push(giveUp); }
+  if (stmts.length) await db.batch(stmts).catch(async (e) => { await saveFeedCache(db, 'soc_hot_fail', { at: new Date(now).toISOString(), game: g.game_id, stage: 'batch', said: String((e && e.message) || e).slice(0, 200) }); throw e; });
   if (rows.length) await saveFeedCache(db, key, { ...st, readAt: now });
   return null;
 }
