@@ -13430,6 +13430,8 @@ async function hotPlayersRoute(env, url) {
   const ingest = url.searchParams.get('ingest') && HOT_INGEST[sport] ? await env.DB.prepare(`SELECT COUNT(*) AS games, SUM(done) AS read FROM ${HOT_INGEST[sport]}`).first().catch(() => null) : undefined;
   if (!hit.present || !hit.data) return { hot: null, ingest };
   const l = hit.data, now = Date.now();
+  // And when the list was last built, since an empty one looks the same fresh or stuck.
+  if (ingest) ingest.builtAt = new Date(l.builtAt).toISOString();
   return { hot: { ready: l.teamsReady >= l.teamsNeeded, early: l.ranksFrom < NBA_HOT_OPP_GAMES, teamsReady: l.teamsReady, teamsNeeded: l.teamsNeeded, gamesNeeded: l.ranksFrom,
     players: l.players.filter((p) => Date.parse(p.commence) > now) }, ingest };
 }

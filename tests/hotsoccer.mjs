@@ -310,6 +310,7 @@ ok(slate().length === count0 + 8 && inHot() >= 15, 'once a match has come in tha
 NOW = START;
 const pg = await get('/api/hot-players?sport=soccer&ingest=1');
 ok(pg.ingest && pg.ingest.games === 1 && (await get('/api/hot-players?sport=soccer')).ingest === undefined, 'how far it has got, only when asked');
+ok(typeof pg.ingest.builtAt === 'string' && Date.parse(pg.ingest.builtAt) > 0, `and when the list was built: ${pg.ingest.builtAt}`);
 
 console.log('\n-- too early --');
 const early = ROWS.filter((r) => r.date <= allDates[Math.floor(allDates.length / 4)]);
