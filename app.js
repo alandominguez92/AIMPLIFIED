@@ -7081,19 +7081,23 @@
   const NBA_HOT_MK = { pts: 'Points', pra: 'Pts+Reb+Ast', pts_reb: 'Pts+Reb', pts_ast: 'Pts+Ast', reb_ast: 'Reb+Ast', reb: 'Rebounds', threes: 'Threes' };
   const NBA_HOT_TOP = 5;
   const NBA_HOT_EARLY_READ = "Replayed on last season's games, that leaned neither way (the Under hit 46.9%, sharp books 50.5), so no side.";
-  // A run with no read: the early rule, which was replayed, or his own average while teams
-  // are still ranked on 5 games, which wasn't.
-  const nbaHotNoSide = (m) => (m.lastSeason != null ? 'No lean last season, so no side' : 'Not tested, so no side');
+  // His own average while teams are still ranked on 5 games wasn't replayed, so no chance on it.
+  const NBA_HOT_UNTESTED = 'Not tested, so no side';
   const nbaHotOrd = (n) => { const t = n % 100; return n + (t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'); };
   const NBA_HOT_LAND = "Chance at PrizePicks' number";
+  // Under 10 games, the replay from the Over's side: the same for every run, because putting each
+  // one's sharp number on it did worse than this rate on teams held out (at 54.2+ it said 56 and
+  // landed 47). Nearly all of it was November, the weeks it applies to.
+  const NBA_HOT_EARLY_LAND = { side: 'Over', rate: 53.1, sharp: 49.5, n: 452, even: true };
+  // The chance with a bar (2026-11-03, the owner's call), the way Picks shows one: the fill the
+  // chance at PrizePicks' number, the tick what a flex needs.
   function nbaHotReadHtml(p, m, be) {
-    if (!m.read) return `<span class="hot-line hot-read">${m.lastSeason != null ? `${NBA_HOT_LAND}: about even, so no side` : nbaHotNoSide(m)}</span>`;
-    const r = m.read, sharp = `sharp books ${r.sharp.toFixed(1)}`, chance = `${r.side} about ${Math.round(r.rate)}%`, title = `${r.n} priced legs last season`;
-    if (!r.side) return `<span class="hot-line hot-read" title="${title}">${NBA_HOT_LAND}: about even, the Under ${r.rate.toFixed(1)}% · ${sharp}</span>`;
+    if (!m.read && m.lastSeason == null) return `<span class="hot-line hot-read">${NBA_HOT_UNTESTED}</span>`;
+    const r = m.read || NBA_HOT_EARLY_LAND, chance = `about ${Math.round(r.rate)}%`;
+    const said = r.even || !r.side ? `about even, the ${r.side || 'Under'} ${chance}` : r.clears ? `<b>${r.side} ${chance}</b>` : `${r.side} ${chance}`;
     const why = r.side === 'Over' && p.outs && p.outs.length ? ` · minutes up, ${esc(p.outs.join(', '))} out` : '';
-    return r.clears
-      ? `<span class="hot-line hot-read up" title="${title}">${NBA_HOT_LAND}: <b>${chance}</b> · ${sharp}${why}</span>`
-      : `<span class="hot-line hot-read" title="${title}">${NBA_HOT_LAND}: ${chance} · ${sharp}; a flex needs ${be}${why}</span>`;
+    return `<span class="pp-projbar" title="${r.n} priced legs last season"><span class="hot-line hot-read${r.clears ? ' up' : ''}">${NBA_HOT_LAND}: ${said}</span>`
+      + `${miniBar(r.rate, be, (v) => v)}<span class="bw-cush">tick: a flex needs <b>${be}%</b> · sharp books ${r.sharp.toFixed(1)}${why}</span></span>`;
   }
   function nbaHotMarketHtml(p, m, be) {
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1;
@@ -7106,7 +7110,7 @@
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(NBA_HOT_MK[m.market])}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
       + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${allows} <span class="tc-dfs">${m.third} team</span></span>`
       + (m.goesOn ? `<span class="hot-line hot-goes" title="${m.goesOn.n} runs like it last season">Run goes on: about <b>${m.goesOn.pct}%</b></span>` : '')
-      + (m.line == null && !m.read ? `<span class="hot-line">${num} · ${nbaHotNoSide(m).toLowerCase()}</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
+      + (m.line == null && !m.read && m.lastSeason == null ? `<span class="hot-line">${num} · ${NBA_HOT_UNTESTED.toLowerCase()}</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
   }
   // A run's last games (2026-11-03, the owner's call): the boxes a pick has, filled where the
   // game beat what the run is measured by. Faint: too early in his season to count.
@@ -7149,7 +7153,7 @@
       : `<div class="tc-sub">Five or more games in a row above his own average, with the team he plays ranked for that stat. Last season the number had usually caught up with him by then: the Under beat the Over, most of all against the softest teams. A lead, not a pick: off Picks and out of the entries, read again in January.</div>`
       + (h.players.some((p) => p.markets.some((m) => m.lastSeason != null)) ? `<div class="tc-sub">Under 10 games: five or more in a row above last season's average. ${NBA_HOT_EARLY_READ}</div>` : ''))
       // A run going on isn't the bet (2026-11-03): the owner wants the odds of it landing.
-      + `<div class="tc-sub">Last season runs like these went on about ${h.early ? "77% of the time, but the Over at PrizePicks' number landed 53%" : "64% of the time, but the Over at PrizePicks' number landed 45%"}: the number has usually moved up by then.</div>`;
+      + `<div class="tc-sub">Last season runs like these went on about ${h.early ? "77% of the time, but the Over at PrizePicks' number landed 53%" : "64% of the time, but the Over at PrizePicks' number landed 45%"}: the number has usually moved up by then.${h.early ? '' : " With 10+ games, last season's November and December landed about 4 points under the chance shown."}</div>`;
     if (!h.ready) {
       return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games yet. A player needs ${h.gamesNeeded} games, and opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}: ${h.teamsReady} have so far.</div></div>`;
     }

@@ -267,8 +267,9 @@ const state = { nbaPp: { hot: payload }, nbaHotAll: false };
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const nbaNick = (name) => String(name || '').trim().split(/\s+/).pop();
 const sharpTag = (p) => (typeof p === 'number' ? `<span class="tc-sharp">sharp ${Math.round(p)}%</span>` : '');
-const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', `${sect}\nreturn nbaHotCardHtml;`)(
-  state, esc, nbaNick, sharpTag, (o) => `<span class="hs" data-id="${o.playerId}"></span>`, () => '5:10 PM', (x) => (x.inj ? ' FLAG' : ''));
+const miniBar = new Function(`${app.match(/  function miniBar\(fill, tick, axisPct\) \{[\s\S]*?\n  \}\n/)[0]} return miniBar;`)();
+const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'miniBar', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', `${sect}\nreturn nbaHotCardHtml;`)(
+  state, esc, nbaNick, sharpTag, miniBar, (o) => `<span class="hs" data-id="${o.playerId}"></span>`, () => '5:10 PM', (x) => (x.inj ? ' FLAG' : ''));
 let html = card();
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 const liOf = (h, name) => h.split('<li>').find((x) => x.includes(name)) || '';
@@ -285,7 +286,14 @@ ok(sets.length >= 2 && sets.every((n) => n === 1) && /oldest → latest · fille
 const firstSoft = payload.players.filter((p) => p.markets[0].third === 'soft')[0];
 ok(liOf(html, firstSoft.name).includes(boxesOf(firstSoft.markets[0])), `${firstSoft.name}'s top run, each game in its place`);
 ok(/in a row · [\d.]+ last five, [\d.]+ last season/.test(html), 'each run against last season, in those words');
-ok(/No PrizePicks number yet · no lean last season, so no side/.test(html) && !/Lean |Slight |No side:|[Nn]ot tested/.test(html), 'no side anywhere, on one short line');
+ok(/No PrizePicks number yet<\/span>/.test(html) && !/Lean |Slight |No side:|[Nn]ot tested/.test(html), 'no side anywhere');
+// A bar on the chance (2026-11-03, the owner's call): the same on every run under 10 games, because
+// each one's sharp number did worse than this rate on teams held out.
+const runsShown = (html.match(/class="hot-mk"/g) || []).length;
+ok(runsShown >= 2 && (html.match(/Chance at PrizePicks' number: about even, the Over about 53%/g) || []).length === runsShown, 'every run with the same chance, no number needed');
+ok((html.match(/<span class="uz" style="width:53\.1%"><\/span><span class="tick" style="left:54\.2%"><\/span>/g) || []).length === runsShown, 'the bar fills to it, just short of what a flex needs');
+ok(/tick: a flex needs <b>54\.2%<\/b> · sharp books 49\.5/.test(html), 'and says what the tick is');
+ok(!/landed about 4 points under/.test(html), 'that rate is November\'s own, so no word about November running lower');
 ok(!/read about an hour before tip/.test(html), 'and it does not promise a read no one is paying for');
 // One run a player before the tap (2026-11-03): every soft run took five players to 3,020px on
 // a phone, one of them six rows saying the same thing.
@@ -312,12 +320,12 @@ state.nbaPp.hot = payload;
 ok(!/Bigger role/.test(liOf(html, 'Aaron Wiggins')), 'and steady minutes do not say it');
 const pts = flat(payload).find((x) => x.market === 'reb');
 state.nbaPp.hot = { ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map((m) => (m.market === 'reb' ? { ...m, line: 4.5, cleared: 3 } : m)) })) };
-ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /Chance at PrizePicks' number: about even, so no side/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
+ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /Chance at PrizePicks' number: about even, the Over about 53%/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
 const ownAverage = (line) => ({ ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map(({ lastSeason, ...m }) => ({ ...m, seasonAvg: 5, ...line })) })) });
 state.nbaPp.hot = ownAverage({});
-ok(/No PrizePicks number yet · not tested, so no side/.test(card()) && !/no lean last season/i.test(card()), 'ten games while teams are ranked on five: not what the replay covered, so not what it found');
+ok(/No PrizePicks number yet · not tested, so no side/.test(card()) && !/class="bmini"|Chance at PrizePicks/.test(card()), 'ten games while teams are ranked on five: not what the replay covered, so not what it found');
 state.nbaPp.hot = ownAverage({ line: 4.5, cleared: 3 });
-ok(/Not tested, so no side/.test(card()) && !/no lean last season/i.test(card()), 'and the same once a number is in');
+ok(/Not tested, so no side/.test(card()) && !/class="bmini"|Chance at PrizePicks/.test(card()), 'and the same once a number is in');
 state.nbaPp.hot = { ...payload, early: false, gamesNeeded: 10 };
 ok(/the Under beat the Over/.test(card()) && /Under 10 games: five or more in a row above last season's average\. Replayed on last season's games, that leaned neither way/.test(card()) && !/Early in the season/.test(card()), 'with the full ranks, the tested rule first, and a line for anyone still under 10');
 ok(!/tonight/.test(card()), 'nor with the full ranks');

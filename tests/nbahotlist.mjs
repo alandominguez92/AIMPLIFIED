@@ -349,8 +349,9 @@ const state = { nbaPp: { hot: payload }, nbaHotAll: false };
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const nbaNick = (name) => String(name || '').trim().split(/\s+/).pop();
 const sharpTag = (p) => (typeof p === 'number' ? `<span class="tc-sharp">sharp ${Math.round(p)}%</span>` : '');
-const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', `${sect}\nreturn nbaHotCardHtml;`)(
-  state, esc, nbaNick, sharpTag, (o) => `<span class="hs" data-id="${o.playerId}"></span>`, () => '5:40 PM', (x) => (x.inj ? ' FLAG' : ''));
+const miniBar = new Function(`${app.match(/  function miniBar\(fill, tick, axisPct\) \{[\s\S]*?\n  \}\n/)[0]} return miniBar;`)();
+const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'miniBar', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', `${sect}\nreturn nbaHotCardHtml;`)(
+  state, esc, nbaNick, sharpTag, miniBar, (o) => `<span class="hs" data-id="${o.playerId}"></span>`, () => '5:40 PM', (x) => (x.inj ? ' FLAG' : ''));
 let html = card();
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 const softPlayers = payload.players.filter((p) => p.markets.some((m) => m.third === 'soft'));
@@ -364,8 +365,14 @@ ok(/Naji Marshall/.test(html) && /<b class="tc-team">DAL<\/b> · v Jazz · 5:40 
 ok(/<b>Points<\/b> · 5 in a row · 18\.4 last five, 13\.8 season/.test(html), 'the run, against his season');
 ok(/Jazz allow the most points/.test(html) && /soft team/.test(html), 'the opponent in plain words');
 ok(/PP 13 · cleared it 7 of his last 10/.test(html), 'the number and how often he cleared it');
-ok(/Chance at PrizePicks' number: Under about 54% · sharp books 50\.6; a flex needs 54\.2/.test(html), 'a side short of break-even says so');
-ok(/Chance at PrizePicks' number: <b>Under about 59%<\/b> · sharp books 50\.4/.test(html), 'and one past it leans');
+ok(/Chance at PrizePicks' number: Under about 54%<\/span>/.test(html) && /tick: a flex needs <b>54\.2%<\/b> · sharp books 50\.6/.test(html), 'a side short of break-even says so');
+ok(/Chance at PrizePicks' number: <b>Under about 59%<\/b><\/span>/.test(html) && /tick: a flex needs <b>54\.2%<\/b> · sharp books 50\.4/.test(html), 'and one past it leans');
+// A bar on the chance (2026-11-03, the owner's call): the fill the chance, the tick what a flex needs.
+const barAfter = (h, said) => { const i = h.indexOf(said); return i < 0 ? '' : (h.slice(i).match(/<span class="uz" style="width:[\d.]+%"><\/span><span class="tick" style="left:[\d.]+%">/) || [''])[0]; };
+ok(barAfter(html, '<b>Under about 59%</b>').includes('width:59.3%') && barAfter(html, '<b>Under about 59%</b>').includes('left:54.2%'), 'the bar fills past the tick when the chance clears it');
+ok(barAfter(html, 'Under about 54%</span>').includes('width:53.5%') && barAfter(html, 'Under about 54%</span>').includes('left:54.2%'), 'and stops short when it does not');
+ok((html.match(/class="bmini"/g) || []).length === (html.match(/class="hot-mk"/g) || []).length, 'a bar on every run shown');
+ok(/With 10\+ games, last season's November and December landed about 4 points under the chance shown/.test(html), 'and it says those months ran lower');
 ok(/Run goes on: about <b>\d+%<\/b>/.test(html) && (html.match(/Run goes on:/g) || []).length === (html.match(/class="hot-mk"/g) || []).length, 'each run shown says how often runs like it went on');
 ok(/Last season runs like these went on about 64% of the time, but the Over at PrizePicks' number landed 45%: the number has usually moved up by then/.test(html), 'and that a run going on is not the bet');
 ok(!/data-action="leg-add"|tc-add/.test(html), 'no star: a lead does not go on a slip from here');
@@ -378,9 +385,9 @@ state.nbaHotAll = true;
 html = card();
 ok(liCount(html) === payload.players.length, `the tap: all ${payload.players.length}`);
 ok(/<b>Points<\/b>/.test(liOf(html, 'Cody Williams')) && /Soft teams only/.test(html), 'his every run, and the way back');
-ok(/Chance at PrizePicks' number: about even, the Under 48\.5% · sharp books 50\.3/.test(liOf(html, 'Jusuf Nurkic')), 'no side says so');
+ok(/Chance at PrizePicks' number: about even, the Under about 49%<\/span>/.test(liOf(html, 'Jusuf Nurkic')) && /width:48\.5%/.test(liOf(html, 'Jusuf Nurkic')) && /sharp books 50\.3/.test(liOf(html, 'Jusuf Nurkic')), 'no side says so');
 state.nbaPp.hot = overPayload;
-ok(/Chance at PrizePicks' number: <b>Over about 57%<\/b> · sharp books 49\.8 · minutes up, Ja Morant out/.test(liOf(card(), 'Jock Landale')), 'the Over names who is behind it');
+ok(/Chance at PrizePicks' number: <b>Over about 57%<\/b><\/span>/.test(liOf(card(), 'Jock Landale')) && /sharp books 49\.8 · minutes up, Ja Morant out/.test(liOf(card(), 'Jock Landale')), 'the Over names who is behind it');
 ok(/Memphis|<b class="tc-team">MEM<\/b> · @ Magic/.test(liOf(card(), 'Jock Landale')), 'and an away game reads @');
 state.nbaHotAll = false;
 state.nbaPp.hot = { ...payload, ready: false, early: true, gamesNeeded: 5, teamsReady: 12, players: [] };
@@ -405,6 +412,7 @@ ok((render.match(/nbaPpCardHtml\(\) \+ nbaHotCardHtml\(\)/g) || []).length === 2
 ok(/case 'nba-hot-all': \{\n\s+state\.nbaHotAll = !state\.nbaHotAll;\n\s+renderNba\(\);/.test(app), 'the tap redraws the tab');
 const css = fs.readFileSync(BOARD + '/style.css', 'utf8');
 ok(/\.hot-mk \{/.test(css) && /\.hot-read\.up b \{/.test(css) && /\.hot-goes b \{/.test(css), 'styled');
+ok(/\.hot-mk \.hot-read\.up b \{ color:var\(--positive\)/.test(css), 'a chance past the tick stays green: first in its block, the white rule for a first line would take it');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
