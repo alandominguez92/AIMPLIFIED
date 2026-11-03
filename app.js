@@ -7171,7 +7171,7 @@
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1, label = mk[m.market];
     const against = m.lastSeason != null ? `${esc(String(m.lastSeason))} last season` : `${esc(String(m.seasonAvg))} season`;
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(label)}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
-      + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${esc(p.oppNick)} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(label.toLowerCase())} <span class="tc-dfs">${m.third} team</span></span></span>`;
+      + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${esc(p.oppNick)} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(label.toLowerCase())} <span class="tc-dfs">${m.third} team</span>${m.ranksOn ? ` · ranked on ${m.ranksOn} matches` : ''}</span></span>`;
   }
   function hotCardHtml(sport) {
     const h = state.hot[sport], lg = HOT_LEAGUE[sport];

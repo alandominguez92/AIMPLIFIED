@@ -13353,7 +13353,7 @@ const hotSort = (list) => list.sort((a, b) => hotSoft(b) - hotSoft(a) || !!a.rol
 // `regular` whether he plays enough for it to mean anything; `slate` the next games, with
 // { commence, home, away, homeNick, awayNick, league? }. A player who missed his team's last
 // games (past `missedMax`) is taken to be out: only the NBA has a report to read.
-function hotListBuild({ rows, allowedRows = rows, stat, markets, slate, now, priorOf, regular, roleOf, teams, missedMax = 0 }) {
+function hotListBuild({ rows, allowedRows = rows, stat, markets, slate, now, priorOf, regular, roleOf, teams, missedMax = 0, ranksEarly = NBA_HOTLIST_EARLY }) {
   const players = new Map(), played = new Map(), table = new Map(), today = ptDateOf(now);
   for (const r of rows) {
     const p = players.get(r.player_id) || { id: r.player_id, name: r.player, team: r.team, games: [] };
@@ -13372,15 +13372,16 @@ function hotListBuild({ rows, allowedRows = rows, stat, markets, slate, now, pri
   }
   const needed = Math.ceil(teams * 2 / 3);
   const teamsAt = (n) => [...table.values()].filter((t) => [...t.values()].filter((e) => e.date < today).length >= n).length;
-  const ranksFrom = teamsAt(NBA_HOT_OPP_GAMES) >= needed ? NBA_HOT_OPP_GAMES : NBA_HOTLIST_EARLY;
+  const ranksFrom = teamsAt(NBA_HOT_OPP_GAMES) >= needed ? NBA_HOT_OPP_GAMES : teamsAt(NBA_HOTLIST_EARLY) >= needed ? NBA_HOTLIST_EARLY : ranksEarly;
   const memo = new Map();
   const ranks = (market, day) => {
     const k = `${market}|${day}`;
     if (memo.has(k)) return memo.get(k);
     const avg = [];
     for (const [team, t] of table) {
-      const es = [...t.values()].filter((e) => e.date < day);
-      if (es.length >= ranksFrom) avg.push([team, es.reduce((a, e) => a + (e[market] || 0), 0) / es.length]);
+      // A match with no number for this stat isn't a team allowing none: a stat ESPN stopped sending ranks no one.
+      const es = [...t.values()].filter((e) => e.date < day && e[market] != null);
+      if (es.length >= ranksFrom) avg.push([team, es.reduce((a, e) => a + e[market], 0) / es.length]);
     }
     avg.sort((a, b) => a[1] - b[1]);
     const out = avg.length < needed ? new Map() : new Map(avg.map(([team], i) => [team, i / (avg.length - 1)]));
@@ -13409,7 +13410,8 @@ function hotListBuild({ rows, allowedRows = rows, stat, markets, slate, now, pri
           if (run < NBA_HOT_RUN) continue;
           const of = ranks(market, day).size;
           out.push({ market, run, pos: Math.round((1 - rank) * (of - 1)) + 1, of, third: nbaHotThird(rank), last5: round2(mean(vals.slice(-5))),
-            seen: vals.length, ...hotBoxes(vals, prior), ...(prior == null ? { seasonAvg: round2(mean(vals)) } : { lastSeason: round2(prior) }) });
+            seen: vals.length, ...hotBoxes(vals, prior), ...(prior == null ? { seasonAvg: round2(mean(vals)) } : { lastSeason: round2(prior) }),
+            ...(ranksFrom < NBA_HOTLIST_EARLY ? { ranksOn: ranksFrom } : {}) });
         }
         if (!out.length) continue;
         seen.add(p.id);
@@ -13703,6 +13705,9 @@ async function nflHotTick(env, now = Date.now()) {
 const SOC_HOT_MARKETS = ['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves'];
 const SOC_HOT_TEAMS = { epl: 20, laliga: 20, seriea: 20, bundesliga: 18, mls: 30, ucl: 36, uel: 36 };
 const SOC_HOT_PRIOR_STARTS = 10;            // last season's starts, for its average to mean anything
+// A cup's teams play too few to rank on 5 until late in its league phase, so the Champions League
+// ranks on 3 until then (2026-11-03, the owner's call: "previous 3 games"). Each row says so.
+const SOC_HOT_RANK_EARLY = { ucl: 3 };
 const SOC_HOT_MIN = 60;                     // minutes a start over his last five, to count as a regular
 // The site's own soccer box scores start around Oct 9, when the props card did, which leaves
 // every league under 5 matches a team until late November. So the list reads the season before
@@ -13841,14 +13846,15 @@ async function socHotTick(env, now = Date.now()) {
   const starts = rows.filter((r) => r.starter === 1 && r.min > 0), pri = await socPriors(env);
   const stat = (r, m) => ((m === 'saves') === !!r.gk ? r[m] : null);
   const mean = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
-  const built = [...slates].map(([lg, slate]) => hotListBuild({ rows: starts, allowedRows: rows.filter((r) => r.league === lg), stat, markets: SOC_HOT_MARKETS, slate, now, teams: SOC_HOT_TEAMS[lg], missedMax: 1,
+  const built = [...slates].map(([lg, slate]) => hotListBuild({ rows: starts, allowedRows: rows.filter((r) => r.league === lg), stat, markets: SOC_HOT_MARKETS, slate, now, teams: SOC_HOT_TEAMS[lg], missedMax: 1, ranksEarly: SOC_HOT_RANK_EARLY[lg],
     priorOf: (p, m) => { const x = pri && pri.players && pri.players[p.id]; return x && x.starts >= SOC_HOT_PRIOR_STARTS && x[m] != null ? x[m] : null; },
     // A stat with nothing on his latest start stopped coming (socPageRows): older games aren't a run.
     regular: (games, m) => mean(games.slice(-5).map((g) => g.min)) >= SOC_HOT_MIN && stat(games[games.length - 1], m) != null }));
   // One card over every league: the wait note follows the league nearest ready, the copy the lowest bar.
   const most = built.length ? built.reduce((a, b) => (b.teamsReady / b.teamsNeeded > a.teamsReady / a.teamsNeeded ? b : a)) : { teamsReady: 0, teamsNeeded: 0 };
   const seen = new Set(), players = built.flatMap((b) => b.players).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence)).filter((p) => !seen.has(p.id) && seen.add(p.id));
-  await saveFeedCache(db, key, { builtAt: now, ranksFrom: Math.min(NBA_HOT_OPP_GAMES, ...built.map((b) => b.ranksFrom)), teamsReady: most.teamsReady, teamsNeeded: most.teamsNeeded, players: hotSort(players) });
+  // A cup on 3 says so on its own rows; the copy keeps the leagues' bar.
+  await saveFeedCache(db, key, { builtAt: now, ranksFrom: Math.min(NBA_HOT_OPP_GAMES, ...built.map((b) => Math.max(b.ranksFrom, NBA_HOTLIST_EARLY))), teamsReady: most.teamsReady, teamsNeeded: most.teamsNeeded, players: hotSort(players) });
   return true;
 }
 

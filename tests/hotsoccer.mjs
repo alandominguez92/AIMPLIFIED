@@ -1,7 +1,8 @@
 // Soccer's Hot players (2026-11-02, the owner's call: each league they follow, from a player's
 // previous 5 games, moving to 10). What has to hold:
 //   - a player's starts count in every competition; the team he plays is ranked on that league's
-//     matches only, so a cup tie lists no one until the cup has 5 matches a team
+//     matches only, so a cup tie lists no one until the cup has 5 matches a team, and the Champions
+//     League 3 (the owner's call, 2026-11-03), each row saying so, until 24 of its 36 clubs have 5
 //   - with 5 to 9 starts he is listed on five or more in a row above last season's average per
 //     start. 60+ minutes a start over his last five, 10+ starts last season
 //   - a keeper for saves, everyone else for the rest; one team match missed is rotation, two is out
@@ -22,7 +23,7 @@ const BOARD = path.join(import.meta.dirname, '..');
 const FIX = path.join(BOARD, 'tests', 'fixtures');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
 const read = (f) => JSON.parse(fs.readFileSync(path.join(FIX, f), 'utf8'));
-const LEAGUE = read('soc-box-epl-to-20261102.json'), SLATES = read('espn-soc-slate-20261102.json'), REC = read('espn-soc-740870.json');
+const LEAGUE = read('soc-box-epl-to-20261102.json'), SLATES = read('espn-soc-slate-20261102.json'), REC = read('espn-soc-740870.json'), UCL = read('soc-box-ucl-to-20261102.json');
 const PRIORS = JSON.parse(fs.readFileSync(path.join(BOARD, 'soccer-priors.json'), 'utf8'));
 const ROWS = LEAGUE.rows.map((r) => ({ game_id: LEAGUE.games[r[0]][0], league: 'epl', date: LEAGUE.games[r[0]][1], player_id: LEAGUE.players[r[1]][0], player: LEAGUE.players[r[1]][1], team: r[2], opp: r[3], starter: r[4], min: r[5], gk: r[6], shots: r[7], sot: r[8], passes: r[9], tackles: r[10], clear: r[11], fouls: r[12], saves: r[13] }))
   .sort((a, b) => a.date.localeCompare(b.date) || a.game_id.localeCompare(b.game_id));
@@ -123,6 +124,37 @@ function expected(rows, fixtures = eplFixtures) {
   }
   return out;
 }
+// The Champions League's own: a player's starts everywhere, the team he plays on that cup's matches, on 3 or more.
+function expectedCup(rows, fixtures, min) {
+  const starts = rows.filter((r) => r.starter === 1 && r.min > 0), cup = rows.filter((r) => r.league === 'ucl');
+  const out = [], seen = new Set();
+  for (const e of fixtures) for (const [team, opp] of sides(e)) {
+    const dates = new Set(starts.filter((r) => r.team === team).map((r) => r.date));
+    for (const id of new Set(starts.filter((r) => r.team === team).map((r) => r.player_id))) {
+      const gs = starts.filter((r) => r.player_id === id);
+      if (gs[gs.length - 1].team !== team || gs.length < 5 || seen.has(id) || !gs.some((r) => r.league === 'ucl')) continue;
+      if ([...dates].filter((d) => d > gs[gs.length - 1].date).length > 1 || mean(gs.slice(-5).map((r) => r.min)) < 60) continue;
+      const pr = PRIORS.players[id];
+      let any = false;
+      for (const mk of MK) {
+        if (statOf(gs[gs.length - 1], mk) == null) continue;      // nothing on his latest start: it stopped coming
+        const v = gs.map((r) => statOf(r, mk)).filter((x) => x != null);
+        if (v.length < 5) continue;
+        let run = 0;
+        if (v.length < 10) {
+          if (!pr || pr.starts < 10 || pr[mk] == null) continue;
+          for (let j = v.length - 1; j >= 0 && v[j] > pr[mk]; j--) run++;
+        } else {
+          for (let j = v.length - 1; j >= 5 && v[j] > mean(v.slice(0, j)); j--) run++;
+        }
+        const list = [...allowedTable(cup.filter((r) => statOf(r, mk) != null), mk)].filter(([, g]) => g.size >= min).map(([k, g]) => [k, mean([...g.values()])]);
+        if (run >= 5 && list.length >= 24 && list.some(([k]) => k === opp)) { out.push({ id, mk, run }); any = true; }
+      }
+      if (any) seen.add(id);
+    }
+  }
+  return out;
+}
 const flat = (hot) => hot.players.flatMap((p) => p.markets.map((m) => ({ ...m, id: p.id, name: p.name, team: p.team, league: p.league })));
 const key = (x) => `${x.id}|${x.mk || x.market}|${x.run}`;
 const same = (hot, want) => JSON.stringify(flat(hot).map(key).sort()) === JSON.stringify(want.map(key).sort());
@@ -217,6 +249,39 @@ S = scene({ assets: false });
 await begin();
 hot = (await get('/api/hot-players?sport=soccer')).hot;
 ok(hot && hot.ready === true && hot.players.length === 0, 'no last season to hold them to, and none has 10 starts: no one listed');
+
+console.log('\n-- the Champions League, on the 3 matches its clubs have played --');
+const UCL_ROWS = UCL.rows.map((r) => ({ game_id: UCL.games[r[0]][0], league: 'ucl', date: UCL.games[r[0]][1], player_id: UCL.players[r[1]][0], player: UCL.players[r[1]][1], team: r[2], opp: r[3], starter: r[4], min: r[5], gk: r[6], shots: r[7], sot: r[8], passes: r[9], tackles: r[10], clear: r[11], fouls: r[12], saves: r[13] }));
+const byDate = (a, b) => a.date.localeCompare(b.date) || a.game_id.localeCompare(b.game_id);
+const withCup = [...ROWS, ...UCL_ROWS].sort(byDate);
+const uclFixtures = Object.values(SLATES['uefa.champions']).flatMap((d) => d.events).filter((e) => e.status.type.state === 'pre').sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+ok(new Set(UCL_ROWS.map((r) => r.game_id)).size === 54 && uclFixtures.length > 0, `this season's real matches: 54 played, ${uclFixtures.length} to come`);
+const clubsAt3 = [...allowedTable(UCL_ROWS, 'shots')].filter(([, g]) => g.size >= 3).length, clubsAt5 = [...allowedTable(UCL_ROWS, 'shots')].filter(([, g]) => g.size >= 5).length;
+ok(clubsAt3 === 36 && clubsAt5 === 0, `${clubsAt3} clubs have 3, ${clubsAt5} have 5`);
+S = scene({ rows: withCup });
+await begin();
+hot = (await get('/api/hot-players?sport=soccer')).hot;
+const cupRuns = flat(hot).filter((x) => x.league === 'ucl'), wantCup3 = expectedCup(withCup, uclFixtures, 3);
+console.log(`  on the cup's ties: ${cupRuns.map((x) => `${x.name} (${x.team}) ${x.market} ${x.run}x ${x.pos}/${x.of}`).join(' | ')}`.slice(0, 700));
+ok(wantCup3.length >= 1 && JSON.stringify(cupRuns.map(key).sort()) === JSON.stringify(wantCup3.map(key).sort()), `every run on a cup tie, the long way: ${wantCup3.length}`);
+ok(cupRuns.length && cupRuns.every((x) => x.ranksOn === 3 && x.of >= 24), 'each one says it is ranked on 3 matches');
+ok(flat(hot).filter((x) => x.league === 'epl').every((x) => !('ranksOn' in x)), 'and a league tie does not: it ranks on 5');
+ok(hot.gamesNeeded === 5 && hot.early === true, `the card's copy keeps the leagues' bar: ${hot.gamesNeeded}`);
+ok(S.oddsCalls === 0, 'still not one call to the odds feed');
+// Two more rounds of real matches, under other ids: 5 and over, so the 3 steps aside by itself.
+const again2 = (tag, shift) => UCL_ROWS.filter((r) => r.date <= '2026-09-10' || r.date >= '2026-10-20').map((r) => ({ ...r, game_id: `${tag}${r.game_id}`, date: shift(r.date) }));
+const fiveUp = [...withCup, ...again2('x', (d) => (d <= '2026-09-10' ? d.replace('2026-09', '2026-08') : d.replace('2026-10-2', '2026-10-0')))].sort(byDate);
+ok([...allowedTable(fiveUp.filter((r) => r.league === 'ucl'), 'shots')].filter(([, g]) => g.size >= 5).length >= 24, 'with those, 24 clubs have 5');
+S = scene({ rows: fiveUp });
+await begin();
+hot = (await get('/api/hot-players?sport=soccer')).hot;
+ok(flat(hot).filter((x) => x.league === 'ucl').length > 0 && flat(hot).every((x) => !('ranksOn' in x)), 'at 5 the label goes, by itself');
+// The Europa League's table reads the same, and stays on 5.
+const asEuropa = withCup.map((r) => (r.league === 'ucl' ? { ...r, league: 'uel' } : r));
+S = scene({ rows: asEuropa });
+await begin();
+hot = (await get('/api/hot-players?sport=soccer')).hot;
+ok(flat(hot).every((x) => x.league !== 'uel' && !('ranksOn' in x)), 'the Europa League stays on 5: 3 was asked of the Champions League');
 
 console.log('\n-- every competition counts for him, one league for the team he plays --');
 const allDates = [...new Set(ROWS.map((r) => r.date))].sort();
@@ -376,6 +441,9 @@ state.hotAll = {};
 const sets = card('soccer').split('<li>').slice(1).map((li) => (li.match(/class="tb-boxes"/g) || []).length);
 ok(sets.length >= 2 && sets.every((n) => n === 1), `before the tap, one set a player, or ${sets.length} players with several runs make a long card on a phone`);
 state.hotAll = { soccer: true };
+ok(!/ranked on \d/.test(card('soccer')), 'a league tie carries no label about its ranks');
+state.hot.soccer = { ...payload, players: [{ ...payload.players[0], markets: [{ ...payload.players[0].markets[0], ranksOn: 3 }] }] };
+ok(/ranked on 3 matches/.test(card('soccer')), 'a Champions League tie says its teams are ranked on 3 matches');
 state.hot.soccer = { ...payload, ready: false, teamsReady: 8, teamsNeeded: 14, gamesNeeded: 5, players: [] };
 ok(/Not enough games read yet: opponents are ranked once 14 teams have played 5, and 8 have so far/.test(card('soccer')), 'too early: how far off, in games');
 state.hot.soccer = null;
