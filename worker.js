@@ -13764,7 +13764,7 @@ async function socHotBackfill(env, now = Date.now()) {
     try { const r = await fetch(u, { headers: { accept: 'application/json' } }); said = String(r.status); } catch (e) { said = String((e && e.message) || e).slice(0, 160); }
     await saveFeedCache(db, 'soc_hot_fail', { at: new Date(now).toISOString(), game: g.game_id, league: g.league, date: g.date, stage, said, url: u });
   };
-  if (!meta) { await why(`${ESPN_SOC_SITE}/${SOC_PROP_LEAGUES[g.league]}/summary?event=${g.game_id}`, 'meta'); await giveUp.run(); return null; }
+  if (!meta) { await why(`${ESPN_SOC_CORE}/${SOC_PROP_LEAGUES[g.league]}/events/${g.game_id}/competitions/${g.game_id}/competitors/${g.home_cid}/roster`, 'roster'); await giveUp.run(); return null; }
   const have = new Set(((await db.prepare('SELECT player_id FROM soc_hot_box WHERE game_id = ?').bind(g.game_id).all()).results || []).map((r) => r.player_id));
   const { rows, tried } = await socReadSome(g, meta, have, SOC_HOT_BACK_PLAYERS);
   const cols = ['game_id', 'league', 'date', 'player_id', 'player', 'team', 'opp', 'starter', 'min', 'gk', ...SOC_HOT_MARKETS];
