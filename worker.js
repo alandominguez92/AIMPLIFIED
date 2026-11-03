@@ -251,7 +251,7 @@ export default {
       // A running backtest has this invocation's to itself.
       ctx.waitUntil((async () => {
         if (await histPropsTick(env).catch(() => null)) return;
-        for (const job of [nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill]) await job(env).catch(() => null);
+        for (const job of [nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp]) await job(env).catch(() => null);
       })());
       return;
     }
@@ -5115,7 +5115,7 @@ async function gradeEntryLegsOther(db) {
       await ensureSocPropSchema(db);
       const gids = [...new Set(socLegs.map((l) => String(l.game_id).replace(/^g/, '')))];
       const ph = gids.map(() => '?').join(',');
-      for (const g of ((await db.prepare(`SELECT game_id FROM soc_box_games WHERE done = 1 AND game_id IN (${ph})`).bind(...gids).all()).results || [])) socDone.add(g.game_id);
+      for (const g of ((await db.prepare(`SELECT game_id FROM soc_box_games g WHERE done = 1 AND game_id IN (${ph}) AND EXISTS (SELECT 1 FROM soc_box b WHERE b.game_id = g.game_id)`).bind(...gids).all()).results || [])) socDone.add(g.game_id);
       for (const b of ((await db.prepare(`SELECT * FROM soc_box WHERE game_id IN (${ph})`).bind(...gids).all()).results || [])) socBox.set(`${b.game_id}|${b.player_id}`, b);
     } catch (e) { /* no soccer box tables yet */ }
   }
@@ -13438,7 +13438,8 @@ async function hotPlayersRoute(env, url) {
     ingest.withStats = await q('SELECT league, COUNT(DISTINCT game_id) AS n FROM soc_hot_box GROUP BY league');
     ingest.listed = await q('SELECT league, COUNT(*) AS n FROM soc_hot_games GROUP BY league');
     ingest.oldest = (await env.DB.prepare('SELECT MIN(date) AS d FROM soc_hot_games WHERE done = 1').first().catch(() => null) || {}).d;
-    ingest.lastFail = (await loadFeedCache(env.DB, 'soc_hot_fail')).data;
+    // Entry legs voided while the core host refused: a count only, no key, nothing of the log itself.
+    ingest.voidLegs = (await env.DB.prepare("SELECT COUNT(*) AS n FROM entry_legs WHERE sport = 'soccer' AND market != 'ml' AND result = 'void' AND date >= '2026-10-12'").first().catch(() => null) || {}).n;
     // And whether the props job's own table still gets rows, day by day.
     ingest.boxDays = (await env.DB.prepare('SELECT date, COUNT(DISTINCT game_id) AS games, COUNT(*) AS n FROM soc_box GROUP BY date ORDER BY date DESC LIMIT 30').all().catch(() => ({ results: null }))).results;
   }
@@ -13726,10 +13727,37 @@ async function ensureSocHotSchema(db) {
   await db.prepare('CREATE INDEX IF NOT EXISTS soc_hot_games_todo ON soc_hot_games (date) WHERE done = 0').run();
   SOC_HOT_READY = true;
 }
+// Once, after the refusal of 2026-10-12 was found: what was given up on goes back in both queues,
+// and the rows voided for want of a read are open again, for the grader to judge on real numbers.
+// A void in a match that has rows is a player who didn't play, and stays.
+let SOC_REQUEUED = false;
+async function socRequeueRefused(db) {
+  if (SOC_REQUEUED) return;
+  const key = 'soc_requeue_20261103';
+  if (!(await loadFeedCache(db, key)).present) {
+    await db.batch([
+      db.prepare('UPDATE soc_box_games SET done = 0, tries = 0 WHERE done = 1 AND NOT EXISTS (SELECT 1 FROM soc_box b WHERE b.game_id = soc_box_games.game_id)'),
+      db.prepare('UPDATE soc_hot_games SET done = 0, tries = 0 WHERE done = 1 AND NOT EXISTS (SELECT 1 FROM soc_hot_box b WHERE b.game_id = soc_hot_games.game_id)'),
+      db.prepare("UPDATE socprops SET result = NULL, actual = NULL WHERE result = 'void' AND NOT EXISTS (SELECT 1 FROM soc_box b WHERE b.game_id = socprops.game_id)"),
+      db.prepare("UPDATE soc_pp_lines SET result = NULL, actual = NULL WHERE result = 'void' AND NOT EXISTS (SELECT 1 FROM soc_box b WHERE b.game_id = soc_pp_lines.game_id)"),
+      db.prepare("DELETE FROM feed_cache WHERE key LIKE 'soc_box_meta:%'"),
+    ]);
+    await saveFeedCache(db, key, { at: Date.now() });
+  }
+  SOC_REQUEUED = true;
+}
+// The five-minute job reads one match a tick. While a backlog waits, this invocation helps it.
+async function socBoxCatchUp(env) {
+  if (!env || !env.DB) return null;
+  await ensureSocPropSchema(env.DB);
+  const more = await env.DB.prepare('SELECT 1 AS x FROM soc_box_games WHERE done = 0 LIMIT 1').first();
+  return more ? socBoxTick(env, { via: 'catch-up' }) : null;
+}
 async function socHotBackfill(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   const db = env.DB;
   await ensureSocHotSchema(db);
+  await socRequeueRefused(db);
   const key = 'soc_hot_back', hit = await loadFeedCache(db, key);
   // From three days back: anything nearer may yet be picked up by the box-score ingest itself.
   const st = (hit.present && hit.data) || { day: ptDateOf(now - 3 * 86400e3), i: 0, fails: 0 };
@@ -13760,13 +13788,7 @@ async function socHotBackfill(env, now = Date.now()) {
   if (!g) return null;
   const giveUp = db.prepare('UPDATE soc_hot_games SET tries = tries + 1, done = CASE WHEN tries >= 2 THEN 1 ELSE 0 END WHERE game_id = ?').bind(g.game_id);
   const meta = await socMatchMeta(db, g);
-  // Why a read failed, kept for ?ingest=1: every match was being given up on (2026-11-03).
-  const why = async (u, stage) => {
-    let said;
-    try { const r = await fetch(u, { headers: { accept: 'application/json' } }); said = String(r.status); } catch (e) { said = String((e && e.message) || e).slice(0, 160); }
-    await saveFeedCache(db, 'soc_hot_fail', { at: new Date(now).toISOString(), game: g.game_id, league: g.league, date: g.date, stage, said, url: u });
-  };
-  if (!meta) { await why(`${ESPN_SOC_CORE}/${SOC_PROP_LEAGUES[g.league]}/events/${g.game_id}/competitions/${g.game_id}/competitors/${g.home_cid}/roster`, 'roster'); await giveUp.run(); return null; }
+  if (!meta) { await giveUp.run(); return null; }
   const have = new Set(((await db.prepare('SELECT player_id FROM soc_hot_box WHERE game_id = ?').bind(g.game_id).all()).results || []).map((r) => r.player_id));
   const { rows, tried } = await socReadSome(g, meta, have, SOC_HOT_BACK_PLAYERS);
   const cols = ['game_id', 'league', 'date', 'player_id', 'player', 'team', 'opp', 'starter', 'min', 'gk', ...SOC_HOT_MARKETS];
@@ -13774,8 +13796,8 @@ async function socHotBackfill(env, now = Date.now()) {
   if (meta.apps.filter((a) => a.ref && !have.has(a.id)).length - rows.length <= 0) {
     stmts.push(db.prepare('UPDATE soc_hot_games SET done = 1 WHERE game_id = ?').bind(g.game_id));
     stmts.push(db.prepare('DELETE FROM feed_cache WHERE key = ?').bind(`soc_box_meta:${g.game_id}`));
-  } else if (tried > 0 && rows.length === 0) { await why(meta.apps.find((a) => a.ref && !have.has(a.id)).ref, 'stats'); stmts.push(giveUp); }
-  if (stmts.length) await db.batch(stmts).catch(async (e) => { await saveFeedCache(db, 'soc_hot_fail', { at: new Date(now).toISOString(), game: g.game_id, stage: 'batch', said: String((e && e.message) || e).slice(0, 200) }); throw e; });
+  } else if (tried > 0 && rows.length === 0) stmts.push(giveUp);
+  if (stmts.length) await db.batch(stmts);
   if (rows.length) await saveFeedCache(db, key, { ...st, readAt: now });
   return null;
 }
@@ -13821,7 +13843,8 @@ async function socHotTick(env, now = Date.now()) {
   const mean = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
   const built = [...slates].map(([lg, slate]) => hotListBuild({ rows: starts, allowedRows: rows.filter((r) => r.league === lg), stat, markets: SOC_HOT_MARKETS, slate, now, teams: SOC_HOT_TEAMS[lg], missedMax: 1,
     priorOf: (p, m) => { const x = pri && pri.players && pri.players[p.id]; return x && x.starts >= SOC_HOT_PRIOR_STARTS && x[m] != null ? x[m] : null; },
-    regular: (games) => mean(games.slice(-5).map((g) => g.min)) >= SOC_HOT_MIN }));
+    // A stat with nothing on his latest start stopped coming (socPageRows): older games aren't a run.
+    regular: (games, m) => mean(games.slice(-5).map((g) => g.min)) >= SOC_HOT_MIN && stat(games[games.length - 1], m) != null }));
   // One card over every league: the wait note follows the league nearest ready, the copy the lowest bar.
   const most = built.length ? built.reduce((a, b) => (b.teamsReady / b.teamsNeeded > a.teamsReady / a.teamsNeeded ? b : a)) : { teamsReady: 0, teamsNeeded: 0 };
   const seen = new Set(), players = built.flatMap((b) => b.players).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence)).filter((p) => !seen.has(p.id) && seen.add(p.id));
@@ -14255,10 +14278,48 @@ const socNum = (cats, cat, name) => {
   return s ? Number(s.value) || 0 : 0;
 };
 
+// What the summary itself says of each player who appeared, for when the core
+// host won't answer. It has refused the Worker since about 2026-10-12 (403, see
+// /api/nfl-grade?probe=1) while serving a laptop the same URL, and every match
+// after that was given up on with no rows. Shots, shots on target, fouls, saves,
+// fouls drawn, goals and assists matched core's for all 62 players of two real
+// matches, minutes for 61 (a 90'+1' change, off by one). Passes, tackles,
+// clearances, crosses and shots assisted aren't on it: NULL, never 0.
+const socSubMinute = (p) => {
+  const s = ((p && p.plays) || []).find((x) => x.substitution);
+  const m = s && /^(\d+)/.exec(String(s.clock && s.clock.displayValue));
+  return m ? Math.min(Number(m[1]), 90) : null;
+};
+function socPageRows(g, sum) {
+  const rows = [];
+  for (const t of (sum.rosters || [])) {
+    const cid = String(t.team && t.team.id);
+    if (cid !== String(g.home_cid) && cid !== String(g.away_cid)) continue;
+    const home = cid === String(g.home_cid);
+    const byId = new Map((t.roster || []).filter((p) => p.athlete).map((p) => [String(p.athlete.id), p]));
+    for (const [id, p] of byId) {
+      if (!p.starter && !p.subbedIn) continue;
+      const stat = (name) => { const s = (p.stats || []).find((x) => x.name === name); return s ? Number(s.value) || 0 : 0; };
+      // The change's minute is on the replacement's entry, and usually his own.
+      const repl = p.subbedOutFor && p.subbedOutFor.athlete ? byId.get(String(p.subbedOutFor.athlete.id)) : null;
+      const off = p.subbedOut ? (socSubMinute(p) != null ? socSubMinute(p) : socSubMinute(repl)) : null;
+      const min = p.starter ? (off != null ? off : 90) : Math.max(1, 90 - (socSubMinute(p) != null ? socSubMinute(p) : 90));
+      const gk = (p.position && p.position.abbreviation === 'G') || stat('saves') > 0 ? 1 : 0;
+      rows.push({ game_id: g.game_id, league: g.league, date: g.date, player_id: id, player: p.athlete.displayName,
+        team: home ? g.home : g.away, opp: home ? g.away : g.home, starter: p.starter ? 1 : 0, min, sub_off: p.subbedOut ? 1 : 0, gk,
+        shots: stat('totalShots'), sot: stat('shotsOnTarget'), passes: null, tackles: null, clear: null, fouls: stat('foulsCommitted'), saves: stat('saves'),
+        crosses: null, shot_ast: null, conceded: gk ? stat('goalsConceded') : null, fouls_drawn: stat('foulsSuffered'),
+        goal_ast: stat('totalGoals') + stat('goalAssists') });
+    }
+  }
+  return rows;
+}
+
 // A finished match's appearance list, read once and kept: names and
 // positions from the summary, each club's roster from the core API, and each
 // player who appeared, with his statistics link. Three requests; null while
-// any of them fails, so the next tick tries again.
+// the summary fails, so the next tick tries again. A roster refused means the
+// summary's own numbers, whole, with nothing kept (socPageRows).
 async function socMatchMeta(db, g) {
   const key = `soc_box_meta:${g.game_id}`;
   const hit = await loadFeedCache(db, key);
@@ -14275,7 +14336,7 @@ async function socMatchMeta(db, g) {
   const apps = [];
   for (const [cid, team, opp] of [[g.home_cid, g.home, g.away], [g.away_cid, g.away, g.home]]) {
     const ro = await socJson(`${ESPN_SOC_CORE}/${slug}/events/${g.game_id}/competitions/${g.game_id}/competitors/${cid}/roster`);
-    if (!ro) return null;
+    if (!ro) { const page = socPageRows(g, sum); return page.length ? { apps: [], page } : null; }
     for (const p of (ro.entries || [])) {
       if (!p.starter && !(p.subbedIn && p.subbedIn.didSub)) continue;
       const id = String(p.playerId);
@@ -14291,6 +14352,7 @@ async function socMatchMeta(db, g) {
 
 // Up to `n` of a match's players not yet read, their statistics fetched.
 async function socReadSome(g, meta, have, n) {
+  if (meta.page) { const rows = meta.page.filter((r) => !have.has(r.player_id)); return { rows, tried: rows.length }; }
   const todo = meta.apps.filter((a) => a.ref && !have.has(a.id)).slice(0, n);
   const stats = await Promise.all(todo.map((a) => socJson(a.ref)));
   const rows = [];
@@ -14310,6 +14372,11 @@ async function socReadSome(g, meta, have, n) {
       conceded: socNum(cats, 'goalKeeping', 'goalsConceded'), fouls_drawn: socNum(cats, 'general', 'foulsSuffered'),
       goal_ast: socNum(cats, 'offensive', 'totalGoals') + socNum(cats, 'offensive', 'goalAssists') });
   });
+  // A roster that answered and statistics that didn't: the summary's numbers for those left.
+  if (todo.length && !rows.length) {
+    const sum = await socJson(`${ESPN_SOC_SITE}/${SOC_PROP_LEAGUES[g.league]}/summary?event=${g.game_id}`);
+    if (sum) return { rows: socPageRows(g, sum).filter((r) => !have.has(r.player_id)), tried: todo.length };
+  }
   return { rows, tried: todo.length };
 }
 
@@ -14371,6 +14438,7 @@ async function socBoxTick(env, opts = {}) {
         stmts.push(db.prepare('UPDATE soc_box_games SET tries = tries + 1, done = CASE WHEN tries >= 2 THEN 1 ELSE 0 END WHERE game_id = ?').bind(g.game_id));
       }
       if (stmts.length) await db.batch(stmts);
+      if (rows.length) await saveFeedCache(db, 'soc_box_last', { date: g.date, via: meta.page ? 'summary' : 'core' });
     }
   }
   await gradeSocProps(db);
@@ -14380,6 +14448,8 @@ async function socBoxTick(env, opts = {}) {
 // The model's own log, graded from the box scores: under / over / push at the
 // line it showed, void for a starter who never appeared. Then the PrizePicks
 // lines the user set, the same way at their own number, in their own table.
+// A match with no rows at all was never read, which says nothing of who played:
+// voiding those is how the record stopped at the refusal of 2026-10-12.
 async function gradeSocProps(db) {
   for (const table of ['socprops', 'soc_pp_lines']) {
     // CROSS JOIN keeps the open rows the outer loop. As a JOIN, SQLite started
@@ -14387,7 +14457,7 @@ async function gradeSocProps(db) {
     // or scanned socprops whole.
     const open = (await db.prepare(
       `SELECT s.date, s.game_id, s.player_id, s.market, s.line FROM ${table} s CROSS JOIN soc_box_games g ON g.game_id = s.game_id
-        WHERE s.result IS NULL AND g.done = 1 LIMIT 200`).all()).results || [];
+        WHERE s.result IS NULL AND g.done = 1 AND EXISTS (SELECT 1 FROM soc_box b WHERE b.game_id = s.game_id) LIMIT 200`).all()).results || [];
     if (!open.length) continue;
     const ids = [...new Set(open.map((r) => r.game_id))];
     const box = (await db.prepare(`SELECT * FROM soc_box WHERE game_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results || [];
@@ -14723,7 +14793,10 @@ async function socPropsBoard(env, url) {
       picksGate: { need: 100, have: pps.n, note: 'Soccer props stay off Picks of the day until 100-150 legs have graded at real PrizePicks lines.' } };
     const ing = await db.prepare('SELECT COUNT(*) AS n, SUM(done) AS d, MAX(date) AS last FROM soc_box_games').first();
     const look = await loadFeedCache(db, 'soc_box_disc');
+    // `read` also counts a match given up on, so the last one with stats too, which is how a stop shows.
+    const lastStats = await loadFeedCache(db, 'soc_box_last');
     out.ingest = { games: Number((ing && ing.n) || 0), read: Number((ing && ing.d) || 0), lastDay: (ing && ing.last) || null, priors: !!pri,
+      lastStats: (lastStats.data && lastStats.data.date) || null, lastStatsVia: (lastStats.data && lastStats.data.via) || null,
       lastLook: look.present && look.data && look.data.at ? new Date(look.data.at).toISOString() : null };
     // ?summary=1: what a scheduled check reads, without every row (a posted
     // Saturday runs past 100KB). The two effects the season of box scores
@@ -16765,7 +16838,7 @@ async function nflGrade(env, url) {
         try {
           const r = await fetch(u, { headers: withUa ? { accept: 'application/json', 'user-agent': UA } : { accept: 'application/json' } });
           const body = r.ok ? await r.text() : '';
-          res[tag] = { status: r.status, bytes: body.length, server: r.headers.get('server') };
+          res[tag] = { status: r.status, bytes: body.length };
         } catch (e) { res[tag] = { error: String((e && e.message) || e) }; }
       }
     }

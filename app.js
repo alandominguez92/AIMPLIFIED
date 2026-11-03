@@ -7165,7 +7165,7 @@
   const HOT_LEAGUE = {
     nhl: { name: 'the NHL', games: 'games', face: 'nhl', rated: 'Last season runs like these went on about 47% of the time, whatever their length, so there is no percentage for each player.', mk: { pts: 'Points', ast: 'Assists', goals: 'Goals', sog: 'Shots on goal' } },
     nfl: { name: 'the NFL', games: 'games', face: 'nfl-espn', rated: 'Too few runs last season to put a percentage on them yet.', mk: { pass_yds: 'Passing yards', pass_td: 'Passing TDs', rush_yds: 'Rushing yards', rec: 'Receptions', rec_yds: 'Receiving yards' } },
-    soccer: { name: 'soccer', games: 'starts', face: 'soccer', rated: 'No season replayed yet, so no percentage on these yet.', mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' } },
+    soccer: { name: 'soccer', games: 'starts', face: 'soccer', rated: 'No season replayed yet, so no percentage on these yet. Shots, shots on target, fouls and saves only: ESPN stopped sending the other stats on Oct 12.', mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' } },
   };
   function hotRowHtml(p, m, mk) {
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1, label = mk[m.market];
@@ -7621,7 +7621,10 @@
     const wait = waiting.length
       ? `<div class="tc-wait-note">Lineups not posted yet: ${waiting.slice(0, 6).map((m) => `${esc(m.away)} @ ${esc(m.home)} ${esc(soccerKick(m.commence))}`).join(' · ')}${waiting.length > 6 ? ` · and ${waiting.length - 6} more` : ''}.</div>` : '';
     const none = !posted.length && !waiting.length ? '<div class="tc-wait-note">No covered fixture in the next fourteen hours.</div>' : '';
-    return `<div class="nba-pp pk-card sp-card">${head}${body}${nothing}${wait}${none}</div>`;
+    // The page that still answers has none of these (socPageRows in worker.js).
+    const stale = stats.some((s) => ['passes', 'tackles', 'clear', 'crosses', 'shot_ast'].includes(s))
+      ? '<div class="tc-wait-note">Passes, tackles, clearances, crosses and shots assisted run on numbers from before Oct 12: ESPN stopped sending them, so new ones can\'t be graded.</div>' : '';
+    return `<div class="nba-pp pk-card sp-card">${head}${body}${nothing}${wait}${none}${stale}</div>`;
   }
 
   // The best soccer prop in each stat, for the Picks tab (2026-10-21): across

@@ -204,6 +204,15 @@ S = scene({ rows: short });
 await begin();
 hot = (await get('/api/hot-players?sport=soccer')).hot;
 ok(!hot.players.some((p) => p.id === sample.id), 'under 60 minutes a start over his last five: left off');
+// Passes, tackles and clearances stopped coming on the matches of the last two weeks: a run on the games before isn't one.
+const SINCE_NULL = '2026-10-13', NULLED = ['passes', 'tackles', 'clear'];
+const stopped = ROWS.map((r) => (r.date >= SINCE_NULL ? { ...r, passes: null, tackles: null, clear: null } : r));
+S = scene({ rows: stopped });
+await begin();
+hot = (await get('/api/hot-players?sport=soccer')).hot;
+const left = flat(hot), kept = expected(ROWS).filter((x) => !NULLED.includes(x.mk));
+ok(left.length && !left.some((x) => NULLED.includes(x.market)), `a stat with nothing on his latest start is off the list: ${[...new Set(left.map((x) => x.market))].join(', ')}`);
+ok(kept.every((w) => left.some((x) => x.id === w.id && x.market === w.mk)), `and his runs on the stats that still come stand: ${kept.length}`);
 S = scene({ assets: false });
 await begin();
 hot = (await get('/api/hot-players?sport=soccer')).hot;
