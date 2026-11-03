@@ -6,7 +6,7 @@
 //   - teams are ranked on 5+ games until 20 teams have played 10, and the list says which
 //   - fewer than 5 games, no prior, too few minutes last five, under 20 games last year: not listed
 //   - nothing early claims a side. The tested numbers stay on 10+ games against full ranks
-//   - minutes up 5+ on last season is flagged a bigger role and sorts below steady minutes
+//   - minutes up 5+ on last season is flagged a bigger role, and sorts with everyone else
 //   - it costs no credits, and a missing priors file costs the early names, not the section
 //
 // Real data: every real box row of the 92 league games to Nov 1 2026 (nba-box-league-to-20261101),
@@ -156,8 +156,10 @@ const min5Of = (id) => gamesOf(NOW_ROWS, id).slice(-5).reduce((a, r) => a + r.mi
 ok(beringer && beringer.role && beringer.role.min === round1(min5Of(beringer.id)) && beringer.role.before === PRIORS[beringer.id].min, `Beringer: ${beringer && beringer.role.min} minutes, ${beringer && beringer.role.before} last season, flagged`);
 ok(hot.players.every((p) => !!p.role === (min5Of(p.id) - PRIORS[p.id].min >= 5)), 'and each player flagged only at 5+ minutes up, the long way');
 const softOnes = hot.players.filter((p) => p.markets[0].third === 'soft');
-const firstRole = softOnes.findIndex((p) => p.role);
-ok(firstRole > 0 && softOnes.slice(firstRole).every((p) => p.role) && hot.players.findIndex((p) => p.markets[0].third !== 'soft') === softOnes.length, `soft teams first, steady minutes ahead of bigger roles: ${firstRole} before the first`);
+const runOf = (p) => Math.max(...p.markets.map((m) => m.run));
+ok(softOnes.every((p, i) => !i || runOf(softOnes[i - 1]) >= runOf(p)) && hot.players.findIndex((p) => p.markets[0].third !== 'soft') === softOnes.length, 'soft teams first, then the longest run');
+const roleAhead = softOnes.findIndex((p, i) => p.role && softOnes.slice(i + 1).some((q) => !q.role));
+ok(roleAhead >= 0, `a bigger role is not sorted down: ${softOnes[roleAhead] && softOnes[roleAhead].name} is ahead of a player on steady minutes`);
 
 console.log('\n-- who is not listed --');
 const wid = wig.id, wiggins = NOW_ROWS.filter((r) => r.player_id === wid);
@@ -264,11 +266,11 @@ let html = card();
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 const liOf = (h, name) => h.split('<li>').find((x) => x.includes(name)) || '';
 console.log(`  ${text(html).slice(0, 1100)}`);
-ok(/Early in the season: five or more games in a row above last season's average, with the team he plays tonight ranked for that stat on 5\+ games/.test(html) && /At 10 games a player moves to his own average/.test(html) && /hasn't been tested, so it shows no side/.test(html), 'it says what the early list is, what comes next, and that it is untested');
+ok(/Early in the season: five or more games in a row above last season's average, with the team he plays tonight ranked for that stat on 5\+ games/.test(html) && /At 10 games a player moves to his own average/.test(html) && /Replayed on last season's games, that leaned neither way \(the Under hit 46\.9%, sharp books 50\.5\), so no side/.test(html) && !/been tested|A lead/.test(html), 'it says what the early list is, what comes next, and what the replay found');
 ok(!/the Under beat the Over/.test(html), 'and leaves last season\'s finding, which is about the other rule, for when that rule applies');
 ok((html.match(/<li>/g) || []).length === Math.min(5, softOnes.length), 'soft teams first, five at most');
 ok(/in a row · [\d.]+ last five, [\d.]+ last season/.test(html), 'each run against last season, in those words');
-ok(/No PrizePicks number yet · not tested, so no side/.test(html) && !/Lean |Slight |No side:/.test(html), 'no side anywhere, on one short line');
+ok(/No PrizePicks number yet · no lean last season, so no side/.test(html) && !/Lean |Slight |No side:|[Nn]ot tested/.test(html), 'no side anywhere, on one short line');
 ok(!/read about an hour before tip/.test(html), 'and it does not promise a read no one is paying for');
 state.nbaHotAll = true;
 html = card();
@@ -276,9 +278,14 @@ ok(/Bigger role: 20 minutes a game, 8 last season/.test(liOf(html, 'Joan Beringe
 ok(!/Bigger role/.test(liOf(html, 'Aaron Wiggins')), 'and steady minutes do not say it');
 const pts = flat(payload).find((x) => x.market === 'reb');
 state.nbaPp.hot = { ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map((m) => (m.market === 'reb' ? { ...m, line: 4.5, cleared: 3 } : m)) })) };
-ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /Not tested, so no side/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
+ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /No lean last season, so no side/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
+const ownAverage = (line) => ({ ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map(({ lastSeason, ...m }) => ({ ...m, seasonAvg: 5, ...line })) })) });
+state.nbaPp.hot = ownAverage({});
+ok(/No PrizePicks number yet · not tested, so no side/.test(card()) && !/no lean last season/i.test(card()), 'ten games while teams are ranked on five: not what the replay covered, so not what it found');
+state.nbaPp.hot = ownAverage({ line: 4.5, cleared: 3 });
+ok(/Not tested, so no side/.test(card()) && !/no lean last season/i.test(card()), 'and the same once a number is in');
 state.nbaPp.hot = { ...payload, early: false, gamesNeeded: 10 };
-ok(/the Under beat the Over/.test(card()) && /Under 10 games: five or more in a row above last season's average/.test(card()) && !/Early in the season/.test(card()), 'with the full ranks, the tested rule first, and a line for anyone still under 10');
+ok(/the Under beat the Over/.test(card()) && /Under 10 games: five or more in a row above last season's average\. Replayed on last season's games, that leaned neither way/.test(card()) && !/Early in the season/.test(card()), 'with the full ranks, the tested rule first, and a line for anyone still under 10');
 state.nbaPp.hot = { ...payload, ready: false, teamsReady: 12, players: [] };
 ok(/A player needs 5 games, and opponents are ranked once 20 teams have played 5: 12 have so far/.test(card()), 'too early: how far off, in the right numbers');
 state.nbaHotAll = false;

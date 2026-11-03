@@ -7076,12 +7076,17 @@
   // that stat: soft teams first, the rest a tap away. Last season the number had usually
   // caught up with them by then, so each run says which side held, at PrizePicks' number
   // once one is read. A lead, so no star: off Picks and out of the entries. Under 10 games
-  // it is the last five or more above last season's average, not tested, so no side.
+  // it is the last five or more above last season's average. Replayed on last season that
+  // leaned neither way (2026-11-03: 452 priced legs, Under 46.9 v sharp 50.5), so no side.
   const NBA_HOT_MK = { pts: 'Points', pra: 'Pts+Reb+Ast', pts_reb: 'Pts+Reb', pts_ast: 'Pts+Ast', reb_ast: 'Reb+Ast', reb: 'Rebounds', threes: 'Threes' };
   const NBA_HOT_TOP = 5;
+  const NBA_HOT_EARLY_READ = "Replayed on last season's games, that leaned neither way (the Under hit 46.9%, sharp books 50.5), so no side.";
+  // A run with no read: the early rule, which was replayed, or his own average while teams
+  // are still ranked on 5 games, which wasn't.
+  const nbaHotNoSide = (m) => (m.lastSeason != null ? 'No lean last season, so no side' : 'Not tested, so no side');
   const nbaHotOrd = (n) => { const t = n % 100; return n + (t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'); };
   function nbaHotReadHtml(p, m, be) {
-    if (!m.read) return '<span class="hot-line hot-read">Not tested, so no side</span>';
+    if (!m.read) return `<span class="hot-line hot-read">${nbaHotNoSide(m)}</span>`;
     const r = m.read, said = `hit ${r.rate.toFixed(1)}% last season, sharp books ${r.sharp.toFixed(1)}`, title = `${r.n} priced legs last season`;
     if (!r.side) return `<span class="hot-line hot-read" title="${title}">No side: the Under ${said}</span>`;
     const why = r.side === 'Over' && p.outs && p.outs.length ? ` · minutes up, ${esc(p.outs.join(', '))} out` : '';
@@ -7099,7 +7104,7 @@
     const against = m.lastSeason != null ? `${esc(String(m.lastSeason))} last season` : `${esc(String(m.seasonAvg))} season`;
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(NBA_HOT_MK[m.market])}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
       + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${allows} <span class="tc-dfs">${m.third} team</span></span>`
-      + (m.line == null && !m.read ? `<span class="hot-line">${num} · not tested, so no side</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
+      + (m.line == null && !m.read ? `<span class="hot-line">${num} · ${nbaHotNoSide(m).toLowerCase()}</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
   }
   // Each league's list has one shape. What differs: the runs' lines, and whether it is the
   // NBA's, whose rule has been tested and whose report and numbers are on it.
@@ -7122,9 +7127,9 @@
     const h = state.nbaPp && state.nbaPp.hot;
     if (!h) return '';
     const head = `<div class="tc-head"><span class="tc-title">Hot players</span></div>`
-      + (h.early ? `<div class="tc-sub">Early in the season: five or more games in a row above last season's average, with the team he plays tonight ranked for that stat on ${h.gamesNeeded}+ games. At 10 games a player moves to his own average, the version tested on last season. This one hasn't been tested, so it shows no side. A lead, not a pick: off Picks and out of the entries.</div>`
+      + (h.early ? `<div class="tc-sub">Early in the season: five or more games in a row above last season's average, with the team he plays tonight ranked for that stat on ${h.gamesNeeded}+ games. ${NBA_HOT_EARLY_READ} At 10 games a player moves to his own average, the version that did lean. Not a pick: off Picks and out of the entries.</div>`
       : `<div class="tc-sub">Five or more games in a row above his own average, with the team he plays tonight ranked for that stat. Last season the number had usually caught up with him by then: the Under beat the Over, most of all against the softest teams. A lead, not a pick: off Picks and out of the entries, read again in January.</div>`
-      + (h.players.some((p) => p.markets.some((m) => m.lastSeason != null)) ? `<div class="tc-sub">Under 10 games: five or more in a row above last season's average, which hasn't been tested, so no side.</div>` : ''));
+      + (h.players.some((p) => p.markets.some((m) => m.lastSeason != null)) ? `<div class="tc-sub">Under 10 games: five or more in a row above last season's average. ${NBA_HOT_EARLY_READ}</div>` : ''));
     if (!h.ready) {
       return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games yet. A player needs ${h.gamesNeeded} games, and opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}: ${h.teamsReady} have so far.</div></div>`;
     }

@@ -13273,7 +13273,8 @@ async function nbaHotBoard(db, legs, injDays, now) {
     }).sort((a, b) => soft(b) - soft(a) || b.run - a.run);
     base.players.push({ id: p.id, name: p.name, team: p.team, oppName: p.oppName, isHome: p.isHome, commence: p.commence, outs: p.outs, role: p.role, inj: inj && inj.status ? inj : undefined, markets });
   }
-  base.players.sort((a, b) => soft(b.markets[0]) - soft(a.markets[0]) || !!a.role - !!b.role || best(b) - best(a) || Date.parse(a.commence) - Date.parse(b.commence));
+  // A bigger role isn't sorted down: replayed on last season it made no difference (2026-11-03).
+  base.players.sort((a, b) => soft(b.markets[0]) - soft(a.markets[0]) || best(b) - best(a) || Date.parse(a.commence) - Date.parse(b.commence));
   return base;
 }
 
