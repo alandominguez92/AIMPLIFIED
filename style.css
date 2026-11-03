@@ -298,7 +298,7 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
    Below the header in z-order (10) and above the slate summary (8), so the three
    slide over each other in the order they appear on the page. */
 .sports { border-bottom:1px solid var(--border); overflow-x:auto; position:sticky; top:var(--hdrH); z-index:9;
-  background:var(--headerBg); backdrop-filter:blur(8px); }
+  background:var(--headerBg); backdrop-filter:blur(8px); scrollbar-width:thin; scrollbar-color:var(--border) transparent; }
 .sports-inner { display:flex; gap:4px; width:max-content; min-width:100%; }
 /* 12px a side and a 6px gap since the seventh tab (NHL, 2026-10-20): at 18 and
    8 the row needed 1360px and scrolled sideways on a 1280 screen; this needs 1248. */
@@ -315,6 +315,11 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
    the six tabs ran 52px past a 1280px screen and the row scrolled sideways. */
 .stab .mini { font-family:var(--sans); font-size:var(--fsXs); letter-spacing:0; font-weight:500; border:1px solid var(--border); border-radius:3px; padding:2px 6px; color:var(--textDim); text-transform:none; }
 .stab.active .mini { border-color:var(--accent); color:var(--accent); }
+/* The row needs 1248px with these, 1265 once the page's scrollbar is counted. Under
+   that it scrolled sideways, with a white bar, and Entries out of reach of a mouse. */
+@media (max-width:1279px) { .stab .mini { display:none; } }
+/* Without them it needs 693px; the icons come off under that, the phone's rules at 640. */
+@media (max-width:720px) { .stab .sport-ico { display:none; } }
 
 /* ---------- ticker ---------- */
 /* ---------- hero: Tonight's Ace Duel ---------- */
@@ -1502,7 +1507,6 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      this to keep a scrolled-to row out from under it. At 40 a jumped-to row sat
      with its top edge hidden. */
   :root { --sportsH:44px; }
-  .stab .mini { display:none; }
   /* Six tabs since Picks (2026-10-09), seven since NHL (2026-10-20). At 8px a
      side inside the page's 32px margin the seventh ran 27px past a 390 screen;
      6px a side in a 12px margin keeps all seven on one row from 360 up; the
@@ -2599,9 +2603,6 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .en-key code { font-family:var(--mono); font-size:12px; word-break:break-all; color:var(--text); }
 
 @media (max-width:640px) {
-  /* Four tabs across a phone. The icons come off so MLB, NFL, Soccer and
-     Entries fit on one row without the strip scrolling sideways again. */
-  .stab .sport-ico { display:none; }
   .mf-leg { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
   .le-side { margin-left:0; }
   .en-v { font-size:21px; }
@@ -3027,6 +3028,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .hot-mk .hot-line:first-child b { color:var(--text); font-weight:600; }
 .hot-read { margin-top:2px; }
 .hot-role { margin-top:4px; font-size:12.5px; color:var(--textDim); }
+.hot-also { margin-top:6px; font-size:12.5px; line-height:1.45; color:var(--textDim); }
 .nba-hot .tc-leg.has-hs > .hot-boxes { grid-column:1 / -1; }
 .hot-boxes .tb-boxes { gap:3px; }
 .hot-boxes .tb-boxes i { font-size:11px; }
@@ -3257,6 +3259,15 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-card .hl-name { font-size:20px; }
 .pk-card .hl-pct { font-size:34px; }
 @media (max-width:380px) { .hl-name { font-size:19px; } .hl-pct { font-size:34px; } }
+/* A phone (2026-11-03): the ring drops a row and the name takes its width. Beside
+   the ring it had 93px at 375, and "Bouchard", 98, read "Bouchar / d". */
+@media (max-width:480px) {
+  .hl-what { display:contents; }
+  .hl-main > :first-child { grid-row:1 / span 2; align-self:start; }
+  .hl-name { grid-column:2 / -1; }
+  .hl-pick { grid-column:2; margin-top:-8px; align-self:start; }
+  .hl-p { grid-column:3; grid-row:2; }
+}
 /* The chance ring (2026-10-28): the number and "chance" sit inside it. Gold at
    75%+, green where a sportsbook price beats its line, the model's blue else;
    it fills from empty once a page load (.bars-in). */

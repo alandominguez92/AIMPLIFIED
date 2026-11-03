@@ -73,5 +73,15 @@ if (glue) {
 }
 ok(/new MutationObserver\([^\n]*glueDotsIn[^\n]*\.observe\(document\.body, \{ childList: true, subtree: true \}\)/.test(app) && /glueDotsIn\(document\.body\);/.test(app), 'it runs on the page as loaded and on everything rendered after');
 
+console.log('\n-- the page check of Nov 3, at 375px and on a desktop --');
+const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+// Beside the ring the best leg's name had 93px at 375: "Bouchard" needs 98 and read "Bouchar / d".
+const phoneHero = bare.match(/@media \(max-width:480px\) \{\n  \.hl-what \{ display:contents; \}[\s\S]*?\n\}/);
+ok(phoneHero && /\.hl-name \{ grid-column:2 \/ -1; \}/.test(phoneHero[0]) && /\.hl-p \{ grid-column:3; grid-row:2; \}/.test(phoneHero[0]), 'on a phone the ring drops a row and the name takes its width');
+// The tabs need 1248px with their small labels: under that, a white scrollbar and tabs out of reach.
+ok(/@media \(max-width:1279px\) \{ \.stab \.mini \{ display:none; \} \}/.test(bare), 'the tabs lose their small labels before the row can overflow');
+ok(/@media \(max-width:720px\) \{ \.stab \.sport-ico \{ display:none; \} \}/.test(bare), 'and their icons before a narrow window can make it overflow: measured, it needs 693px without the labels');
+ok(/\.sports \{[^}]*scrollbar-color:var\(--border\) transparent;/.test(bare), 'and if a row ever does, its scrollbar is the page\'s colour, not white');
+
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

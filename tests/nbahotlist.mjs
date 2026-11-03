@@ -373,6 +373,8 @@ state.nbaPp.hot = { ...payload, players: payload.players.map((p) => ({ ...p, mar
 ok(/No one is on a run against a soft team/.test(card()) && /Show every run/.test(card()), 'runs, none against a soft team: it says so, and offers them');
 const onlySoft = payload.players.map((p) => ({ ...p, markets: p.markets.filter((m) => m.third === 'soft') }));
 state.nbaPp.hot = { ...payload, players: onlySoft };
+ok(onlySoft.some((p) => p.markets.length > 1) && /data-action="nba-hot-all"/.test(card()), 'a second soft run is more to see: the tap stays');
+state.nbaPp.hot = { ...payload, players: onlySoft.map((p) => ({ ...p, markets: p.markets.slice(0, 1) })) };
 ok(!/data-action="nba-hot-all"/.test(card()), 'nothing more to see: no tap');
 state.nbaPp.hot = { ...payload, players: Array.from({ length: 7 }, (_, i) => ({ ...onlySoft[0], id: String(i), name: `Player ${i}` })) };
 ok(liCount(card()) === 5 && /Show every run \(7 players\)/.test(card()), 'a heavy night: five, and a tap to all seven');

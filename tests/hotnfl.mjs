@@ -124,7 +124,7 @@ function roleOf(id, rows) {
   const t = last('car') + last('tgt'), b = pr.car + pr.tgt;
   return t - b >= 5 ? { min: round1(t), before: round1(b), unit: 'carries and targets' } : null;
 }
-const flat = (hot) => hot.players.flatMap((p) => p.markets.map((m) => ({ ...m, id: p.id, name: p.name, team: p.team })));
+const flat = (hot) => hot.players.flatMap((p) => p.markets.map((m) => ({ ...m, id: p.id, name: p.name, team: p.team, player: p, run3: m })));
 const key = (x) => `${x.id}|${x.mk || x.market}|${x.run}`;
 
 console.log('-- this week and next, on this season\'s real games --');
@@ -319,6 +319,13 @@ ok(!/Lean |Slight |No side:|PP \d/.test(html), 'no side, no number');
 const boxesOf = (m) => m.last10.map((v, i) => `<i class="${m.up[i] === 1 ? 'h' : m.up[i] === 0 ? 'm' : 'n'}">${v}</i>`).join('');
 ok((html.match(/class="tb-boxes"/g) || []).length === flat(payload).length && flat(payload).every((m) => html.includes(boxesOf(m))) && /oldest → latest · filled: above last season's [\d.]+/.test(html), 'a set of boxes for every run, each game in its place');
 ok((html.match(/<li>/g) || []).length === payload.players.length, `the tap: all ${payload.players.length}`);
+state.hotAll = { nfl: false };
+const softRun = flat(payload).find((m) => m.third === 'soft');
+const runNames = { rec: 'Receptions', rec_yds: 'Receiving yards', rush_yds: 'Rushing yards', pass_yds: 'Passing yards', pass_td: 'Passing TDs' };
+const other = Object.keys(runNames).find((k) => k !== softRun.market);
+state.hot.nfl = { ...payload, players: [{ ...softRun.player, markets: [softRun.run3, { ...softRun.run3, market: other }] }] };
+html = card('nfl');
+ok((html.match(/class="hot-mk"/g) || []).length === 1 && html.includes(`Also on a run: ${runNames[other]}`) && /data-action="hot-all"/.test(html), "before the tap, one run and the other named, in this league's words, with the tap still there");
 state.hot.nfl = { ...payload, ready: false, teamsReady: 12, teamsNeeded: 22, gamesNeeded: 5, players: [] };
 ok(/opponents are ranked once 22 teams have played 5, and 12 have so far/.test(card('nfl')), 'too early: how far off');
 state.hot.nfl = null;
