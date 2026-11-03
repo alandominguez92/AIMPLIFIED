@@ -147,6 +147,8 @@ ok(wig && wig.run === 7 && wig.lastSeason === PRIORS[wig.id].pts && wig.last5 ==
 ok(flat(hot).every((x) => x.read === null && x.seasonAvg == null), 'not one early row claims a side, or a season average it has not got');
 ok(flat(hot).every((x) => x.seen >= 5 && x.seen < 10 && gamesOf(NOW_ROWS, x.id).length === x.seen), 'each says how many games it has');
 ok(!flat(hot).some((x) => gamesOf(NOW_ROWS, x.id).length >= 10), 'no one here has 10 games');
+ok(flat(hot).every((x) => { const v = gamesOf(NOW_ROWS, x.id).map(STAT[x.market]); return JSON.stringify(x.last10) === JSON.stringify(v) && JSON.stringify(x.up) === JSON.stringify(v.map((y) => (y > x.lastSeason ? 1 : 0))); }), 'each run has its games, and which beat last season, the long way');
+ok(flat(hot).every((x) => x.up.slice(-x.run).every((u) => u === 1) && (x.run >= x.up.length || x.up[x.up.length - x.run - 1] !== 1)), 'the last filled boxes are the run itself, and the one before it is not');
 const noPrior = [...new Set(NOW_ROWS.map((r) => r.player_id))].filter((id) => !(PRIORS[id] && PRIORS[id].gp >= 20) && gamesOf(NOW_ROWS, id).length >= 5 && gamesOf(NOW_ROWS, id).slice(-5).reduce((a, r) => a + r.min, 0) / 5 >= 20);
 ok(noPrior.length >= 10 && !hot.players.some((p) => noPrior.includes(p.id)), `no real prior, no early listing: ${noPrior.length} rotation players with no 20 games last season, rookies among them`);
 
@@ -248,6 +250,8 @@ console.log(`  to ${MID}: ${teams10} teams at 10 games, ${has10.size} players at
 ok(teams10 < 20 && hot.early === true && hot.gamesNeeded === 5, `${teams10} teams at 10 games: still the early ranks`);
 const ownEarly = flat(hot).filter((x) => x.lastSeason == null);
 ok(ownEarly.length >= 2 && ownEarly.every((x) => x.seasonAvg != null && x.seen === 10 && gamesOf(midRows, x.id).length >= 10), `the tested rule found ${[...new Set(ownEarly.map((x) => x.name))].join(', ')}, on 10 games`);
+const onTen = ownEarly.filter((x) => gamesOf(midRows, x.id).length === 10);
+ok(onTen.length >= 1 && onTen.every((x) => x.up.slice(0, 5).every((u) => u === null) && x.up.slice(5).every((u) => u === 1)), 'with exactly 10 games, the first five are too early to count, not misses');
 ok(flat(hot).every((x) => x.read === null), 'but no row claims a side while teams are ranked on so few games');
 
 console.log('\n-- the page --');
@@ -269,12 +273,22 @@ console.log(`  ${text(html).slice(0, 1100)}`);
 ok(/Early in the season: five or more games in a row above last season's average, with the team he plays tonight ranked for that stat on 5\+ games/.test(html) && /At 10 games a player moves to his own average/.test(html) && /Replayed on last season's games, that leaned neither way \(the Under hit 46\.9%, sharp books 50\.5\), so no side/.test(html) && !/been tested|A lead/.test(html), 'it says what the early list is, what comes next, and what the replay found');
 ok(!/the Under beat the Over/.test(html), 'and leaves last season\'s finding, which is about the other rule, for when that rule applies');
 ok((html.match(/<li>/g) || []).length === Math.min(5, softOnes.length), 'soft teams first, five at most');
+const boxesOf = (m) => m.last10.map((v, i) => `<i class="${m.up[i] === 1 ? 'h' : m.up[i] === 0 ? 'm' : 'n'}">${v}</i>`).join('');
+const sets = html.split('<li>').slice(1).map((li) => (li.match(/class="tb-boxes"/g) || []).length);
+ok(sets.length >= 2 && sets.every((n) => n === 1) && /oldest → latest · filled: above last season's [\d.]+/.test(html), 'one set of boxes a player, against last season');
+const firstSoft = payload.players.filter((p) => p.markets[0].third === 'soft')[0];
+ok(liOf(html, firstSoft.name).includes(boxesOf(firstSoft.markets[0])), `${firstSoft.name}'s top run, each game in its place`);
 ok(/in a row · [\d.]+ last five, [\d.]+ last season/.test(html), 'each run against last season, in those words');
 ok(/No PrizePicks number yet · no lean last season, so no side/.test(html) && !/Lean |Slight |No side:|[Nn]ot tested/.test(html), 'no side anywhere, on one short line');
 ok(!/read about an hour before tip/.test(html), 'and it does not promise a read no one is paying for');
 state.nbaHotAll = true;
 html = card();
 ok(/Bigger role: 20 minutes a game, 8 last season/.test(liOf(html, 'Joan Beringer')), 'a bigger role, in plain words');
+ok((html.match(/class="tb-boxes"/g) || []).length === flat(payload).length, 'the tap: a set of boxes for every run');
+const oneTooEarly = { ...payload, players: [{ ...payload.players[0], markets: [{ ...payload.players[0].markets[0], up: payload.players[0].markets[0].up.map((u, i) => (i ? u : null)) }] }] };
+state.nbaPp.hot = oneTooEarly;
+ok(/<span class="tb-boxes"[^>]*><i class="n">/.test(card()), 'a game too early to count looks like neither a hit nor a miss');
+state.nbaPp.hot = payload;
 ok(!/Bigger role/.test(liOf(html, 'Aaron Wiggins')), 'and steady minutes do not say it');
 const pts = flat(payload).find((x) => x.market === 'reb');
 state.nbaPp.hot = { ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map((m) => (m.market === 'reb' ? { ...m, line: 4.5, cleared: 3 } : m)) })) };

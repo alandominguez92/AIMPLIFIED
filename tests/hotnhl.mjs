@@ -65,7 +65,7 @@ const insBox = (rows) => { const ins = S.sq.prepare('INSERT INTO nhl_box (game_i
   for (const r of rows) ins.run(r.game_id, r.date, r.player_id, r.player, r.team, r.opp, r.min, r.goals, r.ast, r.pts, r.sog); };
 // Up to date, so the ingest has nothing to do: the list is all that is under test.
 const begin = async () => { await loadWorker(); await tick(); insBox(S.rows);
-  S.sq.prepare("DELETE FROM feed_cache WHERE key = 'hot_list:nhl'").run(); S.sq.prepare("DELETE FROM nhl_box_games").run();
+  S.sq.prepare("DELETE FROM feed_cache WHERE key = 'hot_list_v2:nhl'").run(); S.sq.prepare("DELETE FROM nhl_box_games").run();
   S.sq.prepare("INSERT OR REPLACE INTO feed_cache (key, data, updated_at) SELECT 'nhl_box_scan', ?, ? ").run(JSON.stringify({ from: '2026-11-01', checked: NOW }), NOW);
   await tick(); };
 
@@ -130,6 +130,10 @@ ok(flat(hot).every((x) => { const w = want.find((y) => y.id === x.id && y.mk ===
 ok(flat(hot).every((x) => !('read' in x) && !('line' in x)), 'nothing claims a side, or a number it has not got');
 ok(flat(hot).every((x) => (x.inGames >= 10 ? x.seasonAvg != null && x.lastSeason === undefined : x.lastSeason != null && x.seasonAvg === undefined)), '10+ games against his season, under 10 against last season');
 ok(flat(hot).every((x) => x.seen === x.inGames), 'each says how many games it has');
+const boxesLong = (x) => { const v = rowsOf(x.id).map((r) => r[x.market]), from = Math.max(0, v.length - 10), pr = priorOf.get(x.id);
+  return { last10: v.slice(from), up: v.slice(from).map((y, i) => (v.length < 10 ? (y > pr[PF[x.market]] / pr.gamesPlayed ? 1 : 0) : from + i >= 5 ? (y > mean(v.slice(0, from + i)) ? 1 : 0) : null)) }; };
+ok(flat(hot).every((x) => JSON.stringify({ last10: x.last10, up: x.up }) === JSON.stringify(boxesLong(x))), 'each run has its last ten games, and which beat what it is measured by, the long way');
+ok(flat(hot).every((x) => x.up.slice(-x.run).every((u) => u === 1) && (x.run >= x.up.length || x.up[x.up.length - x.run - 1] !== 1)), 'the last filled boxes are the run itself, and the one before it is not');
 ok(hot.players.every((p) => p.name.includes(' ') && !/^[A-Z]\. /.test(p.name)), 'full names, not the box score\'s initials');
 const players = hot.players;
 ok(players.every((p) => p.oppNick && /^[A-Z]/.test(p.oppNick) && p.commence), 'each with who he plays and when');
@@ -183,7 +187,7 @@ hot = (await get('/api/hot-players?sport=nhl')).hot;
 ok(hot && hot.players.every((p) => flat({ players: [p] }).every((x) => x.lastSeason === undefined)), 'no season tables: the 10-game rule still lists, the early one cannot');
 S = scene();
 await begin();
-S.sq.prepare("UPDATE feed_cache SET data = '{not json' WHERE key = 'hot_list:nhl'").run();
+S.sq.prepare("UPDATE feed_cache SET data = '{not json' WHERE key = 'hot_list_v2:nhl'").run();
 ok((await get('/api/hot-players?sport=nhl')).hot === null, 'the list unreadable: no section');
 ok((await get('/api/hot-players?sport=mlb')).hot === null, 'a league with no list: no section');
 
@@ -259,6 +263,8 @@ ok(/Hot players/.test(html) && /Not tested in the NHL, so it shows no side/.test
 ok((html.match(/<li>/g) || []).length === Math.min(5, softAny.length), 'soft teams first, five at most');
 state.hotAll = { nhl: true };
 html = card('nhl');
+const boxesOf = (m) => m.last10.map((v, i) => `<i class="${m.up[i] === 1 ? 'h' : m.up[i] === 0 ? 'm' : 'n'}">${v}</i>`).join('');
+ok((html.match(/class="tb-boxes"/g) || []).length === flat(payload).length && flat(payload).every((m) => html.includes(boxesOf(m))) && /oldest → latest · filled: above (last season's [\d.]+|his average to that point)/.test(html), 'the tap: a set of boxes for every run, each game in its place');
 console.log(`  ${text(html).slice(0, 700)}`);
 ok(/data-sport="nhl"/.test(html), 'each face from the NHL\'s photos');
 ok(/ in a row · [\d.]+ last five, [\d.]+ (season|last season)/.test(html), 'the run in plain words');

@@ -7106,6 +7106,15 @@
       + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${allows} <span class="tc-dfs">${m.third} team</span></span>`
       + (m.line == null && !m.read ? `<span class="hot-line">${num} · ${nbaHotNoSide(m).toLowerCase()}</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
   }
+  // A run's last games (2026-11-03, the owner's call): the boxes a pick has, filled where the
+  // game beat what the run is measured by. Faint: too early in his season to count.
+  function hotBoxesHtml(m) {
+    if (!Array.isArray(m.last10) || !m.last10.length || !Array.isArray(m.up)) return '';
+    const by = m.lastSeason != null ? `last season's ${esc(String(m.lastSeason))}` : 'his average to that point';
+    const boxes = m.last10.map((v, i) => `<i class="${m.up[i] === 1 ? 'h' : m.up[i] === 0 ? 'm' : 'n'}">${esc(String(v))}</i>`).join('');
+    return `<span class="pk-trend hot-boxes"><span class="tb-boxes" role="img" aria-label="${esc(`Last ${m.last10.length} games, oldest first: ${m.last10.join(', ')}`)}">${boxes}</span>`
+      + `<span class="tb-cap">oldest → latest · filled: above ${by}</span></span>`;
+  }
   // Each league's list has one shape. What differs: the runs' lines, and whether it is the
   // NBA's, whose rule has been tested and whose report and numbers are on it.
   function hotBodyHtml(h, head, all, tapAttrs, sport, oppLine, rowHtml) {
@@ -7116,7 +7125,8 @@
       + `<span class="tc-l1"><b>${esc(p.name)}</b></span>`
       + `<span class="tc-l2"><span><b class="tc-team">${esc(p.team)}</b> · ${p.isHome ? 'v' : '@'} ${oppLine(p)}</span></span>`
       + (p.role ? `<span class="hot-line hot-role">Bigger role: ${esc(String(Math.round(p.role.min)))} ${esc(p.role.unit || 'minutes')} a game, ${esc(String(Math.round(p.role.before)))} last season</span>` : '')
-      + (all ? p.markets : p.markets.filter(isSoft)).map((m) => rowHtml(p, m)).join('')
+      // One set of boxes a player, his top run, or a long card on a phone; the tap shows them all.
+      + (all ? p.markets : p.markets.filter(isSoft)).map((m, i) => rowHtml(p, m) + (all || !i ? hotBoxesHtml(m) : '')).join('')
       + `</div></li>`).join('')}</ol>` : `<div class="tc-wait-note">No one is on a run against a soft team in the next games.</div>`;
     // More to see: a player left off, or a shown player's runs against other teams.
     const toggle = all || h.players.length > shown.length || shown.some((p) => !p.markets.every(isSoft))

@@ -13156,7 +13156,7 @@ async function nbaCauseRoute(env, url) {
 // own average takes 10 games, so with 5 to 9 it is his games in a row above last season's
 // average, and teams are ranked on 5+ games until 20 have played 10. That version has not been
 // tested, so it says no side. Above last season can only mean more minutes: `role` says so.
-const NBA_HOTLIST_KEY = 'nba_hot_list_v2'; // feed_cache: the next two days' runs
+const NBA_HOTLIST_KEY = 'nba_hot_list_v3'; // feed_cache: the next two days' runs
 const NBA_HOTLIST_EARLY = 5;               // games for a player to be listed and a team ranked
 const NBA_HOTLIST_PRIOR_GP = 20;           // last season's games, for its average to mean anything
 const NBA_HOTLIST_ROLE_MIN = 5;            // minutes a game above last season: a bigger role
@@ -13203,7 +13203,7 @@ function nbaHotEarlyRuns(st, priors, rankOf, team, opp) {
       let run = 0;
       for (let j = p.games.length - 1; j >= 0 && nbaStat(p.games[j], market) > lastSeason; j--) run++;
       if (run >= NBA_HOT_RUN) markets.push({ market, run, rank: Math.round(rank * 1000) / 1000, of: rankOf(market, false).size, lastSeason,
-        last5: round1(avg(p.games.slice(-5).map((b) => nbaStat(b, market)))), last10: p.games.slice(-10).map((b) => nbaStat(b, market)) });
+        last5: round1(avg(p.games.slice(-5).map((b) => nbaStat(b, market)))), ...hotBoxes(p.games.map((b) => nbaStat(b, market)), lastSeason) });
     }
     if (markets.length) out.push({ id: p.id, name: p.name, markets, role: pr.min != null && min5 - pr.min >= NBA_HOTLIST_ROLE_MIN ? { min: round1(min5), before: pr.min } : null });
   }
@@ -13224,7 +13224,7 @@ function nbaHotList(box, allowed, games, now, priors) {
     for (const [team, opp, oppName, isHome] of [[g.homeAb, g.awayAb, g.away, true], [g.awayAb, g.homeAb, g.home, false]]) {
       for (const c of nbaHotCandidates(box, rankOf, team, opp)) {
         const markets = Object.entries(c.markets).filter(([, m]) => m.run >= NBA_HOT_RUN).map(([market, m]) => ({ market, run: m.run, rank: m.rank, of: rankOf(market, false).size,
-          seasonAvg: m.seasonAvg, last5: m.last5, last10: c.last10.map((b) => nbaStat(b, market)) }));
+          seasonAvg: m.seasonAvg, last5: m.last5, ...hotBoxes(box.players.get(c.id).games.map((b) => nbaStat(b, market))) }));
         if (markets.length) players.push({ id: c.id, name: c.name, team, oppName, isHome, date, home: g.home, away: g.away, commence: g.commence, outs: cause.get(c.id) || null, role: null, markets });
       }
       for (const c of nbaHotEarlyRuns(box, priors, rankOf, team, opp)) players.push({ id: c.id, name: c.name, team, oppName, isHome, date, home: g.home, away: g.away, commence: g.commence, outs: null, role: c.role, markets: c.markets });
@@ -13269,7 +13269,7 @@ async function nbaHotBoard(db, legs, injDays, now) {
       const line = r ? r.pp_line : l ? l.point : null, sharp = r ? r.sharp_under : l ? l.sharp_under : null;
       const cleared = line == null ? null : m.last10.filter((v) => v != null && v > line).length;
       return { market: m.market, run: m.run, pos: Math.round((1 - m.rank) * (m.of - 1)) + 1, of: m.of, third: nbaHotThird(m.rank), seasonAvg: m.seasonAvg, lastSeason: m.lastSeason, last5: m.last5,
-        line, sharp: sharp == null ? null : sharp, cleared, seen: m.last10.length, read: early || m.lastSeason != null ? null : nbaHotRead(m.rank, cleared, !!p.outs) };
+        line, sharp: sharp == null ? null : sharp, cleared, seen: m.last10.length, last10: m.last10, up: m.up, read: early || m.lastSeason != null ? null : nbaHotRead(m.rank, cleared, !!p.outs) };
     }).sort((a, b) => soft(b) - soft(a) || b.run - a.run);
     base.players.push({ id: p.id, name: p.name, team: p.team, oppName: p.oppName, isHome: p.isHome, commence: p.commence, outs: p.outs, role: p.role, inj: inj && inj.status ? inj : undefined, markets });
   }
@@ -13285,7 +13285,7 @@ async function nbaHotBoard(db, legs, injDays, now) {
 // league has played 10. None of it has been tested outside the NBA, so it claims no side. No
 // credits: each league's own free box scores, one feed_cache row a league from the cron, and
 // the page reads only that row.
-const HOT_LIST_KEY = 'hot_list:';
+const HOT_LIST_KEY = 'hot_list_v2:';
 const HOT_LIST_EVERY_MS = 6 * 3600e3;
 const HOT_LIST_FILLING_MS = 3600e3;         // once games have come in that the list hasn't seen
 const HOT_LIST_STRAGGLERS = 8;              // this many waiting isn't a backfill, or one stuck game would hold the list
@@ -13311,6 +13311,16 @@ function hotRunAbove(vals, avg) {
   let run = 0;
   for (let j = vals.length - 1; j >= 0 && vals[j] > avg; j--) run++;
   return run;
+}
+// A run's last ten games against what it is measured by (2026-11-03, the owner's call): `up` 1 or
+// 0 for each, null for a game too early to count. `prior` last season's average; without one, his
+// own going into the game, from the game hotRunOwn starts counting.
+function hotBoxes(vals, prior) {
+  const sums = [0];
+  vals.forEach((v, i) => sums.push(sums[i] + v));
+  const from = Math.max(0, vals.length - 10), last10 = vals.slice(from);
+  const beat = (v, j) => (prior != null ? (v > prior ? 1 : 0) : j >= NBA_HOT_AVG_FROM ? (v > sums[j] / j ? 1 : 0) : null);
+  return { last10, up: last10.map((v, i) => beat(v, from + i)) };
 }
 const hotSoft = (p) => p.markets[0].third === 'soft', hotBest = (p) => Math.max(...p.markets.map((m) => m.run));
 const hotSort = (list) => list.sort((a, b) => hotSoft(b) - hotSoft(a) || !!a.role - !!b.role || hotBest(b) - hotBest(a) || Date.parse(a.commence) - Date.parse(b.commence));
@@ -13376,7 +13386,7 @@ function hotListBuild({ rows, allowedRows = rows, stat, markets, slate, now, pri
           if (run < NBA_HOT_RUN) continue;
           const of = ranks(market, day).size;
           out.push({ market, run, pos: Math.round((1 - rank) * (of - 1)) + 1, of, third: nbaHotThird(rank), last5: round2(mean(vals.slice(-5))),
-            seen: vals.length, ...(prior == null ? { seasonAvg: round2(mean(vals)) } : { lastSeason: round2(prior) }) });
+            seen: vals.length, ...hotBoxes(vals, prior), ...(prior == null ? { seasonAvg: round2(mean(vals)) } : { lastSeason: round2(prior) }) });
         }
         if (!out.length) continue;
         seen.add(p.id);
