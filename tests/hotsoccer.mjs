@@ -432,6 +432,12 @@ const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 console.log(`  ${text(html).slice(0, 900)}`);
 ok(/Hot players/.test(html) && /Five or more starts in a row/.test(html) && /with under 10 starts/.test(html) && /Not tested in soccer, so it shows no side/.test(html) && /off Picks and out of the entries/.test(html), 'in starts, and says it is untested and off Picks');
 ok(/ranked for that stat on 5\+ games/.test(html), 'the team ranked on its games, not its starts');
+const onMatches = (n) => ({ ...payload, players: [{ ...payload.players[0], markets: [{ ...payload.players[0].markets[0], ranksOn: n }] }] });
+state.hot.soccer = onMatches(3);
+ok(/on 5\+ games, or 3 where a row says so/.test(card('soccer')), 'the heading owns up to the rows ranked on 3');
+state.hot.soccer = onMatches(undefined);
+ok(!/or 3 where a row says so/.test(card('soccer')), 'and says nothing of it when no row is');
+state.hot.soccer = payload;
 // The replay of Nov 3: the site's own list on 2024-25 and 2025-26, ESPN only.
 const goesLines = html.match(/Run goes on: about <b>\d+%<\/b>/g) || [];
 ok(goesLines.length === flat(payload).length, `a run's chance of going on, on every one: ${goesLines.length}`);

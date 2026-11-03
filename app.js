@@ -7180,7 +7180,7 @@
     const h = state.hot[sport], lg = HOT_LEAGUE[sport];
     if (!h) return '';
     const head = `<div class="tc-head"><span class="tc-title">Hot players</span></div>`
-      + `<div class="tc-sub">Five or more ${lg.games} in a row above his own average, or above last season's average with under 10 ${lg.games}, with the team he plays ranked for that stat${h.early ? ` on ${h.gamesNeeded}+ games` : ''}. Not tested in ${lg.name}, so it shows no side. ${lg.rated} A lead, not a pick: off Picks and out of the entries.</div>`;
+      + `<div class="tc-sub">Five or more ${lg.games} in a row above his own average, or above last season's average with under 10 ${lg.games}, with the team he plays ranked for that stat${h.early ? ` on ${h.gamesNeeded}+ games${(h.players || []).some((p) => p.markets.some((m) => m.ranksOn)) ? ', or 3 where a row says so' : ''}` : ''}. Not tested in ${lg.name}, so it shows no side. ${lg.rated} A lead, not a pick: off Picks and out of the entries.</div>`;
     if (!h.ready) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games read yet: opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}, and ${h.teamsReady} have so far.</div></div>`;
     return hotBodyHtml(h, head, !!state.hotAll[sport], `data-action="hot-all" data-sport="${sport}"`, lg.face, (p) => `${esc(p.oppNick)} · ${esc(soccerKick(p.commence))}`, (p, m) => hotRowHtml(p, m, lg), (m) => lg.mk[m.market]);
   }
