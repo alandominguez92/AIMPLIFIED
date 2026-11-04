@@ -5069,15 +5069,9 @@
     setInterval(refreshLiveData, 60000);
     // Season leaderboards change slowly — load once, refresh every 10 min.
     // Board carries the model + real prop lines (credits) — poll every 5 min.
-    refreshBoard();
-    setInterval(refreshBoard, 300000);
-    // Under Plays is the landing board, so its feed must load on boot — without
-    // this the hero + default board sat on "Loading…" until the first interval
-    // tick (up to 5 min). The edge cache still shares one upstream burst per TTL
-    // across viewers, so this doesn't multiply the Odds-API spend. Ongoing polls
-    // stay gated to when the tab is actually open.
-    refreshBatters();
-    setInterval(() => { if (isBatter()) refreshBatters(); }, BATTER_POLL_MS);
+    // MLB's feeds load on the MLB tab and only there: loadMlb, from setSport.
+    setInterval(() => { if (state.sport === 'mlb') refreshBoard(); }, 300000);
+    setInterval(() => { if (state.sport === 'mlb' && isBatter()) refreshBatters(); }, BATTER_POLL_MS);
     // Tick the outage banner's age and countdown. Only touches the two text nodes
     // — re-rendering the banner every second would fight the Retry button's focus
     // and disabled state, and it only runs while the banner is actually up.
@@ -5093,8 +5087,7 @@
     // Track record grades finished games on read — refresh every 10 min.
     refreshTrackRecord();
     setInterval(refreshTrackRecord, 600000);
-    refreshTopLegs();
-    setInterval(refreshTopLegs, 600000);
+    setInterval(() => { if (state.sport === 'mlb') refreshTopLegs(); }, 600000);
     // Picks of the day loads with the starting tab (START_SPORT, at INIT below),
     // which is where the first read happens. /api/picks is cached two minutes
     // at the edge.
@@ -5102,8 +5095,7 @@
     refreshFeedHealth();
     setInterval(refreshFeedHealth, 3600e3);
     // Injury wire (recent IL moves) — refresh every 10 min.
-    refreshInjuries();
-    setInterval(refreshInjuries, 600000);
+    setInterval(() => { if (state.sport === 'mlb') refreshInjuries(); }, 600000);
     // Live Now — in-progress picks scored live; poll every 45s.
     refreshLiveNow();
     setInterval(refreshLiveNow, 45000);
@@ -5175,9 +5167,24 @@
   const MLB_ONLY = ['.hero', '#slate', '#record',
     '#yesterdayCard', '#rail'];
 
+  // MLB's feeds load here and nowhere else (2026-11-04). /api/board and
+  // /api/batters buy odds on a read, about 45 credits for an uncached
+  // fifteen-game slate, and every page open paid for them whichever tab it
+  // landed on. Five minutes is how often the tab's own timers read them, so
+  // coming back sooner reuses what's here.
+  function loadMlb() {
+    if (!LIVE_MODE || Date.now() - (state.mlbAt || 0) < BATTER_POLL_MS) return;
+    state.mlbAt = Date.now();
+    refreshBoard();
+    refreshBatters();
+    refreshTopLegs();
+    refreshInjuries();
+  }
+
   function setSport(s) {
     if (state.sport === s) return;
     state.sport = s;
+    if (s === 'mlb') loadMlb();
     document.querySelectorAll('.stab[data-sport]').forEach((t) =>
       t.classList.toggle('active', t.dataset.sport === s));
     const nfl = s === 'nfl';
@@ -6202,6 +6209,16 @@
       + ` (average ${mv.avg > 0 ? '+' : mv.avg < 0 ? '−' : ''}${Math.abs(mv.avg)} points)${landed ? `; ${landed}` : ''}.</div>`;
   }
 
+  // Picks' MLB legs come from the logs MLB's feeds write, so with the tab not yet
+  // opened they show only from 15 minutes before each game (captureCloses). In
+  // season the list says so, rather than quietly going without MLB. March to
+  // October: on a day with no games the line is still true.
+  const mlbInSeason = () => { const m = new Date().getMonth(); return m >= 2 && m <= 9; };
+  function mlbUnreadHtml(d) {
+    if (state.liveBoard !== null || state.liveBatters !== null || !mlbInSeason()) return '';
+    if ([...(d.legs || []), ...(d.ppPool || [])].some((x) => x.sport === 'mlb')) return '';
+    return `<div class="pk-mlb-note">MLB legs are read when the MLB tab opens, or 15 minutes before each game. <button type="button" data-action="set-sport" data-sport="mlb">Open MLB</button></div>`;
+  }
   function renderPicks() {
     const grid = document.getElementById('picksGrid');
     if (!grid) return;
@@ -6227,7 +6244,7 @@
         + (rec.voided ? ` · ${rec.voided} void` : '')
       : 'This list keeps its own record from today: each leg on it when its game starts is graded.';
     if (!legs.length) {
-      grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
+      grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
       return;
     }
@@ -6360,7 +6377,7 @@
       + `<div class="tc-sub">Every kind of leg, one a game, best chance first. Under a moneyline: its chance against the market's price.</div>`
       + `<ol class="tc-legs">${legs.map(itemHtml).join('')}</ol>`
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
-    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + bankHtml() + ppCard + mlCard + evBetsHtml(d) + listCard + after;
+    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + bankHtml() + ppCard + mlCard + evBetsHtml(d) + listCard + after;
     picksAnimate(grid);
   }
   // The bars and the ring fill in once a page load (2026-10-28), after the

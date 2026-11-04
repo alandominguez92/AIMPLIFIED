@@ -174,6 +174,10 @@ const cardAt = app.indexOf('  function nbaCardInjTag(');
 const CT = new Function('esc', 'injuryTag', app.slice(cardAt, app.indexOf('\n  }\n', cardAt) + 4) + '\nreturn nbaCardInjTag;')((s) => String(s), IT);
 const flagged = CT(tTop);
 console.log(`  ${flagged}`);
+// A moneyline's tag can run long (Nov 4: "Timberwolves out: Shannon Jr., Edwards, DiVincenzo",
+// 295px in a 202px row), and held to one line it widened the whole page on a phone.
+const waitCss = (fs.readFileSync(path.join(BOARD, 'style.css'), 'utf8').match(/\.tc-wait \{[^}]*\}/) || [''])[0];
+ok(waitCss && !/nowrap/.test(waitCss) && /max-width:100%/.test(waitCss), 'a tag longer than its row wraps instead of widening the page');
 ok(/class="tc-wait"/.test(flagged) && />GTD: back soreness</.test(flagged) && /ESPN's injury report, read /.test(flagged), 'the NBA tab flags Toppin, with when it was read');
 ok(/>Out: rest</.test(CT(tSh)), 'and an out player reads Out');
 ok(CT(tNem) === '' && CT({ player: 'x' }) === '', 'not listed or not read: no tag, on a tab of a few rows that would all carry one');
