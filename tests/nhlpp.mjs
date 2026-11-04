@@ -207,7 +207,7 @@ let card;
 try {
   card = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
     'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NBA_MK', 'NHL_MK', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'injuryTag', 'nbaCardInjTag', 'ppMoreListHtml',
-    'ppMoreLineHtml', 'nhlPpCardHtml'].map(liftApp).join('\n')
+    'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nhlPpCardHtml'].map(liftApp).join('\n')
     + '\nreturn nhlPpCardHtml;')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 // Since 2026-10-27 the card lists the More side at 55%+ (tests/morelegs.mjs).

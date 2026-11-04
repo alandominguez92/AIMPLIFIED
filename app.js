@@ -5960,6 +5960,10 @@
       odds: typeof x.odds === 'number' ? x.odds : null, tier: null, edge: null, spec: x.spec };
   }
   const pct0 = (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—');
+  // Blocks More since its rule was set (2026-11-04): the whole record counts the
+  // run the rule came from.
+  const recSinceText = (r) => (r && r.since && r.since.n
+    ? ` · since the rule (${shortDay(r.since.from)}): ${r.since.hit} of ${r.since.n} (${pct0(r.since.hitRate)})` : '');
   // A stake as a share of the bankroll, and in dollars once one is set
   // (2026-10-28).
   const moneyTxt = (v) => (v >= 10 ? `$${Math.round(v)}` : `$${v.toFixed(2)}`);
@@ -6081,7 +6085,7 @@
       // A player leg's projection against its line, as the MLB board draws it;
       // a team's chance against its price.
       + `${pickBarHtml(x, s)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}</div>`
-      + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
+      + `<div class="hl-rec">${r.n ? `Legs like this: <b>${r.hit} of ${r.n}</b> landed (${pct0(r.hitRate)})${recSinceText(r)}${r.proven ? '' : ' · <span class="pk-new">new</span>'}` : 'Legs like this: none graded yet'}</div>`
       // No sportsbook line or button on a moneyline (the owner, 2026-11-01):
       // DraftKings and FanDuel won't take moneyline-only picks.
       + (!team && typeof x.odds === 'number' && typeof x.ev === 'number' ? `<div class="hl-edge">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '')
@@ -6256,7 +6260,7 @@
       const mv = pickMoved(x);
       if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
       const r = x.record || {};
-      const recTxt = r.n ? `Legs like this: ${r.hit} of ${r.n} (${pct0(r.hitRate)})${r.proven ? '' : ' · new'}` : 'Legs like this: none graded yet';
+      const recTxt = r.n ? `Legs like this: ${r.hit} of ${r.n} (${pct0(r.hitRate)})${recSinceText(r)}${r.proven ? '' : ' · new'}` : 'Legs like this: none graded yet';
       // The sport rides on the game line, not beside the title: on a phone the
       // chip pushed "Inter Miami CF ML" onto two lines.
       return `<li>${star}<div class="tc-leg has-hs">${pickFace(x)}`
@@ -7058,7 +7062,8 @@
   function ppMoreLineHtml(m, what) {
     if (!m || !m.leaned || !m.leaned.n) return '';
     return `<div class="tc-sub tc-rec-line">${what}: where the model leaned More <b>${m.leaned.hit} of ${m.leaned.n}</b>`
-      + `${m.atBar && m.atBar.n ? ` · at ${esc(String(m.bar))}%+ <b>${m.atBar.hit} of ${m.atBar.n}</b>` : ''}</div>`;
+      + `${m.atBar && m.atBar.n ? ` · at ${esc(String(m.bar))}%+ <b>${m.atBar.hit} of ${m.atBar.n}</b>` : ''}`
+      + `${m.since && m.since.n ? ` · since the rule (${esc(shortDay(m.since.from))}) <b>${m.since.hit} of ${m.since.n}</b>` : ''}</div>`;
   }
   // What the model's legs in a range have really landed, under its percentage
   // (2026-11-04). A higher number here doesn't mean a likelier hit: 70%+ has

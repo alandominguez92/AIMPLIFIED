@@ -8895,6 +8895,10 @@ const KELLY_PRIOR_N = 20;
 // The first PrizePicks entry priced this way asked 5.4% on two model unders.
 const PROP_STAKE_CAP = 1;
 const ENTRY_STAKE_CAP = 2;
+// The first day after the log Blocks More's rule was set from (through Oct 26,
+// 16 of 23 at the bar). Its whole record counts that run, so the page shows
+// what it has done since too (2026-11-04). Reviewed around Nov 15.
+const BLK_MORE_SINCE = '2026-10-27';
 const PROP_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nba_reb_gap', 'nhl_more', 'nfl_ptd']);
 const capStake = (s, cap) => (cap != null && s > cap ? { stake: cap, capped: true } : { stake: s });
 const decOf = (am) => (am > 0 ? 1 + am / 100 : 1 + 100 / -am);
@@ -10026,7 +10030,7 @@ async function pickKindBuild(db) {
   // leg beside it.
   // The three NBA kinds from one read of the graded rows (2026-11-01): three
   // reads of nbapp, which no index narrows, read the table three times over.
-  const nbaGraded = (await db.prepare("SELECT market, model_under, min_proj, point, book_line, result, close_point, close_result, book_unders FROM nbapp WHERE result IN ('under','over') OR close_result IN ('under','over')").all()).results || [];
+  const nbaGraded = (await db.prepare("SELECT date, market, model_under, min_proj, point, book_line, result, close_point, close_result, book_unders FROM nbapp WHERE result IN ('under','over') OR close_result IN ('under','over')").all()).results || [];
   const decided = (x) => x === 'under' || x === 'over';
   for (const r of nbaGraded) {
     if (!NBA_PICK_MARKETS.includes(r.market) || !decided(r.result)) continue;
@@ -10041,9 +10045,13 @@ async function pickKindBuild(db) {
   }
   // The Mores (2026-10-28): graded at the first line, the More side, as the
   // cards' blkMore and more records count them.
+  const blkSince = { from: BLK_MORE_SINCE, n: 0, hit: 0 };
   for (const r of nbaGraded) {
     if (r.market !== 'blk' || !decided(r.result)) continue;
-    if (r.min_proj >= NBA_ROTATION_MIN && r.model_under != null && 100 - r.model_under >= PICK_KINDS.nba_blk_more.min) add('nba_blk_more', r.result === 'over');
+    if (r.min_proj >= NBA_ROTATION_MIN && r.model_under != null && 100 - r.model_under >= PICK_KINDS.nba_blk_more.min) {
+      add('nba_blk_more', r.result === 'over');
+      if (r.date >= BLK_MORE_SINCE) { blkSince.n++; if (r.result === 'over') blkSince.hit++; }
+    }
   }
   for (const r of ((await db.prepare("SELECT model_under, result FROM nhlpp WHERE result IN ('under','over')").all()).results || [])) {
     if (r.model_under != null && 100 - r.model_under >= PICK_KINDS.nhl_more.min) add('nhl_more', r.result === 'over');
@@ -10052,6 +10060,7 @@ async function pickKindBuild(db) {
     v.hitRate = v.n ? round1(v.hit / v.n * 100) : null;
     v.proven = v.n >= PICKS_PROVEN_N;
   }
+  rec.nba_blk_more.since = { ...blkSince, hitRate: blkSince.n ? round1(blkSince.hit / blkSince.n * 100) : null };
   return rec;
 }
 
@@ -12308,13 +12317,15 @@ const ppSide = (actual, line) => (actual < line ? 'under' : actual > line ? 'ove
 // card's blocks and the NHL card list them at. Graded at the first line, as
 // every leg is.
 const PP_MORE_MIN = 55;
-function ppMoreRecord(lean) {
+function ppMoreRecord(lean, since) {
   const cell = (l) => {
     const d = l.filter((g) => g.result === 'over' || g.result === 'under');
     const hit = d.filter((g) => g.result === 'over').length;
     return { n: d.length, hit, hitRate: d.length ? round1(hit / d.length * 100) : null };
   };
-  return { bar: PP_MORE_MIN, leaned: cell(lean), atBar: cell(lean.filter((g) => 100 - g.model_under >= PP_MORE_MIN)) };
+  const atBar = lean.filter((g) => 100 - g.model_under >= PP_MORE_MIN);
+  return { bar: PP_MORE_MIN, leaned: cell(lean), atBar: cell(atBar),
+    ...(since ? { since: { from: since, ...cell(atBar.filter((g) => g.date >= since)) } } : {}) };
 }
 // The legs PrizePicks still has up. One whose game had the pre-tip read and
 // that was not on it was taken down after the first read -- most often a
@@ -14327,7 +14338,7 @@ async function nbaPpBoard(env) {
         // Oct 26, 16 of 23 at 55%+, against 42-45% for threes and assists
         // Mores. Listed on the card, and on Picks of the day from Oct 28
         // (PICK_KINDS.nba_blk_more).
-        blkMore: ppMoreRecord(lean.filter((g) => g.market === 'blk')),
+        blkMore: ppMoreRecord(lean.filter((g) => g.market === 'blk'), BLK_MORE_SINCE),
         ...ppCloseRecord(graded),
         sharp: ppSharpRecord(graded),
         byGame,
