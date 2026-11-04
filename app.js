@@ -5099,6 +5099,8 @@
     // which is where the first read happens. /api/picks is cached two minutes
     // at the edge.
     setInterval(() => { if (state.sport === 'picks' || TOP_HOST[state.sport]) refreshPicks(); }, 600000);
+    refreshFeedHealth();
+    setInterval(refreshFeedHealth, 3600e3);
     // Injury wire (recent IL moves) — refresh every 10 min.
     refreshInjuries();
     setInterval(refreshInjuries, 600000);
@@ -5187,6 +5189,7 @@
     }
     applySportChrome(s);
     renderLiveNow();
+    renderFeedWarn();
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
     if (el.soccerBoard) el.soccerBoard.hidden = s !== 'soccer';
     if (s === 'soccer' && !state.soccer) refreshSoccer();   // lazy first load
@@ -6749,6 +6752,35 @@
   // or that it lists nothing once his game's report has been read; on a
   // moneyline, who each side is missing. Before that, the old reminder. A
   // player it lists out is not sent.
+  // A feed that has stopped (2026-11-04): the worker's feed_health, read from the tables, for this
+  // tab's sport. Picks draws on all of them.
+  const FEED_LEAGUE = { epl: 'the Premier League', laliga: 'La Liga', seriea: 'Serie A', bundesliga: 'the Bundesliga', mls: 'MLS', ucl: 'the Champions League', uel: 'the Europa League' };
+  function feedWarnText(h, sport) {
+    const names = { nba: 'NBA', nhl: 'NHL', nfl: 'NFL', soccer: 'Soccer' };
+    const sports = (h && h.sports) || {}, out = [];
+    for (const s of sport === 'picks' ? Object.keys(names) : [sport]) {
+      const x = sports[s];
+      if (!x || !x.warn || !names[s]) continue;
+      const played = s === 'soccer' ? 'matches' : 'games';
+      if (x.warn === 'quiet') {
+        out.push(`No finished ${names[s]} ${played} found${x.finished ? ` since ${shortDay(x.finished)}` : ''}. Its records may be out of date.`);
+        continue;
+      }
+      const where = FEED_LEAGUE[x.league] ? ` in ${FEED_LEAGUE[x.league]}` : '';
+      out.push(`${names[s]} stats are behind${where}: ${x.saved ? `saved through ${shortDay(x.saved)}` : 'none saved lately'}, ${played} finished through ${shortDay(x.finished)}. Its records and Hot players may be out of date.`);
+    }
+    return out;
+  }
+  function renderFeedWarn() {
+    const n = document.getElementById('feedWarn');
+    if (!n) return;
+    const lines = feedWarnText(state.feedHealth, state.sport);
+    n.hidden = !lines.length;
+    n.innerHTML = lines.map((t) => `<div>${esc(t)}</div>`).join('');
+  }
+  async function refreshFeedHealth() {
+    try { state.feedHealth = await fetchJson('/api/feed-health'); renderFeedWarn(); } catch (e) { /* says nothing: the next read */ }
+  }
   // The starter moves an NHL line more than anything. ESPN's names by the game's
   // order, and whether they are only expected (2026-11-04).
   function goalieNote(x) {

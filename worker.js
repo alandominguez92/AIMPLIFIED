@@ -149,7 +149,7 @@ const API_ROUTES = new Set([
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
-  '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe',
+  '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health',
 ]);
 
 // Routes that spend Odds API credits or change the records, run by hand and never by the page
@@ -281,6 +281,8 @@ export default {
       ctx.waitUntil(gradeTonight(env).catch(() => null));
       // And who starts in goal, read on the same requests.
       ctx.waitUntil(nhlGoalieTick(env).catch(() => null));
+      // And whether each sport's stats are still arriving: no requests at all.
+      ctx.waitUntil(feedHealthTick(env).catch(() => null));
       return;
     }
     ctx.waitUntil(captureCloses(env, ctx));
@@ -566,6 +568,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nba-board') return cors(json(await nbaBoardData(env), 120));
   if (p === '/api/nhl-pp') return cors(json(await nhlPpBoard(env, url), 120));
   if (p === '/api/hot-players') return cors(json(await hotPlayersRoute(env, url), 120));
+  if (p === '/api/feed-health') return cors(json(await feedHealthRead(env), 300));
   if (p === '/api/pp-lines') return cors(json(await ppLinesDay(env, url), 120));
   if (p === '/api/nba-cause') return cors(json(await nbaCauseRoute(env, url), 120));
   if (p === '/api/nba-pp') {
@@ -4103,6 +4106,65 @@ async function gradeTonight(env) {
   await gradeDayPicks(env.DB, now).catch(() => null);
   await gradeEdgeBets(env.DB, now).catch(() => null);
   return null;
+}
+
+// A warning when a feed stops (2026-11-04). On Oct 12 ESPN's core host began
+// refusing the Worker: soccer's stats stopped, its record froze at 88 and nothing
+// said so for three weeks, since the read counters counted the give-ups as reads.
+// So this asks the tables. A finished game counts once it has waited past
+// FEED_GAP_DAYS with nothing saved after the last game that was: the NFL plays
+// Sundays and the Champions League every other week, so the dates of saved games
+// can sit far apart in the hours after a game with nothing wrong. A sport with no
+// finished game at all warns too, in season and past the longest break it has.
+const FEED_HEALTH_KEY = 'feed_health';
+const FEED_HEALTH_MS = 6 * 3600e3;
+const FEED_GAP_DAYS = 2;
+const FEED_QUIET = {
+  nba: { days: 8, from: '10-25', to: '04-10' }, nhl: { days: 10, from: '10-15', to: '04-15' },
+  nfl: { days: 9, from: '09-15', to: '01-05' }, soccer: { days: 20, from: '08-20', to: '05-20' },
+};
+const feedDayGap = (a, b) => Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 864e5);
+function feedVerdict(sport, finished, saved, firstMissing, today) {
+  const out = { finished, saved };
+  if (firstMissing && feedDayGap(firstMissing, today) > FEED_GAP_DAYS) return { ...out, warn: 'behind' };
+  const w = FEED_QUIET[sport], md = today.slice(5);
+  const inSeason = w.from <= w.to ? md >= w.from && md <= w.to : md >= w.from || md <= w.to;
+  return inSeason && (!finished || feedDayGap(finished, today) > w.days) ? { ...out, warn: 'quiet' } : out;
+}
+async function feedHealthTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB;
+  const c = await loadFeedCache(db, FEED_HEALTH_KEY);
+  if (c.present && now - c.data.at < FEED_HEALTH_MS) return null;
+  await ensureNbaSchema(db); await ensureNhlBoxSchema(db); await ensureNflBoxSchema(db); await ensureSocPropSchema(db);
+  const today = ptDateOf(now), sports = {};
+  for (const [sport, games, box] of [['nba', 'nba_box_games', 'nba_box'], ['nhl', 'nhl_box_games', 'nhl_box'], ['nfl', 'nfl_box_games', 'nfl_box']]) {
+    const saved = ((await db.prepare(`SELECT MAX(date) AS d FROM ${box}`).first()) || {}).d || null;
+    const g = (await db.prepare(`SELECT MAX(date) AS f, MIN(CASE WHEN date > ? THEN date END) AS m FROM ${games}`).bind(saved || '').first()) || {};
+    sports[sport] = feedVerdict(sport, g.f || null, saved, g.m || null, today);
+  }
+  // Soccer by league, so one failing shows: the one waiting longest speaks for the sport.
+  const since = ptDateOf(now - 30 * 864e5);
+  const found = (await db.prepare('SELECT league, MAX(date) AS f FROM soc_box_games WHERE done IN (0, 1) AND date >= ? GROUP BY league').bind(since).all()).results || [];
+  let worst = null, finished = null, saved = null;
+  for (const g of found) {
+    const s = ((await db.prepare('SELECT MAX(date) AS d FROM soc_box WHERE league = ? AND date >= ?').bind(g.league, since).first()) || {}).d || null;
+    const m = ((await db.prepare('SELECT MIN(date) AS d FROM soc_box_games WHERE done IN (0, 1) AND league = ? AND date > ?').bind(g.league, s || since).first()) || {}).d || null;
+    if (!finished || g.f > finished) finished = g.f;
+    if (s && (!saved || s > saved)) saved = s;
+    if (m && (!worst || m < worst.m)) worst = { m, league: g.league, finished: g.f, saved: s };
+  }
+  const soc = worst && feedDayGap(worst.m, today) > FEED_GAP_DAYS ? worst : null;
+  sports.soccer = soc
+    ? { ...feedVerdict('soccer', soc.finished, soc.saved, soc.m, today), league: soc.league }
+    : feedVerdict('soccer', finished, saved, null, today);
+  await saveFeedCache(db, FEED_HEALTH_KEY, { at: now, sports });
+  return null;
+}
+async function feedHealthRead(env) {
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  const c = await loadFeedCache(env.DB, FEED_HEALTH_KEY);
+  return c.present ? c.data : { none: 'not read yet' };
 }
 
 async function gradeGamePicks(env, tonight = false) {
