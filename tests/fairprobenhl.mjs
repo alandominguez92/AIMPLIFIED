@@ -53,7 +53,7 @@ globalThis.fetch = async (u) => {
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
 const q = 'sport=nhl&market=player_shots_on_goal&books=pinnacle,novig,prophetx,draftkings,fanduel,prizepicks&games=3';
-const out = await (await mod.default.fetch(new Request('https://x/api/fair-probe?' + q), { ODDS_API_KEY: 'k' }, { waitUntil() {} })).json();
+const out = await (await mod.default.fetch(new Request('https://x/api/fair-probe?' + q, { headers: { 'x-admin-key': 't' } }), { ODDS_API_KEY: 'k', ADMIN_KEY: 't' }, { waitUntil() {} })).json();
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };

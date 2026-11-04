@@ -61,7 +61,7 @@ const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toStr
 const env = { DB };
 const ctx = { waitUntil: (p) => { if (p && p.then) p.catch(() => {}); } };
 const hit = async (p) => {
-  try { return await (await mod.default.fetch(new Request('https://x' + p), env, ctx)).json(); }
+  try { return await (await mod.default.fetch(new Request('https://x' + p, { headers: { 'x-admin-key': 't' } }), { ...(env), ADMIN_KEY: 't' }, ctx)).json(); }
   catch (e) { return { thrown: String((e && e.message) || e) }; }
 };
 const rebuild = async () => {

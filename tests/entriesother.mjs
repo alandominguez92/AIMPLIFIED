@@ -55,7 +55,7 @@ const create = async (entry) => (await call('POST', { action: 'create', entry })
 
 // Schemas through the worker's own ensure functions.
 await mod.default.fetch(new Request('https://x/api/gmpicks-export'), env, ctx);
-await mod.default.fetch(new Request('https://x/api/nfl-grade'), env, ctx);
+await mod.default.fetch(new Request('https://x/api/nfl-grade', { headers: { 'x-admin-key': 't' } }), { ...env, ADMIN_KEY: 't' }, ctx);
 await call('GET');
 
 // ---- what the site had already graded ---------------------------------------------------------

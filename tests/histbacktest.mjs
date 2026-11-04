@@ -99,7 +99,7 @@ const DB = {
 const env = { ODDS_API_KEY: 'k', DB };
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-const get = async (u) => { const r = await mod.default.fetch(new Request('https://x' + u), env, { waitUntil: () => {} }); return { cc: r.headers.get('cache-control'), body: await r.json() }; };
+const get = async (u) => { const r = await mod.default.fetch(new Request('https://x' + u, { headers: { 'x-admin-key': 't' } }), { ...(env), ADMIN_KEY: 't' }, { waitUntil: () => {} }); return { cc: r.headers.get('cache-control'), body: await r.json() }; };
 const row = (job, id) => sq.prepare('SELECT * FROM histml WHERE job = ? AND event_id = ?').get(job, id) || {};
 
 let fail = 0;

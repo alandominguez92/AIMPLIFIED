@@ -11,3 +11,6 @@ worker.js
 DEPLOY.md
 aimplified.bundle
 tools/
+tests/
+*.md
+finalpreview.html

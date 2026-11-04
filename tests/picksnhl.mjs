@@ -47,7 +47,7 @@ const DB = {
 const env = { DB };
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-const hit = async (u) => (await mod.default.fetch(new Request('https://x' + u), env, { waitUntil: () => {} })).json();
+const hit = async (u) => (await mod.default.fetch(new Request('https://x' + u, { headers: { 'x-admin-key': 't' } }), { ...(env), ADMIN_KEY: 't' }, { waitUntil: () => {} })).json();
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };

@@ -152,6 +152,21 @@ const API_ROUTES = new Set([
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe',
 ]);
 
+// Routes that spend Odds API credits or change the records, run by hand and never by the page
+// or the crons, which call the functions themselves (2026-11-04). The repo is public, so these
+// were one guessed address from anyone. They answer only to ADMIN_KEY, a Worker secret: with no
+// secret set they answer to no one.
+const LOCKED_ROUTES = new Set(['/api/nfl-capture', '/api/nfl-ingest', '/api/soccer-ingest', '/api/mlb-void-moved', '/api/links-probe', '/api/fair-probe', '/api/sports-list', '/api/ml-debug']);
+function routeLocked(p, url) {
+  if (LOCKED_ROUTES.has(p)) return true;
+  // These read as well, and the reads stay open: only the forms that spend or write are locked.
+  const q = url.searchParams;
+  if (p === '/api/nfl-grade') return q.get('probe') !== '1';
+  if (p === '/api/hist-backtest') return q.has('run');
+  if (p === '/api/hist-props') return q.has('start') || q.has('stop') || q.has('regrade') || q.has('probe');
+  return false;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -166,6 +181,9 @@ export default {
     if (p === '/api/entries') return entriesApi(request, env, url);
     // The PrizePicks soccer lines typed on the card: private the same way.
     if (p === '/api/soc-lines') return socLinesApi(request, env);
+    if (routeLocked(p, url) && !(env && env.ADMIN_KEY && request.headers.get('x-admin-key') === env.ADMIN_KEY)) {
+      return cors(new Response(JSON.stringify({ error: 'This route needs the admin key.' }), { status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
+    }
 
     // Shared edge cache: every viewer reuses one upstream burst per TTL (the TTL
     // is each handler's Cache-Control max-age). This is what protects the paid
@@ -219,8 +237,11 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/board' || p === '/api/batters' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
-    const cacheKey = new Request(url.origin + p + (KEYED_BY_QUERY ? url.search : ''));
+    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
+    // The MLB boards spend credits on a miss and only ?summary= changes their answer, so a
+    // made-up query must not be a miss (2026-11-04).
+    const mlbBoard = p === '/api/board' || p === '/api/batters';
+    const cacheKey = new Request(url.origin + p + (mlbBoard ? (url.searchParams.get('summary') ? '?summary=1' : '') : KEYED_BY_QUERY ? url.search : ''));
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
 

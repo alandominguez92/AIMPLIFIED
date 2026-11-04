@@ -96,7 +96,7 @@ const DB = { prepare: (sql) => { const s = { sql, args: [], bind: (...x) => { s.
 const env = { DB, ODDS_API_KEY: 'k' };
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-const get = async (u) => (await mod.default.fetch(new Request('https://x' + u), env, { waitUntil: () => {} })).json();
+const get = async (u) => (await mod.default.fetch(new Request('https://x' + u, { headers: { 'x-admin-key': 't' } }), { ...(env), ADMIN_KEY: 't' }, { waitUntil: () => {} })).json();
 const tick = async () => { const w = []; await mod.default.scheduled({ cron: '1-59/2 * * * *', scheduledTime: NOW }, env, { waitUntil: (p) => w.push(p) }); await Promise.all(w); };
 
 let fail = 0;

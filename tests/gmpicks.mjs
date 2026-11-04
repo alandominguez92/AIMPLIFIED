@@ -227,7 +227,7 @@ const ctx = { waitUntil: (p) => { if (p && p.then) p.catch(() => {}); } };
 
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-const hit = async (u, e) => (await mod.default.fetch(new Request('https://x' + u), e || env, ctx)).json();
+const hit = async (u, e) => (await mod.default.fetch(new Request('https://x' + u, { headers: { 'x-admin-key': 't' } }), { ...(e || env), ADMIN_KEY: 't' }, ctx)).json();
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };

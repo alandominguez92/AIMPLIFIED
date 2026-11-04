@@ -57,7 +57,7 @@ const DB = { prepare: (sql) => { const s = { sql, args: [], bind: (...x) => { s.
 const env = { DB, ODDS_API_KEY: 'test-key' };
 const src = fs.readFileSync(BOARD + '/worker.js', 'utf8').replace(/\r\n/g, '\n');
 const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-const get = async (u) => (await mod.default.fetch(new Request('https://x' + u), env, { waitUntil: () => {} })).json();
+const get = async (u) => (await mod.default.fetch(new Request('https://x' + u, { headers: { 'x-admin-key': 't' } }), { ...(env), ADMIN_KEY: 't' }, { waitUntil: () => {} })).json();
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };

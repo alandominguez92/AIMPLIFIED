@@ -116,7 +116,7 @@ const ASSETS = { fetch: async (req) => {
   try { return new Response(fs.readFileSync(path.join(BOARD, decodeURIComponent(new URL(req.url).pathname)))); } catch (e) { return new Response('', { status: 404 }); }
 } };
 const env = { DB, ODDS_API_KEY: 'k', ASSETS };
-const hit = async (p) => { const held = []; const r = await mod.default.fetch(new Request('https://x' + p), env, { waitUntil: (x) => held.push(x) }); await Promise.allSettled(held); return r.json(); };
+const hit = async (p) => { const held = []; const r = await mod.default.fetch(new Request('https://x' + p, { headers: { 'x-admin-key': 't' } }), { ...(env), ADMIN_KEY: 't' }, { waitUntil: (x) => held.push(x) }); await Promise.allSettled(held); return r.json(); };
 const tick = async () => { const held = []; await mod.default.scheduled({ cron: '*/5 * * * *', scheduledTime: NOW }, env, { waitUntil: (x) => held.push(x) }); await Promise.allSettled(held); };
 
 // Every table, through the worker's own ensure* functions, with the odds feed
