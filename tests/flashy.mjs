@@ -54,7 +54,7 @@ const env = {
   pct0: (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—'),
   pickFace: (x) => `<i class="face" data-who="${esc((x.spec || {}).player || x.title)}"></i>`,
 };
-const names = ['pickIsTeam', 'moneyTxt', 'stakeTxt', 'recapSeenAtLoad', 'shortLeg', 'recapHtml', 'recapDay', 'PP_PAY', 'ticketData', 'ticketHtml', 'RING_C', 'chanceRingSvg'];
+const names = ['pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'moneyTxt', 'stakeTxt', 'recapSeenAtLoad', 'shortLeg', 'recapHtml', 'recapDay', 'PP_PAY', 'ticketData', 'ticketHtml', 'RING_C', 'chanceRingSvg'];
 let P;
 // The seen-day read sits on the line after its declaration.
 const seenRead = (app.match(/\n  (let recapSeenAtLoad = null;\n  try \{ recapSeenAtLoad = localStorage\.getItem\('aimplified_recap_seen'\); \} catch \(e\) \{[^}]*\})/) || [])[1];

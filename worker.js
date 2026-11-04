@@ -10277,6 +10277,7 @@ async function picksBoard(env) {
     // The NBA player legs' last games, and the game lines' price history (2026-10-29).
     const trends = new Map();
     const hists = new Map();
+    try { await ptdTeams(env.DB, onCard); } catch (e) { /* the leg stands without it */ }
     for (const f of [nbaTrends, nhlTrends, ptdTrends]) {
       try { for (const [k, v] of await f(env.DB, onCard)) trends.set(k, v); } catch (e) { /* the list stands without them */ }
     }
@@ -12596,6 +12597,27 @@ async function ptdTrends(db, legs) {
     if (t) out.set(l.legId, t);
   }
   return out;
+}
+
+// A quarterback's team on Picks (2026-11-04). The passing-TD log has no team
+// column, so of the two clubs in this game it's the one in his last graded
+// games. His first logged game has none to go on, and the leg says nothing.
+async function ptdTeams(db, legs) {
+  const want = legs.filter((l) => l.kind === 'nfl_ptd' && l.spec && l.spec.player && !l.spec.team);
+  if (!want.length) return;
+  const rows = (await db.prepare("SELECT date, game_id, home, away FROM gmpicks WHERE sport = 'nflptd' AND result IS NOT NULL").all()).results || [];
+  const byQb = new Map();
+  for (const r of rows) {
+    const k = nflBaseName(String(r.game_id).split('|')[1] || '');
+    if (!byQb.has(k)) byQb.set(k, []);
+    byQb.get(k).push(r);
+  }
+  for (const l of want) {
+    const sides = String(l.spec.gamePk).split('|')[0].split(' @ ');
+    const past = (byQb.get(nflBaseName(l.spec.player)) || []).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)).slice(0, 5);
+    const [a, b] = sides.map((t) => past.filter((r) => nflAbbr(r.home) === t || nflAbbr(r.away) === t).length);
+    if (a !== b) l.spec.team = a > b ? sides[0] : sides[1];
+  }
 }
 
 // One player's per-game rows, newest first, from this season's regular season

@@ -41,7 +41,7 @@ function lift(name) {
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 let B;
 try {
-  B = new Function('esc', ['miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickIsTeam', 'pickBarHtml'].map(lift).join('\n') + '\nreturn { pickBarHtml };')(esc);
+  B = new Function('esc', ['miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'pickBarHtml'].map(lift).join('\n') + '\nreturn { pickBarHtml };')(esc);
 } catch (e) { console.log(`  FAIL  the bar lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const leg = (re) => F.legs.find((x) => re.test(x.title));

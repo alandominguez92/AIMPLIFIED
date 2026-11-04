@@ -3229,7 +3229,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    rather than squeezing them to four lines. */
 .tc-leg.has-hs .tc-l2 { flex-wrap:wrap; row-gap:2px; }
 .tc-leg.has-hs .tc-l2 > span:first-child { flex:1 1 170px; min-width:0; }
-.tc-l2 .tc-team { font-weight:600; color:var(--text); }
+.tc-l2 .tc-team, .hl-game .tc-team { font-weight:600; color:var(--text); }
 
 /* ---- The night's best leg (2026-10-14) -------------------------------------
    The top of Picks of the day, large: on the Picks tab and above Today's card
@@ -3326,6 +3326,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tk-leg b { font-size:13px; color:var(--text); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tk-leg span { font-size:12px; color:var(--accent); }
 .tk-leg .tk-p { font-family:var(--mono); color:var(--textDim); }
+.tk-leg .tk-team { font-size:11px; font-weight:600; color:var(--textDim); }
 .tk-foot { margin-top:12px; padding-top:10px; border-top:1px dashed var(--border); display:grid; gap:4px; font-size:13px; }
 .tk-foot div { display:flex; justify-content:space-between; gap:12px; color:var(--textDim); }
 .tk-foot b { font-family:var(--mono); font-weight:600; color:var(--text); text-align:right; }

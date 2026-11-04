@@ -5956,7 +5956,7 @@
     }
   }
   function pickLeg(x) {
-    return { id: x.legId, board: PICK_BOARD[x.kind] || 'Pick', title: x.title, sub: x.sub,
+    return { id: x.legId, board: PICK_BOARD[x.kind] || 'Pick', title: x.title, sub: pickTeamCode(x) ? `${pickTeamCode(x)} · ${x.sub}` : x.sub,
       odds: typeof x.odds === 'number' ? x.odds : null, tier: null, edge: null, spec: x.spec };
   }
   const pct0 = (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—');
@@ -5978,6 +5978,10 @@
   }
   // A Picks leg's face: the player for a prop, the club for a moneyline.
   const pickIsTeam = (x) => ((x.spec || {}).market === 'ml') || /_(ml|fav)$/.test(x.kind || '');
+  // A player's team on Picks (2026-11-04): the game line names both clubs and
+  // not which is his. A moneyline's title already says.
+  const pickTeamCode = (x) => (pickIsTeam(x) ? '' : String((x.spec || {}).team || ''));
+  const pickTeamTag = (x) => (pickTeamCode(x) ? `<b class="tc-team">${esc(pickTeamCode(x))}</b> · ` : '');
   // Under a Picks leg: a player's projection against his line, a team's chance
   // against its price (2026-10-28).
   const pickBarHtml = (x, s) => (s && s.pp ? projLineHtml(x.proj, s.pp.line, s.side) : pickIsTeam(x) ? mlChanceLineHtml(x) : '');
@@ -6073,7 +6077,7 @@
       + `</div>`
       + `<div class="hl-p ring${good ? ' good' : ''}"><span class="hl-pct">${pct0(x.p)}</span><span class="hl-pk">chance</span>${chanceRingSvg(x)}</div>`
       // The game on its own line, so a long matchup never squeezes the name.
-      + `<span class="hl-game">${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span>`
+      + `<span class="hl-game">${pickTeamTag(x)}${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span>`
       // A player leg's projection against its line, as the MLB board draws it;
       // a team's chance against its price.
       + `${pickBarHtml(x, s)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}</div>`
@@ -6258,7 +6262,7 @@
       return `<li>${star}<div class="tc-leg has-hs">${pickFace(x)}`
         + `<span class="tc-l1"><b>${esc(x.title)}</b><span class="tc-p">${pct0(x.p)}</span></span>`
         // A soccer leg's league says the sport; the others name it.
-        + `<span class="tc-l2"><span><span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
+        + `<span class="tc-l2"><span>${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
         + `${!compact && typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${team ? '' : pickEdgeHtml(x)}</span>` : ''}`
         // A player leg's projection against its line, as the MLB board draws it;
         // a team's chance against its price.
@@ -6467,7 +6471,7 @@
     const sizes = t.sizes.map((k) => `<button type="button" class="tk-n${k === t.n ? ' on' : ''}" data-action="ticket${ml ? '-ml' : ''}-n" data-n="${k}" aria-pressed="${k === t.n}">${k}</button>`).join('');
     const edge = t.ev == null ? '' : t.ev > 0 ? `<span class="tk-edge up">+${esc(String(t.ev))}% edge</span>` : '<span class="tk-edge">no edge</span>';
     return `<div class="pk-ticket"><div class="tk-head"><b class="tk-name">${esc(t.name)}</b>${edge}</div>`
-      + `<div class="tk-legs">${t.legs.map((l) => `<div class="tk-leg">${pickFace(l.x, 40)}<b>${esc(l.short)}</b><span>${esc(l.pick)}</span><span class="tk-p">${esc(pct0(l.p))}</span></div>`).join('')}</div>`
+      + `<div class="tk-legs">${t.legs.map((l) => `<div class="tk-leg">${pickFace(l.x, 40)}<b>${esc(l.short)}</b>${pickTeamCode(l.x) ? `<span class="tk-team">${esc(pickTeamCode(l.x))}</span>` : ''}<span>${esc(l.pick)}</span><span class="tk-p">${esc(pct0(l.p))}</span></div>`).join('')}</div>`
       + `<div class="tk-foot"><div><span>All ${t.n} land</span><b>${esc(pct0(t.all))}</b></div><div><span>Pays</span><b>${esc(t.pays)}</b></div>`
       + (t.stake != null && t.stake > 0 ? `<div><span>¼ Kelly</span><b>${esc(stakeTxt(t.stake))}${t.capped ? ' cap' : ''}</b></div>` : '')
       + `</div><div class="tk-ctl"><span class="tk-sizes" role="group" aria-label="Legs in the entry">${sizes}</span>`
