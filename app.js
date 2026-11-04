@@ -7056,6 +7056,19 @@
     return `<div class="tc-sub tc-rec-line">${what}: where the model leaned More <b>${m.leaned.hit} of ${m.leaned.n}</b>`
       + `${m.atBar && m.atBar.n ? ` · at ${esc(String(m.bar))}%+ <b>${m.atBar.hit} of ${m.atBar.n}</b>` : ''}</div>`;
   }
+  // What the model's legs in a range have really landed, under its percentage
+  // (2026-11-04). A higher number here doesn't mean a likelier hit: 70%+ has
+  // landed less often than 65-70. The same ranges as the record it reads
+  // (PP_BANDS in worker.js), and by the unrounded chance, as that record is.
+  const NBA_BANDS = [['<55', 0, 55], ['55-60', 55, 60], ['60-65', 60, 65], ['65-70', 65, 70], ['70+', 70, 101]];
+  const NBA_BAND_MIN = 30;
+  function nbaBandLandedHtml(r, p) {
+    const band = typeof p === 'number' ? NBA_BANDS.find(([, lo, hi]) => p >= lo && p < hi) : null;
+    const c = band && r && r.byBand && r.byBand[band[0]];
+    if (!c || !(c.n >= NBA_BAND_MIN)) return '';
+    const what = band[0] === '<55' ? '<55%' : band[0] === '70+' ? '70%+' : `${band[0]}%`;
+    return `<span class="tc-landed" title="Every graded leg the model put in this range: rotation players, at PrizePicks' line">${esc(what)} legs landed <b>${Math.round(c.hitRate)}%</b> (${c.hit} of ${c.n})</span>`;
+  }
   function nbaPpCardHtml() {
     const d = state.nbaPp;
     if (!d) return '';
@@ -7102,6 +7115,7 @@
         // The team code leads line two: beside the face on line one it cut
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
+        + nbaBandLandedHtml(r, x.model_under)
         + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
         // His projection against PrizePicks' line, as the MLB board draws it.
         + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x)}</span>`
