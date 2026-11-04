@@ -276,6 +276,11 @@ export default {
       })());
       return;
     }
+    // Today's games as they finish (2026-11-04), on this invocation's own requests.
+    if (event && event.cron === GRADE_CRON) {
+      ctx.waitUntil(gradeTonight(env).catch(() => null));
+      return;
+    }
     ctx.waitUntil(captureCloses(env, ctx));
     // Soccer game lines, gated to twice a matchday per league — see
     // soccerMaybeIngest. Most ticks do nothing but read a counter.
@@ -4081,15 +4086,32 @@ function nbaMatch(a, b) {
 const MOVED_FIXTURE_MS = 21 * 864e5;
 
 // Grade every ungraded row from a day that has finished. ESPN only, no credits.
-async function gradeGamePicks(env) {
+// Results as games finish (2026-11-04). Every grader read `date < today`, so a
+// game over at 7 PM read pending until midnight Pacific. This pass takes today's
+// rows, each once its game could be over; the graders' own passes keep the rest
+// and whatever waits on the day being over: a void by absence, a moved fixture.
+const GRADE_CRON = '4-59/10 * * * *';
+const GAME_OVER_MS = 2 * 3600e3;
+const gameOverCut = () => new Date(Date.now() - GAME_OVER_MS).toISOString();
+async function gradeTonight(env) {
+  if (!env || !env.DB) return null;
+  for (const job of [gradeGamePicks, gradePassTds, gradeNhlPp, nbaBoxIngest]) await job(env, true).catch(() => null);
+  // The day's legs and edge bets read those logs, and take the result from there.
+  const now = Date.now();
+  await gradeDayPicks(env.DB, now).catch(() => null);
+  await gradeEdgeBets(env.DB, now).catch(() => null);
+  return null;
+}
+
+async function gradeGamePicks(env, tonight = false) {
   const out = { graded: 0, pending: 0, unmatched: [], voidedMoved: [] };
   const stuck = [];
   if (!env || !env.DB) return out;
   await ensureGamePickSchema(env.DB);
   const today = slateDate();
-  const rows = (await env.DB.prepare(
-    'SELECT * FROM gmpicks WHERE result IS NULL AND date < ?'
-  ).bind(today).all()).results || [];
+  const rows = (await (tonight
+    ? env.DB.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','soccer') AND result IS NULL AND date = ? AND commence < ?").bind(today, gameOverCut())
+    : env.DB.prepare('SELECT * FROM gmpicks WHERE result IS NULL AND date < ?').bind(today)).all()).results || [];
   out.pending = rows.length;
   if (!rows.length) return out;
 
@@ -4194,7 +4216,8 @@ async function gradeGamePicks(env) {
       }
       if (!f || !isFinite(f.hs) || !isFinite(f.as)) {
         out.unmatched.push(`${r.sport} ${r.date} ${r.away}@${r.home}`);
-        if (r.sport === 'soccer' && !f) stuck.push(r);
+        // Not on today's board is no sign it moved: the board may be behind.
+        if (r.sport === 'soccer' && !f && !tonight) stuck.push(r);
         continue;
       }
       let result;
@@ -4396,14 +4419,14 @@ function nflPasserAbsent(passers, name) {
 
 // Grades from the box score the NFL projections already read, not from a
 // scoreboard: the result needed is one player's passing touchdowns.
-async function gradePassTds(env) {
+async function gradePassTds(env, tonight = false) {
   const out = { graded: 0, pending: 0, voided: 0 };
   if (!env || !env.DB) return out;
   await ensureGamePickSchema(env.DB);
   const today = slateDate();
-  const rows = (await env.DB.prepare(
-    "SELECT * FROM gmpicks WHERE sport='nflptd' AND result IS NULL AND date < ?"
-  ).bind(today).all()).results || [];
+  const rows = (await (tonight
+    ? env.DB.prepare("SELECT * FROM gmpicks WHERE sport='nflptd' AND result IS NULL AND date = ? AND commence < ?").bind(today, gameOverCut())
+    : env.DB.prepare("SELECT * FROM gmpicks WHERE sport='nflptd' AND result IS NULL AND date < ?").bind(today)).all()).results || [];
   out.pending = rows.length;
   if (!rows.length) return out;
   const byWeek = new Map();
@@ -9077,7 +9100,7 @@ async function gradeEdgeBets(db, now) {
   await ensureEdgeBetSchema(db);
   const open = (await db.prepare('SELECT date, key, commence, grade FROM edgebets WHERE result IS NULL').all()).results || [];
   const ups = [];
-  for (const r of open.filter((x) => Date.parse(x.commence) < now - 3 * 3600e3).slice(0, 40)) {
+  for (const r of open.filter((x) => Date.parse(x.commence) < now - GAME_OVER_MS).slice(0, 40)) {
     let g = null;
     try { g = JSON.parse(r.grade); } catch (e) { /* ungradable */ }
     let res = await edgeBetResult(db, g);
@@ -9760,7 +9783,7 @@ async function dayPickResult(db, r) {
 }
 async function gradeDayPicks(db, now) {
   await ensureDayPickSchema(db);
-  const cut = new Date(now - 3 * 3600e3).toISOString();
+  const cut = new Date(now - GAME_OVER_MS).toISOString();
   const open = (await db.prepare('SELECT * FROM daypicks WHERE on_list = 1 AND result IS NULL AND commence < ?').bind(cut).all()).results || [];
   // And the entry's pool legs the list did not carry (2026-10-28).
   const pooled = (await db.prepare('SELECT * FROM daypicks WHERE in_pool = 1 AND result IS NULL AND on_list = 0 AND commence < ?').bind(cut).all()).results || [];
@@ -9973,19 +9996,23 @@ function pickHistory(rows, poolRows = [], mlRows = []) {
   const listAll = histTotals(), listBefore = histTotals(), pooled = histTotals();
   const legOut = (x) => ({ label: x.label, kind: x.kind, p: round1(x.p), first: x.first_p == null ? null : round1(x.first_p), result: x.result || null });
   const days = [];
+  const openDay = slateDate();
   for (const date of [...new Set([...byDay.keys(), ...poolDay.keys(), ...mlDay.keys()])].sort()) {
     const l = (byDay.get(date) || []).sort((a, b) => b.p - a.p);
     const fromPool = poolSince != null && date >= poolSince;
-    let entries = histDayEntries(l, fromPool ? [listAll] : [listAll, listBefore]);
+    // Today's legs grade as their games finish (2026-11-04), but a later game can still put a
+    // leg above the ones that finished, so its entries join the totals when the day closes.
+    const counted = (tots) => (date < openDay ? tots : []);
+    let entries = histDayEntries(l, counted(fromPool ? [listAll] : [listAll, listBefore]));
     let pool = null;
     if (fromPool) {
       const q = (poolDay.get(date) || []).sort((a, b) => b.p - a.p);
-      entries = histDayEntries(q, [pooled]);
+      entries = histDayEntries(q, counted([pooled]));
       pool = q.map(legOut);
     }
     // The moneyline-only entry, on its own units (2026-11-01).
     const m = (mlDay.get(date) || []).sort((a, b) => b.p - a.p);
-    const mlEntries = m.length ? histDayEntries(m, [mlTot]) : null;
+    const mlEntries = m.length ? histDayEntries(m, counted([mlTot])) : null;
     const dec = l.filter((x) => x.result === 'hit' || x.result === 'miss');
     days.push({ date, hit: dec.filter((x) => x.result === 'hit').length, decided: dec.length, pending: l.filter((x) => x.result == null).length,
       legs: l.map(legOut), entries, ...(pool ? { pool } : {}), ...(m.length ? { ml: m.map(legOut), mlEntries } : {}) });
@@ -11957,13 +11984,17 @@ function nhlBoxLines(box) {
 // Grade from the NHL's own box scores (free), once an hour: a day's finished
 // games, each player by NHL id. A logged player missing from a day whose
 // games are all final did not play: void, never a free under.
-async function gradeNhlPp(env) {
+async function gradeNhlPp(env, tonight = false) {
   if (!env || !env.DB) return 0;
   await ensureNhlPpSchema(env.DB);
-  const gate = await loadFeedCache(env.DB, 'nhl_pp_grade');
-  if (gate.present && gate.data && Date.now() - gate.data.at < 3600e3) return 0;
-  await saveFeedCache(env.DB, 'nhl_pp_grade', { at: Date.now() });
-  const open = ((await env.DB.prepare('SELECT * FROM nhlpp WHERE result IS NULL AND date < ?').bind(slateDate()).all()).results || []);
+  if (!tonight) {
+    const gate = await loadFeedCache(env.DB, 'nhl_pp_grade');
+    if (gate.present && gate.data && Date.now() - gate.data.at < 3600e3) return 0;
+    await saveFeedCache(env.DB, 'nhl_pp_grade', { at: Date.now() });
+  }
+  const open = ((await (tonight
+    ? env.DB.prepare('SELECT * FROM nhlpp WHERE result IS NULL AND date = ? AND commence < ?').bind(slateDate(), gameOverCut())
+    : env.DB.prepare('SELECT * FROM nhlpp WHERE result IS NULL AND date < ?').bind(slateDate())).all()).results || []);
   const stmts = [];
   for (const day of [...new Set(open.map((r) => r.date))].slice(0, 3)) {
     let games = [];
@@ -11971,11 +12002,19 @@ async function gradeNhlPp(env) {
     if (!games.length) continue;
     const settled = games.every((g) => g.gameState === 'OFF' || g.gameState === 'FINAL');
     const lines = new Map();
-    for (const g of games.filter((x) => x.gameState === 'OFF' || x.gameState === 'FINAL')) {
+    // Tonight: only official boxes, where the count is done changing, and only the games a leg
+    // still waits on, since this runs every ten minutes.
+    const waiting = (g) => open.some((r) => r.date === day && [g.homeTeam, g.awayTeam].some((t) => {
+      const name = (t && t.name && t.name.default) || '';
+      return nhlMatch(name, r.home) || nhlMatch(name, r.away);
+    }));
+    let missed = false;
+    for (const g of games.filter((x) => (tonight ? x.gameState === 'OFF' && waiting(x) : x.gameState === 'OFF' || x.gameState === 'FINAL'))) {
       try {
         const r = await fetch(`https://api-web.nhle.com/v1/gamecenter/${g.id}/boxscore`, { headers: { accept: 'application/json' } });
         if (r.ok) for (const [id, v] of nhlBoxLines(await r.json())) lines.set(id, v);
-      } catch (e) { /* that game grades next hour */ }
+        else missed = true;
+      } catch (e) { missed = true; /* that game grades next hour */ }
     }
     for (const r of open.filter((x) => x.date === day)) {
       const b = r.player_id && lines.get(String(r.player_id));
@@ -11984,7 +12023,8 @@ async function gradeNhlPp(env) {
         const v = r.market === 'pts' ? b.p : b.a;
         if (v == null) continue;
         actual = v; result = v < r.point ? 'under' : v > r.point ? 'over' : 'push';
-      } else if (settled) result = 'void';
+        // A box that would not load says nothing about who played.
+      } else if (settled && !missed && !tonight) result = 'void';
       if (!result) continue;
       const close = r.close_point == null ? null : result === 'void' ? 'void' : ppSide(actual, r.close_point);
       stmts.push(env.DB.prepare('UPDATE nhlpp SET result=?, actual=?, close_result=? WHERE date=? AND game_id=? AND player=? AND market=?')
@@ -13921,12 +13961,14 @@ function nbaBoxRows(sum, gameId, date, seasonType) {
 
 // Cron: an hourly scan of yesterday and today for finished games, then a few
 // box scores a tick. Free -- ESPN's cdn host, the one a Worker can reach.
-async function nbaBoxIngest(env) {
+async function nbaBoxIngest(env, tonight = false) {
   if (!env || !env.DB) return null;
   await ensureNbaSchema(env.DB);
+  // Tonight's pass looks for finished games only while a leg waits on one, and then each pass.
+  if (tonight && !(await env.DB.prepare('SELECT 1 FROM nbapp WHERE result IS NULL AND date = ? AND commence < ? LIMIT 1').bind(slateDate(), gameOverCut()).first())) return null;
   const scan = await loadFeedCache(env.DB, 'nba_box_scan');
   const st = (scan.present && scan.data) || {};
-  if (!st.checked || Date.now() - st.checked >= 3600e3) {
+  if (!st.checked || tonight || Date.now() - st.checked >= 3600e3) {
     for (const day of [slateDateOffset(-1), slateDate()]) {
       let evs = [];
       // ?date= (singular): ?dates= is ignored and answers with tonight's games.
@@ -13950,7 +13992,13 @@ async function nbaBoxIngest(env) {
     try {
       const r = await fetch(`${ESPN_CDN_NBA}/boxscore?xhr=1&gameId=${g.game_id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
       if (!r.ok) continue;
-      const rows = nbaBoxRows(await r.json(), g.game_id, g.date, g.season_type);
+      const sum = await r.json();
+      // ESPN's cdn answers from a lagging copy at times, and a box is read once: not until its
+      // own header says the game is over. Read this soon after the buzzer, that matters.
+      const hdr = sum && sum.gamepackageJSON && sum.gamepackageJSON.header;
+      const state = hdr && hdr.competitions && hdr.competitions[0] && hdr.competitions[0].status && hdr.competitions[0].status.type;
+      if (state && state.completed === false) continue;
+      const rows = nbaBoxRows(sum, g.game_id, g.date, g.season_type);
       if (!rows.length) continue;
       const cols = ['game_id', 'date', 'season_type', 'player_id', 'player', 'team', 'min', ...NBA_BOX_STATS, 'starter', 'dnp'];
       const stmts = rows.map((x) => env.DB.prepare(
@@ -13961,22 +14009,26 @@ async function nbaBoxIngest(env) {
       read++;
     } catch (e) { /* next tick */ }
   }
-  const graded = await gradeNbaPp(env.DB);
+  const graded = await gradeNbaPp(env.DB, tonight);
   return { read, graded };
 }
 
 // Grade logged legs from the box scores. A player with a line and no minutes,
 // or missing from a day whose games are all read, did not play: void, never a
 // free under.
-async function gradeNbaPp(db) {
-  const open = ((await db.prepare('SELECT * FROM nbapp WHERE result IS NULL AND date < ?').bind(slateDate()).all()).results || []);
+async function gradeNbaPp(db, tonight = false) {
+  const open = ((await (tonight
+    ? db.prepare('SELECT * FROM nbapp WHERE result IS NULL AND date = ? AND commence < ?').bind(slateDate(), gameOverCut())
+    : db.prepare('SELECT * FROM nbapp WHERE result IS NULL AND date < ?').bind(slateDate())).all()).results || []);
   if (!open.length) return 0;
   const stmts = [];
   for (const day of [...new Set(open.map((r) => r.date))]) {
     const box = ((await db.prepare('SELECT * FROM nba_box WHERE date = ?').bind(day).all()).results || []);
     const pend = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 0').bind(day).first();
     const read = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 1').bind(day).first();
-    const settled = Number(read && read.n) > 0 && Number(pend && pend.n) === 0;
+    // Today every game found so far can be read with others still to finish, and a player in one
+    // of those looks just like one who sat out: absence proves nothing until the day is over.
+    const settled = !tonight && Number(read && read.n) > 0 && Number(pend && pend.n) === 0;
     const byId = new Map(box.map((b) => [b.player_id, b]));
     const byName = new Map(box.map((b) => [nbaName(b.player), b]));
     for (const r of open.filter((x) => x.date === day)) {

@@ -54,7 +54,7 @@ const env = {
   pct0: (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—'),
   pickFace: (x) => `<i class="face" data-who="${esc((x.spec || {}).player || x.title)}"></i>`,
 };
-const names = ['pickIsTeam', 'moneyTxt', 'stakeTxt', 'recapSeenAtLoad', 'shortLeg', 'recapHtml', 'PP_PAY', 'ticketData', 'ticketHtml', 'RING_C', 'chanceRingSvg'];
+const names = ['pickIsTeam', 'moneyTxt', 'stakeTxt', 'recapSeenAtLoad', 'shortLeg', 'recapHtml', 'recapDay', 'PP_PAY', 'ticketData', 'ticketHtml', 'RING_C', 'chanceRingSvg'];
 let P;
 // The seen-day read sits on the line after its declaration.
 const seenRead = (app.match(/\n  (let recapSeenAtLoad = null;\n  try \{ recapSeenAtLoad = localStorage\.getItem\('aimplified_recap_seen'\); \} catch \(e\) \{[^}]*\})/) || [])[1];
@@ -86,6 +86,27 @@ ok(/Top 3 Flex as a 2-pick \+2\.00u/.test(text(P.recapHtml(hc, null))), 'a Flex 
 ok(P.shortLeg('Wendell Carter Jr Under 2.5 AST') === 'Carter Jr U2.5 AST' && P.shortLeg('Kyshawn George Over 0.5 BLK') === 'George O0.5 BLK' && P.shortLeg('Celtics ML') === 'Celtics',
   'legs by short names: "Carter Jr U2.5 AST", "George O0.5 BLK", "Celtics"');
 ok(P.recapHtml({ days: h.days.filter((d) => d.date !== '2026-10-27') }, null) === '', 'nothing when yesterday has no day');
+
+// Today's legs as their games finish (2026-11-04), folded above last night's.
+console.log('\n-- Today so far, Oct 28 --');
+const todayPool = (results) => ['Celtics ML', 'AS Roma ML', 'Ducks ML'].map((label, i) => ({ label, result: results[i] }));
+const withToday = (legs) => ({ ...h, days: [{ date: '2026-10-28', hit: 1, decided: 2, pending: 1, legs, pool: legs, entries: { p2: { wins: 1, pay: 0, net: -1 } } }, ...h.days] });
+delete store.aimplified_recap_seen;
+P = build();
+const seenBefore = store.aimplified_recap_seen;
+const t1 = P.recapDay(withToday(todayPool(['hit', 'miss', null])), null, '2026-10-28', true);
+console.log('  ' + text(t1));
+ok(text(t1).startsWith('Today so far Oct 28 1 of 2 1 to go ✓✗'), 'named for today, how many landed, and how many to go');
+ok(/<details class="pk-recap">/.test(t1) && !/ open>/.test(t1), 'folded: the count is on its face');
+ok(store.aimplified_recap_seen === seenBefore, "and it doesn't use up last night's first showing");
+ok(!/Top 2 Power/.test(t1), 'no entry yet: a later game can still put a leg above these');
+const t2 = P.recapDay(withToday(todayPool(['hit', 'miss', 'hit'])), null, '2026-10-28', true);
+ok(/Top 2 Power −1\.00u/.test(text(t2)) && !/to go/.test(text(t2)), 'with every leg decided, the entry shows');
+const bothDays = P.recapHtml(withToday(todayPool(['hit', 'miss', null])), null);
+ok(text(bothDays).startsWith('Today so far') && /Last night Oct 27/.test(text(bothDays)) && /<details class="pk-recap" open>[^]*Last night/.test(bothDays), 'above last night, which still opens the first time it shows');
+const none = P.recapHtml(withToday(todayPool([null, null, null])), null);
+ok(!/Today so far/.test(none) && /Last night/.test(none), 'nothing decided today: last night alone');
+P = build();
 
 // The first night of the entry, at 12:15 AM on Oct 29: its NHL legs not yet
 // graded, and the edge bets' first day (tests/fixtures/picks-record-20261029.json).

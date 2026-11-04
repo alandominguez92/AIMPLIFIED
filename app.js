@@ -6385,7 +6385,10 @@
   }
   function recapHtml(h, edge) {
     if (!h || !Array.isArray(h.days)) return '';
-    const date = ptDayOf(Date.now() - 864e5);
+    // Today's legs as their games finish (2026-11-04), folded above last night's.
+    return recapDay(h, edge, ptDayOf(Date.now()), true) + recapDay(h, edge, ptDayOf(Date.now() - 864e5), false);
+  }
+  function recapDay(h, edge, date, today) {
     const d = h.days.find((x) => x.date === date);
     if (!d) return '';
     const legs = d.pool && d.pool.length ? d.pool : d.legs;
@@ -6396,7 +6399,9 @@
     const glyph = { hit: '✓', miss: '✗', void: 'void', push: 'tie' };
     const chips = legs.map((x) => `<span class="rc-chip rc-${esc(x.result || 'open')}">${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}</span>`).join('');
     const lines = [];
-    for (const [k, label] of [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
+    const toGo = legs.filter((x) => x.result == null).length;
+    // A game still to come can put a leg above these, so today's entries wait for the last of them.
+    for (const [k, label] of today && toGo ? [] : [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
       const e = d.entries && d.entries[k];
       // An entry a void or tie cut down pays as the smaller one (2026-11-01).
       if (e) lines.push(`<li><span>${label}${e.legs ? ` <i>as a ${e.legs}-pick</i>` : ''}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
@@ -6412,11 +6417,11 @@
       : '';
     const went = { hit: ', would have landed', miss: ', would have missed', push: ', would have tied' };
     const off = (d.dropped || []).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
-    const open = recapSeenAtLoad !== date;
-    try { localStorage.setItem('aimplified_recap_seen', date); } catch (e) { /* private mode */ }
-    return `<details class="pk-recap"${open ? ' open' : ''}><summary><span class="rc-h">Last night</span>`
+    const open = !today && recapSeenAtLoad !== date;
+    if (!today) { try { localStorage.setItem('aimplified_recap_seen', date); } catch (e) { /* private mode */ } }
+    return `<details class="pk-recap"${open ? ' open' : ''}><summary><span class="rc-h">${today ? 'Today so far' : 'Last night'}</span>`
       + `<span class="rc-day">${esc(shortDay(date))}</span><b class="rc-n">${hit} of ${dec.length}</b>`
-      + (legs.some((x) => x.result == null) ? `<span class="rc-pend">${legs.filter((x) => x.result == null).length} still to grade</span>` : '')
+      + (toGo ? `<span class="rc-pend">${toGo} ${today ? 'to go' : 'still to grade'}</span>` : '')
       + `<span class="rc-dots">${dec.map((x) => (x.result === 'hit' ? '✓' : '✗')).join('')}</span></summary>`
       + `<div class="rc-chips">${chips}</div>`
       + (lines.length ? `<ul class="rc-lines">${lines.join('')}</ul>` : '')

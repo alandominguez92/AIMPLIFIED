@@ -322,7 +322,7 @@ ok(rg.regraded === 1 && after.find((l) => l.p === 'Paolo Banchero' && l.mk === '
   "a stored game with a leg open is read from its box score again: Banchero's 26 back");
 ok((await get('/api/hist-props?job=nba&regrade=1')).regraded === 0, 'and once regraded at this alias set, not again');
 const toml = fs.readFileSync(BOARD + '/wrangler.toml', 'utf8');
-ok(/crons = \["\*\/5 \* \* \* \*", "2-59\/5 \* \* \* \*", "1-59\/2 \* \* \* \*"\]/.test(toml) && /const HIST_CRON = '1-59\/2 \* \* \* \*';/.test(src), 'on its own cron trigger');
+ok(/crons = \[.*"1-59\/2 \* \* \* \*".*\]/.test(toml) && /const HIST_CRON = '1-59\/2 \* \* \* \*';/.test(src), 'on its own cron trigger');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
