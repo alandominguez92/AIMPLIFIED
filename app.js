@@ -6045,8 +6045,8 @@
     if (typeof x.vsBook === 'number' && x.vsBook !== 0) notes.push(`PP ${x.vsBook > 0 ? '+' : '−'}${Math.abs(x.vsBook)} vs book`);
     const it = injuryTag(x);
     if (it) notes.push(it.text);
-    // No goalie data here, and the starter moves an NHL line more than anything.
-    if ((x.sport || s.sport) === 'nhl') notes.push('check the goalie');
+    const gn = goalieNote({ ...x, sport: x.sport || s.sport });
+    if (gn) notes.push(gn.text);
     const mv = pickMoved(x);
     if (mv) notes.push(mv.text);
     const tt = trendTag(x.trend);
@@ -6244,7 +6244,8 @@
       if (x.lineSet) tags.push(pickLineSetTag(x));
       const it = injuryTag(x);
       if (it) for (const t of it.parts || [it.text]) tags.push(`<span class="${it.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(it.title)}">${esc(t)}</span>`);
-      if (x.sport === 'nhl') tags.push('<span class="tc-wait">check the goalie</span>');
+      const gn = goalieNote(x);
+      if (gn) tags.push(`<span class="${gn.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(gn.title)}">${esc(gn.text)}</span>`);
       const mv = pickMoved(x);
       if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
       const r = x.record || {};
@@ -6748,6 +6749,16 @@
   // or that it lists nothing once his game's report has been read; on a
   // moneyline, who each side is missing. Before that, the old reminder. A
   // player it lists out is not sent.
+  // The starter moves an NHL line more than anything. ESPN's names by the game's
+  // order, and whether they are only expected (2026-11-04).
+  function goalieNote(x) {
+    if ((x.sport || (x.spec || {}).sport) !== 'nhl') return null;
+    const g = x.goalies;
+    if (!g) return { warn: true, text: 'check the goalie', title: 'ESPN has no starter listed for this game yet' };
+    const last = (n) => String(n).split(' ').pop();
+    return { warn: !g.confirmed, text: `${last(g.away)} @ ${last(g.home)}, ${g.confirmed ? 'confirmed' : 'expected'}`,
+      title: g.confirmed ? "ESPN's confirmed starters" : "ESPN's expected starters, which can change until warm-ups" };
+  }
   function injuryTag(x) {
     if ((x.sport || (x.spec || {}).sport) !== 'nba') return null;
     const i = x.inj;

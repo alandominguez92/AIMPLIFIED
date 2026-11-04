@@ -92,8 +92,8 @@ ok(dp('nhl:ml:h1:home').result === 'hit' && dp('nhl:ml:h2:away').result === 'mis
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 ok(/const PICK_SPORT = \{[^}]*nhl: 'NHL'/.test(app) && /const PICK_BOARD = \{[^}]*nhl_ml: 'NHL ML'/.test(app), 'the page names the sport: "Today\'s best NHL leg"');
-ok(/\(x\.sport \|\| s\.sport\) === 'nhl'\) notes\.push\('check the goalie'\)/.test(app) && /x\.sport === 'nhl'\) tags\.push\('<span class="tc-wait">check the goalie<\/span>'\)/.test(app),
-  'and an NHL leg says to check the goalie, on the top card and in the list');
+ok(/goalieNote\(\{ \.\.\.x, sport: x\.sport \|\| s\.sport \}\)/.test(app) && /const gn = goalieNote\(x\);/.test(app),
+  'and an NHL leg names the goalies or says to check them, on the top card and in the list (tests/nhlgoalies.mjs)');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

@@ -279,6 +279,8 @@ export default {
     // Today's games as they finish (2026-11-04), on this invocation's own requests.
     if (event && event.cron === GRADE_CRON) {
       ctx.waitUntil(gradeTonight(env).catch(() => null));
+      // And who starts in goal, read on the same requests.
+      ctx.waitUntil(nhlGoalieTick(env).catch(() => null));
       return;
     }
     ctx.waitUntil(captureCloses(env, ctx));
@@ -9413,6 +9415,49 @@ async function nbaInjuryTick(env, now = Date.now()) {
   }
   return { read };
 }
+// Who starts in goal (2026-11-04): the starter moves an NHL line more than
+// anything, and ESPN lists it free, Expected and then Confirmed. Read for today
+// and tomorrow on the grading trigger, written only when it changes. This host
+// refuses the Worker when it sends a user agent (2026-11-03), so none is sent.
+const NHL_GOALIE_KEY = 'nhl_goalies:';
+function nhlGoaliesOf(events) {
+  return (events || []).filter((ev) => ev && ev.id).map((ev) => {
+    const cs = ((ev.competitions || [])[0] || {}).competitors || [];
+    const side = (s) => {
+      const t = cs.find((x) => x.homeAway === s) || {};
+      const p = (t.probables || []).find((x) => x.name === 'probableStartingGoalie') || {};
+      return { team: (t.team || {}).displayName || null, name: (p.athlete || {}).displayName || null, status: (p.status || {}).name || null };
+    };
+    const h = side('home'), a = side('away');
+    return { home: h.team, away: a.team, homeG: h.name, awayG: a.name, homeS: h.status, awayS: a.status };
+  });
+}
+async function nhlGoalieTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  for (const day of [ptDateOf(now), ptDateOf(now + 86400e3)]) {
+    const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard?dates=${day.replace(/-/g, '')}`, { headers: { accept: 'application/json' } });
+    if (!r.ok) continue;
+    const games = nhlGoaliesOf((await r.json()).events);
+    const key = NHL_GOALIE_KEY + day;
+    const c = await loadFeedCache(env.DB, key);
+    // An empty answer is a failed read as often as a day off: the names already read stand.
+    if (!games.length && c.present) continue;
+    if (c.present && JSON.stringify(c.data.games) === JSON.stringify(games)) continue;
+    await saveFeedCache(env.DB, key, { games });
+  }
+  return null;
+}
+// The leg's game on the leg's own Pacific day. Null until ESPN lists both sides.
+async function nhlLegGoalies(db, legs) {
+  const nhl = legs.filter((l) => l.spec && l.spec.sport === 'nhl' && l.teams);
+  const byDay = new Map();
+  for (const l of nhl) {
+    const day = ptDateOf(Date.parse(l.commence));
+    if (!byDay.has(day)) { const c = await loadFeedCache(db, NHL_GOALIE_KEY + day); byDay.set(day, (c.present && c.data.games) || []); }
+    const g = byDay.get(day).find((x) => nhlMatch(x.home, l.teams.home) && nhlMatch(x.away, l.teams.away));
+    if (g && g.homeG && g.awayG) l.goalies = { home: g.homeG, away: g.awayG, confirmed: g.homeS === 'Confirmed' && g.awayS === 'Confirmed' };
+  }
+}
 async function nbaInjuryDays(db, days) {
   const out = new Map();
   for (const d of days) { const c = await loadFeedCache(db, NBA_INJ_KEY + d); if (c.present && c.data) out.set(d, c.data.games || []); }
@@ -9528,7 +9573,7 @@ async function picksCandidates(env, now) {
           logo: moneylineLogo('nba', r.pick), book, pp: null } });
     } else if (kind === 'nhl_ml') {
       // The NHL board's own leg id and nicknames, so a star here is its star.
-      legs.push({ ...base, gameKey: 'nhl:' + r.game_id, legId: `nhl:ml:${r.game_id}:${r.side}`,
+      legs.push({ ...base, gameKey: 'nhl:' + r.game_id, legId: `nhl:ml:${r.game_id}:${r.side}`, teams: { home: r.home, away: r.away },
         title: `${nhlNick(r.pick)} ML`, sub: `${nhlNick(r.away)} @ ${nhlNick(r.home)}`,
         spec: { sport: 'nhl', date: day, gamePk: r.game_id, player: r.pick, team: nhlNick(r.pick), market: 'ml', side: r.side,
           logo: moneylineLogo('nhl', r.pick), book, pp: null } });
@@ -9644,6 +9689,7 @@ async function picksCandidates(env, now) {
   // leaves the list and the pool; the rest carry what it says.
   const injDays = await nbaInjuryDays(db, days).catch(() => new Map());
   const kept = legs.filter((l) => { const i = nbaLegInjury(l, injDays); if (i) l.inj = i; return !(i && i.out); });
+  await nhlLegGoalies(db, kept).catch(() => null);
   return { legs: kept, unavailable };
 }
 
@@ -10196,6 +10242,7 @@ async function picksBoard(env) {
       ...(l.readAt ? { readAt: l.readAt } : {}),
       // ESPN's injury report on him, once his game's has been read (2026-11-01).
       ...(l.inj ? { inj: l.inj } : {}),
+      ...(l.goalies ? { goalies: l.goalies } : {}),
       ...(hists.has(l.legId) ? { hist: hists.get(l.legId) } : {}),
       ...(trends.has(l.legId) ? { trend: trends.get(l.legId) } : {}),
     });

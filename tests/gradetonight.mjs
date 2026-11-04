@@ -142,7 +142,8 @@ sq.prepare("DELETE FROM gmpicks WHERE game_id IN ('ana-van', 'moved-a', 'moved-b
 gmRow('nhl', TUE, 'late', 'reg', '2026-11-04T03:30:00Z', 'home', 'Vancouver Canucks', 'Anaheim Ducks');
 asked.length = 0;
 await tonight();
-ok(asked.length === 0, `a game an hour old, and no fetch at all: ${asked.length}`);
+const graderAsked = () => asked.filter((u) => !u.includes('hockey/nhl/scoreboard')).length;
+ok(graderAsked() === 0, `a game an hour old, and the graders ask for nothing: ${graderAsked()}`);
 sq.prepare("DELETE FROM gmpicks WHERE game_id = 'late'").run();
 
 // ---- NHL legs ------------------------------------------------------------------------------------
@@ -226,7 +227,7 @@ sq.prepare('UPDATE nbapp SET result = ? WHERE result IS NULL', ).run('void');
 sq.prepare("DELETE FROM feed_cache WHERE key = 'nba_box_scan'").run();
 asked.length = 0;
 await tonight();
-ok(asked.length === 0, `no legs waiting, no scoreboard: ${asked.length} requests`);
+ok(graderAsked() === 0, `no legs waiting, no scoreboard: ${graderAsked()} requests`);
 
 // ---- The day's legs and edge bets ------------------------------------------------------------------
 console.log('\n-- the record follows --');
