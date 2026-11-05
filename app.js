@@ -4544,10 +4544,13 @@
   const NBA_CODE_NICK = { ATL: 'Hawks', BKN: 'Nets', BOS: 'Celtics', CHA: 'Hornets', CHI: 'Bulls', CLE: 'Cavaliers', DAL: 'Mavericks', DEN: 'Nuggets', DET: 'Pistons', GS: 'Warriors',
     HOU: 'Rockets', IND: 'Pacers', LAC: 'Clippers', LAL: 'Lakers', MEM: 'Grizzlies', MIA: 'Heat', MIL: 'Bucks', MIN: 'Timberwolves', NO: 'Pelicans', NY: 'Knicks',
     OKC: 'Thunder', ORL: 'Magic', PHI: '76ers', PHX: 'Suns', POR: 'Blazers', SA: 'Spurs', SAC: 'Kings', TOR: 'Raptors', UTAH: 'Jazz', WSH: 'Wizards' };
-  function nbaOppText(x) {
+  const NHL_CODE_NICK = { ANA: 'Ducks', BOS: 'Bruins', BUF: 'Sabres', CGY: 'Flames', CAR: 'Hurricanes', CHI: 'Blackhawks', COL: 'Avalanche', CBJ: 'Jackets', DAL: 'Stars', DET: 'Wings', EDM: 'Oilers',
+    FLA: 'Panthers', LAK: 'Kings', MIN: 'Wild', MTL: 'Canadiens', NSH: 'Predators', NJD: 'Devils', NYI: 'Islanders', NYR: 'Rangers', OTT: 'Senators', PHI: 'Flyers', PIT: 'Penguins',
+    SJS: 'Sharks', SEA: 'Kraken', STL: 'Blues', TBL: 'Lightning', TOR: 'Leafs', UTA: 'Mammoth', VAN: 'Canucks', VGK: 'Knights', WSH: 'Capitals', WPG: 'Jets' };
+  function legOppText(x, codes = NBA_CODE_NICK) {
     const [away, home] = String((x && x.game) || '').split(' @ ').map(nbaNick);
     if (!away || !home) return '';
-    const mine = NBA_CODE_NICK[x.team];
+    const mine = codes[x.team];
     return mine === home ? `v ${away}` : mine === away ? `@ ${home}` : `${away} @ ${home}`;
   }
   // Each NFL club by its nickname, as the NBA and NHL rows show them. The game
@@ -7086,11 +7089,12 @@
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
       const face = avatarHtml({ sport, playerId: x.player_id, team: x.team, name: x.player });
+      const opp = legOppText(x, sport === 'nhl' ? NHL_CODE_NICK : NBA_CODE_NICK);
       // His projection against the line as a bar, as the MLB board draws it
       // (projLineHtml, 2026-10-28) -- an NHL skater's is points a game.
       return `<li>${star}<div class="tc-leg has-hs">${face}`
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(ppMoreP(x))}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${sport === 'nba' && nbaOppText(x) ? `${esc(nbaOppText(x))} · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${opp ? `${esc(opp)} · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}</span>`
         + `${projLineHtml(x.proj, x.point, 'Over')}</span>`
         + `</div></li>`;
     }).join('')}</ol>`;
@@ -7162,7 +7166,7 @@
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
         + nbaBandLandedHtml(r, x.model_under)
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${nbaOppText(x) ? `${esc(nbaOppText(x))} · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${legOppText(x) ? `${esc(legOppText(x))} · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
         // His projection against PrizePicks' line, as the MLB board draws it.
         + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x)}</span>`
         + (PP_LINE_MARKETS.has(x.market) ? ppLineStepHtml(leg.id, x.point, x0.point, x.lineSet, x.commence) : '')
