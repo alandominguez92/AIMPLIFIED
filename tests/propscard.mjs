@@ -53,7 +53,7 @@ const persisted = [];
 const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
-  'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
+  'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
   'propSaveHtml', 'propRow', 'propsCardHtml'];
 let C;
 try {
@@ -228,6 +228,61 @@ ok(rowsOf(n).every((r) => /class="tc-p/.test(r)), 'Best lists only rows with a f
 ok(!rowFor(n, 'Tage Thompson') || !/shots on goal/.test(text(rowFor(n, 'Tage Thompson'))), 'so not a shots row with no number set');
 const sogLeg = C.propLeg('nhl', NG, NP('Tage Thompson'), 'sog', C.propView('nhl', N, NG, NP('Tage Thompson'), 'sog'));
 ok(sogLeg.spec.sport === 'nhl' && sogLeg.spec.market === 'sog' && sogLeg.spec.playerId === NP('Tage Thompson').id, 'a leg carries the sport, the stat and his NHL id, which is how it grades');
+state.prStat = {};
+
+console.log('\n-- the NFL card --');
+const NF = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'nfl-props-board-20261105.json'), 'utf8'));
+state.props = { nfl: NF };
+state.prStat = {}; state.prLines = {}; state.prOpen = {}; state.prSide = {};
+const FG = NF.games[0], FP = (name) => NF.players.find((p) => p.name === name);
+const fkey = (name, s) => C.propKey('nfl', FG, FP(name), s);
+const fcard = () => C.propsCardHtml('nfl');
+let f = fcard();
+ok(/sp-chip on"[^>]*data-stat="pass_yds"/.test(f), 'it opens on Passing yards');
+const fchips = [...f.matchAll(/data-action="pr-stat"[^>]*data-stat="([a-z_0-9]+)"/g)].map((m) => m[1]);
+ok(fchips.join() === 'pass_yds,rec_yds,rush_yds,rec,rush_rec,pass_td,best', `the stats in the order asked for: ${fchips.join()}`);
+ok(/Commanders @ Dolphins/.test(text(f)), `the game by its nicknames: ${text(f).match(/[A-Za-z]+ @ [A-Za-z]+/)}`);
+ok(/landed 56% on receiving/.test(f) && !/landed 57%/.test(f), 'the NFL\'s own replay in the note');
+ok(/from the site’s NFL reads/.test(f) && !/hours before each game/.test(f), 'it says where the numbers come from, with no read time of its own');
+const willis = rowFor(f, 'Malik Willis');
+ok(willis && /Malik Willis MIA/.test(text(willis)) && /v Commanders/.test(text(willis)) && /181\.1/.test(text(willis)), `a quarterback, whom he plays and his projection: ${text(willis || '').slice(0, 80)}`);
+ok(/no PrizePicks number yet/.test(text(willis)) && !/class="tc-p/.test(willis), 'before passing yards come in: no number, no percentage, and it says so');
+ok(!rowFor(f, 'Malik Washington'), 'a receiver isn\'t on passing yards');
+
+state.prStat = { nfl: 'rec_yds' };
+f = fcard();
+const wash = rowFor(f, 'Malik Washington');
+ok(/Malik Washington MIA \d+%/.test(text(wash)) && /v Commanders · (Under|Over) 29\.5 receiving yards/.test(text(wash)), `receiving yards with the figure at his number: ${text(wash).slice(0, 80)}`);
+ok(!rowFor(f, 'Malik Willis'), 'a quarterback isn\'t');
+const line0 = rowFor(f, 'Jaylen Waddle');
+ok(line0 && /78\.5 receiving yards/.test(text(line0)) && !/undefined|null/.test(text(line0)), `a player with a number and no game this season reads clean: ${text(line0).slice(0, 80)}`);
+
+state.prStat = { nfl: 'rec' };
+f = fcard();
+ok(/(Under|Over) 2\.5 catches/.test(text(rowFor(f, 'Greg Dulcich'))), 'catches, under what the site calls them');
+const ertz = rowFor(f, 'Zach Ertz');
+ok(ertz && / 4 catches/.test(text(ertz)) && !/class="tc-p/.test(ertz), 'PrizePicks at 4, which no sharp book quotes: the number, no percentage');
+state.prOpen = { [fkey('Zach Ertz', 'rec')]: true };
+ok(/No sharp price at 4: theirs is/.test(text(rowFor(fcard(), 'Zach Ertz'))), 'tapped: it says what the sharp books do quote');
+state.prOpen = {};
+const mar = rowFor(f, 'Marcus Mariota');
+ok(!mar, 'a quarterback isn\'t on catches');
+
+state.prStat = { nfl: 'rush_rec' };
+f = fcard();
+const ach = rowFor(f, 'De\'Von Achane');
+ok(ach && /93\.8/.test(text(ach)) && !/class="tc-p/.test(ach), `Rush + Rec: his two projections added, no percentage (${text(ach || '').slice(0, 80)})`);
+ok(/data-action="pr-row"/.test(ach.split('tc-leg')[0]) && !/data-action="leg-add"/.test(ach), 'with no number its star opens the setter');
+state.prLines = { [fkey('De\'Von Achane', 'rush_rec')]: 110.5 };
+const achSet = rowFor(fcard(), 'De\'Von Achane');
+ok(/110\.5 rush \+ rec yards/.test(text(achSet)) && !/class="tc-p/.test(achSet) && /data-action="leg-add"/.test(achSet), `set by hand: the star takes it, still no made-up figure (${text(achSet).slice(0, 80)})`);
+state.prLines = {};
+
+state.prStat = { nfl: 'best' };
+f = fcard();
+ok(rowsOf(f).length > 0 && rowsOf(f).every((r) => /class="tc-p/.test(r)), 'Best lists only rows with a figure at PrizePicks\' number');
+const recLeg = C.propLeg('nfl', FG, FP('Malik Washington'), 'rec_yds', C.propView('nfl', NF, FG, FP('Malik Washington'), 'rec_yds'));
+ok(recLeg.spec.sport === 'nfl' && recLeg.spec.market === 'rec_yds' && recLeg.spec.playerId === FP('Malik Washington').id && recLeg.spec.gamePk === FG.id, 'a leg carries the sport, the stat, his ESPN id and the odds feed\'s game, which is how it grades');
 state.prStat = {};
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

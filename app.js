@@ -3631,6 +3631,7 @@
   const ENTRY_KEY_STORE = 'aimplified_entry_key';
   const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds',
     threes: '3PM', ast: 'Ast', reb: 'Reb', blk: 'Blk', stl: 'Stl', goals: 'Goals', sog: 'SOG', blocks: 'Blocked', hits: 'Hits',
+    pass_yds: 'Pass Yds', pass_td: 'Pass TD', rec: 'Catches', rush_rec: 'Rush+Rec',
     pts: 'Pts', pra: 'PRA', pts_reb: 'Pts+Reb', pts_ast: 'Pts+Ast', reb_ast: 'Reb+Ast', blk_stl: 'Blk+Stl', tov: 'TO',
     shots: 'Shots', sot: 'SOT', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves',
     crosses: 'Crosses', shot_ast: 'Shots Ast', conceded: 'Goals Allowed', fouls_drawn: 'Fouls Drawn', goal_ast: 'G+A' };
@@ -4548,6 +4549,9 @@
   const NHL_CODE_NICK = { ANA: 'Ducks', BOS: 'Bruins', BUF: 'Sabres', CGY: 'Flames', CAR: 'Hurricanes', CHI: 'Blackhawks', COL: 'Avalanche', CBJ: 'Jackets', DAL: 'Stars', DET: 'Wings', EDM: 'Oilers',
     FLA: 'Panthers', LAK: 'Kings', MIN: 'Wild', MTL: 'Canadiens', NSH: 'Predators', NJD: 'Devils', NYI: 'Islanders', NYR: 'Rangers', OTT: 'Senators', PHI: 'Flyers', PIT: 'Penguins',
     SJS: 'Sharks', SEA: 'Kraken', STL: 'Blues', TBL: 'Lightning', TOR: 'Leafs', UTA: 'Mammoth', VAN: 'Canucks', VGK: 'Knights', WSH: 'Capitals', WPG: 'Jets' };
+  const NFL_CODE_NICK = { ARI: 'Cardinals', ATL: 'Falcons', BAL: 'Ravens', BUF: 'Bills', CAR: 'Panthers', CHI: 'Bears', CIN: 'Bengals', CLE: 'Browns', DAL: 'Cowboys', DEN: 'Broncos', DET: 'Lions',
+    GB: 'Packers', HOU: 'Texans', IND: 'Colts', JAX: 'Jaguars', KC: 'Chiefs', LV: 'Raiders', LAC: 'Chargers', LAR: 'Rams', MIA: 'Dolphins', MIN: 'Vikings', NE: 'Patriots', NO: 'Saints',
+    NYG: 'Giants', NYJ: 'Jets', PHI: 'Eagles', PIT: 'Steelers', SF: '49ers', SEA: 'Seahawks', TB: 'Buccaneers', TEN: 'Titans', WSH: 'Commanders' };
   function legOppText(x, codes = NBA_CODE_NICK) {
     const [away, home] = String((x && x.game) || '').split(' @ ').map(nbaNick);
     if (!away || !home) return '';
@@ -5299,6 +5303,7 @@
       else renderSlateSummary();
     }
     if (nfl && !state.nfl) refreshNfl();          // lazy first load
+    else if (nfl && Date.now() - ((state.propsAt && state.propsAt.nfl) || 0) > 120e3) refreshProps('nfl');
     if (nfl && !state.nflProps) refreshNflProps();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -5306,6 +5311,7 @@
   async function refreshNfl() {
     if (!LIVE_MODE) return;
     const hot = fetchJson('/api/hot-players?sport=nfl').catch(() => null);
+    const props = fetchJson('/api/nfl-props').catch(() => null);
     try {
       const d = await fetchJson('/api/nfl-board');
       state.nfl = (d && Array.isArray(d.games)) ? d : { games: [], empty: true };
@@ -5314,7 +5320,11 @@
     }
     const h = await hot;
     state.hot = { ...state.hot, nfl: (h && h.hot) || null };
+    const pr = await props;
+    state.propsAt = { ...(state.propsAt || {}), nfl: Date.now() };
+    if (pr && Array.isArray(pr.players)) state.props = { ...(state.props || {}), nfl: pr };
     renderNfl();
+    propSavedLoad('nfl');
   }
 
   const AM = (n) => (n == null ? '—' : (n > 0 ? '+' + n : String(n)));
@@ -5413,7 +5423,7 @@
       + (pre ? ' · preseason: starters sit' : '');
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
     const rec = gmRecordHtml(d.record, 'Record: logged from Week 1, graded from ESPN’s finals each morning.');
-    grid.innerHTML = rec + hotCardHtml('nfl') + (games.length ? nflTable(games)
+    grid.innerHTML = rec + propsCardHtml('nfl') + hotCardHtml('nfl') + (games.length ? nflTable(games)
       : `<div class="nfl-empty">No NFL games left on this slate${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`);
   }
 
@@ -7742,14 +7752,17 @@
       blk_stl: ['Blk + Stl', 'blocks + steals'], tov: ['Turnovers', 'turnovers'] },
     nhl: { pts: ['Points', 'points'], ast: ['Assists', 'assists'], sog: ['Shots on goal', 'shots on goal'], goals: ['Goals', 'goals'], blocks: ['Blocked shots', 'blocked shots'],
       hits: ['Hits', 'hits'], saves: ['Goalie saves', 'saves'] },
+    nfl: { pass_yds: ['Passing yards', 'passing yards'], rec_yds: ['Receiving yards', 'receiving yards'], rush_yds: ['Rush yards', 'rushing yards'], rec: ['Catches', 'catches'],
+      rush_rec: ['Rush + Rec yards', 'rush + rec yards'], pass_td: ['Passing TDs', 'passing TDs'] },
   };
   // What last season's replay at PrizePicks' numbers said, for each card's head.
   const PROP_NOTE = {
     nba: 'Last season 54%+ on points landed 57%.',
     nhl: 'Last season 54%+ on points landed 54%, on few games. PrizePicks’ number comes through on points and assists, and sometimes saves: set it by hand on the rest.',
+    nfl: 'Last season 54%+ landed 56% on receiving and rushing yards, 49% on catches. Passing yards and catches come in within 20 hours of kickoff; Rush + Rec is set by hand.',
   };
   const propNick = (sport, n) => (sport === 'nhl' ? nhlNick(n) : nbaNick(n));
-  const propCodes = (sport) => (sport === 'nhl' ? NHL_CODE_NICK : NBA_CODE_NICK);
+  const propCodes = (sport) => (sport === 'nhl' ? NHL_CODE_NICK : sport === 'nfl' ? NFL_CODE_NICK : NBA_CODE_NICK);
   const PROP_STRONG = 54;
   const propKey = (sport, g, p, s) => `${sport}:${g.date}:${p.k}:${s}`;
   const propData = (sport) => (state.props && state.props[sport]) || null;
@@ -7808,6 +7821,7 @@
   function propRedraw(sport) {
     if (sport === 'nba') renderNba();
     if (sport === 'nhl') renderNhl();
+    if (sport === 'nfl') renderNfl();
   }
   // A line set here is PrizePicks' number: saved a moment after the last tap, as soccer's are,
   // and graded at that number.
@@ -7899,8 +7913,8 @@
     const rec = r && r.graded
       ? `<span class="tc-rec">Sharp 54%+: <b${r.at54.n >= 5 && r.at54.hit / r.at54.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${r.at54.hit} of ${r.at54.n}</b> · ${r.graded} graded of ${r.need}</span>` : '';
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks props, one stat at a time</span>${rec}</div>`
-      + `<div class="tc-sub">The percentage is the sharp books’ chance at PrizePicks’ exact number, read about ${esc(String(d.readHours || 4))} hours before each game. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Tap a player to change the line: what you set is saved and graded there. These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.</div>`;
-    if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">No games in the next day and a half.</div></div>`;
+      + `<div class="tc-sub">The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Tap a player to change the line: what you set is saved and graded there. These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.</div>`;
+    if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">${sport === 'nfl' ? 'No games in the coming week.' : 'No games in the next day and a half.'}</div></div>`;
     const chips = `<input class="sp-search" type="search" placeholder="Find a player" value="${esc((state.prQuery && state.prQuery[sport]) || '')}" data-prq="${esc(sport)}" aria-label="Find a player">`
       + `<div class="sp-chips">${[...stats, 'best'].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="pr-stat" data-sport="${esc(sport)}" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : PROP_STATS[sport][s][0])}</button>`).join('')}</div>`
       + `<div class="sp-hint">${esc(view === 'best' ? 'Each player’s strongest sharp number' : `${PROP_STATS[sport][view][0]}: sharp numbers first, then by projection`)}</div>`;

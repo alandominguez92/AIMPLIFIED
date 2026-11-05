@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health',
 ]);
 
@@ -239,7 +239,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/nba-props' || p === '/api/nhl-props' || p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
+    const KEYED_BY_QUERY = p === '/api/nba-props' || p === '/api/nhl-props' || p === '/api/nfl-props' || p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
     // The MLB boards spend credits on a miss and only ?summary= changes their answer, so a
     // made-up query must not be a miss (2026-11-04).
     const mlbBoard = p === '/api/board' || p === '/api/batters';
@@ -274,7 +274,7 @@ export default {
       // A running backtest has this invocation's to itself.
       ctx.waitUntil((async () => {
         if (await histPropsTick(env).catch(() => null)) return;
-        for (const job of [nbaPropsFormTick, nhlPropsFormTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(env).catch(() => null);
+        for (const job of [nbaPropsFormTick, nhlPropsFormTick, nflPropsFormTick, nflPropsLogTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(env).catch(() => null);
       })());
       return;
     }
@@ -318,6 +318,7 @@ export default {
     ctx.waitUntil(gradePassTds(env).catch(() => null));
     ctx.waitUntil(gradePassYds(env).catch(() => null));
     ctx.waitUntil(gradeRecs(env).catch(() => null));
+    ctx.waitUntil(gradeNflProps(env).catch(() => null));
     ctx.waitUntil(nflGradeCron(env).catch(() => null));
     ctx.waitUntil(gradeEntryLegs(env).catch(() => null));
     // Picks of the day: every fifteen minutes, so the log knows which legs were
@@ -579,8 +580,8 @@ async function handleApi(p, env, ctx, url) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return cors(json(await nbaPpDay(env, day), 120));
     return cors(json(raw === '1' ? await nbaPpRaw(env) : raw === 'events' ? await ppEventsRaw(env, 'nba', 'reg') : await nbaPpBoard(env), 120));
   }
-  if (p === '/api/nba-props' || p === '/api/nhl-props') {
-    const sport = p === '/api/nba-props' ? 'nba' : 'nhl';
+  if (p === '/api/nba-props' || p === '/api/nhl-props' || p === '/api/nfl-props') {
+    const sport = p.slice(5, 8);
     return cors(json(url && url.searchParams.get('raw') === '1' ? await ppPropsRaw(env, sport) : await ppPropsBoard(env, sport), 120));
   }
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
@@ -4106,7 +4107,7 @@ const GAME_OVER_MS = 2 * 3600e3;
 const gameOverCut = () => new Date(Date.now() - GAME_OVER_MS).toISOString();
 async function gradeTonight(env) {
   if (!env || !env.DB) return null;
-  for (const job of [gradeGamePicks, gradePassTds, gradeNhlPp, nbaBoxIngest]) await job(env, true).catch(() => null);
+  for (const job of [gradeGamePicks, gradePassTds, gradeNhlPp, nbaBoxIngest, gradeNflProps]) await job(env, true).catch(() => null);
   // The day's legs and edge bets read those logs, and take the result from there.
   const now = Date.now();
   await gradeDayPicks(env.DB, now).catch(() => null);
@@ -5218,6 +5219,7 @@ async function gradeEntryLegsOther(db) {
   ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market])
     || (l.sport === 'nba' && nbaPropMarket(l.market))
     || (l.sport === 'nhl' && NHL_PROP_COLS.includes(l.market))
+    || (l.sport === 'nfl' && !entryNflKey(l.game_id) && ppPropStats(PP_PROP_CFG.nfl).includes(l.market))
     || (l.sport === 'soccer' && SOC_PROP_STATS.includes(l.market)));
   if (!open.length) return [];
   // Soccer props grade from the soccer box scores, by ESPN's event and player
@@ -5287,24 +5289,29 @@ async function gradeEntryLegsOther(db) {
         settled: Number(read && read.n) > 0 && Number(pend && pend.n) === 0 });
     } catch (e) { /* no NBA box table yet */ }
   }
-  // NHL props from its box scores, by the leg's NHL id or his initial and surname. Today, a player
-  // missing from what's in so far may simply play later.
-  const nhlDays = new Map();
-  for (const day of [...new Set(open.filter((l) => l.sport === 'nhl' && l.market !== 'ml').map((l) => l.date))]) {
-    try { nhlDays.set(day, await nhlPropDayBox(db, day, day >= slateDate())); } catch (e) { /* no NHL box table yet */ }
+  // The NHL and NFL props cards' legs, from the box scores those cards grade from, by the leg's id
+  // or its name. An NFL leg from another board carries an AWAY @ HOME key and goes its own way
+  // below. Today, a player missing from what's in so far may simply play later.
+  const isCard = (l) => l.market !== 'ml' && (l.sport === 'nhl' || (l.sport === 'nfl' && !entryNflKey(l.game_id)));
+  const cardDays = new Map();
+  for (const l of open.filter(isCard)) {
+    const k = `${l.sport}|${l.date}`;
+    if (cardDays.has(k)) continue;
+    try { cardDays.set(k, await PP_PROP_CFG[l.sport].dayBox(db, l.date, l.date >= slateDate())); } catch (e) { /* no box table yet */ }
   }
   const stmts = [];
   for (const l of open) {
     let result = null, actual = null;
-    if (l.sport === 'nhl' && l.market !== 'ml') {
-      const d = nhlDays.get(l.date);
+    if (isCard(l)) {
+      const c = PP_PROP_CFG[l.sport], d = cardDays.get(`${l.sport}|${l.date}`);
       if (!d) continue;
-      const b = (l.player_id != null && d.byId.get(String(l.player_id))) || d.byName.get(nhlInitial(nhlName(l.player)));
+      const b = (l.player_id != null && d.byId.get(String(l.player_id))) || d.byName.get(c.boxKey ? c.boxKey(c.name(l.player)) : c.name(l.player));
       if (b) {
-        if (b[l.market] == null) result = 'void';
+        const v = c.stat(b, l.market);
+        if (v == null) result = 'void';
         else if (l.line == null) continue;
         else {
-          actual = b[l.market];
+          actual = v;
           result = actual === l.line ? 'push' : ((actual < l.line) === (l.side === 'Under') ? 'win' : 'loss');
         }
       } else if (d.settled) result = 'void';
@@ -6272,6 +6279,7 @@ async function ingestNflProps(env, opts, reqUrl) {
   const stamp = new Date().toISOString();
   const stmts = [];
   const pydRows = [];
+  const cardRows = [];
   out.passYdsEvents = 0;
   // Lean: the passing yards (logged, never listed) wait.
   const lean = await oddsLean(env.DB, now);
@@ -6338,6 +6346,7 @@ async function ingestNflProps(env, opts, reqUrl) {
       for (const e of passYdsEntries(ev, d, wk, sp.seasonType)) pydRows.push(e);
       for (const e of recEntries(ev, d, wk, sp.seasonType)) recRows.push(e);
     }
+    if (sp.seasonType === 'REG' && Date.parse(ev.commence_time) - now <= NFL_PROP_AHEAD_MS) cardRows.push(nflPropsRawRow(ev, d, now));
   }
   out.wrote = stmts.length;
   // The line rows go in before the passing-TD log below reads them back
@@ -6347,6 +6356,10 @@ async function ingestNflProps(env, opts, reqUrl) {
     for (let i = 0; i < stmts.length; i += 50) {
       try { await env.DB.batch(stmts.slice(i, i + 50)); }
       catch (e) { out.errors.push('write: ' + String((e && e.message) || e)); }
+    }
+    if (sp.seasonType === 'REG') {
+      try { await nflPropsRawSave(env.DB, cardRows, upcoming, now); }
+      catch (e) { out.errors.push('props card: ' + String((e && e.message) || e)); }
     }
   }
 
@@ -18569,6 +18582,12 @@ const PP_PROP_WINDOW_DAYS = 45;             // a free scan of what a last-ten ne
 const NBA_PROP_COLS = ['pts', 'reb', 'ast', 'threes', 'blk', 'stl', 'tov'];
 const NHL_PROP_COLS = ['pts', 'goals', 'ast', 'sog', 'blocks', 'hits', 'saves'];
 const NHL_PROP_GOALIE_GP = 10;              // last season's starts, for his saves a game to mean anything
+const NFL_PROP_COLS = ['pass_yds', 'pass_td', 'rush_yds', 'rec', 'rec_yds'];
+const NFL_PROP_FLOOR = { pass_yds: 100, pass_td: 0.3, rush_yds: 5, rec: 1, rec_yds: 8, rush_rec: 15 };   // a projection under these: he doesn't do this
+const NFL_PROP_AHEAD_MS = 7 * 864e5;        // the week's games, Thursday to Monday
+const NFL_PROP_QUEUE = 'nfl_props_raw:';    // feed_cache: a game the capture bought, until the trigger logs it
+const NFL_PROP_QUEUE_END = 'nfl_props_raw;';
+const NFL_PROP_EVENTS = 'nfl_props_events'; // feed_cache: the odds feed's ids, from the last capture
 
 async function ensurePpPropSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS pp_props (
@@ -18617,6 +18636,7 @@ async function ppPropsTick(env, now = Date.now()) {
   for (const [id, r] of Object.entries(reads)) if (!r || !(Date.parse(r.commence) > now - 864e5)) delete reads[id];
   const due = [];
   for (const [sport, c] of Object.entries(PP_PROP_CFG)) {
+    if (c.fromCapture) continue;
     const seen = await ppReadStates(db, c.gamesKey, now);
     for (const g of await ppWatchGames(env, sport, c.lg, c.sportKey, now)) {
       if (ppPropReadDue(g.commence, reads[g.id], seen[g.id], now)) due.push({ sport, c, g });
@@ -18805,6 +18825,70 @@ async function nhlPropsFormTick(env, now = Date.now()) {
   await saveFeedCache(db, key, { builtAt: now, done: due.done, players });
   return true;
 }
+// The NFL's. A box score lists a player only in the tables he has a line in, so a stat he has none
+// in was a zero. `min` is his use: 1 is the volume of a regular (NFL_HOT_MIN). Its games come from
+// ESPN's own list and its season is few enough games to read whole.
+async function nflPropsFormTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB, key = PP_PROP_FORM + 'nfl', c = PP_PROP_CFG.nfl;
+  await ensureNflBoxSchema(db);
+  const sl = await loadFeedCache(db, PP_PROP_SLATE + 'nfl');
+  if (!(sl.present && sl.data && now - sl.data.at < PP_PROP_FORM_EVERY_MS)) {
+    const cur = await espnScoreboard('nfl/scoreboard?xhr=1').catch(() => []);
+    const wk = cur[0] && cur[0].week && cur[0].season && cur[0].season.type === 2 ? cur[0].week.number : null;
+    const next = wk != null ? await espnScoreboard(`nfl/scoreboard?xhr=1&year=${NFL_HOT_YEAR}&seasontype=2&week=${wk + 1}`).catch(() => []) : [];
+    if (cur.length) {
+      const games = [...cur, ...next].filter((e) => e && e.id && e.season && e.season.type === 2 && /SCHEDULED/.test((e.status && e.status.type && e.status.type.name) || '')).map((e) => {
+        const cs = ((e.competitions || [])[0] || {}).competitors || [];
+        const t = (side) => (cs.find((x) => x.homeAway === side) || {}).team || {};
+        return { id: String(e.id), commence: e.date, home: t('home').abbreviation, away: t('away').abbreviation, homeNick: t('home').name || t('home').displayName, awayNick: t('away').name || t('away').displayName };
+      });
+      await saveFeedCache(db, PP_PROP_SLATE + 'nfl', { at: now, games });
+    }
+  }
+  const due = await ppPropFormDue(db, key, 'nfl_box_games', now);
+  if (!due) return null;
+  const rows = ((await db.prepare('SELECT player_id, player, team, date, pass_att, pass_yds, pass_td, car, rush_yds, tgt, rec, rec_yds FROM nfl_box WHERE date >= ? ORDER BY date DESC').bind(`${NFL_HOT_YEAR}-08-01`).all()).results || [])
+    .map((r) => ({ ...r, ...Object.fromEntries(NFL_PROP_COLS.map((k) => [k, r[k] == null ? 0 : r[k]])),
+      min: Math.max((r.pass_att || 0) / NFL_HOT_MIN.pass_att, (r.car || 0) / NFL_HOT_MIN.car, (r.tgt || 0) / NFL_HOT_MIN.tgt) }));
+  const prior = (await nflHotPriors(env)) || {};
+  const players = ppPropPlayers(rows, c, (id, st) => { const x = prior[id]; return x && x.g >= NFL_HOT_PRIOR_G && x[st] != null ? x[st] : null; });
+  for (const p of players) for (const [st, floor] of Object.entries(NFL_PROP_FLOOR)) if (p.proj[st] != null && p.proj[st] < floor) delete p.proj[st];
+  await saveFeedCache(db, key, { builtAt: now, done: due.done, players });
+  return true;
+}
+// What the card needs of a game the NFL capture just bought (pure): PrizePicks' and the sharp
+// books' prices. That capture is the card's read, so the card costs no credits of its own.
+function nflPropsRawRow(ev, d, now) {
+  return { id: ev.id, home: ev.home_team, away: ev.away_team, commence: ev.commence_time, at: now,
+    body: { bookmakers: (d.bookmakers || []).filter((b) => PP_PROP_BOOKS.includes(b.key)).map((b) => ({ key: b.key,
+      markets: (b.markets || []).map((m) => ({ key: m.key, outcomes: (m.outcomes || []).map((o) => ({ name: o.name, description: o.description, price: o.price, point: o.point })) })) })) } };
+}
+async function nflPropsRawSave(db, rows, upcoming, now) {
+  await ensureFeedCacheSchema(db);
+  const put = (k, v) => db.prepare('INSERT OR REPLACE INTO feed_cache (key, data, updated_at, claimed_until) VALUES (?,?,?,0)').bind(k, JSON.stringify(v), now);
+  const stmts = [put(NFL_PROP_EVENTS, { at: now, events: upcoming.map((e) => ({ id: e.id, home_team: e.home_team, away_team: e.away_team, commence_time: e.commence_time })) }),
+    ...rows.map((r) => put(NFL_PROP_QUEUE + r.id, r))];
+  for (let i = 0; i < stmts.length; i += 25) await db.batch(stmts.slice(i, i + 25));
+}
+// One waiting game a tick into the log, so a capture, which has its own work to finish, isn't made
+// longer by it. A game that has started since is dropped: its lines are locked.
+async function nflPropsLogTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB;
+  await ensureFeedCacheSchema(db);
+  const row = await db.prepare('SELECT key, data FROM feed_cache WHERE key >= ? AND key < ? LIMIT 1').bind(NFL_PROP_QUEUE, NFL_PROP_QUEUE_END).first();
+  if (!row) return null;
+  const x = JSON.parse(row.data), c = PP_PROP_CFG.nfl;
+  if (Date.parse(x.commence) > now) {
+    await ensurePpPropSchema(db);
+    const legs = histPropLegs({ markets: c.markets }, x.body);
+    await ppPropsLog(env, 'nfl', { id: x.id, home: x.home, away: x.away, commence: x.commence }, legs, x.at, ppPropSharpOnly(c.sharpOnly, x.body, legs));
+    if (legs.length) await saveFeedCache(db, PP_PROP_RAW + 'nfl', { at: new Date(x.at).toISOString(), game: x.id, body: x.body });
+  }
+  await db.prepare('DELETE FROM feed_cache WHERE key = ?').bind(row.key).run();
+  return true;
+}
 // Goalies by NHL id: his name in full and his saves. Kept in feed_cache, one request a season's.
 async function nhlGoalies(env, season, ttlMs) {
   const key = `nhl_goalies:${season}`;
@@ -18836,18 +18920,18 @@ async function nbaPropsSlate(db, now) {
   }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
 }
 
-// The NHL's games: the feed's own list, with the odds feed's id for each.
-async function nhlPropsSlate(db, now) {
-  const hit = await loadFeedCache(db, PP_PROP_SLATE + 'nhl');
-  const ev = await loadFeedCache(db, 'nhl_pp_events:reg');
+// The NHL's and the NFL's games: the league's own list, with the odds feed's id for each.
+async function ppPropsFeedSlate(db, sport, eventsKey, aheadMs, now) {
+  const hit = await loadFeedCache(db, PP_PROP_SLATE + sport);
+  const ev = await loadFeedCache(db, eventsKey);
   const events = (ev.present && ev.data && ev.data.events) || [];
   return ((hit.present && hit.data && hit.data.games) || []).filter((g) => {
     const t = Date.parse(g.commence);
-    return t > now && t - now <= PP_PROP_AHEAD_MS;
+    return t > now && t - now <= aheadMs;
   }).map((g) => {
     const t = Date.parse(g.commence);
     const e = events.find((x) => x && nhlMatch(x.home_team, g.homeNick) && nhlMatch(x.away_team, g.awayNick) && Math.abs(Date.parse(x.commence_time) - t) < 6 * 3600e3);
-    return { id: e ? e.id : `nhl:${g.id}`, date: ptDateOf(t), commence: g.commence, home: e ? e.home_team : g.homeNick, away: e ? e.away_team : g.awayNick, homeAb: g.home, awayAb: g.away, inj: {}, injAt: 0 };
+    return { id: e ? e.id : `${sport}:${g.id}`, date: ptDateOf(t), commence: g.commence, home: e ? e.home_team : g.homeNick, away: e ? e.away_team : g.awayNick, homeAb: g.home, awayAb: g.away, inj: {}, injAt: 0 };
   }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
 }
 
@@ -18856,12 +18940,12 @@ function ppPropRecordOut(rec) {
   const c = (k) => r.bands[k] || { n: 0, hit: 0 };
   return { graded: r.graded, need: PP_PROP_NEED, bands: r.bands, byMarket: r.byMarket, at54: { n: c('54-56').n + c('56+').n, hit: c('54-56').hit + c('56+').hit } };
 }
-// GET /api/nba-props, /api/nhl-props: what the card draws. No credits and no upstream call:
+// GET /api/nba-props, /api/nhl-props, /api/nfl-props: what the card draws. No credits and no upstream call:
 // feed_cache rows and the logs. Lines typed on the card aren't in it (they stay behind the entries
 // key); the page lays those over from /api/prop-lines.
 async function ppPropsBoard(env, sport, now = Date.now()) {
   const c = PP_PROP_CFG[sport];
-  const out = { sport, at: new Date(now).toISOString(), cols: c.cols, sums: c.sums, readHours: PP_PROP_READ_MS / 3600e3, games: [], players: [], record: null };
+  const out = { sport, at: new Date(now).toISOString(), cols: c.cols, sums: c.sums, readHours: c.fromCapture ? null : PP_PROP_READ_MS / 3600e3, games: [], players: [], record: null };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   const db = env.DB;
   try {
@@ -19022,12 +19106,15 @@ function ppPropTally(rec, rows) {
 }
 // One day's box scores for grading. Today every game found so far can be read with others still
 // to finish, and a player in one of those looks just like one who sat out.
+async function ppPropDay(db, gamesTable, day, tonight, rows, keyOf) {
+  const pend = await db.prepare(`SELECT COUNT(*) AS n FROM ${gamesTable} WHERE date = ? AND done = 0`).bind(day).first();
+  const read = await db.prepare(`SELECT COUNT(*) AS n FROM ${gamesTable} WHERE date = ? AND done = 1`).bind(day).first();
+  return { byId: new Map(rows.map((b) => [b.player_id, b])), byName: new Map(rows.map((b) => [keyOf(b.player), b])),
+    settled: !tonight && Number(read && read.n) > 0 && Number(pend && pend.n) === 0 };
+}
 async function nbaPropDayBox(db, day, tonight) {
   const rows = (await db.prepare('SELECT * FROM nba_box WHERE date = ?').bind(day).all()).results || [];
-  const pend = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 0').bind(day).first();
-  const read = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 1').bind(day).first();
-  return { byId: new Map(rows.map((b) => [b.player_id, b])), byName: new Map(rows.map((b) => [nbaName(b.player), b])),
-    settled: !tonight && Number(read && read.n) > 0 && Number(pend && pend.n) === 0 };
+  return ppPropDay(db, 'nba_box_games', day, tonight, rows, nbaName);
 }
 
 // And the NHL's. A box score shortens his first name, so one with no id goes by initial and surname.
@@ -19036,11 +19123,18 @@ async function nhlPropDayBox(db, day, tonight) {
   await ensureNhlBoxSchema(db);
   const rows = (await db.prepare('SELECT * FROM nhl_box WHERE date = ?').bind(day).all()).results || [];
   const goalies = (await db.prepare('SELECT * FROM nhl_goalie_box WHERE date = ?').bind(day).all()).results || [];
-  const pend = await db.prepare('SELECT COUNT(*) AS n FROM nhl_box_games WHERE date = ? AND done = 0').bind(day).first();
-  const read = await db.prepare('SELECT COUNT(*) AS n FROM nhl_box_games WHERE date = ? AND done = 1').bind(day).first();
-  const all = [...rows, ...goalies];
-  return { byId: new Map(all.map((b) => [b.player_id, b])), byName: new Map(all.map((b) => [nhlInitial(nhlName(b.player)), b])),
-    settled: !tonight && Number(read && read.n) > 0 && Number(pend && pend.n) === 0 };
+  return ppPropDay(db, 'nhl_box_games', day, tonight, [...rows, ...goalies], (n) => nhlInitial(nhlName(n)));
+}
+// And the NFL's. Absent from a box read in full is a player with no line: a void, as a sat-out's is.
+async function nflPropDayBox(db, day, tonight) {
+  await ensureNflBoxSchema(db);
+  const rows = (await db.prepare('SELECT * FROM nfl_box WHERE date = ?').bind(day).all()).results || [];
+  return ppPropDay(db, 'nfl_box_games', day, tonight, rows, nbaBaseName);
+}
+const nflPropStat = (b, m) => { const v = (k) => (b[k] == null ? 0 : b[k]); return m === 'rush_rec' ? v('rush_yds') + v('rec_yds') : v(m); };
+async function gradeNflProps(env, tonight = false) {
+  if (!env || !env.DB) return 0;
+  return gradePpProps(env.DB, 'nfl', tonight);
 }
 
 const ppPropStats = (c) => [...c.cols, ...Object.keys(c.sums)];
@@ -19053,6 +19147,16 @@ const PP_PROP_CFG = {
   // PrizePicks' number set by hand, with the projection and his log beside it.
   nhl: { lg: 'reg', sportKey: NHL_LEAGUES.reg, gamesKey: 'nhl_pp_games', cols: NHL_PROP_COLS, sums: {}, k: NHL_PRIOR_K, minMin: NHL_TOI_MIN,
     markets: { player_shots_on_goal: 'sog', player_total_saves: 'saves' }, sharpOnly: { player_shots_on_goal: 'sog', player_total_saves: 'saves' },
-    name: nhlName, stat: (b, m) => (b && b[m] != null ? b[m] : null), dayBox: nhlPropDayBox, boxKey: nhlInitial, slate: nhlPropsSlate, logTable: 'nhlpp',
+    name: nhlName, stat: (b, m) => (b && b[m] != null ? b[m] : null), dayBox: nhlPropDayBox, boxKey: nhlInitial, logTable: 'nhlpp',
+    slate: (db, now) => ppPropsFeedSlate(db, 'nhl', 'nhl_pp_events:reg', PP_PROP_AHEAD_MS, now),
     ensure: async (db) => { await ensureNhlBoxSchema(db); await ensureNhlPpSchema(db); }, teamMatch: nhlMatch },
+  // Read by the capture the NFL already pays for (nflPropsRawRow): receiving and rushing yards and
+  // passing TDs through the week, passing yards and catches inside 20 hours of kickoff. Rush +
+  // receiving yards has no market there: PrizePicks' number set by hand, its parts added up.
+  nfl: { fromCapture: true, cols: NFL_PROP_COLS, sums: { rush_rec: ['rush_yds', 'rec_yds'] }, k: 5, minMin: 1,
+    markets: { player_reception_yds: 'rec_yds', player_rush_yds: 'rush_yds', player_pass_tds: 'pass_td', player_pass_yds: 'pass_yds', player_receptions: 'rec' },
+    sharpOnly: { player_reception_yds: 'rec_yds', player_rush_yds: 'rush_yds', player_pass_tds: 'pass_td', player_pass_yds: 'pass_yds', player_receptions: 'rec' },
+    name: nbaBaseName, stat: nflPropStat, dayBox: nflPropDayBox,
+    slate: (db, now) => ppPropsFeedSlate(db, 'nfl', NFL_PROP_EVENTS, NFL_PROP_AHEAD_MS, now),
+    ensure: ensureNflBoxSchema, teamMatch: nhlMatch },
 };

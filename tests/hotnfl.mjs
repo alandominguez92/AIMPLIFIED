@@ -200,7 +200,7 @@ ok((await get('/api/hot-players?sport=nfl')).hot === null, 'the list unreadable:
 console.log('\n-- how often --');
 S = scene();
 await begin();
-const scans = () => S.sqls.filter((q) => /FROM nfl_box WHERE date/.test(q)).length;
+const scans = () => S.sqls.filter((q) => /SELECT \* FROM nfl_box WHERE date >=/.test(q)).length;
 const scanBefore = scans();
 ok(scanBefore >= 1, 'it read the box scores to build it');
 NOW += 30 * 60e3; await tick();
@@ -331,7 +331,7 @@ state.hot.nfl = { ...payload, ready: false, teamsReady: 12, teamsNeeded: 22, gam
 ok(/opponents are ranked once 22 teams have played 5, and 12 have so far/.test(card('nfl')), 'too early: how far off');
 state.hot.nfl = null;
 ok(card('nfl') === '', 'no list: no section');
-ok(/grid\.innerHTML = rec \+ hotCardHtml\('nfl'\) \+ \(games\.length/.test(app), 'on the tab, above the games');
+ok(/grid\.innerHTML = rec \+ propsCardHtml\('nfl'\) \+ hotCardHtml\('nfl'\) \+ \(games\.length/.test(app), 'on the tab, above the games');
 ok(/fetchJson\('\/api\/hot-players\?sport=nfl'\)/.test(app), 'and fetched with it');
 ok(/case 'hot-all': \{[\s\S]{0,260}renderNfl\(\)/.test(app), 'the tap redraws the tab');
 
