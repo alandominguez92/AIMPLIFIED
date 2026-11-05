@@ -3631,6 +3631,7 @@
   const ENTRY_KEY_STORE = 'aimplified_entry_key';
   const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds',
     threes: '3PM', ast: 'Ast', reb: 'Reb', blk: 'Blk', stl: 'Stl',
+    pts: 'Pts', pra: 'PRA', pts_reb: 'Pts+Reb', pts_ast: 'Pts+Ast', reb_ast: 'Reb+Ast', blk_stl: 'Blk+Stl', tov: 'TO',
     shots: 'Shots', sot: 'SOT', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves',
     crosses: 'Crosses', shot_ast: 'Shots Ast', conceded: 'Goals Allowed', fouls_drawn: 'Fouls Drawn', goal_ast: 'G+A' };
   function entryKey() {
@@ -4774,6 +4775,36 @@
         break;
       }
       case 'socp-stat': state.socStat = target.dataset.stat; renderSoccer(); break;
+      // The NBA, NHL and NFL props cards.
+      case 'pr-stat': state.prStat = { ...(state.prStat || {}), [target.dataset.sport]: target.dataset.stat }; propRedraw(target.dataset.sport); break;
+      case 'pr-match': {
+        const id = target.dataset.id;
+        state.prMatch = { ...(state.prMatch || {}), [id]: !(state.prMatch && state.prMatch[id]) };
+        propRedraw(target.dataset.sport);
+        break;
+      }
+      case 'pr-row': {
+        const k = target.dataset.key;
+        state.prOpen = { ...(state.prOpen || {}), [k]: !(state.prOpen && state.prOpen[k]) };
+        propRedraw(k.split(':')[0]);
+        break;
+      }
+      case 'pr-line': {
+        const k = target.dataset.key;
+        const inp = document.querySelector(`input[data-prl="${CSS.escape(k)}"]`);
+        const cur = inp && isFinite(Number(inp.value)) ? Number(inp.value) : 0;
+        propLineSave(k, Math.max(0, Math.round((cur + Number(target.dataset.d)) * 2) / 2));
+        propRedraw(k.split(':')[0]);
+        break;
+      }
+      case 'pr-save': propLineSave(target.dataset.key, Number(target.dataset.line), 0); propSaveMark(target.dataset.key); break;
+      case 'pr-side': {
+        const k = target.dataset.key;
+        state.prSide = { ...(state.prSide || {}), [k]: target.dataset.side };
+        propSlipSync(k);
+        propRedraw(k.split(':')[0]);
+        break;
+      }
       case 'socp-all': state.socAll = { ...(state.socAll || {}), [target.dataset.id]: true }; renderSoccer(); break;
       // From the Picks tab's strip: the Soccer tab, on that stat, with the
       // row's line setter open and in view.
@@ -5054,6 +5085,10 @@
       const v = Number(t.value);
       if (isFinite(v) && v >= 0) { socLineSave(t.dataset.socp, Math.round(v * 2) / 2); renderSoccer(); }
     }
+    if (t.dataset.prl) {
+      const v = Number(t.value);
+      if (isFinite(v) && v >= 0) { propLineSave(t.dataset.prl, Math.round(v * 2) / 2); propRedraw(t.dataset.prl.split(':')[0]); }
+    }
     if (t.dataset.action === 'entry-payout') {
       const v = t.value.trim();
       entriesFetch('POST', { action: 'payout', id: t.dataset.id, payout: v === '' ? null : Number(v) })
@@ -5071,6 +5106,18 @@
     const at = t.selectionStart;
     renderSoccer();
     const n = el.soccerGrid && el.soccerGrid.querySelector('input[data-socq]');
+    if (n) { n.focus(); try { n.setSelectionRange(at, at); } catch (err) { /* type=search may refuse */ } }
+  });
+
+  // And the props cards' search, the same way.
+  document.body.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.prq) return;
+    const sport = t.dataset.prq;
+    state.prQuery = { ...(state.prQuery || {}), [sport]: t.value };
+    const at = t.selectionStart;
+    propRedraw(sport);
+    const n = document.querySelector(`input[data-prq="${CSS.escape(sport)}"]`);
     if (n) { n.focus(); try { n.setSelectionRange(at, at); } catch (err) { /* type=search may refuse */ } }
   });
 
@@ -5225,6 +5272,7 @@
     const nbaBoard = document.getElementById('nbaBoard');
     if (nbaBoard) nbaBoard.hidden = s !== 'nba';
     if (s === 'nba' && !state.nba) refreshNba();             // lazy first load
+    else if (s === 'nba' && Date.now() - ((state.propsAt && state.propsAt.nba) || 0) > 120e3) refreshProps('nba');
     const nhlBoard = document.getElementById('nhlBoard');
     if (nhlBoard) nhlBoard.hidden = s !== 'nhl';
     if (s === 'nhl' && !state.nhl) refreshNhl();
@@ -6961,13 +7009,17 @@
   // board says how old they are rather than implying they are live.
   async function refreshNba() {
     if (!LIVE_MODE) return;
-    const [d, pp] = await Promise.all([
+    const [d, pp, props] = await Promise.all([
       fetchJson('/api/nba-board').catch(() => null),
       fetchJson('/api/nba-pp').catch(() => null),
+      fetchJson('/api/nba-props').catch(() => null),
     ]);
     state.nba = d && Array.isArray(d.games) ? d : { games: [], empty: true, error: d ? undefined : 'unreachable' };
     state.nbaPp = pp && Array.isArray(pp.legs) ? pp : { legs: [] };
+    state.propsAt = { ...(state.propsAt || {}), nba: Date.now() };
+    if (props && Array.isArray(props.players)) state.props = { ...(state.props || {}), nba: props };
     renderNba();
+    propSavedLoad('nba');
   }
 
   // ---- Tonight's PrizePicks unders (2026-10-06) ------------------------------
@@ -7313,12 +7365,12 @@
         + (pre ? ' · preseason: starters sit, and Pinnacle is the only sharp book' : '');
     }
     if (!games.length) {
-      grid.innerHTML = nbaPpCardHtml() + nbaHotCardHtml() + `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+      grid.innerHTML = nbaPpCardHtml() + propsCardHtml('nba') + nbaHotCardHtml() + `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
     }
     const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    grid.innerHTML = nbaPpCardHtml() + nbaHotCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
+    grid.innerHTML = nbaPpCardHtml() + propsCardHtml('nba') + nbaHotCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map((g) => mlTabRow(g, 'nba')).join('')}</div>`
       + `</div></div>`;
@@ -7672,6 +7724,204 @@
         + `${socSaveHtml(key, l.line)}</span></div>` : '')
       + `</div></li>`;
   }
+  // ---- The props cards (2026-11-05) -----------------------------------------
+  // Soccer's card for the NBA, NHL and NFL, the owner's call: PrizePicks' number on each row, one
+  // stat at a time. The big figure is the sharp books' chance at that exact number, and a row with
+  // no sharp book there shows none. Most read 50-53, as they should: PrizePicks' number is a good
+  // one. Teal from the 5- and 6-flex break-even up, where last season's legs landed above it. The
+  // projection and how often he cleared the line are there to read, with no percentage of their
+  // own: rated 70%+ at PrizePicks' real numbers, that formula landed 51% on points.
+  const PROP_STATS = {
+    nba: { pts: ['Points', 'points'], reb: ['Rebounds', 'rebounds'], ast: ['Assists', 'assists'], pra: ['PRA', 'PRA'], pts_reb: ['Pts + Reb', 'pts + reb'],
+      pts_ast: ['Pts + Ast', 'pts + ast'], reb_ast: ['Reb + Ast', 'reb + ast'], threes: ['Threes', 'threes'], blk: ['Blocks', 'blocks'], stl: ['Steals', 'steals'],
+      blk_stl: ['Blk + Stl', 'blocks + steals'], tov: ['Turnovers', 'turnovers'] },
+  };
+  const PROP_STRONG = 54;
+  const propKey = (sport, g, p, s) => `${sport}:${g.date}:${p.k}:${s}`;
+  const propData = (sport) => (state.props && state.props[sport]) || null;
+  function propVals(d, p, s) {
+    const at = (k) => d.cols.indexOf(k);
+    const parts = d.sums && d.sums[s] ? d.sums[s] : [s];
+    if (parts.some((k) => at(k) < 0)) return [];
+    return (p.log || []).map((r) => parts.reduce((sum, k) => (sum == null || r[at(k)] == null ? null : sum + r[at(k)]), 0)).filter((v) => v != null);
+  }
+  // A row as it reads now. Its line is one set here, else the one its starred leg was taken at
+  // (so a reload doesn't show a starred leg at another number), else PrizePicks' as read. With
+  // none of those it stands at the half point above the projection, and isn't taken for PrizePicks'.
+  function propView(sport, d, g, p, s) {
+    const key = propKey(sport, g, p, s), ln = (p.lines && p.lines[s]) || null;
+    const leg = state.slip && state.slip[`prp:${key}`];
+    const set = state.prLines && state.prLines[key];
+    const taken = leg && leg.spec && leg.spec.pp ? leg.spec.pp.line : null;
+    const proj = p.proj && typeof p.proj[s] === 'number' ? p.proj[s] : null;
+    const real = typeof set === 'number' || typeof taken === 'number' || !!ln;
+    const line = typeof set === 'number' ? set : typeof taken === 'number' ? taken : ln ? ln.l : proj != null ? Math.floor(proj) + 0.5 : 0.5;
+    const fair = ln && line === ln.l && ln.u != null ? ln.u : ((ln && ln.fairs) || []).reduce((a, f) => (f[0] === line ? f[1] : a), null);
+    const side = (state.prSide && state.prSide[key]) || (leg && leg.spec && leg.spec.side)
+      || (fair != null ? (fair >= 50 ? 'Under' : 'Over') : proj != null && proj > line ? 'Over' : 'Under');
+    const vals = propVals(d, p, s);
+    return { key, ln, line, real, proj, fair, side, vals, over: vals.filter((v) => v > line).length,
+      p: fair == null ? null : side === 'Under' ? fair : Math.round((100 - fair) * 10) / 10 };
+  }
+  function propLeg(sport, g, p, s, v) {
+    return { id: `prp:${v.key}`, board: 'PrizePicks', title: `${p.name} ${v.side} ${v.line} ${PROP_STATS[sport][s][1]}`, sub: `${g.away} @ ${g.home}`,
+      odds: null, tier: null, edge: null,
+      spec: { sport, date: g.date, gamePk: g.id, playerId: p.id || null, player: p.name, team: p.team || null, market: s, side: v.side,
+        book: { line: null, price: null, under: null }, pp: { line: v.line, under: v.fair } } };
+  }
+  function propFind(key) {
+    const [sport, date, k, s] = key.split(':');
+    const d = propData(sport);
+    const p = d && (d.players || []).find((x) => x.k === k && d.games[x.g] && d.games[x.g].date === date);
+    return p ? { sport, d, g: d.games[p.g], p, s } : null;
+  }
+  // A starred leg follows its row: the slip holds what the row shows.
+  function propSlipSync(key) {
+    const f = propFind(key);
+    if (!f || !state.slip[`prp:${key}`]) return;
+    const had = state.slip[`prp:${key}`];
+    const line = state.prLines && state.prLines[key];
+    const legNow = { ...had, spec: { ...had.spec, ...(state.prSide && state.prSide[key] ? { side: state.prSide[key] } : {}), pp: { ...had.spec.pp, ...(typeof line === 'number' ? { line } : {}) } } };
+    state.slip = { ...state.slip, [`prp:${key}`]: legNow };
+    const v = propView(f.sport, f.d, f.g, f.p, f.s);
+    state.slip = { ...state.slip, [`prp:${key}`]: propLeg(f.sport, f.g, f.p, f.s, v) };
+    persistSlip();
+    renderSlip();
+  }
+  function propRedraw(sport) {
+    if (sport === 'nba') renderNba();
+  }
+  // A line set here is PrizePicks' number: saved a moment after the last tap, as soccer's are,
+  // and graded at that number.
+  const propSaveTimers = {};
+  function propLineSave(key, line, wait = 1200) {
+    if (typeof line !== 'number' || !isFinite(line)) return;
+    state.prLines = { ...(state.prLines || {}), [key]: line };
+    state.prSaving = { ...(state.prSaving || {}), [key]: true };
+    propSlipSync(key);
+    clearTimeout(propSaveTimers[key]);
+    propSaveTimers[key] = setTimeout(() => propLineSend(key), wait);
+  }
+  async function propLineSend(key) {
+    const line = state.prLines && state.prLines[key];
+    const f = propFind(key);
+    try {
+      if (!f || typeof line !== 'number') throw new Error('That row has left the card.');
+      const j = await entriesFetch('POST', { sport: f.sport, gameId: f.g.id, player: f.p.name, playerId: f.p.id, team: f.p.team, stat: f.s, line }, '/api/prop-lines');
+      state.prSaved = { ...(state.prSaved || {}), [key]: j.line };
+    } catch (e) { toast(`Line not saved: ${e.message}`); }
+    state.prSaving = { ...(state.prSaving || {}), [key]: false };
+    propSaveMark(key);
+  }
+  function propSaveHtml(key, line) {
+    if (state.prSaving && state.prSaving[key]) return `<span class="sp-lbl" data-prs="${esc(key)}">Saving…</span>`;
+    if (state.prSaved && state.prSaved[key] === line) return `<span class="sp-lbl" data-prs="${esc(key)}" title="Saved as PrizePicks' line: graded at this number">PP line <span class="sp-ok">✓</span></span>`;
+    return `<button type="button" class="sp-save" data-prs="${esc(key)}" data-action="pr-save" data-key="${esc(key)}" data-line="${esc(String(line))}" aria-label="Save ${esc(String(line))} as PrizePicks' line">Save</button>`;
+  }
+  function propSaveMark(key) {
+    const n = document.querySelector(`[data-prs="${CSS.escape(key)}"]`);
+    const inp = document.querySelector(`input[data-prl="${CSS.escape(key)}"]`);
+    if (n && inp) n.outerHTML = propSaveHtml(key, Number(inp.value));
+  }
+  // After a reload: the lines this key has saved. Only a device that already holds a key asks.
+  async function propSavedLoad(sport) {
+    let k = null;
+    try { k = localStorage.getItem(ENTRY_KEY_STORE); } catch (e) { /* no storage, nothing saved here */ }
+    if (!k) return;
+    try {
+      const j = await entriesFetch('GET', null, '/api/prop-lines');
+      const saved = {};
+      for (const x of (j.lines || [])) saved[`${x.sport}:${x.date}:${x.pkey}:${x.market}`] = x.typed_line;
+      state.prSaved = { ...saved, ...(state.prSaved || {}) };
+      state.prLines = { ...saved, ...(state.prLines || {}) };
+      propRedraw(sport);
+    } catch (e) { /* the card works without them; a save says what is wrong */ }
+  }
+  function propRow(sport, d, g, p, s) {
+    const v = propView(sport, d, g, p, s), key = v.key, label = PROP_STATS[sport][s];
+    const leg = propLeg(sport, g, p, s, v);
+    const on = !!state.slip[offerLeg(leg)];
+    const open = !!(state.prOpen && state.prOpen[key]);
+    const opp = legOppText({ team: p.team, game: `${g.away} @ ${g.home}` }, NBA_CODE_NICK);
+    // A row with no number yet opens its setter: a star there would be the app's guess at PrizePicks' line.
+    const star = v.real
+      ? `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`
+      : `<button type="button" class="tc-add" data-action="pr-row" data-key="${esc(key)}" aria-label="Set PrizePicks' line for ${esc(p.name)} first">☆</button>`;
+    const noPct = !v.real ? ' <span class="tc-wait">no PrizePicks number yet</span>' : '';
+    const sharpAt = v.ln && v.ln.gap != null && v.ln.l != null ? Math.round((v.ln.l - v.ln.gap) * 2) / 2 : null;
+    const both = v.fair != null ? `Sharp: Under ${r1(v.fair)}% · Over ${r1(100 - v.fair)}%`
+      : sharpAt != null && sharpAt !== v.line ? `No sharp price at ${esc(String(v.line))}: theirs is ${esc(String(sharpAt))}`
+        : 'No sharp price here';
+    const side = (x) => `<button type="button" class="sp-save pr-side${v.side === x ? ' on' : ''}" data-action="pr-side" data-key="${esc(key)}" data-side="${x}" aria-pressed="${v.side === x}">${x}</button>`;
+    const trend = v.vals.length ? trendBarsHtml({ vals: v.vals, line: v.line, side: v.side === 'Under' ? 'under' : 'over', hit: v.side === 'Under' ? v.vals.filter((x) => x < v.line).length : v.over }) : '';
+    return `<li class="sp-row${open ? ' open' : ''}">${star}<div class="tc-leg">`
+      + `<button type="button" class="sp-tap" data-action="pr-row" data-key="${esc(key)}" aria-expanded="${open}">`
+      + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span>${v.p != null ? `<span class="tc-p${v.p >= PROP_STRONG ? ' sp-strong' : ''}">${pct0(v.p)}</span>` : ''}</span>`
+      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.real ? `${v.side} ` : ''}${esc(String(v.line))} ${esc(label[1])}${noPct}${nbaCardInjTag(p)}</span>`
+      + `${projLineHtml(v.proj, v.line, v.side)}${v.vals.length ? `<span class="pr-clear">over ${esc(String(v.line))} in ${v.over} of last ${v.vals.length}</span>` : ''}</span>`
+      + `</button>`
+      + (open ? `<div class="sp-set"><span class="sp-sh"><span class="sp-lbl">PrizePicks line</span><span class="sp-both">${both}</span></span>`
+        + `<span class="sp-line">`
+        + `<button type="button" class="sp-step" data-action="pr-line" data-key="${esc(key)}" data-d="-0.5" aria-label="Lower the line">−</button>`
+        + `<input class="sp-in" type="number" inputmode="decimal" step="0.5" min="0" value="${esc(String(v.line))}" data-prl="${esc(key)}" aria-label="PrizePicks line for ${esc(p.name)} ${esc(label[0])}">`
+        + `<button type="button" class="sp-step" data-action="pr-line" data-key="${esc(key)}" data-d="0.5" aria-label="Raise the line">+</button>`
+        + `${v.ln && v.line === v.ln.l && !(state.prLines && typeof state.prLines[key] === 'number') ? `<span class="sp-lbl" data-prs="${esc(key)}">Read ${esc(soccerKick(v.ln.at))}</span>` : propSaveHtml(key, v.line)}</span>`
+        + `<span class="pr-sides">${side('Under')}${side('Over')}</span>${trend}</div>` : '')
+      + `</div></li>`;
+  }
+  function propsCardHtml(sport) {
+    const d = propData(sport);
+    if (!d) return '';
+    const now = Date.now(), stats = Object.keys(PROP_STATS[sport]);
+    const picked = state.prStat && state.prStat[sport];
+    const view = picked === 'best' || stats.includes(picked) ? picked : stats[0];
+    const q = String((state.prQuery && state.prQuery[sport]) || '').trim().toLowerCase();
+    const games = (d.games || []).map((g, i) => ({ g, i })).filter((x) => Date.parse(x.g.commence) > now);
+    const r = d.record;
+    const rec = r && r.graded
+      ? `<span class="tc-rec">Sharp 54%+: <b${r.at54.n >= 5 && r.at54.hit / r.at54.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${r.at54.hit} of ${r.at54.n}</b> · ${r.graded} graded of ${r.need}</span>` : '';
+    const head = `<div class="tc-head"><span class="tc-title">PrizePicks props, one stat at a time</span>${rec}</div>`
+      + `<div class="tc-sub">The percentage is the sharp books’ chance at PrizePicks’ exact number, read about ${esc(String(d.readHours || 4))} hours before each game. Most read 50-53. Last season 54%+ on points landed 57%. No percentage: no sharp book quotes that number. Tap a player to change the line: what you set is saved and graded there. These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.</div>`;
+    if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">No games in the next day and a half.</div></div>`;
+    const chips = `<input class="sp-search" type="search" placeholder="Find a player" value="${esc((state.prQuery && state.prQuery[sport]) || '')}" data-prq="${esc(sport)}" aria-label="Find a player">`
+      + `<div class="sp-chips">${[...stats, 'best'].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="pr-stat" data-sport="${esc(sport)}" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : PROP_STATS[sport][s][0])}</button>`).join('')}</div>`
+      + `<div class="sp-hint">${esc(view === 'best' ? 'Each player’s strongest sharp number' : `${PROP_STATS[sport][view][0]}: sharp numbers first, then by projection`)}</div>`;
+    const dist = (x) => (x.v.fair == null ? -1 : Math.abs(x.v.fair - 50));
+    let found = 0;
+    const body = games.map(({ g, i }) => {
+      const ps = (d.players || []).filter((p) => p.g === i && (!q || String(p.name).toLowerCase().includes(q)));
+      let rows = [];
+      if (view === 'best') {
+        for (const p of ps) {
+          const all = stats.map((s) => ({ p, s, v: propView(sport, d, g, p, s) })).filter((x) => x.v.fair != null);
+          if (q) rows.push(...all);
+          else if (all.length) rows.push(all.sort((a, b) => dist(b) - dist(a))[0]);
+        }
+      } else {
+        rows = ps.map((p) => ({ p, s: view, v: propView(sport, d, g, p, view) })).filter((x) => x.v.real || x.v.proj != null);
+      }
+      if (!rows.length) return '';
+      rows.sort((a, b) => dist(b) - dist(a) || (b.v.proj || 0) - (a.v.proj || 0));
+      found += rows.length;
+      const strong = rows.filter((x) => x.v.fair != null && Math.max(x.v.fair, 100 - x.v.fair) >= PROP_STRONG).length;
+      const mOpen = !!q || games.length === 1 || !!(state.prMatch && state.prMatch[g.id]);
+      const mHead = `<button type="button" class="sp-mh" data-action="pr-match" data-sport="${esc(sport)}" data-id="${esc(g.id)}" aria-expanded="${mOpen}">`
+        + `<b>${esc(nbaNick(g.away))} @ ${esc(nbaNick(g.home))}</b> · <span class="pk-when">${esc(soccerKick(g.commence))}</span>`
+        + `<span class="sp-mc">${rows.length} player${rows.length === 1 ? '' : 's'}${strong ? ` · ${strong} at ${PROP_STRONG}%+` : ''} ${mOpen ? '▾' : '▸'}</span></button>`;
+      if (!mOpen) return `<div class="sp-match">${mHead}</div>`;
+      return `<div class="sp-match">${mHead}<ol class="tc-legs">${rows.map((x) => propRow(sport, d, g, x.p, x.s)).join('')}</ol></div>`;
+    }).join('');
+    const nothing = !found ? `<div class="tc-wait-note">${q ? `No player matches “${esc(state.prQuery[sport])}”${view !== 'best' ? ` in ${esc(PROP_STATS[sport][view][1])}` : ''}.` : view === 'best' ? 'No sharp numbers read yet: each game’s come about four hours before it.' : 'No players to list yet.'}</div>` : '';
+    return `<div class="nba-pp pk-card sp-card">${head}${chips}${body}${nothing}</div>`;
+  }
+  // Back on a tab after two minutes, the card alone: the reads land through the day.
+  async function refreshProps(sport) {
+    const d = await fetchJson(`/api/${sport}-props`).catch(() => null);
+    state.propsAt = { ...(state.propsAt || {}), [sport]: Date.now() };
+    if (d && Array.isArray(d.players)) state.props = { ...(state.props || {}), [sport]: d };
+    propRedraw(sport);
+  }
+
   // A record's count, green only once it has cleared PrizePicks' 2-pick
   // break-even (57.7%) over five or more, as the Picks list draws a chance: a
   // first "1 of 3" at the PrizePicks lines is not a result yet.

@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health',
 ]);
 
@@ -181,6 +181,8 @@ export default {
     if (p === '/api/entries') return entriesApi(request, env, url);
     // The PrizePicks soccer lines typed on the card: private the same way.
     if (p === '/api/soc-lines') return socLinesApi(request, env);
+    // And those typed on the NBA, NHL and NFL cards.
+    if (p === '/api/prop-lines') return propLinesApi(request, env);
     if (routeLocked(p, url) && !(env && env.ADMIN_KEY && request.headers.get('x-admin-key') === env.ADMIN_KEY)) {
       return cors(new Response(JSON.stringify({ error: 'This route needs the admin key.' }), { status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
     }
@@ -237,7 +239,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
+    const KEYED_BY_QUERY = p === '/api/nba-props' || p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
     // The MLB boards spend credits on a miss and only ?summary= changes their answer, so a
     // made-up query must not be a miss (2026-11-04).
     const mlbBoard = p === '/api/board' || p === '/api/batters';
@@ -272,7 +274,7 @@ export default {
       // A running backtest has this invocation's to itself.
       ctx.waitUntil((async () => {
         if (await histPropsTick(env).catch(() => null)) return;
-        for (const job of [nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(env).catch(() => null);
+        for (const job of [nbaPropsFormTick, ppPropsTick, nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(env).catch(() => null);
       })());
       return;
     }
@@ -577,6 +579,7 @@ async function handleApi(p, env, ctx, url) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return cors(json(await nbaPpDay(env, day), 120));
     return cors(json(raw === '1' ? await nbaPpRaw(env) : raw === 'events' ? await ppEventsRaw(env, 'nba', 'reg') : await nbaPpBoard(env), 120));
   }
+  if (p === '/api/nba-props') return cors(json(url && url.searchParams.get('raw') === '1' ? await ppPropsRaw(env, 'nba') : await nbaPropsBoard(env), 120));
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
@@ -14165,6 +14168,7 @@ async function nbaBoxIngest(env, tonight = false) {
     } catch (e) { /* next tick */ }
   }
   const graded = await gradeNbaPp(env.DB, tonight);
+  await gradePpProps(env.DB, 'nba', tonight).catch(() => null);
   return { read, graded };
 }
 
@@ -18460,3 +18464,401 @@ async function oddsUsage(env) {
   } catch (e) { out.error = String((e && e.message) || e); }
   return cors(json(out, 30));
 }
+// ---------------------------------------------------------------------------
+// The props cards on the NBA, NHL and NFL tabs (2026-11-05, the owner's call: "Let's do the same
+// thing we did for Soccer"). Soccer's layout, one stat at a time, with PrizePicks' number on each
+// row. The big figure is the sharp books' chance at that number, the owner's choice after the
+// replay at PrizePicks' real lines: the soccer card's formula rated 70%+ landed 51% on NBA points
+// and PRA, while the sharp chance landed what it said (points at 54-56% landed 57, 338 of 592; at
+// 52-54 landed 52). So it is worked out as that replay did, by the same two functions: only
+// quotes at PrizePicks' exact number, Pinnacle first (histPropLegs, histPropRead). A row with none
+// shows no percentage. The projection and how often he cleared the line are there to read beside
+// it, with no percentage of their own. Off Picks of the day until PP_PROP_NEED legs a sport have
+// graded at real numbers.
+// One read a game, about four hours before it, once the log's own reads have seen PrizePicks up:
+// about 50 credits a day across the NBA and NHL, approved by the owner on Nov 5. Anything more
+// needs asking.
+const PP_PROP_READ_MS = 4 * 3600e3;
+const PP_PROP_RETRY_MS = 90 * 60e3;         // a read that found no PrizePicks line goes once more, this near the game
+const PP_PROP_PER_TICK = 2;
+const PP_PROP_AHEAD_MS = 36 * 3600e3;       // how far ahead the card lists, as the tab's moneylines do
+const PP_PROP_NEED = 100;
+const PP_PROP_READS = 'pp_props_reads';     // feed_cache: which games have had their read
+const PP_PROP_FORM = 'pp_props_form:';      // feed_cache: each player's last games, from the trigger
+const PP_PROP_REC = 'pp_props_rec:';        // feed_cache: the record, added to as rows grade
+const PP_PROP_RAW = 'pp_props_raw:';        // feed_cache: the last read as it came (?raw=1)
+const PP_PROP_FORM_EVERY_MS = 2 * 3600e3;
+const PP_PROP_FORM_STALE_MS = 12 * 3600e3;
+const PP_PROP_BOOKS = ['prizepicks', ...HIST_PROP_SHARP];   // ten or fewer named books bill as one region
+const PP_PROP_BANDS = [[50, 52, '50-52'], [52, 54, '52-54'], [54, 56, '54-56'], [56, 101, '56+']];
+const NBA_PROP_MIN = 18;                    // minutes over his last five, to be listed with no number up
+const NBA_PROP_WINDOW_DAYS = 45;            // a free scan of what a last-ten needs, not a season's box scores
+const NBA_PROP_COLS = ['pts', 'reb', 'ast', 'threes', 'blk', 'stl', 'tov'];
+
+async function ensurePpPropSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS pp_props (
+    sport TEXT NOT NULL, date TEXT NOT NULL, pkey TEXT NOT NULL, market TEXT NOT NULL,
+    player TEXT, player_id TEXT, team TEXT, game_id TEXT, home TEXT, away TEXT, commence TEXT,
+    read_point REAL, read_sharp REAL, sharp_src TEXT, sharp_n INTEGER, gap REAL, fairs TEXT, read_at TEXT,
+    typed_line REAL, typed_at TEXT, typed_sharp REAL,
+    proj REAL, n_recent INTEGER, actual REAL, result TEXT,
+    PRIMARY KEY (sport, date, pkey, market)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS pp_props_open ON pp_props (sport, date) WHERE result IS NULL').run();
+}
+
+// The sharp chance at every number the sharp books quote him at (pure): how a line set on the
+// card keeps its figure when a book is there, and says so when none is.
+function ppPropFairs(l) {
+  const pts = new Set();
+  for (const bk of HIST_PROP_SHARP) for (const x of (l.q[bk] || [])) pts.add(x[0]);
+  return [...pts].sort((a, b) => a - b).map((pp) => [pp, histPropRead({ ...l, pp }).under]).filter((x) => x[1] != null);
+}
+// The log's book_unders ({ book: [main line, fair under] }) in the shape histPropRead reads.
+function ppPropQuotes(json) {
+  let b = null;
+  try { b = JSON.parse(json || 'null'); } catch (e) { /* no quotes */ }
+  const q = {};
+  for (const [bk, x] of Object.entries(b || {})) if (Array.isArray(x)) q[bk] = [x];
+  return q;
+}
+const ppPropFairAt = (fairs, line) => { const f = (fairs || []).find((x) => x[0] === line); return f ? f[1] : null; };
+
+// Is this game's one read due? PrizePicks must be up, by the log's own reads: the read would bill
+// for the books' quotes with nothing to hold them against.
+function ppPropReadDue(commence, read, seen, now) {
+  const t = Date.parse(commence);
+  if (!(t > now) || t - now > PP_PROP_READ_MS) return false;
+  if (!(seen && (seen.first || seen.posted))) return false;
+  if (!read) return true;
+  return !read.ok && (read.tries || 0) < 2 && t - now <= PP_PROP_RETRY_MS;
+}
+
+async function ppPropsTick(env, now = Date.now()) {
+  if (!env || !env.DB || !env.ODDS_API_KEY) return null;
+  const db = env.DB;
+  const hit = await loadFeedCache(db, PP_PROP_READS);
+  const reads = (hit.present && hit.data) || {};
+  for (const [id, r] of Object.entries(reads)) if (!r || !(Date.parse(r.commence) > now - 864e5)) delete reads[id];
+  const due = [];
+  for (const [sport, c] of Object.entries(PP_PROP_CFG)) {
+    const seen = await ppReadStates(db, c.gamesKey, now);
+    for (const g of await ppWatchGames(env, sport, c.lg, c.sportKey, now)) {
+      if (ppPropReadDue(g.commence, reads[g.id], seen[g.id], now)) due.push({ sport, c, g });
+    }
+  }
+  if (!due.length || await oddsLean(db, now)) return null;
+  due.sort((a, b) => Date.parse(a.g.commence) - Date.parse(b.g.commence));
+  await ensurePpPropSchema(db);
+  let calls = 0;
+  for (const { sport, c, g } of due) {
+    if (calls >= PP_PROP_PER_TICK) break;
+    calls++;
+    const st = reads[g.id] = { commence: g.commence, at: now, tries: ((reads[g.id] && reads[g.id].tries) || 0) + 1, ok: false };
+    try {
+      const r = await fetch(`https://api.the-odds-api.com/v4/sports/${c.sportKey}/events/${g.id}/odds?apiKey=${env.ODDS_API_KEY}`
+        + `&markets=${Object.keys(c.markets).join(',')}&oddsFormat=american&dateFormat=iso&bookmakers=${PP_PROP_BOOKS.join(',')}`,
+      { headers: { accept: 'application/json' } });
+      await recordOddsUsage(env, r, `${sport}:${c.lg}:props`);
+      if (!r.ok) continue;
+      const body = await r.json();
+      const legs = histPropLegs({ markets: c.markets }, body);
+      st.ok = legs.length > 0;
+      await ppPropsLog(env, sport, g, legs, now);
+      if (st.ok) await saveFeedCache(db, PP_PROP_RAW + sport, { at: new Date(now).toISOString(), game: g.id, credits: Number(r.headers.get('x-requests-last')) || null, body });
+    } catch (e) { /* its second try, near the game */ }
+  }
+  await saveFeedCache(db, PP_PROP_READS, reads);
+  return calls;
+}
+
+// One game's rows: the read's, and on the NBA the stats the PrizePicks log reads already, as they
+// stand, so the whole game grades in one table. Log rows reach this with what a re-read last saw.
+async function ppPropsLog(env, sport, g, legs, now) {
+  const db = env.DB, c = PP_PROP_CFG[sport], day = ptDateOf(Date.parse(g.commence)), at = new Date(now).toISOString();
+  const form = await loadFeedCache(db, PP_PROP_FORM + sport);
+  const byKey = new Map(((form.present && form.data && form.data.players) || []).map((p) => [p.k, p]));
+  const rows = legs.map((l) => ({ player: l.p, market: l.mk, point: l.pp, read: histPropRead(l), fairs: ppPropFairs(l) }));
+  if (c.logged) rows.push(...await c.logged(db, day, g.id));
+  const typed = new Map(((await db.prepare('SELECT pkey, market, typed_line FROM pp_props WHERE sport = ? AND date = ? AND typed_at IS NOT NULL').bind(sport, day).all()).results || [])
+    .map((r) => [`${r.pkey}|${r.market}`, r.typed_line]));
+  const stmts = rows.map((x) => {
+    const k = c.name(x.player), p = byKey.get(k), ty = typed.get(`${k}|${x.market}`);
+    const proj = p && p.proj && p.proj[x.market] != null ? p.proj[x.market] : null;
+    return db.prepare(`INSERT INTO pp_props (sport, date, pkey, market, player, player_id, team, game_id, home, away, commence,
+        read_point, read_sharp, sharp_src, sharp_n, gap, fairs, read_at, typed_sharp, proj, n_recent)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(sport, date, pkey, market) DO UPDATE SET player = excluded.player, player_id = excluded.player_id, team = excluded.team,
+        game_id = excluded.game_id, home = excluded.home, away = excluded.away, commence = excluded.commence,
+        read_point = excluded.read_point, read_sharp = excluded.read_sharp, sharp_src = excluded.sharp_src, sharp_n = excluded.sharp_n,
+        gap = excluded.gap, fairs = excluded.fairs, read_at = excluded.read_at, typed_sharp = excluded.typed_sharp,
+        proj = excluded.proj, n_recent = excluded.n_recent`)
+      .bind(sport, day, k, x.market, x.player, p ? String(p.id) : null, p ? p.team : null, g.id, g.home, g.away, g.commence,
+        x.point, x.read.under, x.read.under == null ? null : x.read.src, x.read.n || 0, x.read.gap, x.fairs.length ? JSON.stringify(x.fairs) : null, at,
+        ty == null ? null : ppPropFairAt(x.fairs, ty), proj, p ? p.log.length : null);
+  });
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return stmts.length;
+}
+// The NBA's other five, from the PrizePicks log. Each book's main line is all that log keeps, so
+// these show a figure where that main line is PrizePicks' number.
+async function nbaPropsLogged(db, day, gameId) {
+  await ensureNbaSchema(db);
+  const rows = (await db.prepare('SELECT * FROM nbapp WHERE date = ? AND game_id = ?').bind(day, gameId).all()).results || [];
+  return ppStanding(rows).map(ppCurrent).map((r) => {
+    const q = ppPropQuotes(r.book_unders), l = { pp: r.point, q };
+    return { player: r.player, market: r.market, point: r.point, read: histPropRead(l), fairs: ppPropFairs(l) };
+  });
+}
+
+// Each player's last ten and his projection (the soccer formula: the last ten plus five games of
+// last season), kept on the trigger as one row. Rebuilt only when a game has come in since, and
+// at most every two hours: the page, and each read, take this one row.
+async function nbaPropsFormTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB, key = PP_PROP_FORM + 'nba';
+  const hit = await loadFeedCache(db, key);
+  const age = hit.present && hit.data ? now - hit.data.builtAt : Infinity;
+  if (age < PP_PROP_FORM_EVERY_MS) return null;
+  await ensureNbaSchema(db);
+  const done = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE done = 1 AND date >= ?').bind(ptDateOf(now - 3 * 864e5)).first();
+  const n = Number(done && done.n) || 0;
+  if (age < PP_PROP_FORM_STALE_MS && hit.data.done === n) return null;
+  const from = ptDateOf(now - NBA_PROP_WINDOW_DAYS * 864e5);
+  const rows = (await db.prepare(`SELECT player_id, player, team, date, min, ${NBA_PROP_COLS.join(', ')} FROM nba_box
+    WHERE date >= ? AND season_type IN (2,3) AND dnp = 0 ORDER BY date DESC`).bind(from > NBA_SEASON_FROM ? from : NBA_SEASON_FROM).all()).results || [];
+  const byId = new Map();
+  for (const r of rows) {
+    if (!byId.has(r.player_id)) byId.set(r.player_id, []);
+    const a = byId.get(r.player_id);
+    if (a.length < 10) a.push(r);
+  }
+  const pri = await nbaPriors(env);
+  const players = [];
+  for (const [id, last] of byId) {
+    const mins = last.slice(0, 5).map((r) => r.min).filter((v) => v != null);
+    const pl = (pri && pri.players && pri.players[id]) || null;
+    players.push({ id, k: nbaName(last[0].player), name: last[0].player, team: last[0].team,
+      min: mins.length ? round1(mins.reduce((a, b) => a + b, 0) / mins.length) : null,
+      log: last.slice().reverse().map((r) => NBA_PROP_COLS.map((c) => r[c])),
+      proj: ppPropProjections(last, pl) });
+  }
+  await saveFeedCache(db, key, { builtAt: now, done: n, players });
+  return true;
+}
+// A stat's projection (pure): the last games plus NBA_PRIOR_K of last season; with no season
+// behind it, three games of his own or nothing. A combined stat is its parts added up.
+function ppPropProjections(last, pl) {
+  const one = (s) => {
+    const v = last.map((r) => r[s]).filter((x) => x != null), sum = v.reduce((a, b) => a + b, 0);
+    const prior = pl && pl.gp >= 5 && typeof pl[s] === 'number' ? pl[s] : null;
+    if (prior != null) return (sum + NBA_PRIOR_K * prior) / (v.length + NBA_PRIOR_K);
+    return v.length >= 3 ? sum / v.length : null;
+  };
+  const raw = Object.fromEntries(NBA_PROP_COLS.map((s) => [s, one(s)]));
+  const out = {};
+  for (const s of NBA_PROP_COLS) if (raw[s] != null) out[s] = round1(raw[s]);
+  for (const [s, parts] of Object.entries(NBA_COMBOS)) if (parts.every((x) => raw[x] != null)) out[s] = round1(parts.reduce((a, x) => a + raw[x], 0));
+  return out;
+}
+
+// The games a card lists: ESPN's slate off the injury report's row (it has the team codes the box
+// scores use), with the odds feed's id for each, which the slip keys a game by.
+async function nbaPropsSlate(db, now) {
+  const byDay = await nbaInjuryDays(db, [ptDateOf(now), ptDateOf(now + 864e5)]);
+  const ev = await loadFeedCache(db, 'nba_pp_events:reg');
+  const events = (ev.present && ev.data && ev.data.events) || [];
+  return [...byDay.values()].flat().filter((g) => {
+    const t = Date.parse(g.commence);
+    return t > now && t - now <= PP_PROP_AHEAD_MS && g.homeAb && g.awayAb;
+  }).map((g) => {
+    const t = Date.parse(g.commence);
+    const e = events.find((x) => x && nbaMatch(x.home_team, g.home) && nbaMatch(x.away_team, g.away) && Math.abs(Date.parse(x.commence_time) - t) < 6 * 3600e3);
+    return { id: e ? e.id : `espn:${g.id}`, date: ptDateOf(t), commence: g.commence, home: g.home, away: g.away, homeAb: g.homeAb, awayAb: g.awayAb, inj: g.inj || {}, injAt: g.at };
+  }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
+}
+
+function ppPropRecordOut(rec) {
+  const r = rec || { graded: 0, bands: {}, byMarket: {} };
+  const c = (k) => r.bands[k] || { n: 0, hit: 0 };
+  return { graded: r.graded, need: PP_PROP_NEED, bands: r.bands, byMarket: r.byMarket, at54: { n: c('54-56').n + c('56+').n, hit: c('54-56').hit + c('56+').hit } };
+}
+// GET /api/nba-props: what the card draws. No credits and no upstream call: feed_cache rows and
+// the log. Lines typed on the card aren't in it (they stay behind the entries key); the page lays
+// those over from /api/prop-lines.
+async function nbaPropsBoard(env, now = Date.now()) {
+  const c = PP_PROP_CFG.nba;
+  const out = { sport: 'nba', at: new Date(now).toISOString(), cols: NBA_PROP_COLS, sums: NBA_COMBOS, readHours: PP_PROP_READ_MS / 3600e3, games: [], players: [], record: null };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
+  const db = env.DB;
+  try {
+    await ensureNbaSchema(db); await ensurePpPropSchema(db);
+    const rec = await loadFeedCache(db, PP_PROP_REC + 'nba');
+    out.record = ppPropRecordOut(rec.present ? rec.data : null);
+    const games = await nbaPropsSlate(db, now);
+    if (!games.length) return out;
+    const today = ptDateOf(now);
+    const read = (await db.prepare('SELECT * FROM pp_props WHERE sport = ? AND date >= ? AND read_point IS NOT NULL').bind('nba', today).all()).results || [];
+    const logged = ppStanding((await db.prepare('SELECT * FROM nbapp WHERE date >= ?').bind(today).all()).results || []).map(ppCurrent);
+    // By day, player and stat. The PrizePicks log re-reads, so its number is the newer one.
+    const lines = new Map(), meta = new Map();
+    for (const r of read) {
+      lines.set(`${r.date}|${r.pkey}|${r.market}`, { l: r.read_point, u: r.read_sharp, gap: r.gap, at: r.read_at, ...(r.fairs ? { fairs: JSON.parse(r.fairs) } : {}) });
+      meta.set(`${r.date}|${r.pkey}`, { name: r.player, id: r.player_id, team: r.team, home: r.home, away: r.away, date: r.date });
+    }
+    for (const r of logged) {
+      const q = ppPropQuotes(r.book_unders), l = { pp: r.point, q }, h = histPropRead(l), fairs = ppPropFairs(l), k = c.name(r.player);
+      lines.set(`${r.date}|${k}|${r.market}`, { l: r.point, u: h.under, gap: h.gap, at: r.close_at || r.captured_at, ...(fairs.length ? { fairs } : {}) });
+      meta.set(`${r.date}|${k}`, { name: r.player, id: r.player_id, team: r.team, home: r.home, away: r.away, date: r.date });
+    }
+    const form = await loadFeedCache(db, PP_PROP_FORM + 'nba');
+    const byTeam = new Map();
+    for (const p of ((form.present && form.data && form.data.players) || [])) {
+      if (!byTeam.has(p.team)) byTeam.set(p.team, []);
+      byTeam.get(p.team).push(p);
+    }
+    const stats = ppPropStats(c), placed = new Set();
+    const linesOf = (date, k) => {
+      const mine = {};
+      for (const s of stats) { const x = lines.get(`${date}|${k}|${s}`); if (x) mine[s] = x; }
+      return mine;
+    };
+    const injOf = (g, id) => {
+      const i = (g.inj || {})[String(id)];
+      return i ? { status: i.f || i.s, out: nbaInjOut(i), what: i.what, ret: i.ret, upd: i.upd, at: new Date(g.injAt).toISOString() } : null;
+    };
+    games.forEach((g, gi) => {
+      for (const team of [g.awayAb, g.homeAb]) {
+        for (const p of (byTeam.get(team) || [])) {
+          const mine = linesOf(g.date, p.k), up = Object.keys(mine).length > 0, inj = injOf(g, p.id);
+          // Ruled out and no number up: nothing to compare. Still up: the flag is the news.
+          if (!up && (!(p.min >= NBA_PROP_MIN) || (inj && inj.out))) continue;
+          placed.add(`${g.date}|${p.k}`);
+          out.players.push({ id: p.id, k: p.k, name: p.name, team: p.team, g: gi, min: p.min, log: p.log, proj: p.proj, lines: mine, ...(inj ? { inj } : {}) });
+        }
+      }
+    });
+    // PrizePicks has him up and he has no recent game in the box scores.
+    for (const [key, m] of meta) {
+      if (placed.has(key)) continue;
+      const gi = games.findIndex((g) => g.date === m.date && nbaMatch(g.home, m.home) && nbaMatch(g.away, m.away));
+      if (gi < 0) continue;
+      const inj = m.id ? injOf(games[gi], m.id) : null;
+      out.players.push({ id: m.id || null, k: key.split('|')[1], name: m.name, team: m.team || null, g: gi, min: null, log: [], proj: {}, lines: linesOf(m.date, key.split('|')[1]), ...(inj ? { inj } : {}) });
+    }
+    out.games = games.map(({ inj, injAt, ...g }) => g);
+  } catch (e) { out.error = String((e && e.message) || e); }
+  return out;
+}
+async function ppPropsRaw(env, sport) {
+  if (!env || !env.DB) return { error: 'no DB binding' };
+  const hit = await loadFeedCache(env.DB, PP_PROP_RAW + sport);
+  return hit.present ? hit.data : { none: 'no read with PrizePicks on it yet' };
+}
+
+// POST/GET /api/prop-lines: PrizePicks' number where the feed has none, or has moved on, set on a
+// card. Private by the entries key and never cached, exactly as /api/soc-lines is. POST { sport,
+// gameId, player, playerId, team, stat, line } holds a line until the game starts; it grades at
+// that number, and a read taken later leaves it standing. GET lists the ones not yet graded, so a
+// reload shows them.
+async function propLinesApi(request, env) {
+  if (!env || !env.DB) return entryResponse({ error: 'no DB binding' }, 500);
+  const auth = await entryAuth(env, request);
+  if (!auth.ok) return entryResponse({ error: auth.error }, auth.status);
+  const db = env.DB;
+  await ensurePpPropSchema(db);
+  if (request.method === 'POST') {
+    let b;
+    try { b = await request.json(); } catch (e) { return entryResponse({ error: 'Body must be JSON.' }, 400); }
+    const sport = String((b && b.sport) || ''), c = PP_PROP_CFG[sport];
+    if (!c) return entryResponse({ error: 'Unknown sport.' }, 400);
+    const stat = String(b.stat || ''), line = Number(b.line), player = String(b.player || '').slice(0, 80), k = c.name(player);
+    if (!ppPropStats(c).includes(stat)) return entryResponse({ error: 'Unknown stat.' }, 400);
+    if (!k) return entryResponse({ error: 'Which player?' }, 400);
+    if (!(line >= 0 && line <= 2000 && Number.isInteger(line * 2))) return entryResponse({ error: 'A line is a whole or half number.' }, 400);
+    const now = Date.now();
+    const g = (await c.slate(db, now)).find((x) => x.id === String(b.gameId || ''));
+    if (!g) return entryResponse({ error: 'That game has started or left the card: its lines are locked.' }, 409);
+    const was = await db.prepare('SELECT fairs FROM pp_props WHERE sport = ? AND date = ? AND pkey = ? AND market = ?').bind(sport, g.date, k, stat).first();
+    let fairs = null;
+    try { fairs = was && was.fairs ? JSON.parse(was.fairs) : null; } catch (e) { /* no quotes */ }
+    const sharp = ppPropFairAt(fairs, line), at = new Date(now).toISOString();
+    await db.prepare(`INSERT INTO pp_props (sport, date, pkey, market, player, player_id, team, game_id, home, away, commence, typed_line, typed_at, typed_sharp)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(sport, date, pkey, market) DO UPDATE SET typed_line = excluded.typed_line, typed_at = excluded.typed_at, typed_sharp = excluded.typed_sharp`)
+      .bind(sport, g.date, k, stat, player, b.playerId != null ? String(b.playerId).slice(0, 24) : null, b.team ? String(b.team).slice(0, 8) : null,
+        g.id, g.home, g.away, g.commence, line, at, sharp).run();
+    return entryResponse({ ok: true, line, sharp, claimed: !!auth.claimed });
+  }
+  const rows = (await db.prepare('SELECT sport, date, pkey, market, typed_line FROM pp_props WHERE typed_at IS NOT NULL AND result IS NULL ORDER BY commence LIMIT 500').all()).results || [];
+  return entryResponse({ lines: rows });
+}
+
+// Grade from the box scores, as the PrizePicks log does: at the line typed if there is one, else
+// the one read. A player with no minutes, or missing from a day whose games are all read, void.
+// The record is added to here and never re-scanned: this table takes some 400 rows a day.
+async function gradePpProps(db, sport, tonight = false) {
+  const c = PP_PROP_CFG[sport];
+  await ensurePpPropSchema(db);
+  const cols = 'date, pkey, market, player, player_id, read_point, read_sharp, typed_line, typed_sharp';
+  const open = (await (tonight
+    ? db.prepare(`SELECT ${cols} FROM pp_props WHERE sport = ? AND result IS NULL AND date = ? AND commence < ?`).bind(sport, slateDate(), gameOverCut())
+    : db.prepare(`SELECT ${cols} FROM pp_props WHERE sport = ? AND result IS NULL AND date < ?`).bind(sport, slateDate())).all()).results || [];
+  if (!open.length) return 0;
+  const stmts = [], newly = [];
+  for (const day of [...new Set(open.map((r) => r.date))]) {
+    const box = await c.dayBox(db, day, tonight);
+    for (const r of open.filter((x) => x.date === day)) {
+      const line = r.typed_line != null ? r.typed_line : r.read_point;
+      const b = (r.player_id && box.byId.get(r.player_id)) || box.byName.get(r.pkey);
+      let result = null, actual = null;
+      if (b) {
+        const v = c.stat(b, r.market);
+        if (b.dnp || v == null || line == null) result = 'void';
+        else { actual = v; result = ppSide(v, line); }
+      } else if (box.settled) result = 'void';
+      if (!result) continue;
+      stmts.push(db.prepare('UPDATE pp_props SET actual = ?, result = ? WHERE sport = ? AND date = ? AND pkey = ? AND market = ?')
+        .bind(actual, result, sport, r.date, r.pkey, r.market));
+      newly.push({ market: r.market, result, sharp: r.typed_line != null ? r.typed_sharp : r.read_sharp });
+    }
+  }
+  if (!stmts.length) return 0;
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  const rec = await loadFeedCache(db, PP_PROP_REC + sport);
+  await saveFeedCache(db, PP_PROP_REC + sport, ppPropTally(rec.present ? rec.data : null, newly));
+  return stmts.length;
+}
+function ppPropTally(rec, rows) {
+  const r = rec || { graded: 0, bands: {}, byMarket: {} };
+  for (const x of rows) {
+    if (x.result !== 'under' && x.result !== 'over') continue;   // a push or a void decides nothing
+    r.graded++;
+    if (x.sharp == null) continue;
+    const under = x.sharp >= 50, p = under ? x.sharp : 100 - x.sharp, won = (x.result === 'under') === under;
+    const band = PP_PROP_BANDS.find(([lo, hi]) => p >= lo && p < hi)[2];
+    const cell = r.bands[band] || (r.bands[band] = { n: 0, hit: 0 });
+    cell.n++; if (won) cell.hit++;
+    if (p >= 54) {
+      const m = r.byMarket[x.market] || (r.byMarket[x.market] = { n: 0, hit: 0 });
+      m.n++; if (won) m.hit++;
+    }
+  }
+  return r;
+}
+// One day's box scores for grading. Today every game found so far can be read with others still
+// to finish, and a player in one of those looks just like one who sat out.
+async function nbaPropDayBox(db, day, tonight) {
+  const rows = (await db.prepare('SELECT * FROM nba_box WHERE date = ?').bind(day).all()).results || [];
+  const pend = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 0').bind(day).first();
+  const read = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE date = ? AND done = 1').bind(day).first();
+  return { byId: new Map(rows.map((b) => [b.player_id, b])), byName: new Map(rows.map((b) => [nbaName(b.player), b])),
+    settled: !tonight && Number(read && read.n) > 0 && Number(pend && pend.n) === 0 };
+}
+
+const ppPropStats = (c) => [...c.cols, ...Object.keys(c.sums)];
+const PP_PROP_CFG = {
+  nba: { lg: 'reg', sportKey: NBA_LEAGUES.reg, gamesKey: 'nba_pp_games', cols: NBA_PROP_COLS, sums: NBA_COMBOS,
+    markets: { player_points: 'pts', player_points_rebounds_assists: 'pra', player_points_rebounds: 'pts_reb', player_points_assists: 'pts_ast', player_rebounds_assists: 'reb_ast' },
+    name: nbaName, stat: nbaStat, dayBox: nbaPropDayBox, slate: nbaPropsSlate, logged: nbaPropsLogged },
+};

@@ -408,7 +408,7 @@ ok(card() === '', 'no list: no section');
 state.nbaPp = null;
 ok(card() === '', 'nothing loaded: no section');
 const render = app.slice(app.indexOf('  function renderNba('), app.indexOf('  // The NBA and NHL moneyline tabs draw one table'));
-ok((render.match(/nbaPpCardHtml\(\) \+ nbaHotCardHtml\(\)/g) || []).length === 2, 'on the tab, under the PrizePicks card, with games or without');
+ok((render.match(/nbaPpCardHtml\(\) \+ propsCardHtml\('nba'\) \+ nbaHotCardHtml\(\)/g) || []).length === 2, 'on the tab, under the PrizePicks cards, with games or without');
 ok(/case 'nba-hot-all': \{\n\s+state\.nbaHotAll = !state\.nbaHotAll;\n\s+renderNba\(\);/.test(app), 'the tap redraws the tab');
 const css = fs.readFileSync(BOARD + '/style.css', 'utf8');
 ok(/\.hot-mk \{/.test(css) && /\.hot-read\.up b \{/.test(css) && /\.hot-goes b \{/.test(css), 'styled');
