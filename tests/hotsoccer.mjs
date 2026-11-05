@@ -75,7 +75,8 @@ const insBox = (rows) => { const ins = S.sq.prepare(`INSERT INTO soc_box (${COLS
 const hasList = () => !!S.sq.prepare("SELECT 1 AS x FROM feed_cache WHERE key = 'hot_list_v2:soccer'").get();
 const fill = async () => { let n = 0; do { await tick(); n++; } while (!hasList() && n < 20); return n; };
 // The table comes with the first list, which is empty; then the real rows, and the real one.
-const prep = async () => { await loadWorker(); await fill(); S.sq.prepare("DELETE FROM feed_cache WHERE key IN ('hot_list_v2:soccer', 'soc_hot_slate', 'soc_hot_back')").run(); S.sbCalls.length = 0; insBox(S.rows); };
+// The expected soccer starters share this trigger and read the same scoreboards (tests/socexpected.mjs): held off, so the counts here are the Hot list's.
+const prep = async () => { await loadWorker(); await fill(); S.sq.prepare("INSERT OR REPLACE INTO feed_cache (key, data, updated_at) VALUES ('soc_exp_tick', '{}', ?)").run(START + 365 * 86400e3); S.sq.prepare("DELETE FROM feed_cache WHERE key IN ('hot_list_v2:soccer', 'soc_hot_slate', 'soc_hot_back')").run(); S.sbCalls.length = 0; insBox(S.rows); };
 const begin = async () => { await prep(); await fill(); };
 
 let fail = 0;

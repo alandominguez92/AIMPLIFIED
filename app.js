@@ -3102,6 +3102,12 @@
         + `${deadLegs.length === 1 ? 'is' : 'are'} out of tonight’s lineup. `
         + `Remove ${deadLegs.length === 1 ? 'it' : 'them'} before you bet the rest.</div>`
       : '';
+    const socOut = legs.filter((leg) => socLegOut(leg));
+    const socOutHtml = socOut.length
+      ? `<div class="slip-dead"><b>${socOut.length === 1 ? 'One leg isn’t starting' : socOut.length + ' legs aren’t starting'}</b> — `
+        + `${socOut.map((l) => esc(l.title || 'that player')).join(', ')}: the lineup is up without ${socOut.length === 1 ? 'him' : 'them'}. `
+        + `Remove ${socOut.length === 1 ? 'it' : 'them'} before you bet the rest.</div>`
+      : '';
 
     const boardTag = { 'K Prop': 'kprop', 'ML': 'ml', 'Batter': 'batter', 'PrizePicks': 'pp', 'NFL': 'nfl', 'NFL ML': 'nfl', 'Soccer': 'soc', 'NBA ML': 'nba', 'NHL ML': 'nhl' };
     const legHtml = legs.map((leg) => `
@@ -3166,7 +3172,7 @@
           <span class="slip-avg-v ${avgEdge >= 0 ? 'pos' : 'neg'}">${avgEdge > 0 ? '+' : ''}${avgEdge}%</span>
           <span class="slip-avg-note">Each leg is priced on its own — a parlay's true edge is lower after combined vig${withEdge.length > 1 ? ' and any correlation' : ''}.</span>
         </div>` : '';
-    el.slip.innerHTML = `${deadHtml}<div class="slip-legs">${legHtml}</div>${slipReadHtml(legs)}${avgHtml}${summaryHtml}`;
+    el.slip.innerHTML = `${deadHtml}${socOutHtml}<div class="slip-legs">${legHtml}</div>${slipReadHtml(legs)}${avgHtml}${summaryHtml}`;
 
     const stakeInput = document.getElementById('stakeInput');
     if (stakeInput) stakeInput.addEventListener('change', (e) => setStake(e.target.value));
@@ -4532,6 +4538,18 @@
   // NBA names are city plus nickname, and every nickname is unique; the
   // nickname is what fits a phone row (the "Trail Blazers" are "Blazers").
   const nbaNick = (name) => String(name || '').trim().split(/\s+/).pop();
+  // Who an NBA row's player faces (2026-11-05). A leg carries ESPN's team code
+  // and the odds feed's full names, and nothing ties the two together: "NY" is
+  // the Knicks, "UTAH" the Jazz. A code it doesn't know shows the game, not a guess.
+  const NBA_CODE_NICK = { ATL: 'Hawks', BKN: 'Nets', BOS: 'Celtics', CHA: 'Hornets', CHI: 'Bulls', CLE: 'Cavaliers', DAL: 'Mavericks', DEN: 'Nuggets', DET: 'Pistons', GS: 'Warriors',
+    HOU: 'Rockets', IND: 'Pacers', LAC: 'Clippers', LAL: 'Lakers', MEM: 'Grizzlies', MIA: 'Heat', MIL: 'Bucks', MIN: 'Timberwolves', NO: 'Pelicans', NY: 'Knicks',
+    OKC: 'Thunder', ORL: 'Magic', PHI: '76ers', PHX: 'Suns', POR: 'Blazers', SA: 'Spurs', SAC: 'Kings', TOR: 'Raptors', UTAH: 'Jazz', WSH: 'Wizards' };
+  function nbaOppText(x) {
+    const [away, home] = String((x && x.game) || '').split(' @ ').map(nbaNick);
+    if (!away || !home) return '';
+    const mine = NBA_CODE_NICK[x.team];
+    return mine === home ? `v ${away}` : mine === away ? `@ ${home}` : `${away} @ ${home}`;
+  }
   // Each NFL club by its nickname, as the NBA and NHL rows show them. The game
   // carries abbreviations and full names; the keys stay on the abbreviations.
   const nflNick = (g, t) => nbaNick(t === g.home ? g.homeFull : t === g.away ? g.awayFull : t) || t;
@@ -5200,6 +5218,7 @@
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
     if (el.soccerBoard) el.soccerBoard.hidden = s !== 'soccer';
     if (s === 'soccer' && !state.soccer) refreshSoccer();   // lazy first load
+    else if (s === 'soccer' && Date.now() - (state.socPropsAt || 0) > 120e3) refreshSocProps();
     const nbaBoard = document.getElementById('nbaBoard');
     if (nbaBoard) nbaBoard.hidden = s !== 'nba';
     if (s === 'nba' && !state.nba) refreshNba();             // lazy first load
@@ -5954,9 +5973,10 @@
     renderTopCard();
     const pp = soc && await soc;
     if (pp && Array.isArray(pp.matches)) {
-      state.socProps = pp;
+      state.socProps = socKeepExpected(pp, state.socProps);
       state.socPropsAt = Date.now();
       renderPicks();
+      renderSlip();
       // A line saved as PrizePicks' shows there too.
       await socSavedLoad();
       renderPicks();
@@ -7070,7 +7090,7 @@
       // (projLineHtml, 2026-10-28) -- an NHL skater's is points a game.
       return `<li>${star}<div class="tc-leg has-hs">${face}`
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(ppMoreP(x))}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${sport === 'nba' && nbaOppText(x) ? `${esc(nbaOppText(x))} · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}</span>`
         + `${projLineHtml(x.proj, x.point, 'Over')}</span>`
         + `</div></li>`;
     }).join('')}</ol>`;
@@ -7142,7 +7162,7 @@
         // "Jalen Brunson" to "Jalen Bru…".
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
         + nbaBandLandedHtml(r, x.model_under)
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${nbaOppText(x) ? `${esc(nbaOppText(x))} · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
         // His projection against PrizePicks' line, as the MLB board draws it.
         + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x)}</span>`
         + (PP_LINE_MARKETS.has(x.market) ? ppLineStepHtml(leg.id, x.point, x0.point, x.lineSet, x.commence) : '')
@@ -7463,11 +7483,29 @@
   // -------------------------------------------------------------------------
   // Soccer — game lines, context only; the leagues come from the payload
   // -------------------------------------------------------------------------
+  // Picks reads the props card without its expected rows, which it never shows. The
+  // Soccer tab's stay on a match still waiting; a posted lineup replaces them.
+  function socKeepExpected(next, prev) {
+    const had = new Map(((prev && prev.matches) || []).filter((m) => m.lineup === 'expected').map((m) => [m.id, m]));
+    if (!had.size) return next;
+    return { ...next, matches: next.matches.map((m) => (m.lineup === 'waiting' && had.has(m.id) ? { ...m, lineup: 'expected', rows: had.get(m.id).rows } : m)) };
+  }
+  // Back on the tab after two minutes, the props alone: this is where a lineup that
+  // has posted replaces the expected rows on a page left open.
+  async function refreshSocProps() {
+    const pp = await fetchJson('/api/soccer-props?expected=1').catch(() => null);
+    if (!pp || !Array.isArray(pp.matches)) return;
+    state.socProps = pp;
+    state.socPropsAt = Date.now();
+    if (state.sport === 'soccer') renderSoccer();
+    renderSlip();
+    socSavedLoad();
+  }
   async function refreshSoccer() {
     if (!LIVE_MODE) return;
     const [d, pp, hot] = await Promise.all([
       fetchJson('/api/soccer-board').catch(() => 'unreachable'),
-      fetchJson('/api/soccer-props').catch(() => null),
+      fetchJson('/api/soccer-props?expected=1').catch(() => null),
       fetchJson('/api/hot-players?sport=soccer').catch(() => null),
     ]);
     state.soccer = d === 'unreachable' ? { games: [], empty: true, error: 'unreachable' }
@@ -7476,6 +7514,7 @@
     state.socPropsAt = Date.now();
     state.hot = { ...state.hot, soccer: (hot && hot.hot) || null };
     renderSoccer();
+    renderSlip();
     socSavedLoad();
   }
 
@@ -7578,6 +7617,12 @@
     const side = ch.under >= ch.over ? 'Under' : 'Over';
     return { line, ch, side, p: side === 'Under' ? ch.under : ch.over };
   }
+  // A soccer leg starred before its lineup posted, and the lineup is up without him.
+  function socLegOut(leg) {
+    if (!leg || !/^socp:/.test(leg.id) || !leg.spec) return false;
+    const m = ((state.socProps && state.socProps.matches) || []).find((x) => String(x.id) === String(leg.spec.gamePk));
+    return !!(m && m.lineup === 'posted' && Array.isArray(m.starterIds) && !m.starterIds.includes(String(leg.spec.playerId)));
+  }
   // The stat inside a sentence: "Under 2.5 tackles".
   const socStatWords = (stat) => String(SOC_STAT[stat] || stat).toLowerCase();
   // Positions in words (2026-10-21): ESPN's codes ("CD-L", "AM-R") were noise
@@ -7597,6 +7642,7 @@
     const on = !!state.slip[offerLeg(leg)];
     const open = !!(state.socOpen && state.socOpen[key]);
     const tags = [];
+    if (r.expected) tags.push(`<span class="tc-wait" title="Not confirmed: the lineups post about an hour before kickoff">expected: started ${esc(String(r.expected))} of 5</span>`);
     if (r.ctx != null && r.ctx < 0.9) tags.push(`<span class="tc-gap" title="This opponent allows ${Math.round((1 - r.ctx) * 100)}% less of it than the league">tight opponent</span>`);
     if (r.ctx != null && r.ctx > 1.1) tags.push(`<span class="tc-wait" title="This opponent allows ${Math.round((r.ctx - 1) * 100)}% more of it than the league">open opponent</span>`);
     if (r.early != null && r.early >= 25) tags.push(`<span class="tc-wait" title="Off before 70' in ${r.early}% of starts">off early ${r.early}%</span>`);
@@ -7658,23 +7704,24 @@
       : ppr && ppr.saved ? `${ppr.saved} PP line${ppr.saved === 1 ? '' : 's'} saved` : '';
     const rec = (d.record && d.record.graded) || ppRec
       ? `<span class="tc-rec">${d.record && d.record.graded ? `Default line: ${socRecB(d.record.hit, d.record.graded)}` : ''}${d.record && d.record.graded && ppRec ? ' · ' : ''}${ppRec}</span>` : '';
-    const posted = ms.filter((m) => m.lineup === 'posted' && (m.rows || []).length);
-    const waiting = ms.filter((m) => m.lineup !== 'posted');
+    // Real lineups, and on those still to post the regulars expected to start (2026-11-05).
+    const listed = ms.filter((m) => (m.lineup === 'posted' || m.lineup === 'expected') && (m.rows || []).length);
+    const waiting = ms.filter((m) => m.lineup !== 'posted' && !(m.rows || []).length);
     // The stats on offer, in PrizePicks' order; a stat picked earlier that no
     // posted match has falls back to Best.
-    const stats = Object.keys(SOC_STAT).filter((s) => posted.some((m) => m.rows.some((r) => r.stat === s)));
+    const stats = Object.keys(SOC_STAT).filter((s) => listed.some((m) => m.rows.some((r) => r.stat === s)));
     const view = stats.includes(state.socStat) ? state.socStat : 'best';
-    const hint = view !== 'best' ? `${SOC_STAT[view]}: every starter, best first`
-      : (q ? 'Every stat of the players found' : 'Each starter’s strongest lean, best first');
+    const hint = view !== 'best' ? `${SOC_STAT[view]}: every player, best first`
+      : (q ? 'Every stat of the players found' : 'Each player’s strongest lean, best first');
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks player props</span>${rec}</div>`
-      + `<div class="tc-sub">At the app’s line until you set PrizePicks’: tap a player to set it, and the chance follows. Each line you set is saved and graded at that number. Starters only, once lineups post (about an hour before kickoff).`
-      + `${posted.some((m) => m.rows.some((r) => r.nRecent < 3)) ? ' Early season: most projections are still last season’s numbers.' : ''}</div>`
+      + `<div class="tc-sub">At the app’s line until you set PrizePicks’: tap a player to set it, and the chance follows. Each line you set is saved and graded at that number, if the player starts. Confirmed starters show about an hour before kickoff. Before that, regulars are marked expected: started 5 of their club’s last 5 (about 85% start the next match, 81% in European cups) or 4 of 5 (about 70%, 67%).`
+      + `${listed.some((m) => m.rows.some((r) => r.nRecent < 3)) ? ' Early season: most projections are still last season’s numbers.' : ''}</div>`
       + socSideLineHtml(d.record, d.ppRecord)
-      + (posted.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">`
+      + (listed.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">`
         + `<div class="sp-chips">${['best', ...stats].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="socp-stat" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : SOC_STAT[s])}</button>`).join('')}</div>`
         + `<div class="sp-hint">${esc(hint)}</div>` : '');
     let found = 0;
-    const body = posted.map((m) => {
+    const body = listed.map((m) => {
       let rows = m.rows.filter((r) => !q || String(r.player).toLowerCase().includes(q));
       if (view !== 'best') rows = rows.filter((r) => r.stat === view);
       else if (!q) {
@@ -7693,9 +7740,10 @@
       found += rows.length;
       // A Saturday posts fifteen lineups at once: each match is one line until
       // it is opened, unless it is the only one, or a search reaches into it.
-      const mOpen = !!q || posted.length === 1 || !!(state.socMatchOpen && state.socMatchOpen[m.id]);
+      const mOpen = !!q || listed.length === 1 || !!(state.socMatchOpen && state.socMatchOpen[m.id]);
       const starters = new Set(m.rows.map((r) => r.id)).size;
-      const count = q ? `${rows.length} found` : `${view === 'best' ? starters : rows.length} starter${(view === 'best' ? starters : rows.length) === 1 ? '' : 's'}`;
+      const isExp = m.lineup === 'expected';
+      const count = q ? `${rows.length} found` : `${view === 'best' ? starters : rows.length} ${isExp ? 'expected' : `starter${(view === 'best' ? starters : rows.length) === 1 ? '' : 's'}`}`;
       const mHead = `<button type="button" class="sp-mh" data-action="socp-match" data-id="${esc(m.id)}" aria-expanded="${mOpen}">`
         + `<b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span>`
         + `<span class="sp-mc">${count} ${mOpen ? '▾' : '▸'}</span></button>`;
@@ -7705,13 +7753,13 @@
       const all = !!q || view !== 'best' || !!(state.socAll && state.socAll[m.id]);
       const shown = all ? rows : rows.slice(0, SOC_BEST_N);
       const more = shown.length < rows.length
-        ? `<button type="button" class="sp-more" data-action="socp-all" data-id="${esc(m.id)}">All ${rows.length} starters</button>` : '';
+        ? `<button type="button" class="sp-more" data-action="socp-all" data-id="${esc(m.id)}">All ${rows.length} ${isExp ? 'expected' : 'starters'}</button>` : '';
       return `<div class="sp-match">${mHead}<ol class="tc-legs">${shown.map((r) => socPropRow(m, r)).join('')}</ol>${more}</div>`;
     }).join('');
-    const nothing = q && posted.length && !found ? `<div class="tc-wait-note">No starter matches “${esc(state.socQuery)}”${view !== 'best' ? ` in ${esc(socStatWords(view))}` : ''}.</div>` : '';
+    const nothing = q && listed.length && !found ? `<div class="tc-wait-note">No player matches “${esc(state.socQuery)}”${view !== 'best' ? ` in ${esc(socStatWords(view))}` : ''}.</div>` : '';
     const wait = waiting.length
       ? `<div class="tc-wait-note">Lineups not posted yet: ${waiting.slice(0, 6).map((m) => `${esc(m.away)} @ ${esc(m.home)} ${esc(soccerKick(m.commence))}`).join(' · ')}${waiting.length > 6 ? ` · and ${waiting.length - 6} more` : ''}.</div>` : '';
-    const none = !posted.length && !waiting.length ? '<div class="tc-wait-note">No covered fixture in the next fourteen hours.</div>' : '';
+    const none = !listed.length && !waiting.length ? '<div class="tc-wait-note">No covered fixture in the next two days.</div>' : '';
     // The page that still answers has none of these (socPageRows in worker.js).
     const stale = stats.some((s) => ['passes', 'tackles', 'clear', 'crosses', 'shot_ast'].includes(s))
       ? '<div class="tc-wait-note">Passes, tackles, clearances, crosses and shots assisted run on numbers from before Oct 12: ESPN stopped sending them, so new ones can\'t be graded.</div>' : '';
@@ -7749,7 +7797,7 @@
     if (!d || !Array.isArray(d.matches)) return '';
     const now = Date.now();
     const list = socBestByStat(d, now);
-    const waiting = d.matches.filter((m) => m.lineup !== 'posted' && Date.parse(m.commence) > now);
+    const waiting = d.matches.filter((m) => m.lineup !== 'posted' && Date.parse(m.commence) > now && Date.parse(m.commence) - now <= 14 * 3600e3);
     if (!list.length && !waiting.length) return '';
     const weak = Object.keys(SOC_STAT).filter((s) => socWeakStat(d.record, s)).map((s) => {
       const x = d.record.byMarket[s];

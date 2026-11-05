@@ -1,0 +1,145 @@
+{
+"note": "/api/nba-pp legs on Nov 4-5, 2026: each game and team code pair seen",
+"pairs": [
+{
+"game": "Atlanta Hawks @ Washington Wizards",
+"team": "ATL",
+"player": "Jalen Johnson"
+},
+{
+"game": "Atlanta Hawks @ Washington Wizards",
+"team": "WSH",
+"player": "AJ Dybantsa"
+},
+{
+"game": "Charlotte Hornets @ Brooklyn Nets",
+"team": "BKN",
+"player": "Julius Randle"
+},
+{
+"game": "Charlotte Hornets @ Brooklyn Nets",
+"team": "CHA",
+"player": "Brandon Miller"
+},
+{
+"game": "Chicago Bulls @ New York Knicks",
+"team": "CHI",
+"player": "Matas Buzelis"
+},
+{
+"game": "Chicago Bulls @ New York Knicks",
+"team": "NY",
+"player": "Landry Shamet"
+},
+{
+"game": "Cleveland Cavaliers @ Oklahoma City Thunder",
+"team": "CLE",
+"player": "Meleek Thomas"
+},
+{
+"game": "Cleveland Cavaliers @ Oklahoma City Thunder",
+"team": "OKC",
+"player": "Kenrich Williams"
+},
+{
+"game": "Dallas Mavericks @ San Antonio Spurs",
+"team": "DAL",
+"player": "Cooper Flagg"
+},
+{
+"game": "Dallas Mavericks @ San Antonio Spurs",
+"team": "SA",
+"player": "Keldon Johnson"
+},
+{
+"game": "Indiana Pacers @ Memphis Grizzlies",
+"team": "IND",
+"player": "Aaron Nesmith"
+},
+{
+"game": "Indiana Pacers @ Memphis Grizzlies",
+"team": "MEM",
+"player": "Jerami Grant"
+},
+{
+"game": "Los Angeles Lakers @ Sacramento Kings",
+"team": "LAL",
+"player": "Austin Reaves"
+},
+{
+"game": "Los Angeles Lakers @ Sacramento Kings",
+"team": "SAC",
+"player": "Zach LaVine"
+},
+{
+"game": "Miami Heat @ Los Angeles Clippers",
+"team": "LAC",
+"player": "Isaiah Jackson"
+},
+{
+"game": "Miami Heat @ Los Angeles Clippers",
+"team": "MIA",
+"player": "Davion Mitchell"
+},
+{
+"game": "Milwaukee Bucks @ Boston Celtics",
+"team": "BOS",
+"player": "Baylor Scheierman"
+},
+{
+"game": "Milwaukee Bucks @ Boston Celtics",
+"team": "MIL",
+"player": "Myles Turner"
+},
+{
+"game": "Minnesota Timberwolves @ Houston Rockets",
+"team": "HOU",
+"player": "Jabari Smith Jr"
+},
+{
+"game": "Minnesota Timberwolves @ Houston Rockets",
+"team": "MIN",
+"player": "LaMelo Ball"
+},
+{
+"game": "Philadelphia 76ers @ Detroit Pistons",
+"team": "DET",
+"player": "John Collins"
+},
+{
+"game": "Philadelphia 76ers @ Detroit Pistons",
+"team": "PHI",
+"player": "Anfernee Simons"
+},
+{
+"game": "Portland Trail Blazers @ Phoenix Suns",
+"team": "PHX",
+"player": "Khaman Maluach"
+},
+{
+"game": "Portland Trail Blazers @ Phoenix Suns",
+"team": "POR",
+"player": "Damian Lillard"
+},
+{
+"game": "Toronto Raptors @ Denver Nuggets",
+"team": "DEN",
+"player": "Nikola Jokic"
+},
+{
+"game": "Toronto Raptors @ Denver Nuggets",
+"team": "TOR",
+"player": "Collin Murray-Boyles"
+},
+{
+"game": "Utah Jazz @ New Orleans Pelicans",
+"team": "NO",
+"player": "Zion Williamson"
+},
+{
+"game": "Utah Jazz @ New Orleans Pelicans",
+"team": "UTAH",
+"player": "Lauri Markkanen"
+}
+]
+}

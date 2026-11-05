@@ -272,7 +272,7 @@ export default {
       // A running backtest has this invocation's to itself.
       ctx.waitUntil((async () => {
         if (await histPropsTick(env).catch(() => null)) return;
-        for (const job of [nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp]) await job(env).catch(() => null);
+        for (const job of [nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(env).catch(() => null);
       })());
       return;
     }
@@ -5624,6 +5624,19 @@ async function ensureFeedCacheSchema(db) {
   )`).run();
 }
 // Returns { data, ageMs, present } — data is whatever was stored, parsed.
+// Many stored copies in one read: the soccer board's expected rows, a match each.
+async function loadFeedCaches(db, keys) {
+  const out = new Map();
+  try {
+    await ensureFeedCacheSchema(db);
+    for (let i = 0; i < keys.length; i += 90) {
+      const chunk = keys.slice(i, i + 90);
+      const rows = (await db.prepare(`SELECT key, data FROM feed_cache WHERE key IN (${chunk.map(() => '?').join(',')})`).bind(...chunk).all()).results || [];
+      for (const r of rows) if (r.data) out.set(r.key, JSON.parse(r.data));
+    }
+  } catch (e) { /* none, then: those matches wait for their lineups */ }
+  return out;
+}
 async function loadFeedCache(db, key) {
   try {
     await ensureFeedCacheSchema(db);
@@ -14434,7 +14447,21 @@ const SOC_PRIOR_K = 5;            // last season counts as five starts, as the N
 const SOC_CTX_W = 0.5;            // the opponent moves a projection half the way its rate says
 const SOC_BOX_CRON = '2-59/5 * * * *';
 const SOC_LINEUP_LEAD_MS = 100 * 60e3;   // lineups post about an hour out; read from 100 minutes
-const SOC_PROPS_AHEAD_MS = 14 * 3600e3;
+const SOC_PROPS_AHEAD_MS = 48 * 3600e3;
+// Expected starters, before a lineup posts (2026-11-05). Over two seasons a player
+// who started 5 of his club's last 5 started the next match 85-86% of the time (81%
+// in the European cups), 4 of 5 70-72% (67%), 3 of 5 56%; a guessed whole eleven got
+// 8 right. So the regulars and no one else. A last match over 45 days old is another
+// season's side. Read on a trigger, a few matches a tick, and kept twelve hours.
+// A pass reads 21 scoreboards, so with nothing left to work out it rests two hours:
+// a list two days ahead loses nothing by it, and ESPN has refused this Worker before.
+const SOC_EXPECT_LAST = 5;
+const SOC_EXPECT_MIN_STARTS = 4;
+const SOC_EXPECT_FRESH_MS = 45 * 86400e3;
+const SOC_EXPECT_KEEP_MS = 12 * 3600e3;
+const SOC_EXPECT_TICK_MS = 5 * 60e3;
+const SOC_EXPECT_IDLE_MS = 2 * 3600e3;
+const SOC_EXPECT_PER_TICK = 8;
 const SOC_SEASON_FROM = { epl: '2026-07-01', laliga: '2026-07-01', seriea: '2026-07-01', bundesliga: '2026-07-01', mls: '2026-01-01', ucl: '2026-07-01', uel: '2026-07-01' };
 const ESPN_SOC_SITE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
 const ESPN_SOC_CORE = 'https://sports.core.api.espn.com/v2/sports/soccer/leagues';
@@ -14669,6 +14696,8 @@ async function socBoxTick(env, opts = {}) {
 // The model's own log, graded from the box scores: under / over / push at the
 // line it showed, void for a starter who never appeared. Then the PrizePicks
 // lines the user set, the same way at their own number, in their own table.
+// A line can be set on a player only expected to start, and counts only if he
+// did: a sub's minutes aren't what the projection priced.
 // A match with no rows at all was never read, which says nothing of who played:
 // voiding those is how the record stopped at the refusal of 2026-10-12.
 async function gradeSocProps(db) {
@@ -14685,7 +14714,8 @@ async function gradeSocProps(db) {
     const by = new Map(box.map((b) => [`${b.game_id}|${b.player_id}`, b]));
     const ups = open.map((r) => {
       const b = by.get(`${r.game_id}|${r.player_id}`);
-      const actual = b && b[r.market] != null ? b[r.market] : null;
+      const counts = b && b[r.market] != null && (table !== 'soc_pp_lines' || b.starter === 1);
+      const actual = counts ? b[r.market] : null;
       const result = actual == null ? 'void' : actual === r.line ? 'push' : actual < r.line ? 'under' : 'over';
       return db.prepare(`UPDATE ${table} SET actual = ?, result = ? WHERE date = ? AND game_id = ? AND player_id = ? AND market = ?`)
         .bind(actual, result, r.date, r.game_id, r.player_id, r.market);
@@ -14702,7 +14732,7 @@ async function gradeSocProps(db) {
 //
 // POST { gameId, playerId, stat, line, proj } saves one line until kickoff
 // (later changes replace it; after kickoff it is locked). The row must be one
-// the model logged -- a starter on a posted lineup -- and the chance is the
+// the model logged -- a starter on a posted lineup -- or one still expected, and the chance is the
 // projection the card showed at that line, the side the one it favours, as
 // the card draws it. GET lists the lines saved for matches not yet graded, so
 // a reload shows them again.
@@ -14719,7 +14749,12 @@ async function socLinesApi(request, env) {
     const line = Number(b && b.line);
     if (!SOC_PROP_STATS.includes(stat)) return entryResponse({ error: 'Unknown stat.' }, 400);
     if (!(line >= 0 && line <= 200 && Number.isInteger(line * 2))) return entryResponse({ error: 'A line is a whole or half number.' }, 400);
-    const row = await db.prepare('SELECT * FROM socprops WHERE game_id = ? AND player_id = ? AND market = ?').bind(gid, pid, stat).first();
+    let row = await db.prepare('SELECT * FROM socprops WHERE game_id = ? AND player_id = ? AND market = ?').bind(gid, pid, stat).first();
+    if (!row) {
+      const exp = await loadFeedCache(db, `soc_exp:${gid}`);
+      const r = exp.present && exp.data && (exp.data.rows || []).find((x) => x.id === pid && x.stat === stat);
+      if (r) row = { date: ptDateOf(Date.parse(exp.data.commence)), league: exp.data.league, commence: exp.data.commence, player: r.player, team: r.team, opp: r.opp, proj: r.proj, line: r.line };
+    }
     if (!row) return entryResponse({ error: 'No projection was logged for that player and stat.' }, 404);
     if (!(Date.parse(row.commence) > Date.now())) return entryResponse({ error: 'That match has kicked off: its lines are locked.' }, 409);
     const shown = Number(b.proj);
@@ -14916,13 +14951,97 @@ async function socLineup(env, f) {
   return starters;
 }
 
-// GET /api/soccer-props: the next fourteen hours of fixtures in the five
+// What each player of a set has done in his starts this season, newest first.
+async function socRecentStarts(db, ids, from) {
+  const recent = new Map();
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    const rs = (await db.prepare(`SELECT * FROM soc_box WHERE player_id IN (${chunk.map(() => '?').join(',')}) AND starter = 1 AND date >= ? ORDER BY date DESC`)
+      .bind(...chunk, from).all()).results || [];
+    for (const r of rs) { if (!recent.has(r.player_id)) recent.set(r.player_id, []); recent.get(r.player_id).push(r); }
+  }
+  return recent;
+}
+// What a fixture's opponents allow: its league's, or for a cup each club's own league's.
+async function socMatchCtx(db, f, ctxAll, pri) {
+  if (!SOC_CUPS.has(f.lg)) return ctxAll && ctxAll[f.lg];
+  const teams = [];
+  for (const [abbr, id] of [[f.home, f.homeId], [f.away, f.awayId]]) teams.push({ abbr, lg: await socTeamLeague(db, abbr, id) });
+  return socUclCtx(ctxAll, teams, pri);
+}
+// The fixtures of the next two days, soonest first. Three days of dates: 48 hours
+// can touch three in Pacific time.
+async function socUpcoming(env, now) {
+  const days = [...new Set([0, 1, 2].map((d) => ptDateOf(now + d * 86400e3)))];
+  const fixtures = [];
+  for (const lg of Object.keys(SOC_PROP_LEAGUES)) for (const d of days) fixtures.push(...(await socFixtures(env, lg, d)));
+  return fixtures.filter((f) => { const t = Date.parse(f.commence); return f.state === 'pre' && t > now && t <= now + SOC_PROPS_AHEAD_MS; })
+    .sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
+}
+// A club's regulars: who started at least SOC_EXPECT_MIN_STARTS of its last five
+// whole matches, across its league and the cups. None with under five read, or
+// with none lately. A match given up on or half read isn't one of the five.
+async function socRegulars(db, cid, team, opp, now) {
+  if (!cid) return [];
+  const games = (await db.prepare('SELECT game_id, date, home, away, home_cid FROM soc_box_games WHERE done = 1 AND (home_cid = ? OR away_cid = ?) ORDER BY date DESC LIMIT 8')
+    .bind(cid, cid).all()).results || [];
+  if (!games.length || now - Date.parse(games[0].date) > SOC_EXPECT_FRESH_MS) return [];
+  const rows = (await db.prepare(`SELECT game_id, player_id, player, team, gk FROM soc_box WHERE game_id IN (${games.map(() => '?').join(',')}) AND starter = 1`)
+    .bind(...games.map((g) => g.game_id)).all()).results || [];
+  const whole = games.map((g) => {
+    const code = g.home_cid === cid ? g.home : g.away;
+    return rows.filter((r) => r.game_id === g.game_id && r.team === code);
+  }).filter((l) => l.length === 11).slice(0, SOC_EXPECT_LAST);
+  if (whole.length < SOC_EXPECT_LAST) return [];
+  const seen = new Map();
+  for (const l of whole) for (const r of l) {
+    const s = seen.get(r.player_id) || { id: r.player_id, name: r.player, team, opp, pos: null, gk: r.gk, started: 0 };
+    s.started++;
+    seen.set(r.player_id, s);
+  }
+  return [...seen.values()].filter((s) => s.started >= SOC_EXPECT_MIN_STARTS);
+}
+async function socExpectedRows(env, f, pri, ctxAll, now) {
+  const db = env.DB;
+  const list = [...(await socRegulars(db, f.homeId, f.home, f.away, now)), ...(await socRegulars(db, f.awayId, f.away, f.home, now))];
+  if (!list.length) return [];
+  const recent = await socRecentStarts(db, list.map((s) => s.id), SOC_SEASON_FROM[f.lg]);
+  const started = new Map(list.map((s) => [s.id, s.started]));
+  return socProjectRows(f.lg, list, recent, await socMatchCtx(db, f, ctxAll, pri), pri).map((r) => ({ ...r, expected: started.get(r.id) }));
+}
+// Works out the expected rows of the next two days' matches, a few a tick, and keeps
+// them: the page reads them and never makes them. D1 and ESPN's fixtures, no credits.
+async function socExpectedTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB;
+  const gate = await loadFeedCache(db, 'soc_exp_tick');
+  if (gate.present && gate.ageMs < (gate.data && gate.data.more ? SOC_EXPECT_TICK_MS : SOC_EXPECT_IDLE_MS)) return null;
+  await saveFeedCache(db, 'soc_exp_tick', { at: now });
+  await ensureSocPropSchema(db);
+  const up = await socUpcoming(env, now);
+  const have = new Map(((await db.prepare("SELECT key, updated_at FROM feed_cache WHERE key >= 'soc_exp:' AND key < 'soc_exp;'").all()).results || []).map((r) => [r.key, r.updated_at]));
+  const stale = up.filter((f) => !(now - (have.get(`soc_exp:${f.id}`) || 0) < SOC_EXPECT_KEEP_MS));
+  const due = stale.slice(0, SOC_EXPECT_PER_TICK);
+  if (stale.length > due.length) await saveFeedCache(db, 'soc_exp_tick', { at: now, more: true });
+  if (due.length) {
+    const pri = await socPriors(env);
+    const ctxAll = await socContext(env, pri);
+    for (const f of due) await saveFeedCache(db, `soc_exp:${f.id}`, { league: f.lg, commence: f.commence, rows: await socExpectedRows(env, f, pri, ctxAll, now) });
+  }
+  // A match that's been played has no more use for its rows.
+  await db.prepare("DELETE FROM feed_cache WHERE key >= 'soc_exp:' AND key < 'soc_exp;' AND updated_at < ?").bind(now - 3 * 86400e3).run();
+  return { due: due.length };
+}
+
+// GET /api/soccer-props: the next two days of fixtures in the five
 // leagues and the two European cups; for each whose lineup is posted, every starter's projection in each
 // stat, the line at the half point above it and the chance either way there.
+// ?expected=1 (the Soccer tab) adds the regulars of those still to post (socExpectedTick).
 // The card lets the user move the line to PrizePicks' number; the phi rides
 // along so the chance can be recomputed in the browser.
 async function socPropsBoard(env, url) {
   const summary = !!(url && url.searchParams && url.searchParams.get('summary') === '1');
+  const wantExpected = !!(url && url.searchParams && url.searchParams.get('expected') === '1');
   const out = {
     note: 'LOGGED, not posted. Each starter\'s projection: last season per start blended with this season, moved half the way by what the opponent allows. '
       + 'No feed carries PrizePicks\' soccer lines: set the line to the app\'s and the chance follows. A line you set is saved and graded at that number (ppRecord).',
@@ -14934,36 +15053,25 @@ async function socPropsBoard(env, url) {
     await ensureSocPropSchema(db);
     const now = Date.now();
     const pri = await socPriors(env);
-    const days = [...new Set([ptDateOf(now), ptDateOf(now + SOC_PROPS_AHEAD_MS)])];
-    const fixtures = [];
-    for (const lg of Object.keys(SOC_PROP_LEAGUES)) for (const d of days) fixtures.push(...(await socFixtures(env, lg, d)));
-    const up = fixtures.filter((f) => { const t = Date.parse(f.commence); return f.state === 'pre' && t > now && t <= now + SOC_PROPS_AHEAD_MS; })
-      .sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
+    const up = await socUpcoming(env, now);
     const ctxAll = await socContext(env, pri);
+    const expected = wantExpected ? await loadFeedCaches(db, up.map((f) => `soc_exp:${f.id}`)) : new Map();
     const logs = [];
     for (const f of up) {
       const m = { id: f.id, league: f.lg, label: SOC_PROP_LABEL[f.lg], commence: f.commence, home: f.home, away: f.away,
         homeName: f.homeName, awayName: f.awayName, lineup: 'waiting', rows: [] };
       out.matches.push(m);
-      if (Date.parse(f.commence) - now > SOC_LINEUP_LEAD_MS) continue;
-      const starters = await socLineup(env, f);
-      if (!starters) continue;
+      const starters = Date.parse(f.commence) - now > SOC_LINEUP_LEAD_MS ? null : await socLineup(env, f);
+      if (!starters) {
+        const e = expected.get(`soc_exp:${f.id}`);
+        if (e && (e.rows || []).length) { m.lineup = 'expected'; m.rows = e.rows; }
+        continue;
+      }
       m.lineup = 'posted';
       const ids = starters.map((s) => s.id);
-      const recent = new Map();
-      for (let i = 0; i < ids.length; i += 90) {
-        const chunk = ids.slice(i, i + 90);
-        const rs = (await db.prepare(`SELECT * FROM soc_box WHERE player_id IN (${chunk.map(() => '?').join(',')}) AND starter = 1 AND date >= ? ORDER BY date DESC`)
-          .bind(...chunk, SOC_SEASON_FROM[f.lg]).all()).results || [];
-        for (const r of rs) { if (!recent.has(r.player_id)) recent.set(r.player_id, []); recent.get(r.player_id).push(r); }
-      }
-      let ctx = ctxAll && ctxAll[f.lg];
-      if (SOC_CUPS.has(f.lg)) {
-        const teams = [];
-        for (const [abbr, id] of [[f.home, f.homeId], [f.away, f.awayId]]) teams.push({ abbr, lg: await socTeamLeague(db, abbr, id) });
-        ctx = socUclCtx(ctxAll, teams, pri);
-      }
-      m.rows = socProjectRows(f.lg, starters, recent, ctx, pri);
+      m.starterIds = ids;
+      const recent = await socRecentStarts(db, ids, SOC_SEASON_FROM[f.lg]);
+      m.rows = socProjectRows(f.lg, starters, recent, await socMatchCtx(db, f, ctxAll, pri), pri);
       const day = ptDateOf(Date.parse(f.commence));
       for (const r of m.rows) logs.push(db.prepare(
         `INSERT OR IGNORE INTO socprops (date, game_id, player_id, market, player, team, opp, league, commence, proj, line, p_under, p_over, n_recent, logged_at)
