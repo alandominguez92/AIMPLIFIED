@@ -3630,7 +3630,7 @@
   // probability — so "which options win" is answered from real entries.
   const ENTRY_KEY_STORE = 'aimplified_entry_key';
   const MARKET_SHORT = { tb: 'TB', hrr: 'H+R+RBI', hr: 'HR', K: 'Ks', ml: 'ML', rec_yds: 'Rec Yds', rush_yds: 'Rush Yds',
-    threes: '3PM', ast: 'Ast', reb: 'Reb', blk: 'Blk', stl: 'Stl',
+    threes: '3PM', ast: 'Ast', reb: 'Reb', blk: 'Blk', stl: 'Stl', goals: 'Goals', sog: 'SOG', blocks: 'Blocked', hits: 'Hits',
     pts: 'Pts', pra: 'PRA', pts_reb: 'Pts+Reb', pts_ast: 'Pts+Ast', reb_ast: 'Reb+Ast', blk_stl: 'Blk+Stl', tov: 'TO',
     shots: 'Shots', sot: 'SOT', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves',
     crosses: 'Crosses', shot_ast: 'Shots Ast', conceded: 'Goals Allowed', fouls_drawn: 'Fouls Drawn', goal_ast: 'G+A' };
@@ -5276,6 +5276,7 @@
     const nhlBoard = document.getElementById('nhlBoard');
     if (nhlBoard) nhlBoard.hidden = s !== 'nhl';
     if (s === 'nhl' && !state.nhl) refreshNhl();
+    else if (s === 'nhl' && Date.now() - ((state.propsAt && state.propsAt.nhl) || 0) > 120e3) refreshProps('nhl');
     const pb = document.getElementById('picksBoard');
     if (pb) pb.hidden = s !== 'picks';
     // Read on every visit after two minutes: lineups post and legs move.
@@ -7459,15 +7460,19 @@
   // backtest (65%+ favourites won 114 of 171, stated 69.1%).
   async function refreshNhl() {
     if (!LIVE_MODE) return;
-    const [d, pp, hot] = await Promise.all([
+    const [d, pp, hot, props] = await Promise.all([
       fetchJson('/api/nhl-board').catch(() => null),
       fetchJson('/api/nhl-pp').catch(() => null),
       fetchJson('/api/hot-players?sport=nhl').catch(() => null),
+      fetchJson('/api/nhl-props').catch(() => null),
     ]);
     state.nhl = d && Array.isArray(d.games) ? d : { games: [], empty: true, error: d ? undefined : 'unreachable' };
     state.nhlPp = pp && Array.isArray(pp.legs) ? pp : null;
     state.hot = { ...state.hot, nhl: (hot && hot.hot) || null };
+    state.propsAt = { ...(state.propsAt || {}), nhl: Date.now() };
+    if (props && Array.isArray(props.players)) state.props = { ...(state.props || {}), nhl: props };
     renderNhl();
+    propSavedLoad('nhl');
   }
   // NHL PrizePicks points and assists (2026-10-22), the NBA card's shape: the
   // best five to come, regulars only, a star each, the record under the
@@ -7523,7 +7528,7 @@
     const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
     if (count) count.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}` : '';
     if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '');
-    const rec = nhlRecordHtml(d.record) + nhlPpCardHtml() + hotCardHtml('nhl');
+    const rec = nhlRecordHtml(d.record) + nhlPpCardHtml() + propsCardHtml('nhl') + hotCardHtml('nhl');
     if (!games.length) {
       grid.innerHTML = rec + `<div class="nfl-empty">No NHL games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
@@ -7735,7 +7740,16 @@
     nba: { pts: ['Points', 'points'], reb: ['Rebounds', 'rebounds'], ast: ['Assists', 'assists'], pra: ['PRA', 'PRA'], pts_reb: ['Pts + Reb', 'pts + reb'],
       pts_ast: ['Pts + Ast', 'pts + ast'], reb_ast: ['Reb + Ast', 'reb + ast'], threes: ['Threes', 'threes'], blk: ['Blocks', 'blocks'], stl: ['Steals', 'steals'],
       blk_stl: ['Blk + Stl', 'blocks + steals'], tov: ['Turnovers', 'turnovers'] },
+    nhl: { pts: ['Points', 'points'], ast: ['Assists', 'assists'], sog: ['Shots on goal', 'shots on goal'], goals: ['Goals', 'goals'], blocks: ['Blocked shots', 'blocked shots'],
+      hits: ['Hits', 'hits'], saves: ['Goalie saves', 'saves'] },
   };
+  // What last season's replay at PrizePicks' numbers said, for each card's head.
+  const PROP_NOTE = {
+    nba: 'Last season 54%+ on points landed 57%.',
+    nhl: 'Last season 54%+ on points landed 54%, on few games. PrizePicks’ number comes through on points and assists, and sometimes saves: set it by hand on the rest.',
+  };
+  const propNick = (sport, n) => (sport === 'nhl' ? nhlNick(n) : nbaNick(n));
+  const propCodes = (sport) => (sport === 'nhl' ? NHL_CODE_NICK : NBA_CODE_NICK);
   const PROP_STRONG = 54;
   const propKey = (sport, g, p, s) => `${sport}:${g.date}:${p.k}:${s}`;
   const propData = (sport) => (state.props && state.props[sport]) || null;
@@ -7754,14 +7768,17 @@
     const set = state.prLines && state.prLines[key];
     const taken = leg && leg.spec && leg.spec.pp ? leg.spec.pp.line : null;
     const proj = p.proj && typeof p.proj[s] === 'number' ? p.proj[s] : null;
-    const real = typeof set === 'number' || typeof taken === 'number' || !!ln;
-    const line = typeof set === 'number' ? set : typeof taken === 'number' ? taken : ln ? ln.l : proj != null ? Math.floor(proj) + 0.5 : 0.5;
+    const real = typeof set === 'number' || typeof taken === 'number' || !!(ln && ln.l != null);
+    // No PrizePicks number but sharp ones: the setter starts at their main line.
+    const sharpMain = ((ln && ln.fairs) || []).reduce((a, f) => (a == null || Math.abs(f[1] - 50) < Math.abs(a[1] - 50) ? f : a), null);
+    const line = typeof set === 'number' ? set : typeof taken === 'number' ? taken : ln && ln.l != null ? ln.l : sharpMain ? sharpMain[0] : proj != null ? Math.floor(proj) + 0.5 : 0.5;
     const fair = ln && line === ln.l && ln.u != null ? ln.u : ((ln && ln.fairs) || []).reduce((a, f) => (f[0] === line ? f[1] : a), null);
     const side = (state.prSide && state.prSide[key]) || (leg && leg.spec && leg.spec.side)
       || (fair != null ? (fair >= 50 ? 'Under' : 'Over') : proj != null && proj > line ? 'Over' : 'Under');
     const vals = propVals(d, p, s);
     return { key, ln, line, real, proj, fair, side, vals, over: vals.filter((v) => v > line).length,
-      p: fair == null ? null : side === 'Under' ? fair : Math.round((100 - fair) * 10) / 10 };
+      // The big figure is the chance at PrizePicks' number, never at a number of the app's.
+      p: fair == null || !real ? null : side === 'Under' ? fair : Math.round((100 - fair) * 10) / 10 };
   }
   function propLeg(sport, g, p, s, v) {
     return { id: `prp:${v.key}`, board: 'PrizePicks', title: `${p.name} ${v.side} ${v.line} ${PROP_STATS[sport][s][1]}`, sub: `${g.away} @ ${g.home}`,
@@ -7790,6 +7807,7 @@
   }
   function propRedraw(sport) {
     if (sport === 'nba') renderNba();
+    if (sport === 'nhl') renderNhl();
   }
   // A line set here is PrizePicks' number: saved a moment after the last tap, as soccer's are,
   // and graded at that number.
@@ -7842,7 +7860,7 @@
     const leg = propLeg(sport, g, p, s, v);
     const on = !!state.slip[offerLeg(leg)];
     const open = !!(state.prOpen && state.prOpen[key]);
-    const opp = legOppText({ team: p.team, game: `${g.away} @ ${g.home}` }, NBA_CODE_NICK);
+    const opp = legOppText({ team: p.team, game: `${g.away} @ ${g.home}` }, propCodes(sport));
     // A row with no number yet opens its setter: a star there would be the app's guess at PrizePicks' line.
     const star = v.real
       ? `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`
@@ -7881,19 +7899,19 @@
     const rec = r && r.graded
       ? `<span class="tc-rec">Sharp 54%+: <b${r.at54.n >= 5 && r.at54.hit / r.at54.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${r.at54.hit} of ${r.at54.n}</b> · ${r.graded} graded of ${r.need}</span>` : '';
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks props, one stat at a time</span>${rec}</div>`
-      + `<div class="tc-sub">The percentage is the sharp books’ chance at PrizePicks’ exact number, read about ${esc(String(d.readHours || 4))} hours before each game. Most read 50-53. Last season 54%+ on points landed 57%. No percentage: no sharp book quotes that number. Tap a player to change the line: what you set is saved and graded there. These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.</div>`;
+      + `<div class="tc-sub">The percentage is the sharp books’ chance at PrizePicks’ exact number, read about ${esc(String(d.readHours || 4))} hours before each game. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Tap a player to change the line: what you set is saved and graded there. These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.</div>`;
     if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">No games in the next day and a half.</div></div>`;
     const chips = `<input class="sp-search" type="search" placeholder="Find a player" value="${esc((state.prQuery && state.prQuery[sport]) || '')}" data-prq="${esc(sport)}" aria-label="Find a player">`
       + `<div class="sp-chips">${[...stats, 'best'].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="pr-stat" data-sport="${esc(sport)}" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : PROP_STATS[sport][s][0])}</button>`).join('')}</div>`
       + `<div class="sp-hint">${esc(view === 'best' ? 'Each player’s strongest sharp number' : `${PROP_STATS[sport][view][0]}: sharp numbers first, then by projection`)}</div>`;
-    const dist = (x) => (x.v.fair == null ? -1 : Math.abs(x.v.fair - 50));
+    const dist = (x) => (x.v.p == null ? -1 : Math.abs(x.v.fair - 50));
     let found = 0;
     const body = games.map(({ g, i }) => {
       const ps = (d.players || []).filter((p) => p.g === i && (!q || String(p.name).toLowerCase().includes(q)));
       let rows = [];
       if (view === 'best') {
         for (const p of ps) {
-          const all = stats.map((s) => ({ p, s, v: propView(sport, d, g, p, s) })).filter((x) => x.v.fair != null);
+          const all = stats.map((s) => ({ p, s, v: propView(sport, d, g, p, s) })).filter((x) => x.v.p != null);
           if (q) rows.push(...all);
           else if (all.length) rows.push(all.sort((a, b) => dist(b) - dist(a))[0]);
         }
@@ -7903,10 +7921,10 @@
       if (!rows.length) return '';
       rows.sort((a, b) => dist(b) - dist(a) || (b.v.proj || 0) - (a.v.proj || 0));
       found += rows.length;
-      const strong = rows.filter((x) => x.v.fair != null && Math.max(x.v.fair, 100 - x.v.fair) >= PROP_STRONG).length;
+      const strong = rows.filter((x) => x.v.p != null && Math.max(x.v.fair, 100 - x.v.fair) >= PROP_STRONG).length;
       const mOpen = !!q || games.length === 1 || !!(state.prMatch && state.prMatch[g.id]);
       const mHead = `<button type="button" class="sp-mh" data-action="pr-match" data-sport="${esc(sport)}" data-id="${esc(g.id)}" aria-expanded="${mOpen}">`
-        + `<b>${esc(nbaNick(g.away))} @ ${esc(nbaNick(g.home))}</b> · <span class="pk-when">${esc(soccerKick(g.commence))}</span>`
+        + `<b>${esc(propNick(sport, g.away))} @ ${esc(propNick(sport, g.home))}</b> · <span class="pk-when">${esc(soccerKick(g.commence))}</span>`
         + `<span class="sp-mc">${rows.length} player${rows.length === 1 ? '' : 's'}${strong ? ` · ${strong} at ${PROP_STRONG}%+` : ''} ${mOpen ? '▾' : '▸'}</span></button>`;
       if (!mOpen) return `<div class="sp-match">${mHead}</div>`;
       return `<div class="sp-match">${mHead}<ol class="tc-legs">${rows.map((x) => propRow(sport, d, g, x.p, x.s)).join('')}</ol></div>`;

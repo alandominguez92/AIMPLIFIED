@@ -31,6 +31,9 @@ const J = (x) => new Response(JSON.stringify(x), { status: 200, headers: { 'cont
 let S = null;
 function scene({ rows = ROWS, score = {}, statsDown = false } = {}) {
   const sq = new DatabaseSync(':memory:');
+  // The season's one read-again for the props card (tests/propsnhl.mjs) has been and gone.
+  sq.exec('CREATE TABLE feed_cache (key TEXT PRIMARY KEY, data TEXT, updated_at INTEGER, claimed_until INTEGER)');
+  sq.prepare("INSERT INTO feed_cache (key, data, updated_at) VALUES ('nhl_box_reread', '{\"done\":true}', 0)").run();
   const norm = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v);
   const sqls = [];
   const exec = (sql, args, mode) => { sqls.push(sql); const st = sq.prepare(sql); const a = args.map(norm);
@@ -280,7 +283,7 @@ ok(/No one is on a run of 5 or more/.test(card('nhl')), 'no one on a run: it say
 state.hot.nhl = null;
 ok(card('nhl') === '', 'no list: no section');
 const render = app.slice(app.indexOf('  function renderNhl('), app.indexOf('  function renderNhl(') + 900);
-ok(/nhlPpCardHtml\(\) \+ hotCardHtml\('nhl'\)/.test(render), 'on the tab, under the PrizePicks card');
+ok(/nhlPpCardHtml\(\) \+ propsCardHtml\('nhl'\) \+ hotCardHtml\('nhl'\)/.test(render), 'on the tab, under the PrizePicks cards');
 ok(/fetchJson\('\/api\/hot-players\?sport=nhl'\)/.test(app), 'and fetched with it');
 ok(/case 'hot-all': \{[\s\S]{0,200}renderNhl\(\)/.test(app), 'the tap redraws the tab');
 

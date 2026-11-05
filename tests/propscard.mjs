@@ -53,7 +53,7 @@ const persisted = [];
 const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
-  'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'PROP_STATS', 'PROP_STRONG', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
+  'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
   'propSaveHtml', 'propRow', 'propsCardHtml'];
 let C;
 try {
@@ -172,6 +172,63 @@ state.props = { nba: { ...D, games: [] } };
 ok(/No games in the next day and a half/.test(card()), 'no games: it says so');
 state.props = {};
 ok(card() === '', 'not loaded: nothing');
+
+console.log('\n-- the NHL card --');
+const N = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'nhl-props-board-20261105.json'), 'utf8'));
+state.props = { nhl: N };
+state.prStat = {}; state.prLines = {}; state.prOpen = {}; state.prSide = {};
+const NG = N.games[0], NP = (name) => N.players.find((p) => p.name === name);
+const nkey = (name, s) => C.propKey('nhl', NG, NP(name), s);
+const ncard = () => C.propsCardHtml('nhl');
+let n = ncard();
+ok(/sp-chip on"[^>]*data-stat="pts"/.test(n), 'it opens on Points');
+const nchips = [...n.matchAll(/data-action="pr-stat"[^>]*data-stat="([a-z_0-9]+)"/g)].map((m) => m[1]);
+ok(nchips.join() === 'pts,ast,sog,goals,blocks,hits,saves,best', `the stats in the order asked for: ${nchips.join()}`);
+ok(/Canadiens @ Sabres/.test(text(n)), `the game by its nicknames: ${text(n).match(/[A-Za-z]+ @ [A-Za-z]+/)}`);
+ok(/landed 54%, on few games/.test(n) && !/landed 57%/.test(n), 'the NHL\'s own replay in the note, not the NBA\'s');
+const dem = text(rowFor(n, 'Ivan Demidov'));
+ok(/@ Sabres · (Under|Over) 0\.5 points/.test(dem) && /Ivan Demidov MTL \d+%/.test(dem), `who he plays, the number, the figure: ${dem.slice(0, 70)}`);
+ok(/v Canadiens/.test(text(rowFor(n, 'Tage Thompson'))), 'a Sabre at home plays the Canadiens');
+
+state.prStat = { nhl: 'sog' };
+n = ncard();
+const tt = rowFor(n, 'Tage Thompson');
+ok(/no PrizePicks number yet/.test(text(tt)) && !/class="tc-p/.test(tt), `shots with no number of PrizePicks': no percentage, and it says so (${text(tt).slice(0, 80)})`);
+ok(/ 3\.5 shots on goal/.test(text(tt)), 'the setter stands at the sharp books\' main line');
+ok(/data-action="pr-row"/.test(tt.split('tc-leg')[0]) && !/data-action="leg-add"/.test(tt), 'and its star opens the setter');
+state.prOpen = { [nkey('Tage Thompson', 'sog')]: true };
+const ttOpen = text(rowFor(ncard(), 'Tage Thompson'));
+ok(/Sharp: Under 6[0-9.]+% · Over 3[0-9.]+%/.test(ttOpen), `open, their split is there to read: ${(ttOpen.match(/Sharp: [^ ]+ [^ ]+ · [^ ]+ [^ ]+/) || [])[0]}`);
+state.prLines = { [nkey('Tage Thompson', 'sog')]: 3.5 };
+const ttSet = rowFor(ncard(), 'Tage Thompson');
+ok(/class="tc-p/.test(ttSet) && /Tage Thompson BUF 6\d%/.test(text(ttSet)) && /data-action="leg-add"/.test(ttSet), `set to 3.5: the figure, the side, and a star that takes it (${text(ttSet).slice(0, 60)})`);
+state.prLines = { [nkey('Tage Thompson', 'sog')]: 4 };
+const ttOff = rowFor(ncard(), 'Tage Thompson');
+ok(!/class="tc-p/.test(ttOff), 'set where no sharp book quotes him: no figure');
+state.prLines = {}; state.prOpen = {};
+
+state.prStat = { nhl: 'saves' };
+n = ncard();
+ok(/Colten Ellis BUF \d+%/.test(text(rowFor(n, 'Colten Ellis'))) && /23\.5 saves/.test(text(rowFor(n, 'Colten Ellis'))), `goalies on saves, at 23.5: ${text(rowFor(n, 'Colten Ellis')).slice(0, 70)}`);
+ok(!rowFor(n, 'Tage Thompson'), 'and no skater');
+state.prStat = { nhl: 'goals' };
+n = ncard();
+const goalsRow = rowFor(n, 'Tage Thompson');
+ok(goalsRow && !/class="tc-p/.test(goalsRow) && /proj /.test(text(goalsRow)), 'goals, which no read has: the projection and his log, no percentage');
+ok(!rowFor(n, 'Colten Ellis'), 'and no goalie');
+state.prOpen = { [nkey('Tage Thompson', 'goals')]: true };
+ok(/No sharp price here/.test(text(rowFor(ncard(), 'Tage Thompson'))), 'tapped: it says there\'s none');
+state.prOpen = {};
+state.prStat = { nhl: 'hits' };
+const hitsRow = rowFor(ncard(), 'Tage Thompson');
+ok(!hitsRow || !/in \d+ of last \d\d/.test(text(hitsRow)), 'hits count only the games that have them');
+state.prStat = { nhl: 'best' };
+n = ncard();
+ok(rowsOf(n).every((r) => /class="tc-p/.test(r)), 'Best lists only rows with a figure at PrizePicks\' number');
+ok(!rowFor(n, 'Tage Thompson') || !/shots on goal/.test(text(rowFor(n, 'Tage Thompson'))), 'so not a shots row with no number set');
+const sogLeg = C.propLeg('nhl', NG, NP('Tage Thompson'), 'sog', C.propView('nhl', N, NG, NP('Tage Thompson'), 'sog'));
+ok(sogLeg.spec.sport === 'nhl' && sogLeg.spec.market === 'sog' && sogLeg.spec.playerId === NP('Tage Thompson').id, 'a leg carries the sport, the stat and his NHL id, which is how it grades');
+state.prStat = {};
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

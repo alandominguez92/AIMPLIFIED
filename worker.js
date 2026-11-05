@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health',
 ]);
 
@@ -239,7 +239,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/nba-props' || p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
+    const KEYED_BY_QUERY = p === '/api/nba-props' || p === '/api/nhl-props' || p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
     // The MLB boards spend credits on a miss and only ?summary= changes their answer, so a
     // made-up query must not be a miss (2026-11-04).
     const mlbBoard = p === '/api/board' || p === '/api/batters';
@@ -274,7 +274,7 @@ export default {
       // A running backtest has this invocation's to itself.
       ctx.waitUntil((async () => {
         if (await histPropsTick(env).catch(() => null)) return;
-        for (const job of [nbaPropsFormTick, ppPropsTick, nhlBoxIngest, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(env).catch(() => null);
+        for (const job of [nbaPropsFormTick, nhlPropsFormTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(env).catch(() => null);
       })());
       return;
     }
@@ -579,7 +579,10 @@ async function handleApi(p, env, ctx, url) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return cors(json(await nbaPpDay(env, day), 120));
     return cors(json(raw === '1' ? await nbaPpRaw(env) : raw === 'events' ? await ppEventsRaw(env, 'nba', 'reg') : await nbaPpBoard(env), 120));
   }
-  if (p === '/api/nba-props') return cors(json(url && url.searchParams.get('raw') === '1' ? await ppPropsRaw(env, 'nba') : await nbaPropsBoard(env), 120));
+  if (p === '/api/nba-props' || p === '/api/nhl-props') {
+    const sport = p === '/api/nba-props' ? 'nba' : 'nhl';
+    return cors(json(url && url.searchParams.get('raw') === '1' ? await ppPropsRaw(env, sport) : await ppPropsBoard(env, sport), 120));
+  }
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
@@ -5214,6 +5217,7 @@ async function gradeEntryLegsOther(db) {
     "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer','nba','nhl') AND game_id IS NOT NULL"
   ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market])
     || (l.sport === 'nba' && nbaPropMarket(l.market))
+    || (l.sport === 'nhl' && NHL_PROP_COLS.includes(l.market))
     || (l.sport === 'soccer' && SOC_PROP_STATS.includes(l.market)));
   if (!open.length) return [];
   // Soccer props grade from the soccer box scores, by ESPN's event and player
@@ -5283,10 +5287,29 @@ async function gradeEntryLegsOther(db) {
         settled: Number(read && read.n) > 0 && Number(pend && pend.n) === 0 });
     } catch (e) { /* no NBA box table yet */ }
   }
+  // NHL props from its box scores, by the leg's NHL id or his initial and surname. Today, a player
+  // missing from what's in so far may simply play later.
+  const nhlDays = new Map();
+  for (const day of [...new Set(open.filter((l) => l.sport === 'nhl' && l.market !== 'ml').map((l) => l.date))]) {
+    try { nhlDays.set(day, await nhlPropDayBox(db, day, day >= slateDate())); } catch (e) { /* no NHL box table yet */ }
+  }
   const stmts = [];
   for (const l of open) {
     let result = null, actual = null;
-    if (l.sport === 'soccer' && l.market !== 'ml') {
+    if (l.sport === 'nhl' && l.market !== 'ml') {
+      const d = nhlDays.get(l.date);
+      if (!d) continue;
+      const b = (l.player_id != null && d.byId.get(String(l.player_id))) || d.byName.get(nhlInitial(nhlName(l.player)));
+      if (b) {
+        if (b[l.market] == null) result = 'void';
+        else if (l.line == null) continue;
+        else {
+          actual = b[l.market];
+          result = actual === l.line ? 'push' : ((actual < l.line) === (l.side === 'Under') ? 'win' : 'loss');
+        }
+      } else if (d.settled) result = 'void';
+      else continue;
+    } else if (l.sport === 'soccer' && l.market !== 'ml') {
       const gid = String(l.game_id).replace(/^g/, '');
       if (!socDone.has(gid)) continue;
       const b = socBox.get(`${gid}|${l.player_id}`);
@@ -12127,6 +12150,7 @@ async function gradeNhlPp(env, tonight = false) {
     if (gate.present && gate.data && Date.now() - gate.data.at < 3600e3) return 0;
     await saveFeedCache(env.DB, 'nhl_pp_grade', { at: Date.now() });
   }
+  await gradePpProps(env.DB, 'nhl', tonight).catch(() => null);   // the props card's rows, from the box scores
   const open = ((await (tonight
     ? env.DB.prepare('SELECT * FROM nhlpp WHERE result IS NULL AND date = ? AND commence < ?').bind(slateDate(), gameOverCut())
     : env.DB.prepare('SELECT * FROM nhlpp WHERE result IS NULL AND date < ?').bind(slateDate())).all()).results || []);
@@ -13686,6 +13710,14 @@ async function ensureNhlBoxSchema(db) {
     PRIMARY KEY (game_id, player_id)
   )`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nhl_box_date ON nhl_box (date)').run();
+  // For the props card (2026-11-05): blocked shots and hits, and the goalies apart, since the
+  // Hot list and the rest read every row of this table as a skater.
+  await addColumns(db, 'nhl_box', [['blocks', 'INTEGER'], ['hits', 'INTEGER']]);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS nhl_goalie_box (
+    game_id TEXT NOT NULL, date TEXT NOT NULL, player_id TEXT NOT NULL, player TEXT, team TEXT, opp TEXT, min REAL, saves INTEGER, shots INTEGER,
+    PRIMARY KEY (game_id, player_id)
+  )`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS nhl_goalie_box_date ON nhl_goalie_box (date)').run();
   await db.prepare('CREATE TABLE IF NOT EXISTS nhl_box_games (game_id TEXT PRIMARY KEY, date TEXT NOT NULL, done INTEGER NOT NULL)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS nhl_box_games_todo ON nhl_box_games (date) WHERE done = 0').run();
   NHL_BOX_READY = true;
@@ -13700,7 +13732,20 @@ function nhlBoxRows(box, gameId, date) {
       const min = Number.isFinite(m) ? m + (s || 0) / 60 : 0;
       if (!x || x.playerId == null || !(min > 0)) continue;
       out.push({ game_id: String(gameId), date, player_id: String(x.playerId), player: (x.name && x.name.default) || '', team, opp, min: Math.round(min * 100) / 100,
-        goals: x.goals, ast: x.assists, pts: x.points, sog: x.sog });
+        goals: x.goals, ast: x.assists, pts: x.points, sog: x.sog, blocks: x.blockedShots, hits: x.hits });
+    }
+  }
+  return out;
+}
+// And one row per goalie who played.
+function nhlGoalieRows(box, gameId, date) {
+  const out = [], abbr = (s) => (box && box[s] && box[s].abbrev) || null;
+  for (const [side, team, opp] of [['awayTeam', abbr('awayTeam'), abbr('homeTeam')], ['homeTeam', abbr('homeTeam'), abbr('awayTeam')]]) {
+    for (const x of ((box && box.playerByGameStats && box.playerByGameStats[side]) || {}).goalies || []) {
+      const [m, s] = String((x && x.toi) || '').split(':').map(Number);
+      const min = Number.isFinite(m) ? m + (s || 0) / 60 : 0;
+      if (!x || x.playerId == null || !(min > 0)) continue;
+      out.push({ game_id: String(gameId), date, player_id: String(x.playerId), player: (x.name && x.name.default) || '', team, opp, min: Math.round(min * 100) / 100, saves: x.saves, shots: x.shotsAgainst });
     }
   }
   return out;
@@ -13736,17 +13781,44 @@ async function nhlBoxIngest(env, now = Date.now()) {
     try {
       const r = await fetch(`https://api-web.nhle.com/v1/gamecenter/${g.game_id}/boxscore`, { headers: { accept: 'application/json' } });
       if (!r.ok) continue;
-      const rows = nhlBoxRows(await r.json(), g.game_id, g.date);
-      if (!rows.length) continue;
-      const cols = ['game_id', 'date', 'player_id', 'player', 'team', 'opp', 'min', 'goals', 'ast', 'pts', 'sog'];
-      const stmts = rows.map((x) => db.prepare(`INSERT OR REPLACE INTO nhl_box (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).bind(...cols.map((c) => x[c])));
-      stmts.push(db.prepare('UPDATE nhl_box_games SET done = 1 WHERE game_id = ?').bind(g.game_id));
-      for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+      if (!(await nhlBoxSave(db, await r.json(), g))) continue;
       read++;
     } catch (e) { /* next tick */ }
   }
   if (read) { const s = await loadFeedCache(db, 'nhl_box_scan'); await saveFeedCache(db, 'nhl_box_scan', { ...s.data, readAt: now }); }
   return { read };
+}
+// One game's box score into the tables, and the game marked read.
+async function nhlBoxSave(db, box, g) {
+  const rows = nhlBoxRows(box, g.game_id, g.date);
+  if (!rows.length) return false;
+  const insert = (table, cols, x) => db.prepare(`INSERT OR REPLACE INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).bind(...cols.map((c) => (x[c] === undefined ? null : x[c])));
+  const cols = ['game_id', 'date', 'player_id', 'player', 'team', 'opp', 'min', 'goals', 'ast', 'pts', 'sog', 'blocks', 'hits'];
+  const gc = ['game_id', 'date', 'player_id', 'player', 'team', 'opp', 'min', 'saves', 'shots'];
+  const stmts = [...rows.map((x) => insert('nhl_box', cols, x)), ...nhlGoalieRows(box, g.game_id, g.date).map((x) => insert('nhl_goalie_box', gc, x))];
+  stmts.push(db.prepare('UPDATE nhl_box_games SET done = 1 WHERE game_id = ?').bind(g.game_id));
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return true;
+}
+// Once (2026-11-05): the season's games read again, for the blocked shots, hits and goalies the
+// first read left out. Free, a few a tick and apart from the games still to read, so the Hot
+// list and the grades don't see a game go back to unread. An hour or two.
+async function nhlBoxReread(env) {
+  if (!env || !env.DB) return null;
+  const db = env.DB;
+  await ensureNhlBoxSchema(db);
+  const hit = await loadFeedCache(db, 'nhl_box_reread');
+  const st = (hit.present && hit.data) || {};
+  if (st.done) return null;
+  const todo = (await db.prepare('SELECT game_id, date FROM nhl_box_games WHERE done = 1 AND game_id > ? ORDER BY game_id LIMIT ?').bind(st.after || '', NHL_BOX_PER_TICK).all()).results || [];
+  for (const g of todo) {
+    try {
+      const r = await fetch(`https://api-web.nhle.com/v1/gamecenter/${g.game_id}/boxscore`, { headers: { accept: 'application/json' } });
+      if (r.ok) await nhlBoxSave(db, await r.json(), g);
+    } catch (e) { /* that game keeps what it has */ }
+  }
+  await saveFeedCache(db, 'nhl_box_reread', todo.length ? { after: todo[todo.length - 1].game_id } : { done: true });
+  return todo.length;
 }
 // Last season by NHL id, with the shots the Picks reads' copy leaves out. Kept for good: one request.
 async function nhlHotPrior(env) {
@@ -18485,6 +18557,7 @@ const PP_PROP_AHEAD_MS = 36 * 3600e3;       // how far ahead the card lists, as 
 const PP_PROP_NEED = 100;
 const PP_PROP_READS = 'pp_props_reads';     // feed_cache: which games have had their read
 const PP_PROP_FORM = 'pp_props_form:';      // feed_cache: each player's last games, from the trigger
+const PP_PROP_SLATE = 'pp_props_slate:';    // feed_cache: the coming games, where no other row has them
 const PP_PROP_REC = 'pp_props_rec:';        // feed_cache: the record, added to as rows grade
 const PP_PROP_RAW = 'pp_props_raw:';        // feed_cache: the last read as it came (?raw=1)
 const PP_PROP_FORM_EVERY_MS = 2 * 3600e3;
@@ -18492,8 +18565,10 @@ const PP_PROP_FORM_STALE_MS = 12 * 3600e3;
 const PP_PROP_BOOKS = ['prizepicks', ...HIST_PROP_SHARP];   // ten or fewer named books bill as one region
 const PP_PROP_BANDS = [[50, 52, '50-52'], [52, 54, '52-54'], [54, 56, '54-56'], [56, 101, '56+']];
 const NBA_PROP_MIN = 18;                    // minutes over his last five, to be listed with no number up
-const NBA_PROP_WINDOW_DAYS = 45;            // a free scan of what a last-ten needs, not a season's box scores
+const PP_PROP_WINDOW_DAYS = 45;             // a free scan of what a last-ten needs, not a season's box scores
 const NBA_PROP_COLS = ['pts', 'reb', 'ast', 'threes', 'blk', 'stl', 'tov'];
+const NHL_PROP_COLS = ['pts', 'goals', 'ast', 'sog', 'blocks', 'hits', 'saves'];
+const NHL_PROP_GOALIE_GP = 10;              // last season's starts, for his saves a game to mean anything
 
 async function ensurePpPropSchema(db) {
   await db.prepare(`CREATE TABLE IF NOT EXISTS pp_props (
@@ -18563,8 +18638,9 @@ async function ppPropsTick(env, now = Date.now()) {
       if (!r.ok) continue;
       const body = await r.json();
       const legs = histPropLegs({ markets: c.markets }, body);
-      st.ok = legs.length > 0;
-      await ppPropsLog(env, sport, g, legs, now);
+      const only = c.sharpOnly ? ppPropSharpOnly(c.sharpOnly, body, legs) : [];
+      st.ok = legs.length + only.length > 0;
+      await ppPropsLog(env, sport, g, legs, now, only);
       if (st.ok) await saveFeedCache(db, PP_PROP_RAW + sport, { at: new Date(now).toISOString(), game: g.id, credits: Number(r.headers.get('x-requests-last')) || null, body });
     } catch (e) { /* its second try, near the game */ }
   }
@@ -18574,12 +18650,13 @@ async function ppPropsTick(env, now = Date.now()) {
 
 // One game's rows: the read's, and on the NBA the stats the PrizePicks log reads already, as they
 // stand, so the whole game grades in one table. Log rows reach this with what a re-read last saw.
-async function ppPropsLog(env, sport, g, legs, now) {
+async function ppPropsLog(env, sport, g, legs, now, only = []) {
   const db = env.DB, c = PP_PROP_CFG[sport], day = ptDateOf(Date.parse(g.commence)), at = new Date(now).toISOString();
   const form = await loadFeedCache(db, PP_PROP_FORM + sport);
   const byKey = new Map(((form.present && form.data && form.data.players) || []).map((p) => [p.k, p]));
   const rows = legs.map((l) => ({ player: l.p, market: l.mk, point: l.pp, read: histPropRead(l), fairs: ppPropFairs(l) }));
-  if (c.logged) rows.push(...await c.logged(db, day, g.id));
+  if (c.logTable) rows.push(...await ppPropsLogged(db, c, day, g.id));
+  rows.push(...only);
   const typed = new Map(((await db.prepare('SELECT pkey, market, typed_line FROM pp_props WHERE sport = ? AND date = ? AND typed_at IS NOT NULL').bind(sport, day).all()).results || [])
     .map((r) => [`${r.pkey}|${r.market}`, r.typed_line]));
   const stmts = rows.map((x) => {
@@ -18600,66 +18677,147 @@ async function ppPropsLog(env, sport, g, legs, now) {
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
   return stmts.length;
 }
-// The NBA's other five, from the PrizePicks log. Each book's main line is all that log keeps, so
+// The stats the PrizePicks log reads already. Each book's main line is all that log keeps, so
 // these show a figure where that main line is PrizePicks' number.
-async function nbaPropsLogged(db, day, gameId) {
-  await ensureNbaSchema(db);
-  const rows = (await db.prepare('SELECT * FROM nbapp WHERE date = ? AND game_id = ?').bind(day, gameId).all()).results || [];
+async function ppPropsLogged(db, c, day, gameId) {
+  await c.ensure(db);
+  const rows = (await db.prepare(`SELECT * FROM ${c.logTable} WHERE date = ? AND game_id = ?`).bind(day, gameId).all()).results || [];
   return ppStanding(rows).map(ppCurrent).map((r) => {
     const q = ppPropQuotes(r.book_unders), l = { pp: r.point, q };
     return { player: r.player, market: r.market, point: r.point, read: histPropRead(l), fairs: ppPropFairs(l) };
   });
 }
+// A market PrizePicks isn't on in the feed (the NHL's shots on goal, by the Jan 15 probe): the
+// sharp books' numbers, kept for a line set by hand. histPropLegs reads each book by PrizePicks'
+// names, so it's handed the names, and what comes back has no number of its own (pure).
+function ppPropSharpOnly(markets, ev, legs) {
+  const have = new Set(legs.map((l) => `${nbaName(l.p)}|${l.mk}`));
+  const sharp = ((ev && ev.bookmakers) || []).filter((b) => HIST_PROP_SHARP.includes(b.key));
+  const out = [];
+  for (const [mk, stat] of Object.entries(markets)) {
+    const names = new Map();
+    for (const b of sharp) {
+      const m = (b.markets || []).find((x) => x.key === mk);
+      for (const o of (m ? m.outcomes || [] : [])) if (o.description && !names.has(nbaName(o.description))) names.set(nbaName(o.description), o.description);
+    }
+    const outcomes = [...names].filter(([k]) => !have.has(`${k}|${stat}`)).map(([, p]) => ({ name: 'Under', description: p, point: 0 }));
+    out.push(...histPropLegs({ markets: { [mk]: stat } }, { bookmakers: [{ key: 'prizepicks', markets: [{ key: mk, outcomes }] }, ...sharp] }));
+  }
+  return out.map((l) => ({ player: l.p, market: l.mk, point: null, read: { under: null, n: 0, gap: null }, fairs: ppPropFairs(l) })).filter((x) => x.fairs.length);
+}
 
 // Each player's last ten and his projection (the soccer formula: the last ten plus five games of
 // last season), kept on the trigger as one row. Rebuilt only when a game has come in since, and
 // at most every two hours: the page, and each read, take this one row.
-async function nbaPropsFormTick(env, now = Date.now()) {
-  if (!env || !env.DB) return null;
-  const db = env.DB, key = PP_PROP_FORM + 'nba';
+async function ppPropFormDue(db, key, gamesTable, now) {
   const hit = await loadFeedCache(db, key);
   const age = hit.present && hit.data ? now - hit.data.builtAt : Infinity;
   if (age < PP_PROP_FORM_EVERY_MS) return null;
-  await ensureNbaSchema(db);
-  const done = await db.prepare('SELECT COUNT(*) AS n FROM nba_box_games WHERE done = 1 AND date >= ?').bind(ptDateOf(now - 3 * 864e5)).first();
+  const done = await db.prepare(`SELECT COUNT(*) AS n FROM ${gamesTable} WHERE done = 1 AND date >= ?`).bind(ptDateOf(now - 3 * 864e5)).first();
   const n = Number(done && done.n) || 0;
-  if (age < PP_PROP_FORM_STALE_MS && hit.data.done === n) return null;
-  const from = ptDateOf(now - NBA_PROP_WINDOW_DAYS * 864e5);
-  const rows = (await db.prepare(`SELECT player_id, player, team, date, min, ${NBA_PROP_COLS.join(', ')} FROM nba_box
-    WHERE date >= ? AND season_type IN (2,3) AND dnp = 0 ORDER BY date DESC`).bind(from > NBA_SEASON_FROM ? from : NBA_SEASON_FROM).all()).results || [];
+  return age < PP_PROP_FORM_STALE_MS && hit.data.done === n ? null : { done: n };
+}
+const ppPropFrom = (now, seasonFrom) => { const from = ptDateOf(now - PP_PROP_WINDOW_DAYS * 864e5); return from > seasonFrom ? from : seasonFrom; };
+// Rows newest first, each his box score's line: one entry a player (pure). `priorOf(id, stat)` is
+// last season's per game, or null; `nameOf` his full name where the box has less.
+function ppPropPlayers(rows, c, priorOf, nameOf = (r) => r.player, extra = {}) {
   const byId = new Map();
   for (const r of rows) {
     if (!byId.has(r.player_id)) byId.set(r.player_id, []);
     const a = byId.get(r.player_id);
     if (a.length < 10) a.push(r);
   }
-  const pri = await nbaPriors(env);
-  const players = [];
+  const out = [];
   for (const [id, last] of byId) {
-    const mins = last.slice(0, 5).map((r) => r.min).filter((v) => v != null);
-    const pl = (pri && pri.players && pri.players[id]) || null;
-    players.push({ id, k: nbaName(last[0].player), name: last[0].player, team: last[0].team,
-      min: mins.length ? round1(mins.reduce((a, b) => a + b, 0) / mins.length) : null,
-      log: last.slice().reverse().map((r) => NBA_PROP_COLS.map((c) => r[c])),
-      proj: ppPropProjections(last, pl) });
+    const mins = last.slice(0, 5).map((r) => r.min).filter((v) => v != null), name = nameOf(last[0]);
+    out.push({ id, k: c.name(name), name, team: last[0].team, min: mins.length ? round1(mins.reduce((a, b) => a + b, 0) / mins.length) : null,
+      log: last.slice().reverse().map((r) => c.cols.map((k) => (r[k] === undefined ? null : r[k]))), proj: ppPropProjections(last, c, (st) => priorOf(id, st)), ...extra });
   }
-  await saveFeedCache(db, key, { builtAt: now, done: n, players });
-  return true;
+  return out;
 }
-// A stat's projection (pure): the last games plus NBA_PRIOR_K of last season; with no season
-// behind it, three games of his own or nothing. A combined stat is its parts added up.
-function ppPropProjections(last, pl) {
-  const one = (s) => {
-    const v = last.map((r) => r[s]).filter((x) => x != null), sum = v.reduce((a, b) => a + b, 0);
-    const prior = pl && pl.gp >= 5 && typeof pl[s] === 'number' ? pl[s] : null;
-    if (prior != null) return (sum + NBA_PRIOR_K * prior) / (v.length + NBA_PRIOR_K);
+// A stat's projection (pure): the last games plus c.k of last season; with no season behind it,
+// three games of his own or nothing. A combined stat is its parts added up.
+function ppPropProjections(last, c, priorOf) {
+  const one = (st) => {
+    const v = last.map((r) => r[st]).filter((x) => x != null), sum = v.reduce((a, b) => a + b, 0);
+    const prior = priorOf(st);
+    if (prior != null) return (sum + c.k * prior) / (v.length + c.k);
     return v.length >= 3 ? sum / v.length : null;
   };
-  const raw = Object.fromEntries(NBA_PROP_COLS.map((s) => [s, one(s)]));
+  const raw = Object.fromEntries(c.cols.map((st) => [st, one(st)]));
   const out = {};
-  for (const s of NBA_PROP_COLS) if (raw[s] != null) out[s] = round1(raw[s]);
-  for (const [s, parts] of Object.entries(NBA_COMBOS)) if (parts.every((x) => raw[x] != null)) out[s] = round1(parts.reduce((a, x) => a + raw[x], 0));
+  for (const st of c.cols) if (raw[st] != null) out[st] = round1(raw[st]);
+  for (const [st, parts] of Object.entries(c.sums)) if (parts.every((x) => raw[x] != null)) out[st] = round1(parts.reduce((a, x) => a + raw[x], 0));
   return out;
+}
+async function nbaPropsFormTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB, key = PP_PROP_FORM + 'nba', c = PP_PROP_CFG.nba;
+  await ensureNbaSchema(db);
+  const due = await ppPropFormDue(db, key, 'nba_box_games', now);
+  if (!due) return null;
+  const rows = (await db.prepare(`SELECT player_id, player, team, date, min, ${c.cols.join(', ')} FROM nba_box
+    WHERE date >= ? AND season_type IN (2,3) AND dnp = 0 ORDER BY date DESC`).bind(ppPropFrom(now, NBA_SEASON_FROM)).all()).results || [];
+  const pri = await nbaPriors(env);
+  const priorOf = (id, st) => { const pl = pri && pri.players && pri.players[id]; return pl && pl.gp >= 5 && typeof pl[st] === 'number' ? pl[st] : null; };
+  await saveFeedCache(db, key, { builtAt: now, done: due.done, players: ppPropPlayers(rows, c, priorOf) });
+  return true;
+}
+// The NHL's: skaters and goalies from their own tables, under the full names the box scores
+// shorten, and tonight's and tomorrow's games off the NHL's own free feed, kept on a row of their
+// own (the odds feed's names don't carry the team codes the box scores use).
+async function nhlPropsFormTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB, key = PP_PROP_FORM + 'nhl', c = PP_PROP_CFG.nhl;
+  await ensureNhlBoxSchema(db);
+  const sl = await loadFeedCache(db, PP_PROP_SLATE + 'nhl');
+  if (!(sl.present && sl.data && now - sl.data.at < PP_PROP_FORM_EVERY_MS)) {
+    const games = [];
+    let answered = false;
+    for (const day of [ptDateOf(now), ptDateOf(now + 864e5)]) {
+      try {
+        const r = await fetch(`https://api-web.nhle.com/v1/score/${day}`, { headers: { accept: 'application/json' } });
+        if (!r.ok) continue;
+        answered = true;
+        for (const g of (await r.json()).games || []) {
+          if (g.gameType !== 2 || !/FUT|PRE/.test(g.gameState || '') || g.id == null) continue;
+          games.push({ id: String(g.id), commence: g.startTimeUTC, home: g.homeTeam.abbrev, away: g.awayTeam.abbrev,
+            homeNick: g.homeTeam.name && g.homeTeam.name.default, awayNick: g.awayTeam.name && g.awayTeam.name.default });
+        }
+      } catch (e) { /* the other day */ }
+    }
+    if (answered) await saveFeedCache(db, PP_PROP_SLATE + 'nhl', { at: now, games });
+  }
+  const due = await ppPropFormDue(db, key, 'nhl_box_games', now);
+  if (!due) return null;
+  const from = ppPropFrom(now, NHL_SEASON_FROM);
+  const skaters = (await db.prepare('SELECT player_id, player, team, date, min, goals, ast, pts, sog, blocks, hits FROM nhl_box WHERE date >= ? ORDER BY date DESC').bind(from).all()).results || [];
+  const goalies = (await db.prepare('SELECT player_id, player, team, date, min, saves FROM nhl_goalie_box WHERE date >= ? ORDER BY date DESC').bind(from).all()).results || [];
+  const prior = (await nhlHotPrior(env).catch(() => null)) || {};
+  const current = new Map([...(await nhlSkaters(env, NHL_SEASONS.current, 3 * 3600e3)).values()].filter(Boolean).map((x) => [x.id, x.name]));
+  const gPrior = await nhlGoalies(env, NHL_SEASONS.prior, null), gCur = await nhlGoalies(env, NHL_SEASONS.current, 3 * 3600e3);
+  const players = [
+    ...ppPropPlayers(skaters, c, (id, st) => { const x = prior[id]; return x && x.gp >= NHL_HOT_PRIOR_GP && x[st] != null ? x[st] / x.gp : null; },
+      (r) => (prior[r.player_id] && prior[r.player_id].n) || current.get(r.player_id) || r.player),
+    ...ppPropPlayers(goalies, c, (id, st) => { const x = gPrior[id]; return st === 'saves' && x && x.gp >= NHL_PROP_GOALIE_GP ? x.saves / x.gp : null; },
+      (r) => (gCur[r.player_id] && gCur[r.player_id].n) || (gPrior[r.player_id] && gPrior[r.player_id].n) || r.player, { goalie: true }),
+  ];
+  await saveFeedCache(db, key, { builtAt: now, done: due.done, players });
+  return true;
+}
+// Goalies by NHL id: his name in full and his saves. Kept in feed_cache, one request a season's.
+async function nhlGoalies(env, season, ttlMs) {
+  const key = `nhl_goalies:${season}`;
+  const hit = await loadFeedCache(env.DB, key);
+  if (hit.present && hit.data && (ttlMs == null || hit.ageMs < ttlMs)) return hit.data;
+  try {
+    const r = await fetch(`https://api.nhle.com/stats/rest/en/goalie/summary?isAggregate=false&isGame=false&start=0&limit=-1&cayenneExp=gameTypeId=2%20and%20seasonId=${season}`, { headers: { accept: 'application/json' } });
+    if (!r.ok) return (hit.present && hit.data) || {};
+    const map = {};
+    for (const x of (await r.json()).data || []) map[String(x.playerId)] = { n: x.goalieFullName, gp: x.gamesPlayed, saves: x.saves };
+    await saveFeedCache(env.DB, key, map);
+    return map;
+  } catch (e) { return (hit.present && hit.data) || {}; }
 }
 
 // The games a card lists: ESPN's slate off the injury report's row (it has the team codes the box
@@ -18678,40 +18836,55 @@ async function nbaPropsSlate(db, now) {
   }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
 }
 
+// The NHL's games: the feed's own list, with the odds feed's id for each.
+async function nhlPropsSlate(db, now) {
+  const hit = await loadFeedCache(db, PP_PROP_SLATE + 'nhl');
+  const ev = await loadFeedCache(db, 'nhl_pp_events:reg');
+  const events = (ev.present && ev.data && ev.data.events) || [];
+  return ((hit.present && hit.data && hit.data.games) || []).filter((g) => {
+    const t = Date.parse(g.commence);
+    return t > now && t - now <= PP_PROP_AHEAD_MS;
+  }).map((g) => {
+    const t = Date.parse(g.commence);
+    const e = events.find((x) => x && nhlMatch(x.home_team, g.homeNick) && nhlMatch(x.away_team, g.awayNick) && Math.abs(Date.parse(x.commence_time) - t) < 6 * 3600e3);
+    return { id: e ? e.id : `nhl:${g.id}`, date: ptDateOf(t), commence: g.commence, home: e ? e.home_team : g.homeNick, away: e ? e.away_team : g.awayNick, homeAb: g.home, awayAb: g.away, inj: {}, injAt: 0 };
+  }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
+}
+
 function ppPropRecordOut(rec) {
   const r = rec || { graded: 0, bands: {}, byMarket: {} };
   const c = (k) => r.bands[k] || { n: 0, hit: 0 };
   return { graded: r.graded, need: PP_PROP_NEED, bands: r.bands, byMarket: r.byMarket, at54: { n: c('54-56').n + c('56+').n, hit: c('54-56').hit + c('56+').hit } };
 }
-// GET /api/nba-props: what the card draws. No credits and no upstream call: feed_cache rows and
-// the log. Lines typed on the card aren't in it (they stay behind the entries key); the page lays
-// those over from /api/prop-lines.
-async function nbaPropsBoard(env, now = Date.now()) {
-  const c = PP_PROP_CFG.nba;
-  const out = { sport: 'nba', at: new Date(now).toISOString(), cols: NBA_PROP_COLS, sums: NBA_COMBOS, readHours: PP_PROP_READ_MS / 3600e3, games: [], players: [], record: null };
+// GET /api/nba-props, /api/nhl-props: what the card draws. No credits and no upstream call:
+// feed_cache rows and the logs. Lines typed on the card aren't in it (they stay behind the entries
+// key); the page lays those over from /api/prop-lines.
+async function ppPropsBoard(env, sport, now = Date.now()) {
+  const c = PP_PROP_CFG[sport];
+  const out = { sport, at: new Date(now).toISOString(), cols: c.cols, sums: c.sums, readHours: PP_PROP_READ_MS / 3600e3, games: [], players: [], record: null };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   const db = env.DB;
   try {
-    await ensureNbaSchema(db); await ensurePpPropSchema(db);
-    const rec = await loadFeedCache(db, PP_PROP_REC + 'nba');
+    await c.ensure(db); await ensurePpPropSchema(db);
+    const rec = await loadFeedCache(db, PP_PROP_REC + sport);
     out.record = ppPropRecordOut(rec.present ? rec.data : null);
-    const games = await nbaPropsSlate(db, now);
+    const games = await c.slate(db, now);
     if (!games.length) return out;
     const today = ptDateOf(now);
-    const read = (await db.prepare('SELECT * FROM pp_props WHERE sport = ? AND date >= ? AND read_point IS NOT NULL').bind('nba', today).all()).results || [];
-    const logged = ppStanding((await db.prepare('SELECT * FROM nbapp WHERE date >= ?').bind(today).all()).results || []).map(ppCurrent);
+    const read = (await db.prepare('SELECT * FROM pp_props WHERE sport = ? AND date >= ? AND read_at IS NOT NULL').bind(sport, today).all()).results || [];
+    const logged = c.logTable ? ppStanding((await db.prepare(`SELECT * FROM ${c.logTable} WHERE date >= ?`).bind(today).all()).results || []).map(ppCurrent) : [];
     // By day, player and stat. The PrizePicks log re-reads, so its number is the newer one.
     const lines = new Map(), meta = new Map();
     for (const r of read) {
       lines.set(`${r.date}|${r.pkey}|${r.market}`, { l: r.read_point, u: r.read_sharp, gap: r.gap, at: r.read_at, ...(r.fairs ? { fairs: JSON.parse(r.fairs) } : {}) });
-      meta.set(`${r.date}|${r.pkey}`, { name: r.player, id: r.player_id, team: r.team, home: r.home, away: r.away, date: r.date });
+      if (r.read_point != null) meta.set(`${r.date}|${r.pkey}`, { name: r.player, id: r.player_id, team: r.team, home: r.home, away: r.away, date: r.date });
     }
     for (const r of logged) {
       const q = ppPropQuotes(r.book_unders), l = { pp: r.point, q }, h = histPropRead(l), fairs = ppPropFairs(l), k = c.name(r.player);
       lines.set(`${r.date}|${k}|${r.market}`, { l: r.point, u: h.under, gap: h.gap, at: r.close_at || r.captured_at, ...(fairs.length ? { fairs } : {}) });
       meta.set(`${r.date}|${k}`, { name: r.player, id: r.player_id, team: r.team, home: r.home, away: r.away, date: r.date });
     }
-    const form = await loadFeedCache(db, PP_PROP_FORM + 'nba');
+    const form = await loadFeedCache(db, PP_PROP_FORM + sport);
     const byTeam = new Map();
     for (const p of ((form.present && form.data && form.data.players) || [])) {
       if (!byTeam.has(p.team)) byTeam.set(p.team, []);
@@ -18720,7 +18893,7 @@ async function nbaPropsBoard(env, now = Date.now()) {
     const stats = ppPropStats(c), placed = new Set();
     const linesOf = (date, k) => {
       const mine = {};
-      for (const s of stats) { const x = lines.get(`${date}|${k}|${s}`); if (x) mine[s] = x; }
+      for (const st of stats) { const x = lines.get(`${date}|${k}|${st}`); if (x) mine[st] = x; }
       return mine;
     };
     const injOf = (g, id) => {
@@ -18730,9 +18903,10 @@ async function nbaPropsBoard(env, now = Date.now()) {
     games.forEach((g, gi) => {
       for (const team of [g.awayAb, g.homeAb]) {
         for (const p of (byTeam.get(team) || [])) {
-          const mine = linesOf(g.date, p.k), up = Object.keys(mine).length > 0, inj = injOf(g, p.id);
-          // Ruled out and no number up: nothing to compare. Still up: the flag is the news.
-          if (!up && (!(p.min >= NBA_PROP_MIN) || (inj && inj.out))) continue;
+          const mine = linesOf(g.date, p.k), up = Object.values(mine).some((x) => x.l != null), inj = injOf(g, p.id);
+          // Ruled out and no number up: nothing to compare. Still up: the flag is the news. A
+          // goalie only with a quote on him: that's how to tell who starts.
+          if (!up && (p.goalie ? !Object.keys(mine).length : !(p.min >= c.minMin) || (inj && inj.out))) continue;
           placed.add(`${g.date}|${p.k}`);
           out.players.push({ id: p.id, k: p.k, name: p.name, team: p.team, g: gi, min: p.min, log: p.log, proj: p.proj, lines: mine, ...(inj ? { inj } : {}) });
         }
@@ -18741,7 +18915,7 @@ async function nbaPropsBoard(env, now = Date.now()) {
     // PrizePicks has him up and he has no recent game in the box scores.
     for (const [key, m] of meta) {
       if (placed.has(key)) continue;
-      const gi = games.findIndex((g) => g.date === m.date && nbaMatch(g.home, m.home) && nbaMatch(g.away, m.away));
+      const gi = games.findIndex((g) => g.date === m.date && c.teamMatch(g.home, m.home) && c.teamMatch(g.away, m.away));
       if (gi < 0) continue;
       const inj = m.id ? injOf(games[gi], m.id) : null;
       out.players.push({ id: m.id || null, k: key.split('|')[1], name: m.name, team: m.team || null, g: gi, min: null, log: [], proj: {}, lines: linesOf(m.date, key.split('|')[1]), ...(inj ? { inj } : {}) });
@@ -18810,7 +18984,7 @@ async function gradePpProps(db, sport, tonight = false) {
     const box = await c.dayBox(db, day, tonight);
     for (const r of open.filter((x) => x.date === day)) {
       const line = r.typed_line != null ? r.typed_line : r.read_point;
-      const b = (r.player_id && box.byId.get(r.player_id)) || box.byName.get(r.pkey);
+      const b = (r.player_id && box.byId.get(r.player_id)) || box.byName.get(c.boxKey ? c.boxKey(r.pkey) : r.pkey);
       let result = null, actual = null;
       if (b) {
         const v = c.stat(b, r.market);
@@ -18856,9 +19030,29 @@ async function nbaPropDayBox(db, day, tonight) {
     settled: !tonight && Number(read && read.n) > 0 && Number(pend && pend.n) === 0 };
 }
 
+// And the NHL's. A box score shortens his first name, so one with no id goes by initial and surname.
+const nhlInitial = (k) => { const w = String(k || '').split(' '); return `${(w[0] || '').slice(0, 1)} ${w.slice(1).join(' ')}`; };
+async function nhlPropDayBox(db, day, tonight) {
+  await ensureNhlBoxSchema(db);
+  const rows = (await db.prepare('SELECT * FROM nhl_box WHERE date = ?').bind(day).all()).results || [];
+  const goalies = (await db.prepare('SELECT * FROM nhl_goalie_box WHERE date = ?').bind(day).all()).results || [];
+  const pend = await db.prepare('SELECT COUNT(*) AS n FROM nhl_box_games WHERE date = ? AND done = 0').bind(day).first();
+  const read = await db.prepare('SELECT COUNT(*) AS n FROM nhl_box_games WHERE date = ? AND done = 1').bind(day).first();
+  const all = [...rows, ...goalies];
+  return { byId: new Map(all.map((b) => [b.player_id, b])), byName: new Map(all.map((b) => [nhlInitial(nhlName(b.player)), b])),
+    settled: !tonight && Number(read && read.n) > 0 && Number(pend && pend.n) === 0 };
+}
+
 const ppPropStats = (c) => [...c.cols, ...Object.keys(c.sums)];
 const PP_PROP_CFG = {
-  nba: { lg: 'reg', sportKey: NBA_LEAGUES.reg, gamesKey: 'nba_pp_games', cols: NBA_PROP_COLS, sums: NBA_COMBOS,
+  nba: { lg: 'reg', sportKey: NBA_LEAGUES.reg, gamesKey: 'nba_pp_games', cols: NBA_PROP_COLS, sums: NBA_COMBOS, k: NBA_PRIOR_K, minMin: NBA_PROP_MIN,
     markets: { player_points: 'pts', player_points_rebounds_assists: 'pra', player_points_rebounds: 'pts_reb', player_points_assists: 'pts_ast', player_rebounds_assists: 'reb_ast' },
-    name: nbaName, stat: nbaStat, dayBox: nbaPropDayBox, slate: nbaPropsSlate, logged: nbaPropsLogged },
+    name: nbaName, stat: nbaStat, dayBox: nbaPropDayBox, slate: nbaPropsSlate, logTable: 'nbapp', ensure: ensureNbaSchema, teamMatch: nbaMatch },
+  // Shots on goal and saves: the two the sharp books price that the log doesn't read. Goals, blocked
+  // shots and hits have no sharp book worth a credit (Pinnacle has none of them), so those rows are
+  // PrizePicks' number set by hand, with the projection and his log beside it.
+  nhl: { lg: 'reg', sportKey: NHL_LEAGUES.reg, gamesKey: 'nhl_pp_games', cols: NHL_PROP_COLS, sums: {}, k: NHL_PRIOR_K, minMin: NHL_TOI_MIN,
+    markets: { player_shots_on_goal: 'sog', player_total_saves: 'saves' }, sharpOnly: { player_shots_on_goal: 'sog', player_total_saves: 'saves' },
+    name: nhlName, stat: (b, m) => (b && b[m] != null ? b[m] : null), dayBox: nhlPropDayBox, boxKey: nhlInitial, slate: nhlPropsSlate, logTable: 'nhlpp',
+    ensure: async (db) => { await ensureNhlBoxSchema(db); await ensureNhlPpSchema(db); }, teamMatch: nhlMatch },
 };
