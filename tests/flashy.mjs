@@ -136,6 +136,9 @@ ok(t.n === 3 && t.name === '3-pick Flex' && t.legs.map((l) => l.short).join() ==
   'it opens on the 3-pick Flex: Carter Less 2.5 AST, Flagg Less 6.5 AST, George More 0.5 BLK');
 ok(Math.round(t.all * 10) / 10 === e3.allLand && t.pays === '3 of 3 2.25x · 2 of 3 1.25x' && t.ev === e3.ev && t.stake === 2 && t.capped,
   `all three land ${Math.round(t.all)}% (the worker's ${e3.allLand}), pays 2.25x and 1.25x, +${t.ev}% at the 2% cap`);
+// On a phone "2 of 3" split from its 1.25x (2026-11-05): each payout wraps whole, its dot hanging off the right.
+ok(/<b class="dots dots-r"><span class="dots-in"><span>3 of 3 2\.25x <span class="dot">·<\/span><\/span> <span>2 of 3 1\.25x<\/span><\/span><\/b>/.test(P.ticketHtml(t))
+  && /Pays 3 of 3 2\.25x · 2 of 3 1\.25x/.test(text(P.ticketHtml(t))), 'each payout one bit that wraps whole, and it still reads the same');
 env.state.ticketN = 2; t = P.ticketData({ entries: F.entries }, pool, true);
 ok(t.name === '2-pick Power' && t.pays === 'both land 3x' && t.ev === F.entries.find((e) => e.legs === 2).ev && t.legs.length === 2, `a tap on 2: the Power, +${t.ev}%`);
 env.state.ticketN = 6; t = P.ticketData({ entries: F.entries }, pool, true);

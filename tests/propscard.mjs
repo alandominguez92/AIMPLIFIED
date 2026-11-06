@@ -323,5 +323,34 @@ const wq = text(rowFor(C.propsCardHtml('nfl'), 'Malik Willis'));
 ok(/expected starter/.test(wq) && !/(Over|Under) \d/.test(wq), `the passer to expect, and with no line yet no side: ${wq.slice(0, 90)}`);
 state.prStat = {};
 
+console.log('\n-- on a phone --');
+// The owner's phone check (2026-11-05): the note folded behind a tap, the header past the 100
+// without "of 100", an NBA player in and out of the lineup tagged as NHL's and NFL's are, and no
+// number split from its word at the end of a line.
+state.props = { nba: D };
+let ph = C.propsCardHtml('nba');
+ok(/<button type="button" class="pr-how" data-action="pr-how" data-sport="nba" aria-expanded="false">How to read this ▸<\/button><div class="tc-sub" hidden>The percentage/.test(ph), 'the note folded: a tap opens it');
+state.prHow = { nba: true };
+ok(/aria-expanded="true">How to read this ▾<\/button><div class="tc-sub">The percentage/.test(C.propsCardHtml('nba')), 'and open once tapped');
+state.prHow = {};
+state.props = { nhl: { ...N, record: { ...N.record, graded: 130, need: 100 } } };
+ok(/· 130 graded<\/span>/.test(C.propsCardHtml('nhl')), 'past the 100: "130 graded", not "130 graded of 100"');
+state.props = { nba: { ...D, players: [{ ...early, st: [3, 5] }, ...D.players.filter((p) => p !== bare)] } };
+state.prStat = { nba: 'pts' };
+const inOut = rowFor(C.propsCardHtml('nba'), bare.name);
+ok(/started 3 of last 5/.test(text(inOut)) && /class="tc-wait" title="Started 3 of his team’s last 5"/.test(inOut), 'started 3 of the last 5: says so, as NHL and NFL do');
+ok(/<span class="bw-cush dots"><span class="dots-in"><span>proj <b>[\d.]+<\/b><\/span> <span><span class="dot">·<\/span> line 21\.5<\/span> <span><span class="dot">·<\/span> <b class="[uo]">[\d.]+ (cushion|short of the line|over the line)<\/b><\/span>/.test(inOut),
+  'the projection line in bits that wrap whole: the cushion stays with its number');
+state.props = { nba: { ...D, players: [{ ...early, st: [0, 5] }, ...D.players.filter((p) => p !== bare)] } };
+ok(!/started \d/.test(text(rowFor(C.propsCardHtml('nba'), bare.name))), 'off the bench, still no tag');
+state.props = { nba: { ...D, players: [{ ...bare, st: [5, 5] }, ...D.players.filter((p) => p !== bare)] } };
+ok(/<span class="pr-clear dots"><span class="dots-in"><span>proj <b>[\d.]+<\/b><\/span> <span><span class="dot">·<\/span> avg [\d.]+ in last \d+<\/span>/.test(rowFor(C.propsCardHtml('nba'), bare.name)),
+  'no number yet: "avg 23.4 in last 8", one bit, no number alone on a line');
+state.props = { nba: D };
+state.prOpen = { [k]: true };
+ok(/<span class="tb-head dots"><span class="dots-in"><span><b class="[uo]">over 15\.5 in 3 of last 4<\/b><\/span> <span><span class="dot">·<\/span> avg [\d.]+<\/span>/.test(rowFor(card(), 'Anthony Black')),
+  'his last games: the average its own bit, its dot never starting a line');
+state.prOpen = {}; state.prStat = {};
+
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

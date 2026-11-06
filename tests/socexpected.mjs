@@ -339,6 +339,11 @@ ok(/started 5 of their club.s last 5 \(about 85% start the next match, 81% in Eu
 const m0 = expBoard.matches.find((x) => x.id === FIX);
 const nExp = new Set(m0.rows.map((x) => x.id)).size;
 ok(new RegExp(`${nExp} expected`).test(text(card)) && !/Lineups not posted yet/.test(text(card)), `the match says "${nExp} expected", and isn't listed as waiting`);
+// On a phone the note ran most of a screen before the first player (2026-11-05): folded behind a tap.
+ok(/<button type="button" class="pr-how" data-action="pr-how" data-sport="soccer" aria-expanded="false">How to read this ▸<\/button><div class="tc-sub" hidden>At the app’s line/.test(card), 'the note folded: a tap opens it');
+ui.prHow = { soccer: true };
+ok(/aria-expanded="true">How to read this ▾<\/button><div class="tc-sub">At the app’s line/.test(F.socPropsCardHtml()), 'and open once tapped');
+ui.prHow = {};
 ok(/class="sp-tap"/.test(card), 'the only match, so it is open');
 ok(/expected: started 5 of 5/.test(text(card)) && /expected: started 4 of 5/.test(text(card)), 'each row says how many of 5');
 ok(/data-action="socp-row"/.test(card) && /data-action="leg-add"/.test(card), 'and takes a line and a star as a starter\'s does');

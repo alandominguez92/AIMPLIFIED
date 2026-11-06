@@ -354,7 +354,9 @@
     const cushion = Math.round((over ? proj - line : line - proj) * 100) / 100;
     const gap = cushion > 0 ? `<b class="u">${cushion} cushion</b>`
       : cushion < 0 ? `<b class="o">${Math.abs(cushion)} ${over ? 'short of' : 'over'} the line</b>` : 'right on the line';
-    return `<span class="pp-projbar">${miniBar(proj, line, (v) => v / axisMax * 100)}<span class="bw-cush">proj <b>${esc(String(proj))}</b> · line ${esc(String(line))} · ${gap}</span></span>`;
+    // Each bit wraps whole (2026-11-05): on a phone "cushion" fell to a line of its own.
+    return `<span class="pp-projbar">${miniBar(proj, line, (v) => v / axisMax * 100)}<span class="bw-cush dots"><span class="dots-in">`
+      + `<span>proj <b>${esc(String(proj))}</b></span> <span><span class="dot">·</span> line ${esc(String(line))}</span> <span><span class="dot">·</span> ${gap}</span></span></span></span>`;
   }
   // The same bar under a moneyline on Picks of the day (2026-10-28, the
   // owner's call): the boards' fair-against-price bar, the fill the chance the
@@ -4780,7 +4782,13 @@
       }
       case 'socp-stat': state.socStat = target.dataset.stat; renderSoccer(); break;
       // The NBA, NHL and NFL props cards.
-      case 'pr-stat': state.prStat = { ...(state.prStat || {}), [target.dataset.sport]: target.dataset.stat }; propRedraw(target.dataset.sport); break;
+      case 'pr-how': {
+        const sp = target.dataset.sport;
+        state.prHow = { ...(state.prHow || {}), [sp]: !(state.prHow && state.prHow[sp]) };
+        if (sp === 'soccer') renderSoccer(); else propRedraw(sp);
+        break;
+      }
+      case 'pr-stat': state.prStat ={ ...(state.prStat || {}), [target.dataset.sport]: target.dataset.stat }; propRedraw(target.dataset.sport); break;
       case 'pr-match': {
         const id = target.dataset.id;
         state.prMatch = { ...(state.prMatch || {}), [id]: !(state.prMatch && state.prMatch[id]) };
@@ -6575,7 +6583,8 @@
     const edge = t.ev == null ? '' : t.ev > 0 ? `<span class="tk-edge up">+${esc(String(t.ev))}% edge</span>` : '<span class="tk-edge">no edge</span>';
     return `<div class="pk-ticket"><div class="tk-head"><b class="tk-name">${esc(t.name)}</b>${edge}</div>`
       + `<div class="tk-legs">${t.legs.map((l) => `<div class="tk-leg">${pickFace(l.x, 40)}<b>${esc(l.short)}</b>${pickTeamCode(l.x) ? `<span class="tk-team">${esc(pickTeamCode(l.x))}</span>` : ''}<span>${esc(l.pick)}</span><span class="tk-p">${esc(pct0(l.p))}</span></div>`).join('')}</div>`
-      + `<div class="tk-foot"><div><span>All ${t.n} land</span><b>${esc(pct0(t.all))}</b></div><div><span>Pays</span><b>${esc(t.pays)}</b></div>`
+      // Each payout wraps whole, its dot hanging off the right (2026-11-05): "2 of 3" split from its 1.25x on a phone.
+      + `<div class="tk-foot"><div><span>All ${t.n} land</span><b>${esc(pct0(t.all))}</b></div><div><span>Pays</span><b class="dots dots-r"><span class="dots-in">${String(t.pays).split(' · ').map((x, i, a) => `<span>${esc(x)}${i < a.length - 1 ? ' <span class="dot">·</span>' : ''}</span>`).join(' ')}</span></b></div>`
       + (t.stake != null && t.stake > 0 ? `<div><span>¼ Kelly</span><b>${esc(stakeTxt(t.stake))}${t.capped ? ' cap' : ''}</b></div>` : '')
       + `</div><div class="tk-ctl"><span class="tk-sizes" role="group" aria-label="Legs in the entry">${sizes}</span>`
       + `<button type="button" class="tk-save" data-action="ticket${ml ? '-ml' : ''}-save">Save image</button></div></div>`;
@@ -6940,7 +6949,7 @@
     const under = t.side !== 'over';
     const avg = Math.round(t.vals.reduce((a, v) => a + v, 0) / t.vals.length * 10) / 10;
     const boxes = t.vals.map((v) => `<i class="${(under ? v < t.line : v > t.line) ? 'h' : 'm'}">${esc(String(v))}</i>`).join('');
-    return `<span class="pk-trend"><span class="tb-head"><b class="${t.hit * 2 >= t.vals.length ? 'u' : 'o'}">${under ? 'under' : 'over'} ${esc(String(t.line))} in ${t.hit} of last ${t.vals.length}</b> <span class="tb-avg">· avg ${esc(String(avg))}</span></span>`
+    return `<span class="pk-trend"><span class="tb-head dots"><span class="dots-in"><span><b class="${t.hit * 2 >= t.vals.length ? 'u' : 'o'}">${under ? 'under' : 'over'} ${esc(String(t.line))} in ${t.hit} of last ${t.vals.length}</b></span> <span><span class="dot">·</span> avg ${esc(String(avg))}</span></span></span>`
       + `<span class="tb-boxes" role="img" aria-label="${esc(`Last ${t.vals.length} games, oldest first: ${t.vals.join(', ')}; line ${t.line}`)}">${boxes}</span>`
       + `<span class="tb-cap">oldest → latest</span></span>`;
   }
@@ -7881,7 +7890,11 @@
     const [n, of] = p.st || [0, 0];
     if (sport === 'nfl' && p.qb1) return ' <span class="pr-start" title="Threw the most for his team last game">expected starter</span>';
     if (of < 3) return '';
-    if (sport === 'nba') return n >= of - 1 ? ` <span class="pr-start" title="Started ${n} of his team’s last ${of}">expected starter</span>` : '';
+    if (sport === 'nba') {
+      if (n >= of - 1) return ` <span class="pr-start" title="Started ${n} of his team’s last ${of}">expected starter</span>`;
+      // In and out of the lineup says so, as NHL's and NFL's missed games do (2026-11-05); off the bench, no tag.
+      return n ? ` <span class="tc-wait" title="Started ${n} of his team’s last ${of}">started ${n} of last ${of}</span>` : '';
+    }
     return n <= of - 2 ? ` <span class="tc-wait" title="In ${n} of his team’s last ${of} games">${sport === 'nhl' && p.goalie ? 'started' : 'played'} ${n} of last ${of}</span>` : '';
   }
   function propRow(sport, d, g, p, s) {
@@ -7908,7 +7921,7 @@
       + `<button type="button" class="sp-tap" data-action="pr-row" data-key="${esc(key)}" aria-expanded="${open}">`
       + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span>${v.p != null ? `<span class="tc-p${v.p >= PROP_STRONG ? ' sp-strong' : ''}">${pct0(v.p)}</span>` : ''}</span>`
       + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propStartTag(sport, p)}${nbaCardInjTag(p)}</span>`
-      + (v.src === 'none' ? (v.proj != null ? `<span class="pr-clear">proj <b>${esc(String(v.proj))}</b>${v.vals.length ? ` · average ${esc(String(r1(v.vals.reduce((a, x) => a + x, 0) / v.vals.length)))} in his last ${v.vals.length}` : ''}</span>` : '')
+      + (v.src === 'none' ? (v.proj != null ? `<span class="pr-clear dots"><span class="dots-in"><span>proj <b>${esc(String(v.proj))}</b></span>${v.vals.length ? ` <span><span class="dot">·</span> avg ${esc(String(r1(v.vals.reduce((a, x) => a + x, 0) / v.vals.length)))} in last ${v.vals.length}</span>` : ''}</span></span>` : '')
         : `${projLineHtml(v.proj, v.line, v.side)}${v.vals.length ? `<span class="pr-clear">over ${esc(String(v.line))} in ${v.over} of last ${v.vals.length}</span>` : ''}`) + `</span>`
       + `</button>`
       + (open ? `<div class="sp-set"><span class="sp-sh"><span class="sp-lbl">PrizePicks line</span><span class="sp-both">${both}</span></span>`
@@ -7930,9 +7943,12 @@
     const games = (d.games || []).map((g, i) => ({ g, i })).filter((x) => Date.parse(x.g.commence) > now);
     const r = d.record;
     const rec = r && r.graded
-      ? `<span class="tc-rec">Sharp 54%+: <b${r.at54.n >= 5 && r.at54.hit / r.at54.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${r.at54.hit} of ${r.at54.n}</b> · ${r.graded} graded of ${r.need}</span>` : '';
+      ? `<span class="tc-rec">Sharp 54%+: <b${r.at54.n >= 5 && r.at54.hit / r.at54.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${r.at54.hit} of ${r.at54.n}</b> · ${r.graded} graded${r.graded >= r.need ? '' : ` of ${r.need}`}</span>` : '';
+    // The note folded behind a tap (2026-11-05): on a phone it ran most of a screen before the first player.
+    const how = !!(state.prHow && state.prHow[sport]);
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks props, one stat at a time</span>${rec}</div>`
-      + `<div class="tc-sub">The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Before PrizePicks posts, the side is the projection against the books’ line or PrizePicks’ last number for him. Tap a player to change the line: what you set is saved and graded there. ${r && r.graded >= (r.need || 100) ? `${esc(String(r.graded))} have graded: they join Picks only when you say.` : `These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.`}</div>`;
+      + `<button type="button" class="pr-how" data-action="pr-how" data-sport="${esc(sport)}" aria-expanded="${how}">How to read this ${how ? '▾' : '▸'}</button>`
+      + `<div class="tc-sub"${how ? '' : ' hidden'}>The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Before PrizePicks posts, the side is the projection against the books’ line or PrizePicks’ last number for him. Tap a player to change the line: what you set is saved and graded there. ${r && r.graded >= (r.need || 100) ? `${esc(String(r.graded))} have graded: they join Picks only when you say.` : `These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.`}</div>`;
     if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">${sport === 'nfl' ? 'No games in the coming week.' : 'No games in the next day and a half.'}</div></div>`;
     const chips = `<input class="sp-search" type="search" placeholder="Find a player" value="${esc((state.prQuery && state.prQuery[sport]) || '')}" data-prq="${esc(sport)}" aria-label="Find a player">`
       + `<div class="sp-chips">${[...stats, 'best'].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="pr-stat" data-sport="${esc(sport)}" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : PROP_STATS[sport][s][0])}</button>`).join('')}</div>`
@@ -8018,8 +8034,10 @@
     const view = stats.includes(state.socStat) ? state.socStat : 'best';
     const hint = view !== 'best' ? `${SOC_STAT[view]}: every player, best first`
       : (q ? 'Every stat of the players found' : 'Each player’s strongest lean, best first');
+    const how = !!(state.prHow && state.prHow.soccer);
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks player props</span>${rec}</div>`
-      + `<div class="tc-sub">At the app’s line until you set PrizePicks’: tap a player to set it, and the chance follows. Each line you set is saved and graded at that number, if the player starts. Confirmed starters show about an hour before kickoff. Before that, regulars are marked expected: started 5 of their club’s last 5 (about 85% start the next match, 81% in European cups) or 4 of 5 (about 70%, 67%).`
+      + `<button type="button" class="pr-how" data-action="pr-how" data-sport="soccer" aria-expanded="${how}">How to read this ${how ? '▾' : '▸'}</button>`
+      + `<div class="tc-sub"${how ? '' : ' hidden'}>At the app’s line until you set PrizePicks’: tap a player to set it, and the chance follows. Each line you set is saved and graded at that number, if the player starts. Confirmed starters show about an hour before kickoff. Before that, regulars are marked expected: started 5 of their club’s last 5 (about 85% start the next match, 81% in European cups) or 4 of 5 (about 70%, 67%).`
       + `${listed.some((m) => m.rows.some((r) => r.nRecent < 3)) ? ' Early season: most projections are still last season’s numbers.' : ''}</div>`
       + socSideLineHtml(d.record, d.ppRecord)
       + (listed.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">`
