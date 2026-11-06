@@ -4789,6 +4789,7 @@
         break;
       }
       case 'pr-stat': state.prStat ={ ...(state.prStat || {}), [target.dataset.sport]: target.dataset.stat }; propRedraw(target.dataset.sport); break;
+      case 'pr-top-all': state.prTopAll = { ...(state.prTopAll || {}), [target.dataset.sport]: true }; propRedraw(target.dataset.sport); break;
       case 'pr-match': {
         const id = target.dataset.id;
         state.prMatch = { ...(state.prMatch || {}), [id]: !(state.prMatch && state.prMatch[id]) };
@@ -7775,6 +7776,8 @@
   const propNick = (sport, n) => (sport === 'nhl' ? nhlNick(n) : nbaNick(n));
   const propCodes = (sport) => (sport === 'nhl' ? NHL_CODE_NICK : sport === 'nfl' ? NFL_CODE_NICK : NBA_CODE_NICK);
   const PROP_STRONG = 54;
+  // The strongest list above the games shows this many until asked for the rest.
+  const PROP_TOP_N = 8;
   const propKey = (sport, g, p, s) => `${sport}:${g.date}:${p.k}:${s}`;
   const propData = (sport) => (state.props && state.props[sport]) || null;
   function propVals(d, p, s) {
@@ -7990,13 +7993,37 @@
       const strong = rows.filter((x) => x.v.p != null && Math.max(x.v.fair, 100 - x.v.fair) >= PROP_STRONG).length;
       const mOpen = !!q || games.length === 1 || !!(state.prMatch && state.prMatch[g.id]);
       const mHead = `<button type="button" class="sp-mh" data-action="pr-match" data-sport="${esc(sport)}" data-id="${esc(g.id)}" aria-expanded="${mOpen}">`
-        + `<b>${esc(propNick(sport, g.away))} @ ${esc(propNick(sport, g.home))}</b> · <span class="pk-when">${esc(soccerKick(g.commence))}</span>`
-        + `<span class="sp-mc">${rows.length} player${rows.length === 1 ? '' : 's'}${strong ? ` · ${strong} at ${PROP_STRONG}%+` : ''} ${mOpen ? '▾' : '▸'}</span></button>`;
+        + `<span class="sp-mt"><b>${esc(propNick(sport, g.away))} @ ${esc(propNick(sport, g.home))}</b> · <span class="pk-when">${esc(soccerKick(g.commence))}</span>`
+        + `<span class="sp-mc">${rows.length} player${rows.length === 1 ? '' : 's'}${strong ? ` <span class="sp-badge">${strong} at ${PROP_STRONG}%+</span>` : ''}</span></span>`
+        + `<span class="sp-chev" aria-hidden="true"></span></button>`;
       if (!mOpen) return `<div class="sp-match">${mHead}</div>`;
       return `<div class="sp-match">${mHead}<ol class="tc-legs">${rows.map((x) => propRow(sport, d, g, x.p, x.s)).join('')}</ol></div>`;
     }).join('');
     const nothing = !found ? `<div class="tc-wait-note">${q ? `No player matches “${esc(state.prQuery[sport])}”${view !== 'best' ? ` in ${esc(PROP_STATS[sport][view][1])}` : ''}.` : view === 'best' ? 'No sharp numbers read yet: each game’s come about four hours before it.' : 'No players to list yet.'}</div>` : '';
-    return `<div class="nba-pp pk-card sp-card">${head}${chips}${body}${nothing}</div>`;
+    // The stat's 54%+ players from every game, above the games (2026-11-06, the owner's pick): the
+    // strong ones without opening game after game. Best takes each player's strongest. A search, or a
+    // lone game already open, lists them in place.
+    let top = '';
+    if (!q && games.length > 1 && found) {
+      const tops = [];
+      for (const { g, i } of games) {
+        for (const p of (d.players || []).filter((x) => x.g === i)) {
+          const vs = (view === 'best' ? stats : [view]).map((s) => ({ g, p, s, v: propView(sport, d, g, p, s) })).filter((x) => strongAt(x.v));
+          if (vs.length) tops.push(vs.sort((a, b) => dist(b) - dist(a))[0]);
+        }
+      }
+      tops.sort((a, b) => dist(b) - dist(a) || Date.parse(a.g.commence) - Date.parse(b.g.commence));
+      const name = view === 'best' ? 'any stat' : PROP_STATS[sport][view][0];
+      const all = !!(state.prTopAll && state.prTopAll[sport]);
+      const shown = all ? tops : tops.slice(0, PROP_TOP_N);
+      top = `<div class="sp-sec">Strongest${view === 'best' ? ', any stat' : ` ${esc(name)}`}<span class="sp-badge">${tops.length} at ${PROP_STRONG}%+</span></div>`
+        + (tops.length
+          ? `<ol class="tc-legs sp-top">${shown.map((x) => propRow(sport, d, x.g, x.p, x.s)).join('')}</ol>`
+            + (shown.length < tops.length ? `<button type="button" class="sp-more" data-action="pr-top-all" data-sport="${esc(sport)}">All ${tops.length}</button>` : '')
+          : `<div class="tc-wait-note">No ${view === 'best' ? 'player' : `${esc(name)} number`} at ${PROP_STRONG}%+ right now.</div>`)
+        + '<div class="sp-sec">All games</div>';
+    }
+    return `<div class="nba-pp pk-card sp-card">${head}${chips}${top}${body}${nothing}</div>`;
   }
   // Back on a tab after two minutes, the card alone: the reads land through the day.
   async function refreshProps(sport) {
@@ -8085,8 +8112,8 @@
       const isExp = m.lineup === 'expected';
       const count = q ? `${rows.length} found` : `${view === 'best' ? starters : rows.length} ${isExp ? 'expected' : `starter${(view === 'best' ? starters : rows.length) === 1 ? '' : 's'}`}`;
       const mHead = `<button type="button" class="sp-mh" data-action="socp-match" data-id="${esc(m.id)}" aria-expanded="${mOpen}">`
-        + `<b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span>`
-        + `<span class="sp-mc">${count} ${mOpen ? '▾' : '▸'}</span></button>`;
+        + `<span class="sp-mt"><b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span>`
+        + `<span class="sp-mc">${count}</span></span><span class="sp-chev" aria-hidden="true"></span></button>`;
       if (!mOpen) return `<div class="sp-match">${mHead}</div>`;
       // Best shows the top eight until asked for the rest; a stat's list and a
       // search show all.

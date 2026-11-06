@@ -2842,11 +2842,26 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-intro { margin-top:0; }
 
 /* Soccer player props: a match per block, a line stepper on every row. */
-.sp-match { margin-top:12px; }
-.sp-mh { display:block; width:100%; text-align:left; background:none; border:none; border-top:1px solid var(--border);
-  font:inherit; font-size:13.5px; color:var(--text); padding:10px 0 8px; cursor:pointer; }
+/* Each match a shaded bar with an arrow in a ring (2026-11-06, the owner's pick): as a ruled
+   line with a small ▸ it read as text, not something to tap. The arrow turns down when open. */
+.sp-match { margin-top:8px; }
+.sp-mh { display:flex; align-items:center; gap:10px; width:100%; min-height:54px; text-align:left;
+  background:color-mix(in srgb, var(--text) 5%, var(--card)); border:1px solid var(--border); border-radius:10px;
+  font:inherit; font-size:13.5px; color:var(--text); padding:9px 10px 9px 12px; cursor:pointer; }
+.sp-mh:hover { border-color:var(--borderFaint); background:color-mix(in srgb, var(--text) 8%, var(--card)); }
+.sp-mh[aria-expanded="true"] { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.sp-mt { flex:1; min-width:0; }
 .sp-mh b { font-weight:700; }
-.sp-mc { display:block; margin-top:2px; font-family:var(--mono); font-size:var(--fsXs); color:var(--textFaint); }
+.sp-mc { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; margin-top:3px; font-family:var(--mono); font-size:var(--fsXs); color:var(--textFaint); }
+.sp-chev { flex:none; display:grid; place-items:center; width:30px; height:30px; border:1px solid var(--borderFaint); border-radius:50%; color:var(--text); }
+.sp-chev::before { content:''; width:7px; height:7px; margin-left:-3px; border-right:2px solid currentColor; border-bottom:2px solid currentColor; transform:rotate(-45deg); }
+.sp-mh[aria-expanded="true"] .sp-chev::before { margin:-4px 0 0; transform:rotate(45deg); }
+.sp-badge { display:inline-flex; align-items:center; height:18px; padding:0 6px; border-radius:5px; font-family:var(--mono); font-size:11px; font-weight:700;
+  color:var(--positive); background:color-mix(in srgb, var(--positive) 14%, transparent); white-space:nowrap; }
+/* The stat's 54%+ players from every game, above the games. */
+.sp-sec { display:flex; align-items:center; gap:8px; margin-top:16px; font-family:var(--sans); font-size:var(--fsSm); font-weight:700;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--textDim); }
+.sp-top { margin-top:8px; gap:6px; }
 .sp-line { display:flex; align-items:center; gap:6px; margin-top:8px; }
 .sp-step { width:32px; height:30px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text);
   font-size:16px; line-height:1; cursor:pointer; flex:none; }
@@ -2875,13 +2890,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
    row showed three and a half of NBA's thirteen on a phone, with nothing to say
    there were more. Each carries how many 54%+ numbers it has. */
 .sp-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-.sp-chip { flex:none; display:inline-flex; align-items:center; gap:5px; height:32px; padding:0 11px; border:1px solid var(--border); border-radius:8px; background:var(--card);
+.sp-chip { flex:none; display:inline-flex; align-items:center; gap:5px; height:32px; padding:0 11px; border:1px solid var(--borderFaint); border-radius:8px; background:color-mix(in srgb, var(--text) 5%, var(--card));
   color:var(--text); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
 .sp-chip.on { background:var(--accentFill); border-color:var(--accentFill); color:var(--onAccent); font-weight:600; }
 .sp-n { font-family:var(--mono); font-size:11px; font-weight:700; color:var(--positive); }
 .sp-chip.on .sp-n { color:inherit; }
 .sp-hint { margin-top:8px; font-family:var(--sans); font-size:var(--fsSm); color:var(--textFaint); }
-.sp-match .tc-legs { margin-top:2px; gap:6px; }
+.sp-match .tc-legs { margin-top:8px; gap:6px; }
 .sp-tap { display:block; width:100%; text-align:left; background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; }
 .sp-row.open .tc-leg { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .sp-row .tc-l1 .pk-sport { flex:none; }

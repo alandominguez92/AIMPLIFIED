@@ -53,7 +53,7 @@ const persisted = [];
 const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
-  'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
+  'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'PROP_TOP_N', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
   'propSaveHtml', 'propRow', 'propsCardHtml'];
 let C;
 try {
@@ -371,6 +371,53 @@ state.prOpen = { [k]: true };
 ok(/<span class="tb-head dots"><span class="dots-in"><span><b class="[uo]">over 15\.5 in 3 of last 4<\/b><\/span> <span><span class="dot">·<\/span> avg [\d.]+<\/span>/.test(rowFor(card(), 'Anthony Black')),
   'his last games: the average its own bit, its dot never starting a line');
 state.prOpen = {}; state.prStat = {};
+
+console.log('\n-- the strongest above the games, each game a bar to tap (2026-11-06) --');
+// The owner: "It doesn't seem like you can select any of these", of the games folded one line each.
+// They chose the stat's 54%+ players from every game above the games, and each game a shaded bar
+// with an arrow. The recorded board has one game; its Grizzlies go to a second game an hour later
+// so the list has two to draw from. Their lines and chances are the recorded ones.
+const G2 = { ...D.games[0], id: `${D.games[0].id}-2`, commence: new RealDate(Date.parse(D.games[0].commence) + 3600e3).toISOString() };
+const D2 = { ...D, games: [D.games[0], G2], players: D.players.map((p) => (p.team === 'MEM' ? { ...p, g: 1 } : p)) };
+const secOf = (h) => (h.includes('<div class="sp-sec">All games</div>') ? h.slice(h.indexOf('<div class="sp-sec">'), h.indexOf('<div class="sp-sec">All games</div>')) : '');
+ok(!/sp-sec/.test(card()), 'one game, open already: no list above it');
+state.props = { nba: D2 };
+h = card();
+let sec = secOf(h);
+const strongRows = rowsOf(sec);
+const ptsWant = D2.players.filter((p) => { const f = fairAt(p.lines.pts); return f != null && Math.max(f, 100 - f) >= 54; }).map((p) => p.name).sort();
+console.log(`  Points at 54%+: ${ptsWant.join(', ')}`);
+ok(ptsWant.length >= 1 && /Strongest Points<span class="sp-badge">\d+ at 54%\+<\/span>/.test(sec) && sec.includes(`${ptsWant.length} at 54%+`), `two games: "Strongest Points", ${ptsWant.length} at 54%+`);
+ok(strongRows.length === ptsWant.length && strongRows.map((r) => /<b>([^<]+)<\/b>/.exec(r)[1]).sort().join() === ptsWant.join(), 'its rows are those players, before any game is opened');
+ok(h.indexOf('sp-sec') > h.indexOf('sp-chips') && h.indexOf('All games') < h.indexOf('class="sp-match"'), 'under the stat buttons, above the games');
+ok((h.match(/class="sp-mh"[^>]*aria-expanded="false"/g) || []).length === 2, 'the games stay folded');
+state.prStat = { nba: 'best' };
+sec = secOf(card());
+const bestNames = rowsOf(sec).map((r) => /<b>([^<]+)<\/b>/.exec(r)[1]);
+const pctOf = (r) => Number((/tc-p[^>]*>(\d+)%/.exec(r) || [])[1]);
+ok(/Strongest, any stat<span class="sp-badge">/.test(sec) && bestNames.length === wantBest && new Set(bestNames).size === bestNames.length, `Best: each player once, at his strongest (${bestNames.join(', ')})`);
+const teamOf = (name) => (D2.players.find((p) => p.name === name) || {}).team;
+ok(bestNames.some((x) => teamOf(x) === 'ORL') && bestNames.some((x) => teamOf(x) === 'MEM'), 'from both games');
+ok(rowsOf(sec).every((r, i, a) => pctOf(r) >= 54 && (!i || pctOf(a[i - 1]) >= pctOf(r))), `strongest first: ${rowsOf(sec).map(pctOf).join(', ')}`);
+const C2 = new Function('state', 'esc', 'persistSlip', 'renderSlip', CARD.map((x) => (x === 'PROP_TOP_N' ? 'const PROP_TOP_N = 2;' : lift(x))).join('\n') + '\nreturn { propsCardHtml };')(state, esc, persistSlip, renderSlip);
+const two = secOf(C2.propsCardHtml('nba'));
+ok(rowsOf(two).length === 2 && new RegExp(`data-action="pr-top-all"[^>]*>All ${wantBest}</button>`).test(two), `past its first few, an "All ${wantBest}" button`);
+state.prTopAll = { nba: true };
+ok(rowsOf(secOf(C2.propsCardHtml('nba'))).length === wantBest && !/pr-top-all/.test(C2.propsCardHtml('nba')), 'tapped: every one');
+state.prTopAll = {};
+state.prStat = { nba: 'tov' };
+ok(/<span class="sp-badge">0 at 54%\+<\/span>/.test(card()) && /No Turnovers number at 54%\+ right now\./.test(card()), 'a stat with none says so');
+state.prStat = {};
+state.prQuery = { nba: 'black' };
+ok(!/sp-sec/.test(card()), 'a search lists its players in place');
+state.prQuery = {};
+const bar = (card().match(/<button type="button" class="sp-mh"[\s\S]*?<\/button>/) || [''])[0];
+ok(/<span class="sp-chev" aria-hidden="true"><\/span><\/button>$/.test(bar) && !/[▸▾]/.test(bar), 'each game: an arrow in a ring, not a small ▸ in the text');
+ok(/<span class="sp-badge">\d+ at 54%\+<\/span>/.test(card().split('class="sp-match"').slice(1).join('')), 'its 54%+ count a badge');
+ok(/\.sp-mh \{[^}]*background:color-mix[^}]*border:1px solid var\(--border\); border-radius:10px;/.test(css) && /\.sp-mh\[aria-expanded="true"\] \.sp-chev::before \{[^}]*rotate\(45deg\)/.test(css),
+  'a shaded bar with a border, its arrow turning down when open');
+ok(/\.sp-chip \{[^}]*background:color-mix/.test(css), 'and the stat buttons filled, to read as buttons');
+state.props = { nba: D };
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
