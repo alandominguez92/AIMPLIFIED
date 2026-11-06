@@ -1514,6 +1514,11 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .stab { padding:11px 6px 10px; gap:6px; font-size:13px; }
   .sports-inner { width:auto; justify-content:space-between; gap:0; }
   .wrap.sports-inner { padding:0 12px; }
+  /* 16px a side on a phone (2026-11-06, the owner's pick): at 32 a card was 311px of a 375 screen. */
+  .wrap { padding:0 16px; }
+  /* The calibration chart's side label hangs 52px left of it: in from the edge to make room, or at
+     16px a side "Actual hit rate" ran 7px off a 375 screen. */
+  .calibration { width:calc(100% - 28px); margin:0 0 0 28px; }
 }
 @media (max-width:380px) {
   .stab { padding:11px 5px 10px; font-size:12.5px; }
@@ -2419,7 +2424,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   background:var(--board, transparent); border:1px solid var(--border); border-radius:10px; padding:11px 13px; }
 .tc-leg:active { border-color:var(--accent); }
 .tc-l1 { display:flex; align-items:center; gap:7px; font-size:15px; }
-.tc-l1 b { font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+/* A long name takes a second line (2026-11-06, the owner's pick): beside a headshot on a phone
+   "Immanuel Quickley" and "Jackson LaCombe" ended in "…". */
+.tc-l1 b { font-weight:700; color:var(--text); overflow-wrap:break-word; min-width:0; }
 .tc-p { margin-left:auto; font-family:var(--mono); font-size:18px; font-weight:600; color:var(--positive);
   font-variant-numeric:tabular-nums; }
 .tc-landed { display:block; margin-top:1px; font-size:11.5px; line-height:1.35; color:var(--textDim); text-align:right; }

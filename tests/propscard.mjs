@@ -238,7 +238,12 @@ const FG = NF.games[0], FP = (name) => NF.players.find((p) => p.name === name);
 const fkey = (name, s) => C.propKey('nfl', FG, FP(name), s);
 const fcard = () => C.propsCardHtml('nfl');
 let f = fcard();
-ok(/sp-chip on"[^>]*data-stat="pass_yds"/.test(f), 'it opens on Passing yards');
+// It opens on the stat with the most 54%+ numbers (2026-11-06, the owner's pick): on this board,
+// three days out, Passing yards has no PrizePicks number and Rush yards has the one 54%+.
+ok(/sp-chip on"[^>]*data-stat="rush_yds"/.test(f) && /data-stat="rush_yds"[^>]*>Rush yards<span class="sp-n">1<\/span>/.test(f), 'it opens on Rush yards, the stat with the 54%+ number, not an empty Passing yards');
+state.prStat = { nfl: 'pass_yds' };
+f = fcard();
+ok(/sp-chip on"[^>]*data-stat="pass_yds"/.test(f), 'a stat picked stays picked');
 const fchips = [...f.matchAll(/data-action="pr-stat"[^>]*data-stat="([a-z_0-9]+)"/g)].map((m) => m[1]);
 ok(fchips.join() === 'pass_yds,rec_yds,rush_yds,rec,rush_rec,pass_td,best', `the stats in the order asked for: ${fchips.join()}`);
 ok(/Commanders @ Dolphins/.test(text(f)), `the game by its nicknames: ${text(f).match(/[A-Za-z]+ @ [A-Za-z]+/)}`);

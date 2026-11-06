@@ -7954,8 +7954,7 @@
     if (!d) return '';
     const now = Date.now(), stats = Object.keys(PROP_STATS[sport]);
     const picked = state.prStat && state.prStat[sport];
-    const view = picked === 'best' || stats.includes(picked) ? picked : stats[0];
-    const q = String((state.prQuery && state.prQuery[sport]) || '').trim().toLowerCase();
+    const q =String((state.prQuery && state.prQuery[sport]) || '').trim().toLowerCase();
     const games = (d.games || []).map((g, i) => ({ g, i })).filter((x) => Date.parse(x.g.commence) > now);
     const r = d.record;
     const rec = r && r.graded
@@ -7977,6 +7976,11 @@
         if (any) nStrong.best++;
       }
     }
+    // Until a stat is picked, the one with the most 54%+ numbers, the first of a tie (2026-11-06, the
+    // owner's pick): NFL opened on Passing yards, which has no PrizePicks number until the day before.
+    // The data changes only on coming back to the tab, so it never swaps under a scroll.
+    const view = picked === 'best' || stats.includes(picked) ? picked
+      : stats.reduce((a, s) => ((nStrong[s] || 0) > (nStrong[a] || 0) ? s : a), stats[0]);
     const chipHtml = (s) => {
       const n = nStrong[s] || 0, name = s === 'best' ? 'Best' : PROP_STATS[sport][s][0];
       return `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="pr-stat" data-sport="${esc(sport)}" data-stat="${s}" aria-pressed="${s === view}"${n ? ` aria-label="${esc(name)}, ${n} at ${PROP_STRONG}%+"` : ''}>${esc(name)}${n ? `<span class="sp-n">${n}</span>` : ''}</button>`;

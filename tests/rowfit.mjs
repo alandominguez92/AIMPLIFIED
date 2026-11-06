@@ -57,5 +57,17 @@ const name = phoneRules('.board.view-batter .board-row:not(.expanded) .mc-head >
 ok(/flex-wrap:\s*nowrap/.test(head) && /text-overflow:\s*ellipsis/.test(name) && /min-width:\s*0/.test(name),
   'the name line never wraps the time down; a long name ends in "…" first');
 
+// The page's side margin on a phone (2026-11-06, the owner's pick): 32px a side left a card 311px
+// of a 375 screen, and names beside a headshot ended in "…". 16 now; the wider screens keep 32.
+const wrapPhone = phoneRules('.wrap').join(';');
+ok(/padding:\s*0 16px/.test(wrapPhone) && /^\.wrap \{[^}]*padding:0 32px/m.test(css), `a phone's margin is 16px a side, a wider screen's still 32 (${wrapPhone.trim()})`);
+// The calibration chart's side label hangs 52px left of the chart: on a phone the chart comes in
+// from the edge to make room for it (measured at 375: the label starts at 21px, not -7).
+const cal = phoneRules('.calibration').join(';');
+ok(/margin:\s*0 0 0 28px/.test(cal) && /left:-52px/.test(css), `the calibration chart makes room for its label (${cal.trim()})`);
+// And a long name in a pick's row takes a second line rather than ending in "…".
+const l1b = (css.match(/(?:^|\n)\.tc-l1 b \{([^}]*)\}/) || [])[1] || '';
+ok(l1b && !/ellipsis|nowrap/.test(l1b) && /overflow-wrap:\s*break-word/.test(l1b), `a long name wraps, never "…" (${l1b.trim()})`);
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
