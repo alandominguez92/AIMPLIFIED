@@ -54,10 +54,10 @@ const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
   'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'PROP_TOP_N', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
-  'propSaveHtml', 'propRow', 'propsCardHtml'];
+  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'propRow', 'propsCardHtml'];
 let C;
 try {
-  C = new Function('state', 'esc', 'persistSlip', 'renderSlip', CARD.map(lift).join('\n') + '\nreturn { propsCardHtml, propView, propLeg, propSlipSync, propKey, LEG_OFFERS };')(state, esc, persistSlip, renderSlip);
+  C = new Function('state', 'esc', 'persistSlip', 'renderSlip', CARD.map(lift).join('\n') + '\nreturn { propsCardHtml, propView, propLeg, propSlipSync, propKey, propAgainstTag, LEG_OFFERS };')(state, esc, persistSlip, renderSlip);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const rowsOf = (h) => h.split('<li class="sp-row').slice(1);
@@ -419,5 +419,31 @@ ok(/\.sp-mh \{[^}]*background:color-mix[^}]*border:1px solid var\(--border\); bo
 ok(/\.sp-chip \{[^}]*background:color-mix/.test(css), 'and the stat buttons filled, to read as buttons');
 state.props = { nba: D };
 
-console.log(fail ? `\n${fail} FAILED` : '\nall passed');
+console.log('\n-- the projection the other way (2026-11-06) --');
+// The owner asked why a row reads Under when his projection is over the line. Last season's NBA
+// replay at 54%+: the projection's side lost where they split (44%), but with it 15% or more the
+// other way the sharp side landed only half on points (50 of 100). They asked for a caution tag.
+// No recorded NBA row is 54%+ with the projection that far the other way, so Franz Wagner's
+// recorded 51.1% Under 16.5 points goes to 58 on a copy; his projection (20.1) is the recorded one.
+const fw = D.players.find((p) => p.name === 'Franz Wagner');
+const DW = { ...D, players: D.players.map((p) => (p === fw ? { ...p, lines: { ...p.lines, pts: { ...p.lines.pts, u: 58, fairs: p.lines.pts.fairs.map((f) => (f[0] === 16.5 ? [16.5, 58] : f)) } } } : p)) };
+state.props = { nba: DW }; state.prStat = {};
+const fwRow = rowFor(card(), 'Franz Wagner');
+ok(/Franz Wagner ORL 58%/.test(text(fwRow)) && /Under 16\.5 points/.test(text(fwRow)) && /proj 20\.1/.test(text(fwRow)), `the sharp side and its chance stay: ${text(fwRow).slice(0, 70)}`);
+ok(/<span class="tc-wait" title="His projection says Over, 15% or more from the line">projection disagrees<\/span>/.test(fwRow), 'with the caution tag: his projection says Over, 22% from the line');
+ok(!/projection disagrees/.test(rowFor(card(), 'Anthony Black')), 'not where they agree (Black, Over 15.5, projection 15.7)');
+state.prStat = { nba: 'pts_reb' };
+ok(!/projection disagrees/.test(rowFor(card(), 'Cedric Coward')), 'nor a hair the other way (Coward, Under 20.5 at 55.5, projection 20.8)');
+state.prStat = {};
+state.prSide = { [C.propKey('nba', G, fw, 'pts')]: 'Over' };
+ok(!/projection disagrees/.test(rowFor(card(), 'Franz Wagner')), 'Over taken by hand, with his projection: no tag');
+state.prSide = {};
+state.props = { nba: D };
+ok(!/projection disagrees/.test(rowFor(card(), 'Franz Wagner')), 'at the recorded 51%, under 54: no tag');
+const vx = { p: 60, side: 'Under', line: 20, proj: 23.5 };
+ok(/projection disagrees/.test(C.propAgainstTag('nba', vx)) && !C.propAgainstTag('nba', { ...vx, proj: 22.5 }), '15% of the line: 23.5 against 20 tags (17.5%), 22.5 does not (12.5%)');
+ok(!C.propAgainstTag('nfl', vx) && !C.propAgainstTag('nhl', vx), 'NBA only: NFL\'s sharp side held up there (35 of 63), the NHL had too few');
+ok(/“Projection disagrees”: his projection is 15% or more the other way\. Last season those landed half on points \(50 of 100\) and 54% on the other stats\./.test(card()), 'How to read this says what the tag means, and what it landed');
+
+console.log(fail ?`\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

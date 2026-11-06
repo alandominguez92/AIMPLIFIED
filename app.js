@@ -7769,7 +7769,7 @@
   };
   // What last season's replay at PrizePicks' numbers said, for each card's head.
   const PROP_NOTE = {
-    nba: 'Last season 54%+ on points landed 57%.',
+    nba: 'Last season 54%+ on points landed 57%. “Projection disagrees”: his projection is 15% or more the other way. Last season those landed half on points (50 of 100) and 54% on the other stats.',
     nhl: 'Last season 54%+ on points landed 54%, on few games. PrizePicks’ number comes through on points and assists, and sometimes saves: set it by hand on the rest.',
     nfl: 'Last season 54%+ landed 56% on receiving and rushing yards, 49% on catches. Passing yards and catches come in within 20 hours of kickoff; Rush + Rec is set by hand.',
   };
@@ -7902,6 +7902,17 @@
     }
     return n <= of - 2 ? ` <span class="tc-wait" title="In ${n} of his team’s last ${of} games">${sport === 'nhl' && p.goalie ? 'started' : 'played'} ${n} of last ${of}</span>` : '';
   }
+  // The sharp side with his projection 15% or more the other way (2026-11-06, the owner's ask). Last
+  // season's NBA replay at 54%+: those landed 50 of 100 on points and 54% on the other stats, where
+  // a smaller gap the other way landed 57%. NFL's held up (35 of 63) and the NHL had too few, so only
+  // the NBA says so. The side and the chance stay the sharp books'.
+  const PROP_AGAINST = 0.15;
+  function propAgainstTag(sport, v) {
+    if (sport !== 'nba' || v.p == null || v.p < PROP_STRONG || v.proj == null || v.line == null) return '';
+    const projSide = v.proj > v.line ? 'Over' : v.proj < v.line ? 'Under' : null;
+    if (!projSide || projSide === v.side || Math.abs(v.proj - v.line) / Math.max(v.line, 0.5) < PROP_AGAINST) return '';
+    return ` <span class="tc-wait" title="His projection says ${projSide}, 15% or more from the line">projection disagrees</span>`;
+  }
   function propRow(sport, d, g, p, s) {
     const v = propView(sport, d, g, p, s), key = v.key, label = PROP_STATS[sport][s];
     const leg = propLeg(sport, g, p, s, v);
@@ -7925,7 +7936,7 @@
     return `<li class="sp-row${open ? ' open' : ''}">${star}<div class="tc-leg">`
       + `<button type="button" class="sp-tap" data-action="pr-row" data-key="${esc(key)}" aria-expanded="${open}">`
       + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span>${v.p != null ? `<span class="tc-p${v.p >= PROP_STRONG ? ' sp-strong' : ''}">${pct0(v.p)}</span>` : ''}</span>`
-      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propStartTag(sport, p)}${nbaCardInjTag(p)}</span>`
+      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propAgainstTag(sport, v)}${propStartTag(sport, p)}${nbaCardInjTag(p)}</span>`
       + (v.src === 'none' ? (v.proj != null ? `<span class="pr-clear dots"><span class="dots-in"><span>proj <b>${esc(String(v.proj))}</b></span>${v.vals.length ? ` <span><span class="dot">·</span> avg ${esc(String(r1(v.vals.reduce((a, x) => a + x, 0) / v.vals.length)))} in last ${v.vals.length}</span>` : ''}</span></span>` : '')
         : `${projLineHtml(v.proj, v.line, v.side)}${v.vals.length ? `<span class="pr-clear">over ${esc(String(v.line))} in ${v.over} of last ${v.vals.length}</span>` : ''}`) + `</span>`
       + `</button>`
