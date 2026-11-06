@@ -9495,7 +9495,9 @@ const nbaInjOut = (i) => i.s === 'Out' && (!i.f || i.f === 'OUT');
 async function nbaInjuryTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   let read = 0;
-  for (const day of [ptDateOf(now), ptDateOf(now + 86400e3)]) {
+  // The day after tomorrow too (2026-11-05): its games for the props card, from the scoreboard
+  // alone. Their reports are read once it is tomorrow.
+  for (const [i, day] of [ptDateOf(now), ptDateOf(now + 86400e3), ptDateOf(now + 2 * 86400e3)].entries()) {
     const key = NBA_INJ_KEY + day;
     const c = await loadFeedCache(env.DB, key);
     const st = (c.present && c.data) || { sbAt: 0, games: [] };
@@ -9517,7 +9519,7 @@ async function nbaInjuryTick(env, now = Date.now()) {
         st.sbAt = now; dirty = true;
       } catch (e) { /* the next tick */ }
     }
-    const due = st.games.filter((g) => { const t = Date.parse(g.commence);
+    const due = (i === 2 ? [] : st.games).filter((g) => { const t = Date.parse(g.commence);
       return t > now && now - (g.at || 0) >= (t - now <= NBA_INJ_NEAR_MS ? NBA_INJ_EVERY_NEAR_MS : NBA_INJ_EVERY_FAR_MS); })
       .sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
     for (const g of due) {
@@ -18566,7 +18568,7 @@ async function oddsUsage(env) {
 const PP_PROP_READ_MS = 4 * 3600e3;
 const PP_PROP_RETRY_MS = 90 * 60e3;         // a read that found no PrizePicks line goes once more, this near the game
 const PP_PROP_PER_TICK = 2;
-const PP_PROP_AHEAD_MS = 36 * 3600e3;       // how far ahead the card lists, as the tab's moneylines do
+const PP_PROP_AHEAD_MS = 48 * 3600e3;       // how far ahead the card lists: two days, as soccer's expected rows
 const PP_PROP_NEED = 100;
 const PP_PROP_READS = 'pp_props_reads';     // feed_cache: which games have had their read
 const PP_PROP_FORM = 'pp_props_form:';      // feed_cache: each player's last games, from the trigger
@@ -18579,6 +18581,10 @@ const PP_PROP_BOOKS = ['prizepicks', ...HIST_PROP_SHARP];   // ten or fewer name
 const PP_PROP_BANDS = [[50, 52, '50-52'], [52, 54, '52-54'], [54, 56, '54-56'], [56, 101, '56+']];
 const NBA_PROP_MIN = 18;                    // minutes over his last five, to be listed with no number up
 const PP_PROP_WINDOW_DAYS = 45;             // a free scan of what a last-ten needs, not a season's box scores
+const PP_PROP_LAST_DAYS = 21;               // how far back PrizePicks' last number for him is looked for
+const PP_PROP_FORM_V = 2;                   // a form saved before starts and last numbers is built again
+const NHL_PROP_GOALIE_START_MIN = 30;       // a goalie in net this long started, not came on in relief
+const NFL_PROP_ROLE_MIN = 0.5;              // his share of a game's passes, carries or targets that counts as a role
 const NBA_PROP_COLS = ['pts', 'reb', 'ast', 'threes', 'blk', 'stl', 'tov'];
 const NHL_PROP_COLS = ['pts', 'goals', 'ast', 'sog', 'blocks', 'hits', 'saves'];
 const NHL_PROP_GOALIE_GP = 10;              // last season's starts, for his saves a game to mean anything
@@ -18731,7 +18737,7 @@ function ppPropSharpOnly(markets, ev, legs) {
 // at most every two hours: the page, and each read, take this one row.
 async function ppPropFormDue(db, key, gamesTable, now) {
   const hit = await loadFeedCache(db, key);
-  const age = hit.present && hit.data ? now - hit.data.builtAt : Infinity;
+  const age = hit.present && hit.data && hit.data.v === PP_PROP_FORM_V ? now - hit.data.builtAt : Infinity;
   if (age < PP_PROP_FORM_EVERY_MS) return null;
   const done = await db.prepare(`SELECT COUNT(*) AS n FROM ${gamesTable} WHERE done = 1 AND date >= ?`).bind(ptDateOf(now - 3 * 864e5)).first();
   const n = Number(done && done.n) || 0;
@@ -18770,17 +18776,55 @@ function ppPropProjections(last, c, priorOf) {
   for (const [st, parts] of Object.entries(c.sums)) if (parts.every((x) => raw[x] != null)) out[st] = round1(parts.reduce((a, x) => a + raw[x], 0));
   return out;
 }
+// Who to expect, as the soccer card's regulars are (2026-11-05): of his team's last five games, how
+// many count for him -- started (NBA), played (NHL skaters), started in goal, or had a role (NFL).
+// Rows newest first; a game he missed is one of his team's he has no row in.
+function ppPropStarts(rows, counts) {
+  const teamGames = new Map(), mine = new Set();
+  for (const r of rows) {
+    if (!teamGames.has(r.team)) teamGames.set(r.team, []);
+    const tg = teamGames.get(r.team);
+    if (tg.length < 5 && !tg.includes(r.game_id)) tg.push(r.game_id);
+    if (counts(r)) mine.add(`${r.player_id}|${r.team}|${r.game_id}`);
+  }
+  return (id, team) => { const tg = teamGames.get(team) || []; return [tg.filter((g) => mine.has(`${id}|${team}|${g}`)).length, tg.length]; };
+}
+// PrizePicks' number for him at his last game, by stat: what a row stands at before this game's is
+// up. From the card's own log and, on the NBA and the NHL, the unders log, which reads earlier.
+async function ppPropAddLast(db, sport, c, players, now) {
+  const from = ptDateOf(now - PP_PROP_LAST_DAYS * 864e5), today = ptDateOf(now), last = new Map();
+  const put = (k, st, line, date) => { const key = `${k}|${st}`, was = last.get(key); if (line != null && (!was || was[1] < date)) last.set(key, [line, date]); };
+  // Only a help: a log that can't be read leaves the rows without it, never the form unsaved.
+  try {
+    await ensurePpPropSchema(db);
+    for (const r of (await db.prepare('SELECT pkey, market, date, read_point, typed_line FROM pp_props WHERE sport = ? AND date >= ? AND date < ? AND (read_point IS NOT NULL OR typed_line IS NOT NULL)')
+      .bind(sport, from, today).all()).results || []) put(r.pkey, r.market, r.typed_line != null ? r.typed_line : r.read_point, r.date);
+  } catch (e) { /* the card's own log, next build */ }
+  if (c.logTable) {
+    try {
+      for (const r of ppStanding((await db.prepare(`SELECT * FROM ${c.logTable} WHERE date >= ? AND date < ?`).bind(from, today).all()).results || []).map(ppCurrent)) put(c.name(r.player), r.market, r.point, r.date);
+    } catch (e) { /* no unders log here yet */ }
+  }
+  for (const p of players) {
+    const mine = {};
+    for (const st of ppPropStats(c)) { const x = last.get(`${p.k}|${st}`); if (x) mine[st] = x; }
+    if (Object.keys(mine).length) p.last = mine;
+  }
+}
 async function nbaPropsFormTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   const db = env.DB, key = PP_PROP_FORM + 'nba', c = PP_PROP_CFG.nba;
   await ensureNbaSchema(db);
   const due = await ppPropFormDue(db, key, 'nba_box_games', now);
   if (!due) return null;
-  const rows = (await db.prepare(`SELECT player_id, player, team, date, min, ${c.cols.join(', ')} FROM nba_box
+  const rows = (await db.prepare(`SELECT game_id, player_id, player, team, date, min, starter, ${c.cols.join(', ')} FROM nba_box
     WHERE date >= ? AND season_type IN (2,3) AND dnp = 0 ORDER BY date DESC`).bind(ppPropFrom(now, NBA_SEASON_FROM)).all()).results || [];
   const pri = await nbaPriors(env);
   const priorOf = (id, st) => { const pl = pri && pri.players && pri.players[id]; return pl && pl.gp >= 5 && typeof pl[st] === 'number' ? pl[st] : null; };
-  await saveFeedCache(db, key, { builtAt: now, done: due.done, players: ppPropPlayers(rows, c, priorOf) });
+  const players = ppPropPlayers(rows, c, priorOf), started = ppPropStarts(rows, (r) => Number(r.starter) === 1);
+  for (const p of players) p.st = started(p.id, p.team);
+  await ppPropAddLast(db, 'nba', c, players, now);
+  await saveFeedCache(db, key, { v: PP_PROP_FORM_V, builtAt: now, done: due.done, players });
   return true;
 }
 // The NHL's: skaters and goalies from their own tables, under the full names the box scores
@@ -18794,7 +18838,7 @@ async function nhlPropsFormTick(env, now = Date.now()) {
   if (!(sl.present && sl.data && now - sl.data.at < PP_PROP_FORM_EVERY_MS)) {
     const games = [];
     let answered = false;
-    for (const day of [ptDateOf(now), ptDateOf(now + 864e5)]) {
+    for (const day of [ptDateOf(now), ptDateOf(now + 864e5), ptDateOf(now + 2 * 864e5)]) {
       try {
         const r = await fetch(`https://api-web.nhle.com/v1/score/${day}`, { headers: { accept: 'application/json' } });
         if (!r.ok) continue;
@@ -18811,8 +18855,8 @@ async function nhlPropsFormTick(env, now = Date.now()) {
   const due = await ppPropFormDue(db, key, 'nhl_box_games', now);
   if (!due) return null;
   const from = ppPropFrom(now, NHL_SEASON_FROM);
-  const skaters = (await db.prepare('SELECT player_id, player, team, date, min, goals, ast, pts, sog, blocks, hits FROM nhl_box WHERE date >= ? ORDER BY date DESC').bind(from).all()).results || [];
-  const goalies = (await db.prepare('SELECT player_id, player, team, date, min, saves FROM nhl_goalie_box WHERE date >= ? ORDER BY date DESC').bind(from).all()).results || [];
+  const skaters = (await db.prepare('SELECT game_id, player_id, player, team, date, min, goals, ast, pts, sog, blocks, hits FROM nhl_box WHERE date >= ? ORDER BY date DESC').bind(from).all()).results || [];
+  const goalies = (await db.prepare('SELECT game_id, player_id, player, team, date, min, saves FROM nhl_goalie_box WHERE date >= ? ORDER BY date DESC').bind(from).all()).results || [];
   const prior = (await nhlHotPrior(env).catch(() => null)) || {};
   const current = new Map([...(await nhlSkaters(env, NHL_SEASONS.current, 3 * 3600e3)).values()].filter(Boolean).map((x) => [x.id, x.name]));
   const gPrior = await nhlGoalies(env, NHL_SEASONS.prior, null), gCur = await nhlGoalies(env, NHL_SEASONS.current, 3 * 3600e3);
@@ -18822,7 +18866,10 @@ async function nhlPropsFormTick(env, now = Date.now()) {
     ...ppPropPlayers(goalies, c, (id, st) => { const x = gPrior[id]; return st === 'saves' && x && x.gp >= NHL_PROP_GOALIE_GP ? x.saves / x.gp : null; },
       (r) => (gCur[r.player_id] && gCur[r.player_id].n) || (gPrior[r.player_id] && gPrior[r.player_id].n) || r.player, { goalie: true }),
   ];
-  await saveFeedCache(db, key, { builtAt: now, done: due.done, players });
+  const played = ppPropStarts(skaters, () => true), inGoal = ppPropStarts(goalies, (r) => (r.min || 0) >= NHL_PROP_GOALIE_START_MIN);
+  for (const p of players) p.st = (p.goalie ? inGoal : played)(p.id, p.team);
+  await ppPropAddLast(db, 'nhl', c, players, now);
+  await saveFeedCache(db, key, { v: PP_PROP_FORM_V, builtAt: now, done: due.done, players });
   return true;
 }
 // The NFL's. A box score lists a player only in the tables he has a line in, so a stat he has none
@@ -18848,13 +18895,21 @@ async function nflPropsFormTick(env, now = Date.now()) {
   }
   const due = await ppPropFormDue(db, key, 'nfl_box_games', now);
   if (!due) return null;
-  const rows = ((await db.prepare('SELECT player_id, player, team, date, pass_att, pass_yds, pass_td, car, rush_yds, tgt, rec, rec_yds FROM nfl_box WHERE date >= ? ORDER BY date DESC').bind(`${NFL_HOT_YEAR}-08-01`).all()).results || [])
+  const rows = ((await db.prepare('SELECT game_id, player_id, player, team, date, pass_att, pass_yds, pass_td, car, rush_yds, tgt, rec, rec_yds FROM nfl_box WHERE date >= ? ORDER BY date DESC').bind(`${NFL_HOT_YEAR}-08-01`).all()).results || [])
     .map((r) => ({ ...r, ...Object.fromEntries(NFL_PROP_COLS.map((k) => [k, r[k] == null ? 0 : r[k]])),
       min: Math.max((r.pass_att || 0) / NFL_HOT_MIN.pass_att, (r.car || 0) / NFL_HOT_MIN.car, (r.tgt || 0) / NFL_HOT_MIN.tgt) }));
   const prior = (await nflHotPriors(env)) || {};
   const players = ppPropPlayers(rows, c, (id, st) => { const x = prior[id]; return x && x.g >= NFL_HOT_PRIOR_G && x[st] != null ? x[st] : null; });
   for (const p of players) for (const [st, floor] of Object.entries(NFL_PROP_FLOOR)) if (p.proj[st] != null && p.proj[st] < floor) delete p.proj[st];
-  await saveFeedCache(db, key, { builtAt: now, done: due.done, players });
+  // The passer to expect: who threw most in his team's last game.
+  const roles = ppPropStarts(rows, (r) => r.min >= NFL_PROP_ROLE_MIN), lastGame = new Map(), passer = new Map();
+  for (const r of rows) {
+    if (!lastGame.has(r.team)) lastGame.set(r.team, r.game_id);
+    if (r.game_id === lastGame.get(r.team) && r.pass_att >= 10 && !(passer.has(r.team) && passer.get(r.team).pass_att >= r.pass_att)) passer.set(r.team, r);
+  }
+  for (const p of players) { p.st = roles(p.id, p.team); if (passer.has(p.team) && passer.get(p.team).player_id === p.id) p.qb1 = true; }
+  await ppPropAddLast(db, 'nfl', c, players, now);
+  await saveFeedCache(db, key, { v: PP_PROP_FORM_V, builtAt: now, done: due.done, players });
   return true;
 }
 // What the card needs of a game the NFL capture just bought (pure): PrizePicks' and the sharp
@@ -18907,7 +18962,7 @@ async function nhlGoalies(env, season, ttlMs) {
 // The games a card lists: ESPN's slate off the injury report's row (it has the team codes the box
 // scores use), with the odds feed's id for each, which the slip keys a game by.
 async function nbaPropsSlate(db, now) {
-  const byDay = await nbaInjuryDays(db, [ptDateOf(now), ptDateOf(now + 864e5)]);
+  const byDay = await nbaInjuryDays(db, [ptDateOf(now), ptDateOf(now + 864e5), ptDateOf(now + 2 * 864e5)]);
   const ev = await loadFeedCache(db, 'nba_pp_events:reg');
   const events = (ev.present && ev.data && ev.data.events) || [];
   return [...byDay.values()].flat().filter((g) => {
@@ -18984,15 +19039,22 @@ async function ppPropsBoard(env, sport, now = Date.now()) {
       const i = (g.inj || {})[String(id)];
       return i ? { status: i.f || i.s, out: nbaInjOut(i), what: i.what, ret: i.ret, upd: i.upd, at: new Date(g.injAt).toISOString() } : null;
     };
+    // ESPN's starter in goal, expected and then confirmed (nhlGoalieTick), by the game's day.
+    const inGoal = new Map();
+    if (sport === 'nhl') for (const day of new Set(games.map((g) => g.date))) { const x = await loadFeedCache(db, NHL_GOALIE_KEY + day); inGoal.set(day, (x.present && x.data && x.data.games) || []); }
     games.forEach((g, gi) => {
+      const named = (inGoal.get(g.date) || []).find((x) => nhlMatch(x.home, g.home) && nhlMatch(x.away, g.away)) || null;
       for (const team of [g.awayAb, g.homeAb]) {
+        const goalie = named ? (team === g.homeAb ? { k: named.homeG && c.name(named.homeG), s: named.homeS } : { k: named.awayG && c.name(named.awayG), s: named.awayS }) : null;
         for (const p of (byTeam.get(team) || [])) {
           const mine = linesOf(g.date, p.k), up = Object.values(mine).some((x) => x.l != null), inj = injOf(g, p.id);
+          const gl = p.goalie && goalie && goalie.k === p.k ? goalie.s || 'Expected' : null;
           // Ruled out and no number up: nothing to compare. Still up: the flag is the news. A
-          // goalie only with a quote on him: that's how to tell who starts.
-          if (!up && (p.goalie ? !Object.keys(mine).length : !(p.min >= c.minMin) || (inj && inj.out))) continue;
+          // goalie with a quote on him, or ESPN's name for the net: that's how to tell who starts.
+          if (!up && (p.goalie ? !Object.keys(mine).length && !gl : !(p.min >= c.minMin) || (inj && inj.out))) continue;
           placed.add(`${g.date}|${p.k}`);
-          out.players.push({ id: p.id, k: p.k, name: p.name, team: p.team, g: gi, min: p.min, log: p.log, proj: p.proj, lines: mine, ...(inj ? { inj } : {}) });
+          out.players.push({ id: p.id, k: p.k, name: p.name, team: p.team, g: gi, min: p.min, log: p.log, proj: p.proj, lines: mine,
+            ...(p.st ? { st: p.st } : {}), ...(p.last ? { last: p.last } : {}), ...(p.qb1 ? { qb1: true } : {}), ...(gl ? { gl } : {}), ...(inj ? { inj } : {}) });
         }
       }
     });

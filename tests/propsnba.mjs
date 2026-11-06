@@ -224,6 +224,56 @@ const moe = b.players.find((p) => p.name === 'Moe Wagner');
 ok(moe && moe.log.length === 0 && moe.lines.pts.l === 7.5, 'PrizePicks has a player up with no box score: on the card from the read alone');
 ok(b.record && b.record.graded === 0 && b.record.need === 100, 'nothing graded of the 100');
 
+console.log('\n-- who to expect, and a number before PrizePicks posts --');
+// The owner asked for picks ahead of time, as the soccer card's expected rows (2026-11-05): the
+// starters marked, and before PrizePicks' number is up a side against the books' line or its last
+// number for him, never a percentage.
+const orlRows = BOX.filter((r) => r.team === 'ORL' && !r.dnp).sort((a, c) => (a.date < c.date ? 1 : -1));
+const orlLast5 = [...new Set(orlRows.map((r) => r.game_id))].slice(0, 5);
+const startsOf = (name) => orlLast5.filter((g) => orlRows.some((r) => r.game_id === g && r.player === name && r.starter)).length;
+ok(P('Franz Wagner').st.join() === '5,5' && P('Desmond Bane').st.join() === '5,5', `the Magic's starters: 5 of their last 5 (${P('Franz Wagner').st}, ${P('Desmond Bane').st})`);
+ok(P('Paolo Banchero').st.join() === `${startsOf('Paolo Banchero')},5` && startsOf('Paolo Banchero') < 4, `Banchero, who missed games: ${P('Paolo Banchero').st}, by hand ${startsOf('Paolo Banchero')} of 5`);
+const benchP = b.players.find((p) => p.team === 'ORL' && p.st && p.st[0] === 0);
+ok(!!benchP && orlLast5.some((g) => orlRows.some((r) => r.game_id === g && r.player === benchP.name)), `${benchP && benchP.name}: played, started none of 5`);
+ok(b.players.every((p) => !p.last), 'no number from an earlier game yet');
+// Earlier games' numbers: the card's own log (a number typed there over the one read), and the
+// unders log at its re-read.
+const BEFORE = '2026-11-03';
+const addProp = (player, market, read, typed) => sq.prepare('INSERT INTO pp_props (sport, date, pkey, market, player, read_point, typed_line, result) VALUES (?,?,?,?,?,?,?,?)')
+  .run('nba', BEFORE, P(player).k, market, player, read, typed, 'over');
+addProp('Franz Wagner', 'pts', 21.5, null);
+addProp('Desmond Bane', 'pts', 17.5, 18.5);
+addProp('Franz Wagner', 'pra', 34.5, null);
+sq.prepare('INSERT INTO pp_props (sport, date, pkey, market, player, read_point, result) VALUES (?,?,?,?,?,?,?)').run('nba', '2026-10-10', P('Franz Wagner').k, 'pts_reb', 'Franz Wagner', 30.5, 'under');
+nbapp('Wendell Carter Jr.', 'reb', 7.5, '{}', { date: BEFORE, game_id: 'g-1103', close_point: 8.5, close_under: 55, close_at: new RealDate(TIP - 49 * 3600e3).toISOString() });
+const old0 = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'pp_props_form:nba'").get().data);
+ok(old0.v === 2, 'the form row says which shape it is');
+delete old0.v;
+save('pp_props_form:nba', old0);
+scans.length = 0;
+await tick();
+ok(scans.length === 1, 'a form row saved before starts and numbers: built again at once');
+const form1 = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'pp_props_form:nba'").get().data);
+const F1 = (n) => form1.players.find((p) => p.name === n);
+ok(F1('Franz Wagner').last.pts.join() === `21.5,${BEFORE}` && F1('Franz Wagner').last.pra[0] === 34.5, `Wagner's last numbers: ${JSON.stringify(F1('Franz Wagner').last)}`);
+ok(F1('Desmond Bane').last.pts[0] === 18.5, 'a number typed on the card over the one read');
+ok(F1('Wendell Carter Jr.').last.reb[0] === 8.5, 'the unders log at its re-read');
+ok(!F1('Franz Wagner').last.pts_reb, 'three weeks back is too far');
+ok(!F1('Franz Wagner').last.ast, 'today\'s own numbers are not his last');
+sq.prepare('DELETE FROM pp_props WHERE date < ?').run(DAY);
+sq.prepare('DELETE FROM nbapp WHERE date < ?').run(DAY);
+// The day after tomorrow: ESPN's game, two days out, listed with no PrizePicks number.
+const DAY2 = '2026-11-07', TIP2 = new RealDate(TIP + 42 * 3600e3).toISOString();
+save(`nba_inj:${DAY2}`, { sbAt: NOW, games: [{ id: '401900002', home: EVENT.away_team, away: EVENT.home_team, homeAb: 'MEM', awayAb: 'ORL', commence: TIP2, at: 0, inj: {} }] });
+const b2 = await hit('/api/nba-props');
+const g2 = b2.games.findIndex((g) => g.date === DAY2);
+const w2 = b2.players.find((p) => p.name === 'Franz Wagner' && p.g === g2);
+ok(g2 > 0 && b2.games[g2].homeAb === 'MEM', `two days out, as soccer's expected rows: ${b2.games.map((g) => `${g.awayAb}@${g.homeAb} ${g.date}`).join(', ')}`);
+ok(w2 && !Object.keys(w2.lines).length && w2.last.pts[0] === 21.5 && w2.st.join() === '5,5', 'Wagner there: no number yet, his last one and his starts');
+save(`nba_inj:${DAY2}`, { sbAt: NOW, games: [{ id: '401900002', home: EVENT.away_team, away: EVENT.home_team, homeAb: 'MEM', awayAb: 'ORL', commence: new RealDate(TIP + 49 * 3600e3).toISOString(), at: 0, inj: {} }] });
+ok(!(await hit('/api/nba-props')).games.some((g) => g.date === DAY2), 'and not past two days');
+sq.prepare("DELETE FROM feed_cache WHERE key = ?").run(`nba_inj:${DAY2}`);
+
 console.log('\n-- a line set on the card --');
 const orl = { sport: 'nba', gameId: GAME, player: 'Paolo Banchero', playerId: idOf('Paolo Banchero'), team: 'ORL', stat: 'tov', line: 3.5 };
 ok((await line(orl, null)).status === 401, 'no key: refused');

@@ -7773,8 +7773,10 @@
     return (p.log || []).map((r) => parts.reduce((sum, k) => (sum == null || r[at(k)] == null ? null : sum + r[at(k)]), 0)).filter((v) => v != null);
   }
   // A row as it reads now. Its line is one set here, else the one its starred leg was taken at
-  // (so a reload doesn't show a starred leg at another number), else PrizePicks' as read. With
-  // none of those it stands at the half point above the projection, and isn't taken for PrizePicks'.
+  // (so a reload doesn't show a starred leg at another number), else PrizePicks' as read. Before
+  // that's up (2026-11-05, the owner's call): the sharp books' main line, else PrizePicks' last
+  // number for him, the side the projection's against it and no percentage; with neither, the half
+  // point above the projection and no side. None of those is taken for PrizePicks'.
   function propView(sport, d, g, p, s) {
     const key = propKey(sport, g, p, s), ln = (p.lines && p.lines[s]) || null;
     const leg = state.slip && state.slip[`prp:${key}`];
@@ -7784,12 +7786,14 @@
     const real = typeof set === 'number' || typeof taken === 'number' || !!(ln && ln.l != null);
     // No PrizePicks number but sharp ones: the setter starts at their main line.
     const sharpMain = ((ln && ln.fairs) || []).reduce((a, f) => (a == null || Math.abs(f[1] - 50) < Math.abs(a[1] - 50) ? f : a), null);
-    const line = typeof set === 'number' ? set : typeof taken === 'number' ? taken : ln && ln.l != null ? ln.l : sharpMain ? sharpMain[0] : proj != null ? Math.floor(proj) + 0.5 : 0.5;
+    const last = p.last && p.last[s] ? p.last[s] : null;
+    const src = typeof set === 'number' ? 'set' : typeof taken === 'number' ? 'taken' : ln && ln.l != null ? 'pp' : sharpMain ? 'sharp' : last ? 'last' : 'none';
+    const line = src === 'set' ? set : src === 'taken' ? taken : src === 'pp' ? ln.l : src === 'sharp' ? sharpMain[0] : src === 'last' ? last[0] : proj != null ? Math.floor(proj) + 0.5 : 0.5;
     const fair = ln && line === ln.l && ln.u != null ? ln.u : ((ln && ln.fairs) || []).reduce((a, f) => (f[0] === line ? f[1] : a), null);
     const side = (state.prSide && state.prSide[key]) || (leg && leg.spec && leg.spec.side)
-      || (fair != null ? (fair >= 50 ? 'Under' : 'Over') : proj != null && proj > line ? 'Over' : 'Under');
+      || (real && fair != null ? (fair >= 50 ? 'Under' : 'Over') : proj != null && proj > line ? 'Over' : 'Under');
     const vals = propVals(d, p, s);
-    return { key, ln, line, real, proj, fair, side, vals, over: vals.filter((v) => v > line).length,
+    return { key, ln, line, src, last, real, proj, fair, side, vals, over: vals.filter((v) => v > line).length,
       // The big figure is the chance at PrizePicks' number, never at a number of the app's.
       p: fair == null || !real ? null : side === 'Under' ? fair : Math.round((100 - fair) * 10) / 10 };
   }
@@ -7869,6 +7873,17 @@
       propRedraw(sport);
     } catch (e) { /* the card works without them; a save says what is wrong */ }
   }
+  // Who to expect, as the soccer card's regulars (2026-11-05): of his team's last five games, how
+  // many he started (NBA), played (NHL, NFL) or started in goal, and ESPN's name for an NHL net.
+  // The NBA marks its starters; the others say only when he's been missing.
+  function propStartTag(sport, p) {
+    if (p.gl) return ` <span class="${p.gl === 'Confirmed' ? 'pr-start' : 'tc-wait'}" title="ESPN’s ${p.gl === 'Confirmed' ? 'confirmed' : 'expected'} starter in goal">${p.gl === 'Confirmed' ? 'confirmed' : 'expected'} starter</span>`;
+    const [n, of] = p.st || [0, 0];
+    if (sport === 'nfl' && p.qb1) return ' <span class="pr-start" title="Threw the most for his team last game">expected starter</span>';
+    if (of < 3) return '';
+    if (sport === 'nba') return n >= of - 1 ? ` <span class="pr-start" title="Started ${n} of his team’s last ${of}">expected starter</span>` : '';
+    return n <= of - 2 ? ` <span class="tc-wait" title="In ${n} of his team’s last ${of} games">${sport === 'nhl' && p.goalie ? 'started' : 'played'} ${n} of last ${of}</span>` : '';
+  }
   function propRow(sport, d, g, p, s) {
     const v = propView(sport, d, g, p, s), key = v.key, label = PROP_STATS[sport][s];
     const leg = propLeg(sport, g, p, s, v);
@@ -7879,7 +7894,10 @@
     const star = v.real
       ? `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`
       : `<button type="button" class="tc-add" data-action="pr-row" data-key="${esc(key)}" aria-label="Set PrizePicks' line for ${esc(p.name)} first">☆</button>`;
-    const noPct = !v.real ? ' <span class="tc-wait">no PrizePicks number yet</span>' : '';
+    const noPct = v.real ? '' : v.src === 'sharp'
+      ? ' <span class="tc-wait" title="No PrizePicks number for this game yet: the side is the projection against the sharp books’ main line">books’ line · no PrizePicks number yet</span>'
+      : v.src === 'last' ? ` <span class="tc-wait" title="No PrizePicks number for this game yet: the side is the projection against PrizePicks’ number for him on ${esc(shortDay(v.last[1]))}">PrizePicks’ last, ${esc(shortDay(v.last[1]))}</span>`
+        : ' <span class="tc-wait">no PrizePicks number yet</span>';
     const sharpAt = v.ln && v.ln.gap != null && v.ln.l != null ? Math.round((v.ln.l - v.ln.gap) * 2) / 2 : null;
     const both = v.fair != null ? `Sharp: Under ${r1(v.fair)}% · Over ${r1(100 - v.fair)}%`
       : sharpAt != null && sharpAt !== v.line ? `No sharp price at ${esc(String(v.line))}: theirs is ${esc(String(sharpAt))}`
@@ -7889,8 +7907,9 @@
     return `<li class="sp-row${open ? ' open' : ''}">${star}<div class="tc-leg">`
       + `<button type="button" class="sp-tap" data-action="pr-row" data-key="${esc(key)}" aria-expanded="${open}">`
       + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span>${v.p != null ? `<span class="tc-p${v.p >= PROP_STRONG ? ' sp-strong' : ''}">${pct0(v.p)}</span>` : ''}</span>`
-      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.real ? `${v.side} ` : ''}${esc(String(v.line))} ${esc(label[1])}${noPct}${nbaCardInjTag(p)}</span>`
-      + `${projLineHtml(v.proj, v.line, v.side)}${v.vals.length ? `<span class="pr-clear">over ${esc(String(v.line))} in ${v.over} of last ${v.vals.length}</span>` : ''}</span>`
+      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propStartTag(sport, p)}${nbaCardInjTag(p)}</span>`
+      + (v.src === 'none' ? (v.proj != null ? `<span class="pr-clear">proj <b>${esc(String(v.proj))}</b>${v.vals.length ? ` · average ${esc(String(r1(v.vals.reduce((a, x) => a + x, 0) / v.vals.length)))} in his last ${v.vals.length}` : ''}</span>` : '')
+        : `${projLineHtml(v.proj, v.line, v.side)}${v.vals.length ? `<span class="pr-clear">over ${esc(String(v.line))} in ${v.over} of last ${v.vals.length}</span>` : ''}`) + `</span>`
       + `</button>`
       + (open ? `<div class="sp-set"><span class="sp-sh"><span class="sp-lbl">PrizePicks line</span><span class="sp-both">${both}</span></span>`
         + `<span class="sp-line">`
@@ -7913,7 +7932,7 @@
     const rec = r && r.graded
       ? `<span class="tc-rec">Sharp 54%+: <b${r.at54.n >= 5 && r.at54.hit / r.at54.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${r.at54.hit} of ${r.at54.n}</b> · ${r.graded} graded of ${r.need}</span>` : '';
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks props, one stat at a time</span>${rec}</div>`
-      + `<div class="tc-sub">The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Tap a player to change the line: what you set is saved and graded there. These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.</div>`;
+      + `<div class="tc-sub">The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Before PrizePicks posts, the side is the projection against the books’ line or PrizePicks’ last number for him. Tap a player to change the line: what you set is saved and graded there. ${r && r.graded >= (r.need || 100) ? `${esc(String(r.graded))} have graded: they join Picks only when you say.` : `These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.`}</div>`;
     if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">${sport === 'nfl' ? 'No games in the coming week.' : 'No games in the next day and a half.'}</div></div>`;
     const chips = `<input class="sp-search" type="search" placeholder="Find a player" value="${esc((state.prQuery && state.prQuery[sport]) || '')}" data-prq="${esc(sport)}" aria-label="Find a player">`
       + `<div class="sp-chips">${[...stats, 'best'].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="pr-stat" data-sport="${esc(sport)}" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : PROP_STATS[sport][s][0])}</button>`).join('')}</div>`

@@ -230,6 +230,31 @@ const fourth = form.players.find((p) => (p.team === 'BUF' || p.team === 'MTL') &
 ok(!!fourth, `${fourth && fourth.name}, ${fourth && fourth.min} minutes and no number: not listed`);
 ok(b.players.every((p) => p.g === 0) && b.record.graded === 0 && b.record.need === 100, 'nothing graded of the 100');
 
+console.log('\n-- who to expect --');
+// Ahead of time, as the soccer card's expected rows (2026-11-05): ESPN's starter in goal lists him
+// with no quote on him, and each row knows how many of his team's last five he was in.
+const buf5 = sq.prepare("SELECT DISTINCT game_id, date FROM nhl_box WHERE team = 'BUF' ORDER BY date DESC LIMIT 5").all().map((r) => r.game_id);
+const ttIn = buf5.filter((g) => sq.prepare("SELECT 1 FROM nhl_box WHERE game_id = ? AND player_id = '8479420'").get(g)).length;
+ok(tt.st && tt.st.join() === `${ttIn},${buf5.length}`, `Thompson in ${tt.st} of the Sabres' last games, by hand ${ttIn} of ${buf5.length}`);
+// Fowler before the sharp books quote him: his row set aside for the moment.
+const fowlerRow = sq.prepare("SELECT * FROM pp_props WHERE player = 'Jacob Fowler'").get();
+sq.prepare("DELETE FROM pp_props WHERE player = 'Jacob Fowler'").run();
+ok(fowlerRow && !(await hit('/api/nhl-props')).players.some((p) => p.name === 'Jacob Fowler'), 'before ESPN names anyone: a goalie with no quote stays off');
+// ESPN's own entries for the two clubs: Ellis expected (Nov 4), Fowler confirmed (Nov 3).
+const espnSide = (f, ab, homeAway) => ({ ...fx(f).events.flatMap((e) => e.competitions[0].competitors).find((c) => c.team.abbreviation === ab), homeAway });
+const goaliesOf = new Function(`${fnOf('nhlGoaliesOf')}\nreturn nhlGoaliesOf;`)();
+const named = goaliesOf([{ id: '401800000', competitions: [{ competitors: [espnSide('espn-nhl-sb-expected-20261104.json', 'BUF', 'home'), espnSide('espn-nhl-sb-confirmed-20261103.json', 'MTL', 'away')] }] }]);
+ok(named[0].homeG === 'Colten Ellis' && named[0].homeS === 'Expected' && named[0].awayG === 'Jacob Fowler' && named[0].awayS === 'Confirmed', `as nhlGoalieTick keeps them: ${JSON.stringify(named[0])}`);
+save(`nhl_goalies:${DAY}`, { games: named });
+const bg = await hit('/api/nhl-props');
+const G = (n) => bg.players.find((p) => p.name === n);
+ok(G('Jacob Fowler') && !Object.keys(G('Jacob Fowler').lines).length && G('Jacob Fowler').gl === 'Confirmed' && G('Jacob Fowler').proj.saves > 0, `ESPN's confirmed starter: on the card with no quote, saves projected (${G('Jacob Fowler') && G('Jacob Fowler').proj.saves})`);
+ok(G('Colten Ellis').gl === 'Expected' && G('Colten Ellis').lines.saves.l === 23.5, 'Ellis, with his quote, ESPN\'s expected starter');
+ok(!G('Ukko-Pekka Luukkonen'), 'the backup still off');
+ok(bg.players.length === b.players.length, `and no one else added (${bg.players.length})`);
+sq.prepare('DELETE FROM feed_cache WHERE key = ?').run(`nhl_goalies:${DAY}`);
+sq.prepare(`INSERT INTO pp_props (${Object.keys(fowlerRow).join(', ')}) VALUES (${Object.keys(fowlerRow).map(() => '?').join(',')})`).run(...Object.values(fowlerRow));
+
 console.log('\n-- a line set on the card --');
 const buf = { sport: 'nhl', gameId: GAME, player: 'Tage Thompson', playerId: '8479420', team: 'BUF', stat: 'sog', line: 3.5 };
 ok((await line(buf, null)).status === 401, 'no key: refused');

@@ -53,7 +53,7 @@ const persisted = [];
 const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
-  'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
+  'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
   'propSaveHtml', 'propRow', 'propsCardHtml'];
 let C;
 try {
@@ -283,6 +283,44 @@ f = fcard();
 ok(rowsOf(f).length > 0 && rowsOf(f).every((r) => /class="tc-p/.test(r)), 'Best lists only rows with a figure at PrizePicks\' number');
 const recLeg = C.propLeg('nfl', FG, FP('Malik Washington'), 'rec_yds', C.propView('nfl', NF, FG, FP('Malik Washington'), 'rec_yds'));
 ok(recLeg.spec.sport === 'nfl' && recLeg.spec.market === 'rec_yds' && recLeg.spec.playerId === FP('Malik Washington').id && recLeg.spec.gamePk === FG.id, 'a leg carries the sport, the stat, his ESPN id and the odds feed\'s game, which is how it grades');
+state.prStat = {};
+
+console.log('\n-- before PrizePicks posts --');
+// The owner asked for picks ahead of time, as the soccer card's expected rows, and chose a side with
+// no percentage (2026-11-05): against the sharp books' line, else PrizePicks' last number for him;
+// with neither, the projection alone. Starters marked; a player who's been missing says so.
+const bare = D.players.find((p) => !Object.keys(p.lines).length && p.proj.pts > 10);
+const early = { ...bare, last: { pts: [21.5, '2026-11-03'] }, st: [5, 5] };
+state.props = { nba: { ...D, players: [early, ...D.players.filter((p) => p !== bare)] } };
+state.prStat = { nba: 'pts' };
+const er = rowFor(C.propsCardHtml('nba'), bare.name);
+const wantSide = bare.proj.pts > 21.5 ? 'Over' : 'Under';
+ok(new RegExp(`${wantSide} 21\\.5 points`).test(text(er)) && /PrizePicks’ last, Nov 3/.test(text(er)), `PrizePicks' last number, the side his projection ${bare.proj.pts} takes: ${text(er).slice(0, 110)}`);
+ok(!/class="tc-p/.test(er) && /cushion|short of|right on/.test(text(er)) && /in \d+ of last \d+/.test(text(er)), 'no percentage; how far off and how often he cleared it');
+ok(/data-action="pr-row"/.test(er.split('tc-leg')[0]) && !/data-action="leg-add"/.test(er), 'its star opens the setter, at that number: not taken for this game\'s');
+ok(/expected starter/.test(text(er)) && /title="Started 5 of his team’s last 5"/.test(er), 'started 5 of the last 5: an expected starter');
+state.props = { nba: { ...D, players: [{ ...early, st: [0, 5] }, ...D.players.filter((p) => p !== bare)] } };
+ok(!/expected starter|played \d/.test(text(rowFor(C.propsCardHtml('nba'), bare.name))), 'off the bench: no tag');
+state.props = { nba: { ...D, players: [{ ...bare, st: [5, 5] }, ...D.players.filter((p) => p !== bare)] } };
+const none = text(rowFor(C.propsCardHtml('nba'), bare.name));
+ok(!/(Over|Under) \d/.test(none) && /no PrizePicks number yet/.test(none) && new RegExp(`proj ${bare.proj.pts}`).test(none), `no line of any kind: no side, the projection: ${none.slice(0, 100)}`);
+ok(/the side is the projection against the books’ line or PrizePicks’ last number for him/.test(C.propsCardHtml('nba')), 'the note says so');
+state.props = { nhl: { ...N, record: { ...N.record, graded: 130, need: 100 } } };
+state.prStat = { nhl: 'sog' };
+const tts = rowFor(C.propsCardHtml('nhl'), 'Tage Thompson');
+const ttSide = NP('Tage Thompson').proj.sog > 3.5 ? 'Over' : 'Under';
+ok(new RegExp(`${ttSide} 3\\.5 shots on goal`).test(text(tts)) && /books’ line · no PrizePicks number yet/.test(text(tts)) && !/class="tc-p/.test(tts),
+  `the sharp books' line: the side his projection takes, not theirs (${text(tts).slice(0, 90)})`);
+ok(/130 have graded: they join Picks only when you say/.test(C.propsCardHtml('nhl')), 'past the 100: the note says it is the owner\'s call');
+state.props = { nhl: { ...N, players: N.players.map((p) => (p.name === 'Colten Ellis' ? { ...p, gl: 'Confirmed' } : p.name === 'Tage Thompson' ? { ...p, st: [2, 5] } : p)) } };
+state.prStat = { nhl: 'saves' };
+ok(/confirmed starter/.test(text(rowFor(C.propsCardHtml('nhl'), 'Colten Ellis'))), 'ESPN\'s confirmed goalie says so');
+state.prStat = { nhl: 'sog' };
+ok(/played 2 of last 5/.test(text(rowFor(C.propsCardHtml('nhl'), 'Tage Thompson'))), 'a skater who\'s missed games says so');
+state.props = { nfl: { ...NF, players: NF.players.map((p) => (p.name === 'Malik Willis' ? { ...p, qb1: true, st: [5, 5] } : p)) } };
+state.prStat = { nfl: 'pass_yds' };
+const wq = text(rowFor(C.propsCardHtml('nfl'), 'Malik Willis'));
+ok(/expected starter/.test(wq) && !/(Over|Under) \d/.test(wq), `the passer to expect, and with no line yet no side: ${wq.slice(0, 90)}`);
 state.prStat = {};
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

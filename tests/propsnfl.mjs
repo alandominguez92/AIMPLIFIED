@@ -188,6 +188,30 @@ const chosen = P('Robbie Chosen');
 ok(chosen && chosen.log.length === 0 && Object.keys(chosen.lines).length > 0, 'PrizePicks has a player up with no box score this season: on the card from the read alone');
 ok(b.players.every((p) => p.g === 0) && b.record.graded === 0 && b.record.need === 100, 'nothing graded of the 100');
 
+console.log('\n-- who to expect, and a number before PrizePicks posts --');
+// Ahead of time, as the soccer card's expected rows (2026-11-05): the passer to expect is who threw
+// most in his team's last game; everyone else, how many of its last five he had a role in.
+for (const club of CLUBS) {
+  const games = [...new Set(old.filter((r) => r.team === club).sort((a, c) => (a.date < c.date ? 1 : -1)).map((r) => r.game_id))];
+  const thrower = old.filter((r) => r.team === club && r.game_id === games[0]).sort((a, c) => (c.pass_att || 0) - (a.pass_att || 0))[0];
+  const qbs = b.players.filter((p) => p.team === club && p.qb1);
+  ok(qbs.length === 1 && qbs[0].name === thrower.player, `${club}: ${qbs.map((p) => p.name).join(', ')}, who threw ${thrower.pass_att} times last game`);
+}
+const w5 = [...new Set(old.filter((r) => r.team === 'MIA').sort((a, c) => (a.date < c.date ? 1 : -1)).map((r) => r.game_id))].slice(0, 5);
+const roleIn = w5.filter((g) => old.some((r) => r.game_id === g && r.player === 'Malik Washington' && Math.max((r.pass_att || 0) / 15, (r.car || 0) / 8, (r.tgt || 0) / 4) >= 0.5)).length;
+ok(wash.st && wash.st.join() === `${roleIn},${w5.length}`, `Washington had a role in ${wash.st} of the Dolphins' last games, by hand ${roleIn}`);
+// Last week's PrizePicks number: what his row stands at before this week's is up.
+sq.prepare('INSERT INTO pp_props (sport, date, pkey, market, player, read_point, result) VALUES (?,?,?,?,?,?,?)').run('nfl', '2026-11-01', wash.k, 'pass_yds', 'Malik Washington', 0.5, 'under');
+sq.prepare('INSERT INTO pp_props (sport, date, pkey, market, player, read_point, result) VALUES (?,?,?,?,?,?,?)').run('nfl', '2026-11-01', wash.k, 'rush_rec', 'Malik Washington', 44.5, 'over');
+const formNow = cache('pp_props_form:nfl');
+ok(formNow.v === 2 && !formNow.players.some((p) => p.last), 'no number from an earlier game yet');
+delete formNow.v;
+save('pp_props_form:nfl', formNow);
+await tick();
+const wl = (await hit('/api/nfl-props')).players.find((p) => p.name === 'Malik Washington');
+ok(wl.last && wl.last.rush_rec.join() === '44.5,2026-11-01' && wl.last.pass_yds[0] === 0.5, `the form row built again: last week's numbers, ${JSON.stringify(wl.last)}`);
+sq.prepare("DELETE FROM pp_props WHERE date = '2026-11-01'").run();
+
 console.log('\n-- a line set on the card, and a later capture --');
 const leg = { sport: 'nfl', gameId: EVENT.id, player: 'Deebo Samuel Sr.', playerId: ds.id, team: 'WSH', stat: 'rush_rec', line: 60.5 };
 ok((await line(leg, null)).status === 401, 'no key: refused');
