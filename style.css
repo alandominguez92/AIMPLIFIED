@@ -2871,11 +2871,15 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* By lean, in plain words (2026-10-21): stat chips that scroll sideways, one
    row a lean, the line setter on a tap. A chance is teal at 60% or more and
    plain below it, so the strong ones stand out of a list of numbers. */
-.sp-chips { display:flex; gap:6px; overflow-x:auto; margin-top:10px; padding-bottom:2px; scrollbar-width:none; }
-.sp-chips::-webkit-scrollbar { display:none; }
-.sp-chip { flex:none; height:32px; padding:0 11px; border:1px solid var(--border); border-radius:8px; background:var(--card);
+/* The stats wrap into rows (2026-11-05, the owner's pick): a sideways-scrolling
+   row showed three and a half of NBA's thirteen on a phone, with nothing to say
+   there were more. Each carries how many 54%+ numbers it has. */
+.sp-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.sp-chip { flex:none; display:inline-flex; align-items:center; gap:5px; height:32px; padding:0 11px; border:1px solid var(--border); border-radius:8px; background:var(--card);
   color:var(--text); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
 .sp-chip.on { background:var(--accentFill); border-color:var(--accentFill); color:var(--onAccent); font-weight:600; }
+.sp-n { font-family:var(--mono); font-size:11px; font-weight:700; color:var(--positive); }
+.sp-chip.on .sp-n { color:inherit; }
 .sp-hint { margin-top:8px; font-family:var(--sans); font-size:var(--fsSm); color:var(--textFaint); }
 .sp-match .tc-legs { margin-top:2px; gap:6px; }
 .sp-tap { display:block; width:100%; text-align:left; background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; }

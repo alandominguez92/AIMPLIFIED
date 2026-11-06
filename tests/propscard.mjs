@@ -346,6 +346,26 @@ ok(!/started \d/.test(text(rowFor(C.propsCardHtml('nba'), bare.name))), 'off the
 state.props = { nba: { ...D, players: [{ ...bare, st: [5, 5] }, ...D.players.filter((p) => p !== bare)] } };
 ok(/<span class="pr-clear dots"><span class="dots-in"><span>proj <b>[\d.]+<\/b><\/span> <span><span class="dot">·<\/span> avg [\d.]+ in last \d+<\/span>/.test(rowFor(C.propsCardHtml('nba'), bare.name)),
   'no number yet: "avg 23.4 in last 8", one bit, no number alone on a line');
+// The stats as buttons (2026-11-05, the owner's picks): each says how many 54%+ numbers it has,
+// counted here from the recorded lines -- PrizePicks' number and the sharp books' chance at it.
+state.props = { nba: D };
+const fairAt = (ln) => (ln && ln.l != null ? (ln.u != null ? ln.u : ((ln.fairs || []).find((f) => f[0] === ln.l) || [])[1]) : null);
+const wantN = {};
+let wantBest = 0;
+for (const pl of D.players.filter((x) => Date.parse(D.games[x.g].commence) > NOW)) {
+  let any = false;
+  for (const s of Object.keys(pl.lines)) { const f = fairAt(pl.lines[s]); if (f != null && Math.max(f, 100 - f) >= 54) { wantN[s] = (wantN[s] || 0) + 1; any = true; } }
+  if (any) wantBest++;
+}
+const chipsOf = (h) => Object.fromEntries([...h.matchAll(/data-stat="(\w+)"[^>]*>[^<]*(?:<span class="sp-n">(\d+)<\/span>)?<\/button>/g)].map((m) => [m[1], Number(m[2] || 0)]));
+const got = chipsOf(card());
+console.log('  ' + Object.entries(got).map(([s, n]) => `${s} ${n}`).join(' · '));
+ok(wantBest > 0 && Object.keys(got).length === 13 && Object.keys(got).every((s) => got[s] === (s === 'best' ? wantBest : wantN[s] || 0)),
+  `each stat's 54%+ count, and Best's players with any: ${wantBest} (${JSON.stringify(wantN)})`);
+ok(Object.keys(wantN).every((s) => new RegExp(`data-stat="${s}"[^>]*aria-label="[^"]+, ${wantN[s]} at 54%\\+"`).test(card())), 'and says so to a screen reader');
+ok(!/<span class="sp-n">0<\/span>/.test(card()) && Object.keys(got).some((s) => !got[s]), 'a stat with none shows no number');
+const css = fs.readFileSync(path.join(HERE, '..', 'style.css'), 'utf8');
+ok(/\.sp-chips \{ display:flex; flex-wrap:wrap;/.test(css) && !/\.sp-chips \{[^}]*overflow-x:auto/.test(css), 'they wrap into rows: no row scrolling sideways, every stat in sight on a phone');
 state.props = { nba: D };
 state.prOpen = { [k]: true };
 ok(/<span class="tb-head dots"><span class="dots-in"><span><b class="[uo]">over 15\.5 in 3 of last 4<\/b><\/span> <span><span class="dot">·<\/span> avg [\d.]+<\/span>/.test(rowFor(card(), 'Anthony Black')),

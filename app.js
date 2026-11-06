@@ -7384,13 +7384,14 @@
         + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '')
         + (pre ? ' · preseason: starters sit, and Pinnacle is the only sharp book' : '');
     }
+    // The props card first, under the best leg (2026-11-05, the owner's pick): it sat below the unders card.
     if (!games.length) {
-      grid.innerHTML = nbaPpCardHtml() + propsCardHtml('nba') + nbaHotCardHtml() + `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+      grid.innerHTML = propsCardHtml('nba') + nbaPpCardHtml() + nbaHotCardHtml() + `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
     }
     const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    grid.innerHTML = nbaPpCardHtml() + propsCardHtml('nba') + nbaHotCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
+    grid.innerHTML = propsCardHtml('nba') + nbaPpCardHtml() + nbaHotCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map((g) => mlTabRow(g, 'nba')).join('')}</div>`
       + `</div></div>`;
@@ -7547,7 +7548,8 @@
     const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
     if (count) count.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}` : '';
     if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '');
-    const rec = nhlRecordHtml(d.record) + nhlPpCardHtml() + propsCardHtml('nhl') + hotCardHtml('nhl');
+    // The props card first, under the best leg (2026-11-05, the owner's pick): it sat below the More card.
+    const rec = nhlRecordHtml(d.record) + propsCardHtml('nhl') + nhlPpCardHtml() + hotCardHtml('nhl');
     if (!games.length) {
       grid.innerHTML = rec + `<div class="nfl-empty">No NHL games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
       return;
@@ -7950,8 +7952,23 @@
       + `<button type="button" class="pr-how" data-action="pr-how" data-sport="${esc(sport)}" aria-expanded="${how}">How to read this ${how ? '▾' : '▸'}</button>`
       + `<div class="tc-sub"${how ? '' : ' hidden'}>The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Before PrizePicks posts, the side is the projection against the books’ line or PrizePicks’ last number for him. Tap a player to change the line: what you set is saved and graded there. ${r && r.graded >= (r.need || 100) ? `${esc(String(r.graded))} have graded: they join Picks only when you say.` : `These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.`}</div>`;
     if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">${sport === 'nfl' ? 'No games in the coming week.' : 'No games in the next day and a half.'}</div></div>`;
+    // How many 54%+ numbers each stat has in the games to come (2026-11-05, the owner's pick): where
+    // the strong ones are before tapping through a dozen stats. Best counts players with any.
+    const strongAt = (v) => v.p != null && Math.max(v.fair, 100 - v.fair) >= PROP_STRONG;
+    const nStrong = { best: 0 };
+    for (const { g, i } of games) {
+      for (const p of (d.players || []).filter((x) => x.g === i)) {
+        let any = false;
+        for (const s of stats) if (strongAt(propView(sport, d, g, p, s))) { nStrong[s] = (nStrong[s] || 0) + 1; any = true; }
+        if (any) nStrong.best++;
+      }
+    }
+    const chipHtml = (s) => {
+      const n = nStrong[s] || 0, name = s === 'best' ? 'Best' : PROP_STATS[sport][s][0];
+      return `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="pr-stat" data-sport="${esc(sport)}" data-stat="${s}" aria-pressed="${s === view}"${n ? ` aria-label="${esc(name)}, ${n} at ${PROP_STRONG}%+"` : ''}>${esc(name)}${n ? `<span class="sp-n">${n}</span>` : ''}</button>`;
+    };
     const chips = `<input class="sp-search" type="search" placeholder="Find a player" value="${esc((state.prQuery && state.prQuery[sport]) || '')}" data-prq="${esc(sport)}" aria-label="Find a player">`
-      + `<div class="sp-chips">${[...stats, 'best'].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="pr-stat" data-sport="${esc(sport)}" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : PROP_STATS[sport][s][0])}</button>`).join('')}</div>`
+      + `<div class="sp-chips">${[...stats, 'best'].map(chipHtml).join('')}</div>`
       + `<div class="sp-hint">${esc(view === 'best' ? 'Each player’s strongest sharp number' : `${PROP_STATS[sport][view][0]}: sharp numbers first, then by projection`)}</div>`;
     const dist = (x) => (x.v.p == null ? -1 : Math.abs(x.v.fair - 50));
     let found = 0;
