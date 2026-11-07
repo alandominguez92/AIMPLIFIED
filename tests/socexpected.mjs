@@ -194,7 +194,7 @@ ok(r.status === 404, 'a match with nothing stored: refused');
 ok((await lines('GET')).body.lines.length === 4, 'and a reload shows the four saved');
 
 console.log('\n-- kept, and read a few at a time --');
-ok(/socBoxCatchUp, socExpectedTick\]\) await job\(env\)/.test(src), 'it runs last on the trigger: what goes on the record reads first');
+ok(/socBoxCatchUp, socExpectedTick\]\) await job\((env|d1Env\(env,)/.test(src), 'it runs last on the trigger: what goes on the record reads first');
 const before = sq.prepare("SELECT updated_at FROM feed_cache WHERE key = ?").get(`soc_exp:${FIX}`).updated_at;
 NOW += 60e3;
 await histTick();

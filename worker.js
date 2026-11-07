@@ -149,8 +149,138 @@ const API_ROUTES = new Set([
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
-  '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health',
+  '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health', '/api/d1-reads',
 ]);
+
+// ---------------------------------------------------------------------------
+// D1 rows read, by job and by route (2026-11-07). The free tier allows 5M rows read a day
+// across the account; past it every query fails until midnight UTC, the page and the crons
+// with it (Sep 13, Oct 22, Nov 7). Nothing showed which job had read them, and the owner can't
+// see D1's own figures, so each answer's meta.rows_read is counted here: every job and route
+// gets its own handle on env.DB (d1Env), the counts are kept by the UTC hour in d1_reads, and
+// /api/d1-reads shows a day. Written when 2,000 rows are waiting or ten minutes have passed,
+// so small reads from a Worker instance that ends first can be missing; the big ones can't.
+const D1_METER = new Map();               // `${hour}|${label}` -> [statements, rows]
+const D1_FLUSH_ROWS = 2000;
+const D1_FLUSH_MS = 10 * 60e3;
+let D1_FLUSHED_AT = Date.now();
+let D1_READS_SCHEMA = false;
+let D1_SAYS_ROWS = false;                 // an answer has carried rows_read: this is D1 itself
+function d1Note(label, meta) {
+  const k = `${new Date().toISOString().slice(0, 13)}|${label}`, e = D1_METER.get(k) || [0, 0];
+  const rows = Number(meta && meta.rows_read);
+  if (meta && typeof meta.rows_read === 'number') D1_SAYS_ROWS = true;
+  e[0]++;
+  if (rows > 0) e[1] += rows;
+  D1_METER.set(k, e);
+}
+// A statement that counts what it read. On D1, first() runs as all(): D1 answers both the same
+// way, but only all() carries the meta. Anything else (the tests' stand-ins, which can answer
+// the two differently) keeps its own first().
+function d1Stmt(st, label) {
+  return {
+    __d1Raw: st,
+    bind: (...a) => d1Stmt(st.bind(...a), label),
+    all: async () => { const r = await st.all(); d1Note(label, r && r.meta); return r; },
+    run: async () => { const r = await st.run(); d1Note(label, r && r.meta); return r; },
+    first: async (col) => {
+      if (!D1_SAYS_ROWS || typeof st.all !== 'function') { const v = await st.first(col); d1Note(label, null); return v; }
+      const r = await st.all();
+      d1Note(label, r && r.meta);
+      const row = ((r && r.results) || [])[0];
+      return row == null ? null : col == null ? row : row[col] === undefined ? null : row[col];
+    },
+    raw: (...a) => st.raw(...a),
+  };
+}
+function d1Env(env, label) {
+  if (!env || !env.DB) return env;
+  const raw = env.DB.__d1Raw || env.DB;
+  const DB = {
+    __d1Raw: raw,
+    prepare: (sql) => d1Stmt(raw.prepare(sql), label),
+    batch: async (sts) => {
+      const r = await raw.batch(sts.map((s) => (s && s.__d1Raw) || s));
+      for (const x of r || []) d1Note(label, x && x.meta);
+      return r;
+    },
+    exec: (...a) => raw.exec(...a),
+  };
+  if (typeof raw.dump === 'function') DB.dump = (...a) => raw.dump(...a);
+  if (typeof raw.withSession === 'function') DB.withSession = (...a) => raw.withSession(...a);
+  return { ...env, DB };
+}
+function d1RouteLabel(request) {
+  const url = new URL(request.url), p = url.pathname;
+  if (!API_ROUTES.has(p)) return null;
+  const sport = p === '/api/hot-players' || p === '/api/gmpicks-export' || p === '/api/top-legs' ? url.searchParams.get('sport') : null;
+  return `${p}${sport ? `?sport=${sport}` : ''}`;
+}
+async function d1Flush(db, now = Date.now()) {
+  db = (db && db.__d1Raw) || db;
+  if (!db || !D1_METER.size) return false;
+  let rows = 0;
+  for (const e of D1_METER.values()) rows += e[1];
+  if (!rows || (rows < D1_FLUSH_ROWS && now - D1_FLUSHED_AT < D1_FLUSH_MS)) return false;
+  const take = [...D1_METER].filter(([, e]) => e[1] > 0);
+  D1_METER.clear();
+  D1_FLUSHED_AT = now;
+  try {
+    if (!D1_READS_SCHEMA) {
+      await db.prepare('CREATE TABLE IF NOT EXISTS d1_reads (hour TEXT NOT NULL, label TEXT NOT NULL, stmts INTEGER NOT NULL DEFAULT 0, rows INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (hour, label))').run();
+      D1_READS_SCHEMA = true;
+    }
+    await db.batch(take.map(([k, [n, r]]) => db.prepare('INSERT INTO d1_reads (hour, label, stmts, rows) VALUES (?,?,?,?) ON CONFLICT (hour, label) DO UPDATE SET stmts = stmts + excluded.stmts, rows = rows + excluded.rows')
+      .bind(k.slice(0, 13), k.slice(14), n, r)));
+    return true;
+  } catch (e) {
+    // Kept for the next try: over the limit, nothing writes either.
+    for (const [k, [n, r]] of take) { const x = D1_METER.get(k) || [0, 0]; x[0] += n; x[1] += r; D1_METER.set(k, x); }
+    return false;
+  }
+}
+// Runs a handler on a counting env.DB, and writes the counts once everything it left running
+// has finished.
+async function d1Metered(env, ctx, label, run) {
+  if (!env || !env.DB) return run(env, ctx);
+  const held = [];
+  const c = {
+    waitUntil: (p) => { held.push(p); if (ctx && ctx.waitUntil) ctx.waitUntil(p); },
+    passThroughOnException: () => { if (ctx && ctx.passThroughOnException) ctx.passThroughOnException(); },
+  };
+  try {
+    return await run(label ? d1Env(env, label) : env, c);
+  } finally {
+    const done = (async () => {
+      for (let n = -1; n !== held.length;) { n = held.length; await Promise.allSettled(held.slice()); }
+      await d1Flush(env.DB);
+    })().catch(() => null);
+    if (ctx && ctx.waitUntil) ctx.waitUntil(done);
+  }
+}
+// One UTC day (D1's day): rows read by label, and by hour.
+async function d1ReadsDay(env, url) {
+  const q = url && url.searchParams.get('day');
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(q || '') ? q : new Date().toISOString().slice(0, 10);
+  const out = { note: `D1 rows read on ${day} (UTC: D1's day ends at 4 PM Pacific, 5 PM in summer), by job and route, against the free tier's 5,000,000. Written when 2,000 rows are waiting or every ten minutes, so the last minutes and some small reads can be missing.`, day, limit: 5e6, total: 0, byLabel: [], byHour: [] };
+  if (!env || !env.DB) return out;
+  try {
+    const rows = (await env.DB.prepare('SELECT hour, label, stmts, rows FROM d1_reads WHERE hour >= ? AND hour <= ?').bind(`${day}T00`, `${day}T23`).all()).results || [];
+    const lab = new Map(), hr = new Map();
+    for (const r of rows) {
+      const l = lab.get(r.label) || { label: r.label, rows: 0, stmts: 0 };
+      l.rows += r.rows; l.stmts += r.stmts;
+      lab.set(r.label, l);
+      hr.set(r.hour, (hr.get(r.hour) || 0) + r.rows);
+      out.total += r.rows;
+    }
+    out.byLabel = [...lab.values()].sort((a, b) => b.rows - a.rows);
+    out.byHour = [...hr].sort((a, b) => a[0].localeCompare(b[0])).map(([hour, rows]) => ({ hour, rows }));
+  } catch (e) {
+    out.error = String(e && e.message || e);
+  }
+  return out;
+}
 
 // Routes that spend Odds API credits or change the records, run by hand and never by the page
 // or the crons, which call the functions themselves (2026-11-04). The repo is public, so these
@@ -167,7 +297,8 @@ function routeLocked(p, url) {
   return false;
 }
 
-export default {
+// The handlers, run through d1Metered below so each job's and route's reads are counted.
+const HANDLER = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const p = url.pathname;
@@ -239,7 +370,7 @@ export default {
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/nba-props' || p === '/api/nhl-props' || p === '/api/nfl-props' || p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
+    const KEYED_BY_QUERY = p === '/api/d1-reads' || p === '/api/nba-props' || p === '/api/nhl-props' || p === '/api/nfl-props' || p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
     // The MLB boards spend credits on a miss and only ?summary= changes their answer, so a
     // made-up query must not be a miss (2026-11-04).
     const mlbBoard = p === '/api/board' || p === '/api/batters';
@@ -263,7 +394,7 @@ export default {
     // The soccer box-score cron has its own trigger: a match is ~30 requests,
     // and an invocation's request budget is shared by everything it runs.
     if (event && event.cron === SOC_BOX_CRON) {
-      ctx.waitUntil(socBoxTick(env, { perTick: 30, via: 'soccer-trigger' }).catch(() => null));
+      ctx.waitUntil(socBoxTick(d1Env(env, 'socBoxTick soccer-trigger'), { perTick: 30, via: 'soccer-trigger' }).catch(() => null));
       return;
     }
     // Last season's props, read back while a job is set running (2026-10-29):
@@ -273,61 +404,67 @@ export default {
       // the five-minute invocation, which grades and captures, has no requests to spare for.
       // A running backtest has this invocation's to itself.
       ctx.waitUntil((async () => {
-        if (await histPropsTick(env).catch(() => null)) return;
-        for (const job of [nbaPropsFormTick, nhlPropsFormTick, nflPropsFormTick, nflPropsLogTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(env).catch(() => null);
+        if (await histPropsTick(d1Env(env, 'histPropsTick')).catch(() => null)) return;
+        for (const job of [nbaPropsFormTick, nhlPropsFormTick, nflPropsFormTick, nflPropsLogTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(d1Env(env, job.name || 'hist-job')).catch(() => null);
       })());
       return;
     }
     // Today's games as they finish (2026-11-04), on this invocation's own requests.
     if (event && event.cron === GRADE_CRON) {
-      ctx.waitUntil(gradeTonight(env).catch(() => null));
+      ctx.waitUntil(gradeTonight(d1Env(env, 'gradeTonight')).catch(() => null));
       // And who starts in goal, read on the same requests.
-      ctx.waitUntil(nhlGoalieTick(env).catch(() => null));
+      ctx.waitUntil(nhlGoalieTick(d1Env(env, 'nhlGoalieTick')).catch(() => null));
       // And whether each sport's stats are still arriving: no requests at all.
-      ctx.waitUntil(feedHealthTick(env).catch(() => null));
+      ctx.waitUntil(feedHealthTick(d1Env(env, 'feedHealthTick')).catch(() => null));
       return;
     }
-    ctx.waitUntil(captureCloses(env, ctx));
+    ctx.waitUntil(captureCloses(d1Env(env, 'captureCloses'), ctx));
     // Soccer game lines, gated to twice a matchday per league — see
     // soccerMaybeIngest. Most ticks do nothing but read a counter.
-    ctx.waitUntil(soccerMaybeIngest(env, ctx).catch(() => null));
+    ctx.waitUntil(soccerMaybeIngest(d1Env(env, 'soccerMaybeIngest'), ctx).catch(() => null));
     // Same shape for the NFL game lines: most ticks read a counter and stop.
-    ctx.waitUntil(nflMaybeIngest(env, ctx).catch(() => null));
+    ctx.waitUntil(nflMaybeIngest(d1Env(env, 'nflMaybeIngest'), ctx).catch(() => null));
     // And the NBA moneyline, recorded only -- see nbaMaybeIngest.
-    ctx.waitUntil(nbaMaybeIngest(env).catch(() => null));
+    ctx.waitUntil(nbaMaybeIngest(d1Env(env, 'nbaMaybeIngest')).catch(() => null));
     // The NHL moneyline the same way, on its own counter (2026-10-20).
-    ctx.waitUntil(nhlMaybeIngest(env).catch(() => null));
+    ctx.waitUntil(nhlMaybeIngest(d1Env(env, 'nhlMaybeIngest')).catch(() => null));
     // NBA PrizePicks unders: the night's box scores in, each game's PrizePicks
     // lines read when posted and again before tip (ppReadDue), the log graded.
-    ctx.waitUntil(nbaBoxIngest(env).catch(() => null));
-    ctx.waitUntil(nbaPpMaybeCapture(env).catch(() => null));
+    ctx.waitUntil(nbaBoxIngest(d1Env(env, 'nbaBoxIngest')).catch(() => null));
+    ctx.waitUntil(nbaPpMaybeCapture(d1Env(env, 'nbaPpMaybeCapture')).catch(() => null));
     // ESPN's injury report for the NBA legs on Picks (2026-11-01), free.
-    ctx.waitUntil(nbaInjuryTick(env).catch(() => null));
+    ctx.waitUntil(nbaInjuryTick(d1Env(env, 'nbaInjuryTick')).catch(() => null));
     // A streak with a cause, logged only (2026-11-01): pays for a game only if
     // someone in it passes the free box-score read first.
-    ctx.waitUntil(nbaCauseTick(env).catch(() => null));
+    ctx.waitUntil(nbaCauseTick(d1Env(env, 'nbaCauseTick')).catch(() => null));
     // The Hot players section's list, from the box scores: free (2026-11-02).
-    ctx.waitUntil(nbaHotListTick(env).catch(() => null));
+    ctx.waitUntil(nbaHotListTick(d1Env(env, 'nbaHotListTick')).catch(() => null));
     // NHL PrizePicks points and assists unders: read the same way, graded
     // hourly from the NHL's box scores.
-    ctx.waitUntil(nhlPpMaybeCapture(env).catch(() => null));
-    ctx.waitUntil(gradeNhlPp(env).catch(() => null));
+    ctx.waitUntil(nhlPpMaybeCapture(d1Env(env, 'nhlPpMaybeCapture')).catch(() => null));
+    ctx.waitUntil(gradeNhlPp(d1Env(env, 'gradeNhlPp')).catch(() => null));
     // Grading is free (ESPN only) and idempotent, so it can ride the cron rather
     // than waiting for someone to open the track record.
-    ctx.waitUntil(gradeGamePicks(env).catch(() => null));
-    ctx.waitUntil(gradePassTds(env).catch(() => null));
-    ctx.waitUntil(gradePassYds(env).catch(() => null));
-    ctx.waitUntil(gradeRecs(env).catch(() => null));
-    ctx.waitUntil(gradeNflProps(env).catch(() => null));
-    ctx.waitUntil(nflGradeCron(env).catch(() => null));
-    ctx.waitUntil(gradeEntryLegs(env).catch(() => null));
+    ctx.waitUntil(gradeGamePicks(d1Env(env, 'gradeGamePicks')).catch(() => null));
+    ctx.waitUntil(gradePassTds(d1Env(env, 'gradePassTds')).catch(() => null));
+    ctx.waitUntil(gradePassYds(d1Env(env, 'gradePassYds')).catch(() => null));
+    ctx.waitUntil(gradeRecs(d1Env(env, 'gradeRecs')).catch(() => null));
+    ctx.waitUntil(gradeNflProps(d1Env(env, 'gradeNflProps')).catch(() => null));
+    ctx.waitUntil(nflGradeCron(d1Env(env, 'nflGradeCron')).catch(() => null));
+    ctx.waitUntil(gradeEntryLegs(d1Env(env, 'gradeEntryLegs')).catch(() => null));
     // Picks of the day: every fifteen minutes, so the log knows which legs were
     // on the list when each game started even with nobody on the site.
     const min = new Date((event && event.scheduledTime) || Date.now()).getUTCMinutes();
-    if (min % 15 < 5) ctx.waitUntil(dayPicksTick(env).catch(() => null));
+    if (min % 15 < 5) ctx.waitUntil(dayPicksTick(d1Env(env, 'dayPicksTick')).catch(() => null));
     // Soccer box scores, a dozen players a tick (see socBoxTick).
-    ctx.waitUntil(socBoxTick(env, { perTick: 12, via: 'main' }).catch(() => null));
+    ctx.waitUntil(socBoxTick(d1Env(env, 'socBoxTick'), { perTick: 12, via: 'main' }).catch(() => null));
   },
+};
+
+export default {
+  fetch: (request, env, ctx) => d1Metered(env, ctx, d1RouteLabel(request), (e, c) => HANDLER.fetch(request, e, c)),
+  // A job left unlabelled below counts under its trigger.
+  scheduled: (event, env, ctx) => d1Metered(env, ctx, `cron ${(event && event.cron) || '?'}`, (e, c) => HANDLER.scheduled(event, e, c)),
 };
 
 // The close is the last line before first pitch — the number CLV is measured
@@ -572,6 +709,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nhl-pp') return cors(json(await nhlPpBoard(env, url), 120));
   if (p === '/api/hot-players') return cors(json(await hotPlayersRoute(env, url), 120));
   if (p === '/api/feed-health') return cors(json(await feedHealthRead(env), 300));
+  if (p === '/api/d1-reads') return cors(json(await d1ReadsDay(env, url), 120));
   if (p === '/api/pp-lines') return cors(json(await ppLinesDay(env, url), 120));
   if (p === '/api/nba-cause') return cors(json(await nbaCauseRoute(env, url), 120));
   if (p === '/api/nba-pp') {
