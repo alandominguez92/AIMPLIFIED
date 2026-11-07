@@ -204,7 +204,7 @@ ok(wash.st && wash.st.join() === `${roleIn},${w5.length}`, `Washington had a rol
 sq.prepare('INSERT INTO pp_props (sport, date, pkey, market, player, read_point, result) VALUES (?,?,?,?,?,?,?)').run('nfl', '2026-11-01', wash.k, 'pass_yds', 'Malik Washington', 0.5, 'under');
 sq.prepare('INSERT INTO pp_props (sport, date, pkey, market, player, read_point, result) VALUES (?,?,?,?,?,?,?)').run('nfl', '2026-11-01', wash.k, 'rush_rec', 'Malik Washington', 44.5, 'over');
 const formNow = cache('pp_props_form:nfl');
-ok(formNow.v === 2 && !formNow.players.some((p) => p.last), 'no number from an earlier game yet');
+ok(formNow.v === 3 && !formNow.players.some((p) => p.last) && !formNow.players.some((p) => p.mw != null), 'no number from an earlier game yet, and no NBA minutes on football');
 delete formNow.v;
 save('pp_props_form:nfl', formNow);
 await tick();

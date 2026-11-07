@@ -18594,7 +18594,7 @@ const PP_PROP_BANDS = [[50, 52, '50-52'], [52, 54, '52-54'], [54, 56, '54-56'], 
 const NBA_PROP_MIN = 18;                    // minutes over his last five, to be listed with no number up
 const PP_PROP_WINDOW_DAYS = 45;             // a free scan of what a last-ten needs, not a season's box scores
 const PP_PROP_LAST_DAYS = 21;               // how far back PrizePicks' last number for him is looked for
-const PP_PROP_FORM_V = 2;                   // a form saved before starts and last numbers is built again
+const PP_PROP_FORM_V = 3;                   // a form saved before starts and last numbers (2), or the NBA's minutes (3), is built again
 const NHL_PROP_GOALIE_START_MIN = 30;       // a goalie in net this long started, not came on in relief
 const NFL_PROP_ROLE_MIN = 0.5;              // his share of a game's passes, carries or targets that counts as a role
 const NBA_PROP_COLS = ['pts', 'reb', 'ast', 'threes', 'blk', 'stl', 'tov'];
@@ -18768,17 +18768,45 @@ function ppPropPlayers(rows, c, priorOf, nameOf = (r) => r.player, extra = {}) {
   const out = [];
   for (const [id, last] of byId) {
     const mins = last.slice(0, 5).map((r) => r.min).filter((v) => v != null), name = nameOf(last[0]);
+    // His usual minutes beside the last five's (the NBA): the page says when they've moved 4+.
+    const mm = c.perMin ? ppPropMinutes(last, c.k, priorOf(id, 'min')) : null;
     out.push({ id, k: c.name(name), name, team: last[0].team, min: mins.length ? round1(mins.reduce((a, b) => a + b, 0) / mins.length) : null,
+      ...(mm ? { mw: round1(mm.was) } : {}),
       log: last.slice().reverse().map((r) => c.cols.map((k) => (r[k] === undefined ? null : r[k]))), proj: ppPropProjections(last, c, (st) => priorOf(id, st)), ...extra });
   }
   return out;
 }
 // A stat's projection (pure): the last games plus c.k of last season; with no season behind it,
 // three games of his own or nothing. A combined stat is its parts added up.
+//
+// Minutes (c.perMin, the NBA, 2026-11-07, the owner's ask): his rate a minute -- the last games'
+// and c.k games of last season's, minute for minute -- times his minutes over his last five, so a
+// bigger or smaller role moves the number the day it starts. Replayed on 2025-26 first (16,637
+// rotation games, 0 credits): closer to what he did than the plain average on every stat, most
+// where his minutes had moved 4+ (PRA off by 6.37 against 6.74, points 4.96 against 5.11). The
+// owner also asked about a last-five average: further off on every stat (points 5.34 against
+// 5.13), so the rate keeps ten games and only the minutes are the last five. At PrizePicks' number
+// none of them beat a coin flip (50-52%), so the sharp chance stays the row's big number.
+const PP_PROP_MIN_GAMES = 5;
+function ppPropMinutes(last, k, priorMin) {
+  const five = last.slice(0, PP_PROP_MIN_GAMES).map((r) => r.min).filter((m) => m > 0);
+  const all = last.map((r) => r.min).filter((m) => m > 0);
+  if (!five.length) return null;
+  const was = priorMin > 0 ? (all.reduce((a, b) => a + b, 0) + k * priorMin) / (all.length + k) : all.reduce((a, b) => a + b, 0) / all.length;
+  return { five: five.reduce((a, b) => a + b, 0) / five.length, was };
+}
 function ppPropProjections(last, c, priorOf) {
+  const priorMin = c.perMin ? priorOf('min') : null;
+  const mins = c.perMin ? ppPropMinutes(last, c.k, priorMin) : null;
   const one = (st) => {
     const v = last.map((r) => r[st]).filter((x) => x != null), sum = v.reduce((a, b) => a + b, 0);
     const prior = priorOf(st);
+    if (mins) {
+      const played = last.filter((r) => r[st] != null && r.min > 0);
+      const s = played.reduce((a, r) => a + r[st], 0), m = played.reduce((a, r) => a + r.min, 0);
+      if (prior != null && priorMin > 0) return (s + c.k * prior) / (m + c.k * priorMin) * mins.five;
+      if (played.length >= 3 && m > 0) return s / m * mins.five;
+    }
     if (prior != null) return (sum + c.k * prior) / (v.length + c.k);
     return v.length >= 3 ? sum / v.length : null;
   };
@@ -19093,7 +19121,7 @@ async function ppPropsBoard(env, sport, now = Date.now()) {
           // goalie with a quote on him, or ESPN's name for the net: that's how to tell who starts.
           if (!up && (p.goalie ? !Object.keys(mine).length && !gl : !(p.min >= c.minMin) || (inj && inj.out))) continue;
           placed.add(`${g.date}|${p.k}`);
-          out.players.push({ id: p.id, k: p.k, name: p.name, team: p.team, g: gi, min: p.min, log: p.log, proj: p.proj, lines: mine,
+          out.players.push({ id: p.id, k: p.k, name: p.name, team: p.team, g: gi, min: p.min, ...(p.mw != null ? { mw: p.mw } : {}), log: p.log, proj: p.proj, lines: mine,
             ...(p.st ? { st: p.st } : {}), ...(p.last ? { last: p.last } : {}), ...(p.qb1 ? { qb1: true } : {}), ...(gl ? { gl } : {}), ...(inj ? { inj } : {}) });
         }
       }
@@ -19242,7 +19270,7 @@ async function gradeNflProps(env, tonight = false) {
 
 const ppPropStats = (c) => [...c.cols, ...Object.keys(c.sums)];
 const PP_PROP_CFG = {
-  nba: { lg: 'reg', sportKey: NBA_LEAGUES.reg, gamesKey: 'nba_pp_games', cols: NBA_PROP_COLS, sums: NBA_COMBOS, k: NBA_PRIOR_K, minMin: NBA_PROP_MIN,
+  nba: { lg: 'reg', sportKey: NBA_LEAGUES.reg, gamesKey: 'nba_pp_games', cols: NBA_PROP_COLS, sums: NBA_COMBOS, k: NBA_PRIOR_K, minMin: NBA_PROP_MIN, perMin: true,
     markets: { player_points: 'pts', player_points_rebounds_assists: 'pra', player_points_rebounds: 'pts_reb', player_points_assists: 'pts_ast', player_rebounds_assists: 'reb_ast' },
     name: nbaName, stat: nbaStat, dayBox: nbaPropDayBox, slate: nbaPropsSlate, logTable: 'nbapp', ensure: ensureNbaSchema, teamMatch: nbaMatch },
   // Shots on goal and saves: the two the sharp books price that the log doesn't read. Goals, blocked

@@ -54,7 +54,7 @@ const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
   'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'PROP_TOP_N', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
-  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'propLateTag', 'propRow', 'spBarHtml', 'propsCardHtml'];
+  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'PROP_MIN_MOVE', 'propMinTag', 'propLateTag', 'propRow', 'spBarHtml', 'propsCardHtml'];
 let C;
 try {
   C = new Function('state', 'esc', 'persistSlip', 'renderSlip', CARD.map(lift).join('\n') + '\nreturn { propsCardHtml, propView, propLeg, propSlipSync, propKey, propAgainstTag, LEG_OFFERS };')(state, esc, persistSlip, renderSlip);
@@ -449,7 +449,7 @@ ok(!/projection disagrees/.test(rowFor(card(), 'Franz Wagner')), 'at the recorde
 const vx = { p: 60, side: 'Under', line: 20, proj: 23.5 };
 ok(/projection disagrees/.test(C.propAgainstTag('nba', vx)) && !C.propAgainstTag('nba', { ...vx, proj: 22.5 }), '15% of the line: 23.5 against 20 tags (17.5%), 22.5 does not (12.5%)');
 ok(!C.propAgainstTag('nfl', vx) && !C.propAgainstTag('nhl', vx), 'NBA only: NFL\'s sharp side held up there (35 of 63), the NHL had too few');
-ok(/“Projection disagrees”: his projection is 15% or more the other way\. Last season those landed half on points \(50 of 100\) and 54% on the other stats\./.test(card()), 'How to read this says what the tag means, and what it landed');
+ok(/“Projection disagrees”: his projection is 15% or more the other way\. Last season those landed 52% \(119 of 229\), below what an entry needs\./.test(card()), 'How to read this says what the tag means, and what it landed (replayed on the minutes projection)');
 
 console.log('\n-- read before a teammate was ruled out (2026-11-06) --');
 // The worker puts on a row's line the rotation players ESPN first listed out after its sharp price
@@ -472,6 +472,24 @@ ok(!/read before/.test(rowFor(card(), 'Anthony Black')), 'no percentage on the r
 state.props = { nba: D };
 ok(!/read before/.test(card()), 'the recorded board, with no one ruled out late: none');
 ok(/“Read before … ruled out”: a teammate was ruled out after this price was read, so the books have likely moved\. Check the line before you use it\./.test(card()), 'How to read this says what it means');
+
+console.log('\n-- minutes moving (2026-11-07) --');
+// The owner: "we need to adjust to what's happening specially in minutes". The worker projects his
+// rate a minute times his last five games' minutes and sends his usual minutes beside them (mw,
+// tests/propsnba.mjs); the row says so when the two are 4 or more apart. Anthony Black on a copy.
+const withMin = (min, mw) => ({ ...D, players: D.players.map((p) => (p === ab ? { ...p, min, ...(mw === undefined ? {} : { mw }) } : p)) });
+state.props = { nba: withMin(31.4, 26.2) };
+abRow = rowFor(card(), 'Anthony Black');
+ok(/playing more: 31\.4 min, usually 26\.2/.test(text(abRow)) && abRow.indexOf('playing more') < abRow.indexOf('pr-clear'), `5.2 more: said, beside the other tags: ${text(abRow).slice(0, 110)}`);
+ok(/title="More minutes over his last five games \(31\.4\) than usual \(26\.2\)\. The projection uses the last five\."/.test(abRow), 'its title says what the two numbers are');
+state.props = { nba: withMin(20.1, 26.2) };
+ok(/playing less: 20\.1 min, usually 26\.2/.test(text(rowFor(card(), 'Anthony Black'))), '6.1 fewer: "playing less"');
+state.props = { nba: withMin(29.9, 26.2) };
+ok(!/playing (more|less)/.test(rowFor(card(), 'Anthony Black')), '3.7 apart: nothing');
+state.props = { nba: withMin(31.4) };
+ok(!/playing (more|less)/.test(rowFor(card(), 'Anthony Black')), 'no usual minutes sent (a board from before): nothing');
+state.props = { nba: D };
+ok(/The projection is his rate a minute times his minutes over his last five games; “playing more” or “playing less” means those minutes are 4 or more off his usual\./.test(card()), 'How to read this says how the projection is made');
 
 console.log('\n-- the stat bar that stays under the tabs (2026-11-06) --');
 // The owner: keep the stats in reach while scrolling the games, gone once past them. They chose a

@@ -204,10 +204,18 @@ const pb = P('Paolo Banchero');
 ok(pb && pb.team === 'ORL' && pb.g === 0 && pb.lines.pra.l === 36.5 && pb.lines.pra.u === wantPra && pb.lines.pts.l === 22.5, 'Banchero: ORL, PRA 36.5 with the figure, points 22.5');
 const mine = BOX.filter((r) => r.player === 'Paolo Banchero' && !r.dnp).sort((a, c) => (a.date < c.date ? 1 : -1)).slice(0, 10);
 const mineP = JSON.parse(PRIORS).players[idOf('Paolo Banchero')];
-const wantProj = Math.round((mine.reduce((a, r) => a + r.pts, 0) + 5 * mineP.pts) / (mine.length + 5) * 10) / 10;
-ok(pb.proj.pts === wantProj, `his projection: the last ${mine.length} plus five of last season (${pb.proj.pts}, by hand ${wantProj})`);
-const part = (s) => (mine.reduce((a, r) => a + r[s], 0) + 5 * mineP[s]) / (mine.length + 5);
+// Minutes (2026-11-07, the owner's ask): his rate a minute, the last ten and five games of last
+// season minute for minute, times his minutes over the last five. Replayed on 2025-26 first: closer
+// than the plain average on every stat, most when his minutes moved; a last-five average was not.
+const sumOf = (s) => mine.reduce((a, r) => a + r[s], 0);
+const min5 = mine.slice(0, 5).reduce((a, r) => a + r.min, 0) / Math.min(5, mine.length);
+const part = (s) => (sumOf(s) + 5 * mineP[s]) / (sumOf('min') + 5 * mineP.min) * min5;
+const wantProj = Math.round(part('pts') * 10) / 10;
+const plainProj = Math.round((sumOf('pts') + 5 * mineP.pts) / (mine.length + 5) * 10) / 10;
+ok(pb.proj.pts === wantProj, `his projection: points a minute (last ${mine.length} and five of last season's) x ${Math.round(min5 * 10) / 10} min over his last five (${pb.proj.pts}, by hand ${wantProj}; the plain average was ${plainProj})`);
 ok(pb.proj.pra === Math.round((part('pts') + part('reb') + part('ast')) * 10) / 10, `PRA, its parts added up (${pb.proj.pra})`);
+const wantMw = Math.round((sumOf('min') + 5 * mineP.min) / (mine.length + 5) * 10) / 10;
+ok(pb.min === Math.round(min5 * 10) / 10 && pb.mw === wantMw, `his minutes: ${pb.min} over the last five, usually ${pb.mw} (by hand ${wantMw})`);
 ok(pb.log.length === mine.length && pb.log[pb.log.length - 1][b.cols.indexOf('pts')] === mine[0].pts && pb.log[0][b.cols.indexOf('pts')] === mine[mine.length - 1].pts, 'his log, oldest first');
 ok(pb.proj.tov != null ? mine.length >= 3 : mine.length < 3, 'turnovers, with no prior: his own games once he has three');
 ok(b.cols.includes('tov') && b.sums.pra.length === 3, 'and the page can add up any stat from the log');
@@ -287,12 +295,12 @@ addProp('Franz Wagner', 'pra', 34.5, null);
 sq.prepare('INSERT INTO pp_props (sport, date, pkey, market, player, read_point, result) VALUES (?,?,?,?,?,?,?)').run('nba', '2026-10-10', P('Franz Wagner').k, 'pts_reb', 'Franz Wagner', 30.5, 'under');
 nbapp('Wendell Carter Jr.', 'reb', 7.5, '{}', { date: BEFORE, game_id: 'g-1103', close_point: 8.5, close_under: 55, close_at: new RealDate(TIP - 49 * 3600e3).toISOString() });
 const old0 = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'pp_props_form:nba'").get().data);
-ok(old0.v === 2, 'the form row says which shape it is');
-delete old0.v;
+ok(old0.v === 3, 'the form row says which shape it is (3 since the minutes)');
+old0.v = 2;
 save('pp_props_form:nba', old0);
 scans.length = 0;
 await tick();
-ok(scans.length === 1, 'a form row saved before starts and numbers: built again at once');
+ok(scans.length === 1, 'a form row saved before the minutes (shape 2): built again at once');
 const form1 = JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'pp_props_form:nba'").get().data);
 const F1 = (n) => form1.players.find((p) => p.name === n);
 ok(F1('Franz Wagner').last.pts.join() === `21.5,${BEFORE}` && F1('Franz Wagner').last.pra[0] === 34.5, `Wagner's last numbers: ${JSON.stringify(F1('Franz Wagner').last)}`);
