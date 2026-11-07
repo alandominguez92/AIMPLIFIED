@@ -18983,7 +18983,9 @@ async function nbaPropsSlate(db, now) {
   }).map((g) => {
     const t = Date.parse(g.commence);
     const e = events.find((x) => x && nbaMatch(x.home_team, g.home) && nbaMatch(x.away_team, g.away) && Math.abs(Date.parse(x.commence_time) - t) < 6 * 3600e3);
-    return { id: e ? e.id : `espn:${g.id}`, date: ptDateOf(t), commence: g.commence, home: g.home, away: g.away, homeAb: g.homeAb, awayAb: g.awayAb, inj: g.inj || {}, injAt: g.at };
+    // The odds feed's start where it has the game (2026-11-06, the owner's pick): ESPN lists the
+    // hour (2:00 PM), the feed the tip (2:10), and the board under the card shows the feed's.
+    return { id: e ? e.id : `espn:${g.id}`, date: ptDateOf(t), commence: e && e.commence_time ? e.commence_time : g.commence, home: g.home, away: g.away, homeAb: g.homeAb, awayAb: g.awayAb, inj: g.inj || {}, injAt: g.at };
   }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
 }
 
@@ -18998,7 +19000,7 @@ async function ppPropsFeedSlate(db, sport, eventsKey, aheadMs, now) {
   }).map((g) => {
     const t = Date.parse(g.commence);
     const e = events.find((x) => x && nhlMatch(x.home_team, g.homeNick) && nhlMatch(x.away_team, g.awayNick) && Math.abs(Date.parse(x.commence_time) - t) < 6 * 3600e3);
-    return { id: e ? e.id : `${sport}:${g.id}`, date: ptDateOf(t), commence: g.commence, home: e ? e.home_team : g.homeNick, away: e ? e.away_team : g.awayNick, homeAb: g.home, awayAb: g.away, inj: {}, injAt: 0 };
+    return { id: e ? e.id : `${sport}:${g.id}`, date: ptDateOf(t), commence: e && e.commence_time ? e.commence_time : g.commence, home: e ? e.home_team : g.homeNick, away: e ? e.away_team : g.awayNick, homeAb: g.home, awayAb: g.away, inj: {}, injAt: 0 };
   }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
 }
 

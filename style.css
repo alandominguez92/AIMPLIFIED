@@ -1308,7 +1308,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 
 /* Live Now — teal-railed panel; urgency zone. JS promotes it above the hero
    while games are in progress. */
-#liveNow { background:var(--board); border:1px solid var(--border); border-left:3px solid var(--positive); border-radius:12px; padding:18px 18px 16px; margin-bottom:26px; }
+#liveNow { background:var(--board); border:1px solid var(--border); border-left:3px solid var(--positive); border-radius:12px; padding:18px 18px 16px; margin-top:20px; margin-bottom:26px; }
 #liveNow .sec-head { margin-bottom:14px; }
 
 /* Track-record cards share the violet process rail with .record */

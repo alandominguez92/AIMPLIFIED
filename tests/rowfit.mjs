@@ -69,5 +69,10 @@ ok(/margin:\s*0 0 0 28px/.test(cal) && /left:-52px/.test(css), `the calibration 
 const l1b = (css.match(/(?:^|\n)\.tc-l1 b \{([^}]*)\}/) || [])[1] || '';
 ok(l1b && !/ellipsis|nowrap/.test(l1b) && /overflow-wrap:\s*break-word/.test(l1b), `a long name wraps, never "…" (${l1b.trim()})`);
 
+// Live Now is the first thing on Picks and the NBA tab while games are on. With no gap it sat flush
+// on the sport tabs, its top edge and corners lost under them (2026-11-06 page check, phone and desktop).
+const live = (css.match(/(?:^|\n)#liveNow \{([^}]*)\}/) || [])[1] || '';
+ok(/margin-top:\s*(1[6-9]|2\d)px/.test(live), `Live Now keeps a gap under the tabs (${live.trim()})`);
+
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

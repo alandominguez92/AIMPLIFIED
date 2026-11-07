@@ -255,6 +255,15 @@ const two = lateOf(await hit('/api/nba-props'), 'Paolo Banchero', 'pts');
 ok(two && two.length === 2 && two.includes('Franz Wagner') && two.includes('Desmond Bane'), `two of them: both named (${two})`);
 slate();
 
+console.log('\n-- one game, one start time (2026-11-06) --');
+// ESPN lists the hour, the odds feed the tip: on Nov 7 Nuggets @ Pacers read 2:00 PM on the card and
+// 2:10 on the moneyline board under it. Where the feed has the game, the card shows the feed's time.
+save(`nba_inj:${DAY}`, { sbAt: NOW, games: [{ id: '401900001', home: EVENT.home_team, away: EVENT.away_team, homeAb: 'ORL', awayAb: 'MEM', commence: new RealDate(TIP - 600e3).toISOString(), at: TIP - 6 * 3600e3, inj: REPORT }] });
+const bt = await hit('/api/nba-props');
+ok(bt.games.length === 1 && bt.games[0].id === GAME && Date.parse(bt.games[0].commence) === TIP && bt.games[0].date === DAY,
+  `ESPN ten minutes earlier than the feed: the card shows the feed's tip (${bt.games[0] && bt.games[0].commence})`);
+slate();
+
 console.log('\n-- who to expect, and a number before PrizePicks posts --');
 // The owner asked for picks ahead of time, as the soccer card's expected rows (2026-11-05): the
 // starters marked, and before PrizePicks' number is up a side against the books' line or its last
@@ -301,6 +310,7 @@ const g2 = b2.games.findIndex((g) => g.date === DAY2);
 const w2 = b2.players.find((p) => p.name === 'Franz Wagner' && p.g === g2);
 ok(g2 > 0 && b2.games[g2].homeAb === 'MEM', `two days out, as soccer's expected rows: ${b2.games.map((g) => `${g.awayAb}@${g.homeAb} ${g.date}`).join(', ')}`);
 ok(w2 && !Object.keys(w2.lines).length && w2.last.pts[0] === 21.5 && w2.st.join() === '5,5', 'Wagner there: no number yet, his last one and his starts');
+ok(b2.games[g2].commence === TIP2 && b2.games[g2].id === 'espn:401900002', 'a game the odds feed doesn\'t have yet keeps ESPN\'s time');
 save(`nba_inj:${DAY2}`, { sbAt: NOW, games: [{ id: '401900002', home: EVENT.away_team, away: EVENT.home_team, homeAb: 'MEM', awayAb: 'ORL', commence: new RealDate(TIP + 49 * 3600e3).toISOString(), at: 0, inj: {} }] });
 ok(!(await hit('/api/nba-props')).games.some((g) => g.date === DAY2), 'and not past two days');
 sq.prepare("DELETE FROM feed_cache WHERE key = ?").run(`nba_inj:${DAY2}`);
