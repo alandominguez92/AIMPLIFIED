@@ -54,7 +54,7 @@ const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
   'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'PROP_TOP_N', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
-  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'propRow', 'spBarHtml', 'propsCardHtml'];
+  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'propLateTag', 'propRow', 'spBarHtml', 'propsCardHtml'];
 let C;
 try {
   C = new Function('state', 'esc', 'persistSlip', 'renderSlip', CARD.map(lift).join('\n') + '\nreturn { propsCardHtml, propView, propLeg, propSlipSync, propKey, propAgainstTag, LEG_OFFERS };')(state, esc, persistSlip, renderSlip);
@@ -450,6 +450,28 @@ const vx = { p: 60, side: 'Under', line: 20, proj: 23.5 };
 ok(/projection disagrees/.test(C.propAgainstTag('nba', vx)) && !C.propAgainstTag('nba', { ...vx, proj: 22.5 }), '15% of the line: 23.5 against 20 tags (17.5%), 22.5 does not (12.5%)');
 ok(!C.propAgainstTag('nfl', vx) && !C.propAgainstTag('nhl', vx), 'NBA only: NFL\'s sharp side held up there (35 of 63), the NHL had too few');
 ok(/“Projection disagrees”: his projection is 15% or more the other way\. Last season those landed half on points \(50 of 100\) and 54% on the other stats\./.test(card()), 'How to read this says what the tag means, and what it landed');
+
+console.log('\n-- read before a teammate was ruled out (2026-11-06) --');
+// The worker puts on a row's line the rotation players ESPN first listed out after its sharp price
+// was read (tests/propsnba.mjs). Here, Anthony Black's recorded Over 15.5 points (56.1%) on a copy,
+// with Franz Wagner named.
+const ab = D.players.find((p) => p.name === 'Anthony Black');
+const withLate = (late, ln = {}) => ({ ...D, players: D.players.map((p) => (p === ab ? { ...p, lines: { ...p.lines, pts: { ...p.lines.pts, late, ...ln } } } : p)) });
+state.props = { nba: withLate(['Franz Wagner']) }; state.prStat = {};
+let abRow = rowFor(card(), 'Anthony Black');
+ok(/Anthony Black ORL 56%/.test(text(abRow)) && /read before Franz Wagner was ruled out/.test(text(abRow)), `the row keeps its number and says so: ${text(abRow).slice(0, 90)}`);
+ok(/<span class="tc-wait" title="This price was read [^"]+, before ESPN listed Franz Wagner out\. The books have most likely moved since: check the line before you use this number\.">/.test(abRow), 'its title says when it was read and what to do');
+ok(abRow.indexOf('read before') < abRow.indexOf('pr-clear'), 'on the side line, beside the other tags');
+state.props = { nba: withLate(['Franz Wagner', 'Desmond Bane']) };
+ok(/read before Franz Wagner and Desmond Bane were ruled out/.test(text(rowFor(card(), 'Anthony Black'))), 'two: both, "were"');
+state.props = { nba: withLate(['Franz Wagner', 'Desmond Bane', 'Paolo Banchero']) };
+abRow = rowFor(card(), 'Anthony Black');
+ok(/read before Franz Wagner, Desmond Bane \+1 were ruled out/.test(text(abRow)) && /listed Franz Wagner, Desmond Bane, Paolo Banchero out/.test(abRow), 'three: two and a count, all three in the title');
+state.props = { nba: withLate(['Franz Wagner'], { u: null, fairs: [] }) };
+ok(!/read before/.test(rowFor(card(), 'Anthony Black')), 'no percentage on the row: nothing to doubt, no tag');
+state.props = { nba: D };
+ok(!/read before/.test(card()), 'the recorded board, with no one ruled out late: none');
+ok(/“Read before … ruled out”: a teammate was ruled out after this price was read, so the books have likely moved\. Check the line before you use it\./.test(card()), 'How to read this says what it means');
 
 console.log('\n-- the stat bar that stays under the tabs (2026-11-06) --');
 // The owner: keep the stats in reach while scrolling the games, gone once past them. They chose a

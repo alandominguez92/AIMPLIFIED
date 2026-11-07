@@ -132,6 +132,13 @@ NOW = RealDate.parse('2026-11-01T19:35:00Z');
 a0 = asked.length;
 await tick();
 ok(feedReads(a0).includes('401909904'), 'half an hour on, Nets @ Pacers read again');
+// When each was first seen out (2026-11-06): the props card warns on a teammate's row whose price
+// was read before it. Zubac was out at the game's first read, so the books had it too.
+const SHARPE_OUT = NOW;
+let g904 = cached().games.find((g) => g.id === '401909904');
+ok(g904.inj['4432194'].oa === SHARPE_OUT && g904.inj['4017837'].oa === 0, `first seen out: Sharpe at this read, Zubac 0, out at the first (${g904.inj['4432194'].oa}, ${g904.inj['4017837'].oa})`);
+ok(!('oa' in g904.inj['4278355']) && !('oa' in g904.inj['4702177']) && !('oa' in cached().games.find((g) => g.id === '401909906').inj['5060631']),
+  'none on a questionable player, nor on Thiero ("Out", fantasy GTD)');
 d = await get('/api/picks');
 const ell = leg(d, 'Keon Ellis');
 console.log(`  ${legsOf(d).filter((x) => x.sport === 'nba').map((x) => `${x.title} ${JSON.stringify(x.inj || null)}`).join(' | ')}`);
@@ -146,6 +153,12 @@ console.log(`  ${JSON.stringify(tTop && tTop.inj)} | ${JSON.stringify(tSh && tSh
 ok(tTop && tTop.inj.status === 'GTD' && tTop.inj.what === 'back soreness' && !tTop.inj.out, 'the NBA tab: Obi Toppin GTD (back soreness)');
 ok(tSh && tSh.inj.out === true && tSh.inj.what === 'rest', 'Sharpe, out: still on the tab, unlike Picks, and says so');
 ok(tNem && tNem.inj.status === null, 'Nembhard: read, and not on the report');
+
+NOW = RealDate.parse('2026-11-01T20:06:00Z');
+a0 = asked.length;
+await tick();
+g904 = cached().games.find((g) => g.id === '401909904');
+ok(feedReads(a0).includes('401909904') && g904.at === NOW && g904.inj['4432194'].oa === SHARPE_OUT, 'read again half an hour later: Sharpe keeps the time he was first seen out');
 
 console.log('\n-- after tip --');
 NOW = RealDate.parse('2026-11-01T22:30:00Z');

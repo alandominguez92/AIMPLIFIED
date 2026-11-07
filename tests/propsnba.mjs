@@ -224,6 +224,37 @@ const moe = b.players.find((p) => p.name === 'Moe Wagner');
 ok(moe && moe.log.length === 0 && moe.lines.pts.l === 7.5, 'PrizePicks has a player up with no box score: on the card from the read alone');
 ok(b.record && b.record.graded === 0 && b.record.need === 100, 'nothing graded of the 100');
 
+console.log('\n-- a teammate ruled out after the read (2026-11-06) --');
+// The card reads points and the combos once, about four hours out. A rotation player ESPN lists out
+// after that sends his minutes to his teammates and the books move; the row keeps its number and
+// says so. The report's lines here are copies of Jalen Suggs's real one, with the time each was
+// first seen out (nbaInjuryTick keeps it); Cam Spencer's, from before that was kept, has none.
+const readAt = Date.parse(row('Paolo Banchero', 'pts').read_at);
+const slateWith = (extra) => save(`nba_inj:${DAY}`, { sbAt: NOW, games: [{ id: '401900001', home: EVENT.home_team, away: EVENT.away_team, homeAb: 'ORL', awayAb: 'MEM', commence: new RealDate(TIP).toISOString(), at: TIP - 6 * 3600e3, inj: { ...REPORT, ...extra } }] });
+const outAt = (name, oa) => ({ [idOf(name)]: { ...REPORT[idOf('Jalen Suggs')], name, ln: name.split(' ').pop(), oa } });
+const lateOf = (bd, name, st) => { const p = bd.players.find((x) => x.name === name); return p && p.lines[st] ? p.lines[st].late || null : undefined; };
+const fwMin = form0.players.find((p) => p.name === 'Franz Wagner').min;
+slateWith(outAt('Franz Wagner', readAt + 3600e3));
+let bl = await hit('/api/nba-props');
+ok(fwMin >= 20 && String(lateOf(bl, 'Paolo Banchero', 'pts')) === 'Franz Wagner' && String(lateOf(bl, 'Paolo Banchero', 'pra')) === 'Franz Wagner',
+  `Wagner (${fwMin} minutes a game) out an hour after the read: Banchero's points and PRA say so`);
+ok(String(lateOf(bl, 'Paolo Banchero', 'reb')) === 'Franz Wagner' && String(lateOf(bl, 'Desmond Bane', 'threes')) === 'Franz Wagner', 'and the unders log\'s rows read before it, on every Magic player');
+ok(lateOf(bl, 'Franz Wagner', 'pts') === null && lateOf(bl, 'Cam Spencer', 'pts') === null, 'not on his own rows, nor on the Grizzlies\'');
+ok(bl.players.find((p) => p.name === 'Paolo Banchero').lines.pts.u === pb.lines.pts.u, 'the number stays as it was read');
+slateWith(outAt('Franz Wagner', readAt - 60e3));
+bl = await hit('/api/nba-props');
+ok(lateOf(bl, 'Paolo Banchero', 'pts') === null && String(lateOf(bl, 'Paolo Banchero', 'reb')) === 'Franz Wagner',
+  'out a minute before the read: the points row read after it says nothing; the rebounds row, read five hours out, still does');
+slateWith(outAt('Franz Wagner', 0));
+ok(lateOf(await hit('/api/nba-props'), 'Paolo Banchero', 'reb') === null, 'out at the game\'s first report: the books had it, nothing said');
+const orlBench = form0.players.find((p) => p.team === 'ORL' && p.min > 0 && p.min < 20 && p.name !== 'Franz Wagner');
+slateWith(outAt(orlBench.name, readAt + 3600e3));
+ok(lateOf(await hit('/api/nba-props'), 'Paolo Banchero', 'pts') === null, `${orlBench.name} (${orlBench.min} minutes a game) out after it: not a rotation player, nothing said`);
+slateWith({ ...outAt('Franz Wagner', readAt + 3600e3), ...outAt('Desmond Bane', readAt + 1800e3) });
+const two = lateOf(await hit('/api/nba-props'), 'Paolo Banchero', 'pts');
+ok(two && two.length === 2 && two.includes('Franz Wagner') && two.includes('Desmond Bane'), `two of them: both named (${two})`);
+slate();
+
 console.log('\n-- who to expect, and a number before PrizePicks posts --');
 // The owner asked for picks ahead of time, as the soccer card's expected rows (2026-11-05): the
 // starters marked, and before PrizePicks' number is up a side against the books' line or its last

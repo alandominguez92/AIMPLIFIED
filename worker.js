@@ -9492,6 +9492,18 @@ function nbaInjuriesOf(feed) {
 // Out where ESPN says so both ways: on Nov 1 it had Adou Thiero "Out" with a
 // fantasy status of GTD.
 const nbaInjOut = (i) => i.s === 'Out' && (!i.f || i.f === 'OUT');
+// When each player was first seen out (2026-11-06, pure): `oa` on his line, the time of the read
+// that first listed him out, kept while he stays out. 0 when he was already out at his game's
+// first read, or before reads kept it: out before we looked, which the books had too. The props
+// card warns on a teammate's row whose sharp price was read before a later `oa` (ppPropMarkLate).
+function nbaInjOutSince(fresh, was, first, now) {
+  for (const [id, i] of Object.entries(fresh || {})) {
+    if (!nbaInjOut(i)) continue;
+    const w = was && was[id];
+    i.oa = first ? 0 : w && nbaInjOut(w) ? (w.oa || 0) : now;
+  }
+  return fresh;
+}
 async function nbaInjuryTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   let read = 0;
@@ -9528,7 +9540,7 @@ async function nbaInjuryTick(env, now = Date.now()) {
       try {
         const r = await fetch(`${ESPN_CDN_NBA}/game?xhr=1&gameId=${g.id}`, { headers: { accept: 'application/json', 'user-agent': ESPN_UA } });
         if (!r.ok) continue;
-        g.inj = nbaInjuriesOf(await r.json()); g.at = now; dirty = true;
+        g.inj = nbaInjOutSince(nbaInjuriesOf(await r.json()), g.inj, !g.at, now); g.at = now; dirty = true;
       } catch (e) { /* the next tick */ }
     }
     if (dirty) await saveFeedCache(env.DB, key, st);
@@ -18990,6 +19002,31 @@ async function ppPropsFeedSlate(db, sport, eventsKey, aheadMs, now) {
   }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
 }
 
+// Read before a teammate was ruled out (2026-11-06, the owner's yes). The card reads points and the
+// combos once, about four hours out; a rotation player ruled out after that sends minutes to his
+// teammates, and the books move while the card's number stays. ESPN's report is read every half
+// hour on game day, so this costs nothing: the rotation players (NBA_LATE_OUT_MIN+ minutes over
+// their last five) that it first listed out after a row's price was read, by full name, on that
+// row's line as `late`. The row keeps its number; the page says to check it.
+const NBA_LATE_OUT_MIN = 20;
+function ppPropLateOuts(inj, players) {
+  const out = [];
+  for (const p of players) {
+    const i = inj && inj[String(p.id)];
+    if (i && nbaInjOut(i) && i.oa > 0 && p.min >= NBA_LATE_OUT_MIN) out.push({ id: p.id, n: i.name || p.name, oa: i.oa });
+  }
+  return out;
+}
+function ppPropMarkLate(mine, late) {
+  if (!late.length) return mine;
+  const out = {};
+  for (const [st, x] of Object.entries(mine)) {
+    const t = Date.parse(x.at);
+    const names = isFinite(t) ? late.filter((o) => o.oa > t).map((o) => o.n) : [];
+    out[st] = names.length ? { ...x, late: names } : x;
+  }
+  return out;
+}
 function ppPropRecordOut(rec) {
   const r = rec || { graded: 0, bands: {}, byMarket: {} };
   const c = (k) => r.bands[k] || { n: 0, hit: 0 };
@@ -19046,8 +19083,9 @@ async function ppPropsBoard(env, sport, now = Date.now()) {
       const named = (inGoal.get(g.date) || []).find((x) => nhlMatch(x.home, g.home) && nhlMatch(x.away, g.away)) || null;
       for (const team of [g.awayAb, g.homeAb]) {
         const goalie = named ? (team === g.homeAb ? { k: named.homeG && c.name(named.homeG), s: named.homeS } : { k: named.awayG && c.name(named.awayG), s: named.awayS }) : null;
+        const late = ppPropLateOuts(g.inj, byTeam.get(team) || []);
         for (const p of (byTeam.get(team) || [])) {
-          const mine = linesOf(g.date, p.k), up = Object.values(mine).some((x) => x.l != null), inj = injOf(g, p.id);
+          const mine = ppPropMarkLate(linesOf(g.date, p.k), late.filter((o) => o.id !== p.id)), up = Object.values(mine).some((x) => x.l != null), inj = injOf(g, p.id);
           const gl = p.goalie && goalie && goalie.k === p.k ? goalie.s || 'Expected' : null;
           // Ruled out and no number up: nothing to compare. Still up: the flag is the news. A
           // goalie with a quote on him, or ESPN's name for the net: that's how to tell who starts.
@@ -19063,8 +19101,9 @@ async function ppPropsBoard(env, sport, now = Date.now()) {
       if (placed.has(key)) continue;
       const gi = games.findIndex((g) => g.date === m.date && c.teamMatch(g.home, m.home) && c.teamMatch(g.away, m.away));
       if (gi < 0) continue;
-      const inj = m.id ? injOf(games[gi], m.id) : null;
-      out.players.push({ id: m.id || null, k: key.split('|')[1], name: m.name, team: m.team || null, g: gi, min: null, log: [], proj: {}, lines: linesOf(m.date, key.split('|')[1]), ...(inj ? { inj } : {}) });
+      const inj = m.id ? injOf(games[gi], m.id) : null, gm = games[gi];
+      const late = m.team && (m.team === gm.homeAb || m.team === gm.awayAb) ? ppPropLateOuts(gm.inj, byTeam.get(m.team) || []) : [];
+      out.players.push({ id: m.id || null, k: key.split('|')[1], name: m.name, team: m.team || null, g: gi, min: null, log: [], proj: {}, lines: ppPropMarkLate(linesOf(m.date, key.split('|')[1]), late), ...(inj ? { inj } : {}) });
     }
     out.games = games.map(({ inj, injAt, ...g }) => g);
   } catch (e) { out.error = String((e && e.message) || e); }

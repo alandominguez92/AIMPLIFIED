@@ -7776,7 +7776,7 @@
   };
   // What last season's replay at PrizePicks' numbers said, for each card's head.
   const PROP_NOTE = {
-    nba: 'Last season 54%+ on points landed 57%. “Projection disagrees”: his projection is 15% or more the other way. Last season those landed half on points (50 of 100) and 54% on the other stats.',
+    nba: 'Last season 54%+ on points landed 57%. “Projection disagrees”: his projection is 15% or more the other way. Last season those landed half on points (50 of 100) and 54% on the other stats. “Read before … ruled out”: a teammate was ruled out after this price was read, so the books have likely moved. Check the line before you use it.',
     nhl: 'Last season 54%+ on points landed 54%, on few games. PrizePicks’ number comes through on points and assists, and sometimes saves: set it by hand on the rest.',
     nfl: 'Last season 54%+ landed 56% on receiving and rushing yards, 49% on catches. Passing yards and catches come in within 20 hours of kickoff; Rush + Rec is set by hand.',
   };
@@ -7920,6 +7920,15 @@
     if (!projSide || projSide === v.side || Math.abs(v.proj - v.line) / Math.max(v.line, 0.5) < PROP_AGAINST) return '';
     return ` <span class="tc-wait" title="His projection says ${projSide}, 15% or more from the line">projection disagrees</span>`;
   }
+  // Read before a teammate was ruled out (2026-11-06, the owner's yes): the worker names the rotation
+  // players ESPN first listed out after this row's sharp price was read (ppPropMarkLate). Their
+  // minutes go somewhere and the books have most likely moved; the number stays as it was read.
+  function propLateTag(v) {
+    const late = v.p != null && v.ln && v.ln.late;
+    if (!late || !late.length) return '';
+    const who = late.length > 2 ? `${late.slice(0, 2).join(', ')} +${late.length - 2}` : late.join(' and ');
+    return ` <span class="tc-wait" title="This price was read ${esc(soccerKick(v.ln.at))}, before ESPN listed ${esc(late.join(', '))} out. The books have most likely moved since: check the line before you use this number.">read before ${esc(who)} ${late.length > 1 ? 'were' : 'was'} ruled out</span>`;
+  }
   function propRow(sport, d, g, p, s) {
     const v = propView(sport, d, g, p, s), key = v.key, label = PROP_STATS[sport][s];
     const leg = propLeg(sport, g, p, s, v);
@@ -7943,7 +7952,7 @@
     return `<li class="sp-row${open ? ' open' : ''}">${star}<div class="tc-leg">`
       + `<button type="button" class="sp-tap" data-action="pr-row" data-key="${esc(key)}" aria-expanded="${open}">`
       + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span>${v.p != null ? `<span class="tc-p${v.p >= PROP_STRONG ? ' sp-strong' : ''}">${pct0(v.p)}</span>` : ''}</span>`
-      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propAgainstTag(sport, v)}${propStartTag(sport, p)}${nbaCardInjTag(p)}</span>`
+      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propLateTag(v)}${propAgainstTag(sport, v)}${propStartTag(sport, p)}${nbaCardInjTag(p)}</span>`
       + (v.src === 'none' ? (v.proj != null ? `<span class="pr-clear dots"><span class="dots-in"><span>proj <b>${esc(String(v.proj))}</b></span>${v.vals.length ? ` <span><span class="dot">·</span> avg ${esc(String(r1(v.vals.reduce((a, x) => a + x, 0) / v.vals.length)))} in last ${v.vals.length}</span>` : ''}</span></span>` : '')
         : `${projLineHtml(v.proj, v.line, v.side)}${v.vals.length ? `<span class="pr-clear">over ${esc(String(v.line))} in ${v.over} of last ${v.vals.length}</span>` : ''}`) + `</span>`
       + `</button>`
