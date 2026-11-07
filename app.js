@@ -4780,7 +4780,7 @@
         renderSoccer();
         break;
       }
-      case 'socp-stat': state.socStat = target.dataset.stat; renderSoccer(); break;
+      case 'socp-stat': spSwitch('soccer', () => { state.socStat = target.dataset.stat; renderSoccer(); }); break;
       // The NBA, NHL and NFL props cards.
       case 'pr-how': {
         const sp = target.dataset.sport;
@@ -4788,7 +4788,7 @@
         if (sp === 'soccer') renderSoccer(); else propRedraw(sp);
         break;
       }
-      case 'pr-stat': state.prStat ={ ...(state.prStat || {}), [target.dataset.sport]: target.dataset.stat }; propRedraw(target.dataset.sport); break;
+      case 'pr-stat': spSwitch(target.dataset.sport, () => { state.prStat = { ...(state.prStat || {}), [target.dataset.sport]: target.dataset.stat }; propRedraw(target.dataset.sport); }); break;
       case 'pr-top-all': state.prTopAll = { ...(state.prTopAll || {}), [target.dataset.sport]: true }; propRedraw(target.dataset.sport); break;
       case 'pr-match': {
         const id = target.dataset.id;
@@ -5101,6 +5101,13 @@
     if (t.dataset.prl) {
       const v = Number(t.value);
       if (isFinite(v) && v >= 0) { propLineSave(t.dataset.prl, Math.round(v * 2) / 2); propRedraw(t.dataset.prl.split(':')[0]); }
+    }
+    // A stat picked from the bar that stays under the tabs (2026-11-06).
+    if (t.dataset.spsel) {
+      const sp = t.dataset.spsel, v = t.value;
+      spSwitch(sp, () => {
+        if (sp === 'soccer') { state.socStat = v; renderSoccer(); } else { state.prStat = { ...(state.prStat || {}), [sp]: v }; propRedraw(sp); }
+      });
     }
     if (t.dataset.action === 'entry-payout') {
       const v = t.value.trim();
@@ -7949,6 +7956,49 @@
         + `<span class="pr-sides">${side('Under')}${side('Over')}</span>${trend}</div>` : '')
       + `</div></li>`;
   }
+  // The stat bar (2026-11-06, the owner's pick): once the stat buttons have scrolled away, a slim
+  // bar under the tabs switches stat through the phone's own list, without scrolling back up. It
+  // sticks inside its card, so it leaves once the last game has gone by. Where the buttons fit on
+  // one row they stay put instead (`sp-one`) and the bar never shows. Both are set by spStickSync.
+  function spBarHtml(sport, opts, view, strong) {
+    const cur = opts.find((o) => o.value === view) || opts[0];
+    const on = !!(state.spBarOn && state.spBarOn[sport]);
+    return `<div class="sp-stick${on ? ' on' : ''}"><div class="sp-bar"><span class="sp-bar-l">Stat</span>`
+      + `<span class="sp-bar-pick"><span class="sp-bar-v">${esc(cur.name)}${cur.n ? ` · <b>${cur.n}</b> at ${strong}%+` : ''}</span>`
+      + `<select class="sp-sel" data-spsel="${esc(sport)}" aria-label="Stat">${opts.map((o) => `<option value="${esc(o.value)}"${o.value === view ? ' selected' : ''}>${esc(o.name)}${o.n ? ` · ${o.n}` : ''}</option>`).join('')}</select></span></div></div>`;
+  }
+  const spTop = () => { const nav = document.querySelector('.sports'); return nav ? Math.max(0, nav.getBoundingClientRect().bottom) : 0; };
+  function spStickSync() {
+    const top = spTop();
+    for (const card of document.querySelectorAll('.sp-card[data-sp]')) {
+      const chips = card.querySelector('.sp-chips'), stick = card.querySelector('.sp-stick');
+      if (!chips || !stick || !card.getClientRects().length) continue;
+      const sp = card.dataset.sp;
+      const one = new Set([...chips.children].map((b) => b.offsetTop)).size === 1;
+      const on = !one && chips.getBoundingClientRect().bottom < top && card.getBoundingClientRect().bottom > top + 60;
+      card.classList.toggle('sp-one', one);
+      stick.classList.toggle('on', on);
+      if (!!(state.spOne && state.spOne[sp]) !== one) state.spOne = { ...(state.spOne || {}), [sp]: one };
+      if (!!(state.spBarOn && state.spBarOn[sp]) !== on) state.spBarOn = { ...(state.spBarOn || {}), [sp]: on };
+    }
+  }
+  let spRaf = 0;
+  const spStickSoon = () => { if (!spRaf) spRaf = requestAnimationFrame(() => { spRaf = 0; spStickSync(); }); };
+  // A stat switched lower down keeps the reader's place: the game under the bar stays where it was,
+  // and inside the strongest list the new one starts under the bar. The lists above change length.
+  function spSwitch(sport, apply) {
+    const below = spTop() + 60;
+    const card = document.querySelector(`.sp-card[data-sp="${sport}"]`);
+    const first = card && [...card.querySelectorAll('[data-anchor], .sp-match[data-mid]')].find((x) => x.getBoundingClientRect().bottom > below);
+    const key = first ? (first.dataset.anchor ? 'top' : first.dataset.mid) : null;
+    const was = key === 'top' ? card.querySelector('[data-anchor="top"]') : first;
+    const at = was ? Math.max(was.getBoundingClientRect().top, key === 'top' ? below : -Infinity) : 0;
+    apply();
+    const now = document.querySelector(`.sp-card[data-sp="${sport}"]`);
+    const n = key && now && now.querySelector(key === 'top' ? '[data-anchor="top"]' : `.sp-match[data-mid="${CSS.escape(key)}"]`);
+    if (n) window.scrollBy({ top: n.getBoundingClientRect().top - at, behavior: 'instant' });
+    spStickSync();
+  }
   function propsCardHtml(sport) {
     const d = propData(sport);
     if (!d) return '';
@@ -7987,7 +8037,8 @@
     };
     const chips = `<input class="sp-search" type="search" placeholder="Find a player" value="${esc((state.prQuery && state.prQuery[sport]) || '')}" data-prq="${esc(sport)}" aria-label="Find a player">`
       + `<div class="sp-chips">${[...stats, 'best'].map(chipHtml).join('')}</div>`
-      + `<div class="sp-hint">${esc(view === 'best' ? 'Each player’s strongest sharp number' : `${PROP_STATS[sport][view][0]}: sharp numbers first, then by projection`)}</div>`;
+      + `<div class="sp-hint">${esc(view === 'best' ? 'Each player’s strongest sharp number' : `${PROP_STATS[sport][view][0]}: sharp numbers first, then by projection`)}</div>`
+      + spBarHtml(sport, [...stats, 'best'].map((s) => ({ value: s, name: s === 'best' ? 'Best' : PROP_STATS[sport][s][0], n: nStrong[s] || 0 })), view, PROP_STRONG);
     const dist = (x) => (x.v.p == null ? -1 : Math.abs(x.v.fair - 50));
     let found = 0;
     const body = games.map(({ g, i }) => {
@@ -8011,8 +8062,8 @@
         + `<span class="sp-mt"><b>${esc(propNick(sport, g.away))} @ ${esc(propNick(sport, g.home))}</b> · <span class="pk-when">${esc(soccerKick(g.commence))}</span>`
         + `<span class="sp-mc">${rows.length} player${rows.length === 1 ? '' : 's'}${strong ? ` <span class="sp-badge">${strong} at ${PROP_STRONG}%+</span>` : ''}</span></span>`
         + `<span class="sp-chev" aria-hidden="true"></span></button>`;
-      if (!mOpen) return `<div class="sp-match">${mHead}</div>`;
-      return `<div class="sp-match">${mHead}<ol class="tc-legs">${rows.map((x) => propRow(sport, d, g, x.p, x.s)).join('')}</ol></div>`;
+      if (!mOpen) return `<div class="sp-match" data-mid="${esc(g.id)}">${mHead}</div>`;
+      return `<div class="sp-match" data-mid="${esc(g.id)}">${mHead}<ol class="tc-legs">${rows.map((x) => propRow(sport, d, g, x.p, x.s)).join('')}</ol></div>`;
     }).join('');
     const nothing = !found ? `<div class="tc-wait-note">${q ? `No player matches “${esc(state.prQuery[sport])}”${view !== 'best' ? ` in ${esc(PROP_STATS[sport][view][1])}` : ''}.` : view === 'best' ? 'No sharp numbers read yet: each game’s come about four hours before it.' : 'No players to list yet.'}</div>` : '';
     // The stat's 54%+ players from every game, above the games (2026-11-06, the owner's pick): the
@@ -8031,14 +8082,14 @@
       const name = view === 'best' ? 'any stat' : PROP_STATS[sport][view][0];
       const all = !!(state.prTopAll && state.prTopAll[sport]);
       const shown = all ? tops : tops.slice(0, PROP_TOP_N);
-      top = `<div class="sp-sec">Strongest${view === 'best' ? ', any stat' : ` ${esc(name)}`}<span class="sp-badge">${tops.length} at ${PROP_STRONG}%+</span></div>`
+      top = `<div class="sp-sec" data-anchor="top">Strongest${view === 'best' ? ', any stat' : ` ${esc(name)}`}<span class="sp-badge">${tops.length} at ${PROP_STRONG}%+</span></div>`
         + (tops.length
           ? `<ol class="tc-legs sp-top">${shown.map((x) => propRow(sport, d, x.g, x.p, x.s)).join('')}</ol>`
             + (shown.length < tops.length ? `<button type="button" class="sp-more" data-action="pr-top-all" data-sport="${esc(sport)}">All ${tops.length}</button>` : '')
           : `<div class="tc-wait-note">No ${view === 'best' ? 'player' : `${esc(name)} number`} at ${PROP_STRONG}%+ right now.</div>`)
-        + '<div class="sp-sec">All games</div>';
+        + '<div class="sp-sec" data-anchor="games">All games</div>';
     }
-    return `<div class="nba-pp pk-card sp-card">${head}${chips}${top}${body}${nothing}</div>`;
+    return `<div class="nba-pp pk-card sp-card${state.spOne && state.spOne[sport] ? ' sp-one' : ''}" data-sp="${esc(sport)}">${head}${chips}${top}${body}${nothing}</div>`;
   }
   // Back on a tab after two minutes, the card alone: the reads land through the day.
   async function refreshProps(sport) {
@@ -8101,7 +8152,8 @@
       + socSideLineHtml(d.record, d.ppRecord)
       + (listed.length ? `<input class="sp-search" type="search" placeholder="Find a player" value="${esc(state.socQuery || '')}" data-socq="1" aria-label="Find a player">`
         + `<div class="sp-chips">${['best', ...stats].map((s) => `<button type="button" class="sp-chip${s === view ? ' on' : ''}" data-action="socp-stat" data-stat="${s}" aria-pressed="${s === view}">${esc(s === 'best' ? 'Best' : SOC_STAT[s])}</button>`).join('')}</div>`
-        + `<div class="sp-hint">${esc(hint)}</div>` : '');
+        + `<div class="sp-hint">${esc(hint)}</div>`
+        + spBarHtml('soccer', ['best', ...stats].map((s) => ({ value: s, name: s === 'best' ? 'Best' : SOC_STAT[s] })), view) : '');
     let found = 0;
     const body = listed.map((m) => {
       let rows = m.rows.filter((r) => !q || String(r.player).toLowerCase().includes(q));
@@ -8129,14 +8181,14 @@
       const mHead = `<button type="button" class="sp-mh" data-action="socp-match" data-id="${esc(m.id)}" aria-expanded="${mOpen}">`
         + `<span class="sp-mt"><b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span>`
         + `<span class="sp-mc">${count}</span></span><span class="sp-chev" aria-hidden="true"></span></button>`;
-      if (!mOpen) return `<div class="sp-match">${mHead}</div>`;
+      if (!mOpen) return `<div class="sp-match" data-mid="${esc(m.id)}">${mHead}</div>`;
       // Best shows the top eight until asked for the rest; a stat's list and a
       // search show all.
       const all = !!q || view !== 'best' || !!(state.socAll && state.socAll[m.id]);
       const shown = all ? rows : rows.slice(0, SOC_BEST_N);
       const more = shown.length < rows.length
         ? `<button type="button" class="sp-more" data-action="socp-all" data-id="${esc(m.id)}">All ${rows.length} ${isExp ? 'expected' : 'starters'}</button>` : '';
-      return `<div class="sp-match">${mHead}<ol class="tc-legs">${shown.map((r) => socPropRow(m, r)).join('')}</ol>${more}</div>`;
+      return `<div class="sp-match" data-mid="${esc(m.id)}">${mHead}<ol class="tc-legs">${shown.map((r) => socPropRow(m, r)).join('')}</ol>${more}</div>`;
     }).join('');
     const nothing = q && listed.length && !found ? `<div class="tc-wait-note">No player matches “${esc(state.socQuery)}”${view !== 'best' ? ` in ${esc(socStatWords(view))}` : ''}.</div>` : '';
     const wait = waiting.length
@@ -8145,7 +8197,7 @@
     // The page that still answers has none of these (socPageRows in worker.js).
     const stale = stats.some((s) => ['passes', 'tackles', 'clear', 'crosses', 'shot_ast'].includes(s))
       ? '<div class="tc-wait-note">Passes, tackles, clearances, crosses and shots assisted run on numbers from before Oct 12: ESPN stopped sending them, so new ones can\'t be graded.</div>' : '';
-    return `<div class="nba-pp pk-card sp-card">${head}${body}${nothing}${wait}${none}${stale}</div>`;
+    return `<div class="nba-pp pk-card sp-card${state.spOne && state.spOne.soccer ? ' sp-one' : ''}" data-sp="soccer">${head}${body}${nothing}${wait}${none}${stale}</div>`;
   }
 
   // The best soccer prop in each stat, for the Picks tab (2026-10-21): across
@@ -8448,6 +8500,9 @@
     for (let t = walk.nextNode(); t; t = walk.nextNode()) if (t.data.includes(' · ')) t.data = glueDots(t.data);
   }
   glueDotsIn(document.body);
-  new MutationObserver((muts) => { for (const m of muts) m.addedNodes.forEach((n) => glueDotsIn(n)); }).observe(document.body, { childList: true, subtree: true });
+  // The props cards' stat bar follows the scroll, and every redraw (spStickSync).
+  new MutationObserver((muts) => { for (const m of muts) m.addedNodes.forEach((n) => glueDotsIn(n)); spStickSoon(); }).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('scroll', spStickSoon, { passive: true });
+  window.addEventListener('resize', spStickSoon);
 
 })();

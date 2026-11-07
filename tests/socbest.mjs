@@ -88,7 +88,7 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const NAMES = ['SOC_STAT', 'nbCdf', 'socChanceAt', 'socKey', 'socLineOf', 'socLean', 'socStatWords', 'SOC_POS', 'socPosWords', 'ptDayOf', 'pct1', 'pct0',
-  'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'socpLeg', 'socSaveHtml', 'socRecB', 'socPropRow', 'SOC_BEST_N', 'socRankP', 'socSideLineHtml', 'socPropsCardHtml',
+  'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'socpLeg', 'socSaveHtml', 'socRecB', 'socPropRow', 'SOC_BEST_N', 'socRankP', 'socSideLineHtml', 'spBarHtml', 'socPropsCardHtml',
   'socWeakStat', 'socBestByStat', 'socBestStripHtml', 'initialsOf', 'headshotUrl', 'avatarHtml'];
 const state = { socProps: board, socLines: {}, socSaved: {}, socSaving: {}, socOpen: {}, slip: {}, soccerLeague: 'all', socStat: 'best', socQuery: '' };
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -175,6 +175,18 @@ const leno = m1.rows.filter((r) => r.player === 'Bernd Leno');
 ok(rows.length === leno.length && rows.every((x) => x.r.player === 'Bernd Leno'), `a search shows every stat of the player found (${rows.length})`);
 state.socQuery = ''; state.socStat = 'not-a-stat';
 ok(/class="sp-chip on"[^>]*data-stat="best"/.test(F.socPropsCardHtml()), 'a stat no match has falls back to Best');
+state.socStat = 'best';
+// The stat bar that stays under the tabs past the buttons (2026-11-06, the owner's pick): soccer's
+// too, Best first as its buttons are, no counts (its chances are at the app's line).
+state.socStat = 'tackles';
+h = F.socPropsCardHtml();
+const socOpts = [...h.matchAll(/<option value="(\w+)"( selected)?>([^<]+)<\/option>/g)].map((m) => [m[1], !!m[2], m[3]]);
+const socChips = [...h.matchAll(/data-action="socp-stat" data-stat="(\w+)"/g)].map((m) => m[1]);
+ok(/data-sp="soccer"/.test(h) && /data-spsel="soccer"/.test(h) && socOpts.map((o) => o[0]).join() === socChips.join() && socOpts[0][0] === 'best',
+  `the soccer card has the bar, Best first, every stat its buttons have (${socOpts.length})`);
+ok(socOpts.filter((o) => o[1]).map((o) => o[0]).join() === 'tackles' && /<span class="sp-bar-v">Tackles<\/span>/.test(h) && !socOpts.some((o) => /·/.test(o[2])),
+  'the stat showing picked, no counts');
+ok(/class="sp-match" data-mid="[^"]+"/.test(h), 'its matches marked, to keep the place on a switch');
 state.socStat = 'best';
 
 console.log('\n-- Picks: the best of each stat --');

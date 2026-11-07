@@ -54,7 +54,7 @@ const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
   'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'PROP_TOP_N', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
-  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'propRow', 'propsCardHtml'];
+  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'propRow', 'spBarHtml', 'propsCardHtml'];
 let C;
 try {
   C = new Function('state', 'esc', 'persistSlip', 'renderSlip', CARD.map(lift).join('\n') + '\nreturn { propsCardHtml, propView, propLeg, propSlipSync, propKey, propAgainstTag, LEG_OFFERS };')(state, esc, persistSlip, renderSlip);
@@ -384,7 +384,8 @@ console.log('\n-- the strongest above the games, each game a bar to tap (2026-11
 // so the list has two to draw from. Their lines and chances are the recorded ones.
 const G2 = { ...D.games[0], id: `${D.games[0].id}-2`, commence: new RealDate(Date.parse(D.games[0].commence) + 3600e3).toISOString() };
 const D2 = { ...D, games: [D.games[0], G2], players: D.players.map((p) => (p.team === 'MEM' ? { ...p, g: 1 } : p)) };
-const secOf = (h) => (h.includes('<div class="sp-sec">All games</div>') ? h.slice(h.indexOf('<div class="sp-sec">'), h.indexOf('<div class="sp-sec">All games</div>')) : '');
+const ALL_GAMES = '<div class="sp-sec" data-anchor="games">All games</div>';
+const secOf = (h) => (h.includes(ALL_GAMES) ? h.slice(h.indexOf('<div class="sp-sec" data-anchor="top">'), h.indexOf(ALL_GAMES)) : '');
 ok(!/sp-sec/.test(card()), 'one game, open already: no list above it');
 state.props = { nba: D2 };
 h = card();
@@ -450,5 +451,30 @@ ok(/projection disagrees/.test(C.propAgainstTag('nba', vx)) && !C.propAgainstTag
 ok(!C.propAgainstTag('nfl', vx) && !C.propAgainstTag('nhl', vx), 'NBA only: NFL\'s sharp side held up there (35 of 63), the NHL had too few');
 ok(/“Projection disagrees”: his projection is 15% or more the other way\. Last season those landed half on points \(50 of 100\) and 54% on the other stats\./.test(card()), 'How to read this says what the tag means, and what it landed');
 
-console.log(fail ?`\n${fail} FAILED` : '\nall passed');
+console.log('\n-- the stat bar that stays under the tabs (2026-11-06) --');
+// The owner: keep the stats in reach while scrolling the games, gone once past them. They chose a
+// slim bar with the phone's own list over pinning all the buttons (five rows on a phone). The page
+// shows it once the buttons have scrolled away (spStickSync, checked in the browser); here, what it
+// draws and what the page reads to keep the reader's place on a switch.
+state.props = { nba: D2 }; state.prStat = {}; state.spBarOn = {}; state.spOne = {};
+h = card();
+const sbar = (h.match(/<div class="sp-stick[^"]*">[\s\S]*?<\/select><\/span><\/div><\/div>/) || [''])[0];
+const opts = [...sbar.matchAll(/<option value="(\w+)"( selected)?>([^<]+)<\/option>/g)].map((m) => ({ v: m[1], sel: !!m[2], t: m[3] }));
+console.log('  ' + opts.map((o) => `${o.t}${o.sel ? '*' : ''}`).join(' | '));
+ok(/^<div class="sp-stick">/.test(sbar) && h.indexOf('sp-stick') > h.indexOf('sp-chips') && h.indexOf('sp-stick') < h.indexOf('data-anchor="top"'), 'under the buttons, above the lists, hidden until the page shows it');
+ok(opts.length === 13 && opts.map((o) => o.v).join() === [...chips].join() && opts.filter((o) => o.sel).map((o) => o.v).join() === 'pts', 'every stat and Best, in the buttons\' order, the one showing picked');
+ok(opts.find((o) => o.v === 'pts').t === 'Points · 1' && opts.find((o) => o.v === 'tov').t === 'Turnovers' && opts.find((o) => o.v === 'best').t === `Best · ${wantBest}`, 'each with its 54%+ count, none where there is none');
+ok(/<span class="sp-bar-v">Points · <b>1<\/b> at 54%\+<\/span>/.test(sbar) && /data-spsel="nba"/.test(sbar), 'the bar reads "Points · 1 at 54%+", its list keyed to the NBA card');
+state.prStat = { nba: 'reb_ast' };
+ok(/<option value="reb_ast" selected>/.test(card()) && /<span class="sp-bar-v">Reb \+ Ast/.test(card()), 'a stat picked: the bar says so');
+state.prStat = {};
+state.spBarOn = { nba: true }; state.spOne = { nba: true };
+ok(/<div class="sp-stick on">/.test(card()) && /class="nba-pp pk-card sp-card sp-one" data-sp="nba"/.test(card()), 'redrawn while showing, it stays showing; one row of buttons stays the buttons');
+state.spBarOn = {}; state.spOne = {};
+ok((h.match(/class="sp-match" data-mid="[^"]+"/g) || []).length === 2 && /data-anchor="top"/.test(h) && /data-anchor="games"/.test(h), 'each game and both headings marked, to keep the place on a switch');
+ok(/\.sp-stick \{ position:sticky; top:calc\(var\(--hdrH\) \+ var\(--sportsH\)\); height:0;/.test(css) && /\.sp-card\.sp-one \.sp-chips \{ position:sticky;/.test(css) && /\.sp-sel \{[^}]*font-size:16px/.test(css),
+  'sticky under the tabs inside the card, taking no room; one row of buttons sticks itself; 16px so iOS doesn\'t zoom');
+state.props = { nba: D };
+
+console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
