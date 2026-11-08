@@ -229,9 +229,22 @@ ok(kindScans(r.ran) === 0 && r.same, 'tonight\'s open leg re-read at a new line:
 const kinds0 = JSON.parse(r.k).kinds.nba_pp.record;
 both("UPDATE nbapp SET result = 'under', actual = 0 WHERE game_id = ? AND player = ? AND market = ?", leg.game_id, leg.player, leg.market);
 both("UPDATE nbapp SET min_proj = 30, model_under = 75 WHERE result = 'under' AND market = 'ast' AND rowid = (SELECT MIN(rowid) FROM nbapp WHERE result = 'under' AND market = 'ast')");
+// The kinds' record stands half an hour through a grade (2026-11-08, PICK_KINDS_SETTLE_MS): with
+// the night's games grading every ten minutes it was rebuilt on nearly every read of the list.
+r = await get('/api/picks');
+ok(kindScans(r.ran) === 0 && JSON.stringify(JSON.parse(r.k).kinds.nba_pp.record) === JSON.stringify(kinds0),
+  `legs graded minutes after the last build: the kept record stands, not rebuilt (${kindScans(r.ran)} scans)`);
+NOW += 29 * 60e3;
+r = await get('/api/picks');
+ok(kindScans(r.ran) === 0, `29 minutes on: still kept (${kindScans(r.ran)} scans)`);
+const settled = NOW;
+NOW += 2 * 60e3;
 r = await get('/api/picks');
 ok(kindScans(r.ran) === 4 && r.same && JSON.stringify(JSON.parse(r.k).kinds.nba_pp.record) !== JSON.stringify(kinds0),
-  `legs graded and regraded: rebuilt, the NBA record moved (${JSON.stringify(kinds0)} -> ${JSON.stringify(JSON.parse(r.k).kinds.nba_pp.record)}), the same answer`);
+  `half an hour on: rebuilt, the NBA record moved (${JSON.stringify(kinds0)} -> ${JSON.stringify(JSON.parse(r.k).kinds.nba_pp.record)}), the same answer as a fresh build`);
+r = await get('/api/picks');
+ok(kindScans(r.ran) === 0 && r.same, `and nothing graded since: kept again (${kindScans(r.ran)} scans), the same answer`);
+NOW = settled - 29 * 60e3;
 
 console.log('\n-- the soccer and NBA cards --');
 r = await get('/api/soccer-props');

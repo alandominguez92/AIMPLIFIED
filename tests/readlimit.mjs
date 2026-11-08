@@ -309,6 +309,8 @@ ok(updPlan.some((d) => /nfl_proj_open/.test(d)), `the NFL grader's per-row UPDAT
 // each, three times the table after every grade, growing all season.
 console.log('\n-- Picks --');
 sq.prepare("UPDATE rec_dirty SET dirty = 1 WHERE k = 'pick-kinds'").run();
+// And no kept copy: one built under half an hour ago stands through a grade (PICK_KINDS_SETTLE_MS).
+sq.prepare("DELETE FROM feed_cache WHERE key LIKE 'rec:pick-kinds:%'").run();
 const picks = await record(() => hit('/api/picks'));
 const nbOpen = picks.filter((e) => /FROM nbapp WHERE date IN \(\?, \?\) AND result IS NULL/.test(e.sql));
 const nbGraded = picks.filter((e) => /^SELECT .* FROM nbapp WHERE/.test(e.sql) && /result IN \('under','over'\)/.test(e.sql));

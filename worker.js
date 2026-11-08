@@ -5916,7 +5916,9 @@ const raiseRecord = (db, key) => db.prepare('UPDATE rec_dirty SET dirty = 1 WHER
 // The record build() makes, kept until a write raises its flag. build returns
 // { data, complete }; an incomplete build is served once and not kept. A
 // variant (a day, say) keeps one copy at a time: another variant rebuilds.
-async function recordCached(env, key, build, variant = '') {
+// settleMs: a copy built less than that long ago stands through a write too,
+// for a record a few minutes behind is no worse (pickKindRecords).
+async function recordCached(env, key, build, variant = '', settleMs = 0) {
   const db = env.DB;
   const base = `rec:${key}:`;
   const ck = base + ((env.CF_VERSION_METADATA && env.CF_VERSION_METADATA.id) || '') + (variant ? ':' + variant : '');
@@ -5924,9 +5926,11 @@ async function recordCached(env, key, build, variant = '') {
   try {
     await ensureRecordFlags(db, key);
     const f = await db.prepare('SELECT dirty, gen FROM rec_dirty WHERE k = ?').bind(key).first();
-    if (f && Number(f.dirty) === 0) {
+    if (f && (Number(f.dirty) === 0 || settleMs > 0)) {
       const hit = await loadFeedCache(db, ck);
-      if (hit.present && hit.ageMs < REC_MAX_AGE_MS && hit.data && hit.data.gen === Number(f.gen)) return hit.data.data;
+      // The flag counts generations, not writes: a copy whose gen is the latest is the last build's.
+      const age = Number(f.dirty) === 0 ? REC_MAX_AGE_MS : Math.min(settleMs, REC_MAX_AGE_MS);
+      if (hit.present && hit.ageMs < age && hit.data && hit.data.gen === Number(f.gen)) return hit.data.data;
     }
     const [, g] = await db.batch([
       db.prepare('UPDATE rec_dirty SET dirty = 0, gen = gen + 1 WHERE k = ?').bind(key),
@@ -10203,11 +10207,17 @@ async function dayPickDrops(db, now, listed) {
 
 // How each kind has done at its bar, from its own log -- the number printed
 // beside each leg, so a 72% leg says whether 72% legs have been landing.
-// Graded rows only, so kept until one is graded (recordCached).
+// Graded rows only, so kept until one is graded (recordCached) -- and then up to
+// PICK_KINDS_SETTLE_MS more (2026-11-08). With the night's games grading every ten
+// minutes, the list rebuilt it on nearly every read, about 8,700 rows each: 60% of
+// the 375k rows Picks read on Nov 7. A kind's record runs to hundreds of legs, so
+// half an hour behind moves it a fraction of a point; the night's own legs (the
+// list's record, dayPickRecord) still grade as they finish.
+const PICK_KINDS_SETTLE_MS = 30 * 60e3;
 async function pickKindRecords(env) {
   const db = env.DB;
   await ensureMlPickSchema(db); await ensurePpSchema(db); await ensureGamePickSchema(db); await ensureNbaSchema(db); await ensureNhlPpSchema(db);
-  return recordCached(env, 'pick-kinds', async () => ({ data: await pickKindBuild(db), complete: true }));
+  return recordCached(env, 'pick-kinds', async () => ({ data: await pickKindBuild(db), complete: true }), '', PICK_KINDS_SETTLE_MS);
 }
 async function pickKindBuild(db) {
   const rec = Object.fromEntries(Object.keys(PICK_KINDS).map((k) => [k, { n: 0, hit: 0 }]));
