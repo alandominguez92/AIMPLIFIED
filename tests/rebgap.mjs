@@ -124,6 +124,8 @@ ok(dp.find((x) => /Toumani Camara/.test(x.leg_id)).result === 'hit', 'Camara: 2 
 
 console.log('\n-- the record --');
 for (const date of ['2026-10-27', '2026-10-28']) for (const l of F[date]) put(date, l);
+// The kinds' record stands half an hour through a grade (PICK_KINDS_SETTLE_MS, 2026-11-08).
+NOW += 31 * 60e3;
 d = await get('/api/picks');
 const rec = d.kinds && d.kinds.nba_reb_gap && d.kinds.nba_reb_gap.record;
 // The same count from the rows: the line read last against the books' as last read.
