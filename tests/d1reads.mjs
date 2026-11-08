@@ -96,6 +96,17 @@ console.log('a route: under its path, written once enough waits or ten minutes p
   ok(k['/api/hot-players?sport=nhl'] > 0, 'the Hot list is kept by sport');
 }
 
+console.log('Picks: each part under its own label');
+{
+  // /api/picks led the counter on Nov 8 (375k rows by 11 PM Pacific), all under one label.
+  await get('/api/picks');
+  const k = kept();
+  ok(k['/api/picks kinds'] > 0, `the kinds' record: ${k['/api/picks kinds']}`);
+  ok(k['/api/picks candidates'] > 0, `the candidate legs: ${k['/api/picks candidates']}`);
+  ok(k['/api/picks record'] > 0, `the list's record: ${k['/api/picks record']}`);
+  ok(k['/api/picks log'] > 0, `the log and its grades: ${k['/api/picks log']}`);
+}
+
 console.log('the handle answers as the database does');
 {
   const e = mod.d1Env(env, 'check');

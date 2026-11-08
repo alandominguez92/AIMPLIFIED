@@ -10457,20 +10457,23 @@ async function picksBoard(env) {
     legs: [], qualifyingGames: 0, entries: [], mlPool: [], mlEntries: [], kinds: {}, record: null,
   };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
+  // Each part's rows read under its own label (2026-11-08): /api/picks led the counter.
+  const part = (s) => d1Env(env, '/api/picks ' + s);
   try {
     const now = Date.now();
-    const { legs, unavailable } = await picksCandidates(env, now);
+    const { legs, unavailable } = await picksCandidates(part('candidates'), now);
     const list = pickList(legs), pool = ppPoolOf(legs), mlPool = mlPoolOf(legs);
     const onCard = [...new Map([...list, ...pool, ...mlPool].map((l) => [l.legId, l])).values()];
     // Soccer marks are read while the log is written, and waited on only so long.
     const logos = soccerPickLogos(onCard).catch(() => {});
-    try { await logDayPicks(env.DB, list, unavailable, now, pool, mlPool); } catch (e) { out.logError = String((e && e.message) || e); }
-    try { await gradeDayPicks(env.DB, now); } catch (e) { /* next read */ }
+    const logDb = part('log').DB;
+    try { await logDayPicks(logDb, list, unavailable, now, pool, mlPool); } catch (e) { out.logError = String((e && e.message) || e); }
+    try { await gradeDayPicks(logDb, now); } catch (e) { /* next read */ }
     // The records are read apart from the list (2026-10-22): a database refusal
     // there (D1 answered one read "out of memory: SQLITE_NOMEM" at 23:56 Pacific)
     // took the whole list down with it. Now the legs stand without them.
     let kinds = {};
-    try { kinds = await pickKindRecords(env); } catch (e) { out.recordError = String((e && e.message) || e); }
+    try { kinds = await pickKindRecords(part('kinds')); } catch (e) { out.recordError = String((e && e.message) || e); }
     let timer;
     await Promise.race([logos, new Promise((r) => { timer = setTimeout(r, SOC_LOGO_WAIT_MS); })]);
     clearTimeout(timer);
@@ -10479,10 +10482,11 @@ async function picksBoard(env) {
     if (unavailable.size) out.unavailable = [...unavailable];
     // Each leg's first chance on the list, for how far it has moved since.
     const firsts = new Map();
+    const legDb = part('trends').DB;
     try {
       const ids = list.map((l) => l.legId);
       if (ids.length) {
-        const fr = (await env.DB.prepare(`SELECT leg_id, first_p, first_at FROM daypicks WHERE date IN (?, ?) AND leg_id IN (${ids.map(() => '?').join(',')})`)
+        const fr = (await legDb.prepare(`SELECT leg_id, first_p, first_at FROM daypicks WHERE date IN (?, ?) AND leg_id IN (${ids.map(() => '?').join(',')})`)
           .bind(ptDateOf(now), ptDateOf(now + 86400e3), ...ids).all()).results || [];
         for (const r of fr) if (r.first_p != null) firsts.set(r.leg_id, r);
       }
@@ -10490,12 +10494,12 @@ async function picksBoard(env) {
     // The NBA player legs' last games, and the game lines' price history (2026-10-29).
     const trends = new Map();
     const hists = new Map();
-    try { await ptdTeams(env.DB, onCard); } catch (e) { /* the leg stands without it */ }
+    try { await ptdTeams(legDb, onCard); } catch (e) { /* the leg stands without it */ }
     for (const f of [nbaTrends, nhlTrends, ptdTrends]) {
-      try { for (const [k, v] of await f(env.DB, onCard)) trends.set(k, v); } catch (e) { /* the list stands without them */ }
+      try { for (const [k, v] of await f(legDb, onCard)) trends.set(k, v); } catch (e) { /* the list stands without them */ }
     }
     const withHk = onCard.filter((l) => l.hk);
-    (await priceHists(env.DB, withHk.map((l) => l.hk))).forEach((h, i) => { if (h.length > 1) hists.set(withHk[i].legId, h); });
+    (await priceHists(legDb, withHk.map((l) => l.hk))).forEach((h, i) => { if (h.length > 1) hists.set(withHk[i].legId, h); });
     const shown = (l, i) => ({
       rank: i + 1, kind: l.kind, sport: PICK_KINDS[l.kind].sport, kindLabel: PICK_KINDS[l.kind].label,
       p: round1(l.p), title: l.title, sub: l.sub, commence: l.commence, odds: l.odds == null ? null : l.odds,
@@ -10550,21 +10554,22 @@ async function picksBoard(env) {
     // lines the market has moved past (pickemEdges).
     // Logged as shown, graded, and their record beside them (2026-10-28).
     try {
-      const scan = await evScan(env, now);
+      const evEnv = part('edge bets');
+      const scan = await evScan(evEnv, now);
       // Each bet's price history, where its log keeps one (a line needs two points).
       const withHk = scan.bets.filter((b) => b.hk);
-      const hs = await priceHists(env.DB, withHk.map((b) => b.hk));
+      const hs = await priceHists(evEnv.DB, withHk.map((b) => b.hk));
       const histOf = new Map(withHk.map((b, i) => [b.key, hs[i]]));
       out.evBets = scan.bets.map((b) => { const h = histOf.get(b.key); return { ...evShown(b), ...(h && h.length > 1 ? { hist: h } : {}) }; });
       // Every side priced, for the page's price checker (2026-10-29): a boost
       // or another book's number, read against the same fair and stake rule.
       out.priced = scan.all.map((o) => ({ key: o.key, sport: o.sport, label: o.label, sub: o.sub, commence: o.commence, fair: round1(o.fair), ...(o.prop ? { prop: true } : {}) }));
       out.kelly = { fraction: KELLY_FRACTION, propCap: PROP_STAKE_CAP, minLine: EV_MIN_LINE, minProp: EV_MIN_PROP, longPrice: EDGE_LONG_PRICE, longFactor: EDGE_LONG_FACTOR };
-      try { await logEdgeBets(env.DB, scan, now); await gradeEdgeBets(env.DB, now); } catch (e) { out.logError = String((e && e.message) || e); }
+      try { await logEdgeBets(evEnv.DB, scan, now); await gradeEdgeBets(evEnv.DB, now); } catch (e) { out.logError = String((e && e.message) || e); }
     } catch (e) { out.evBets = []; out.evError = String((e && e.message) || e); }
-    try { out.edgeRecord = await edgeBetRecord(env); } catch (e) { out.recordError = String((e && e.message) || e); }
-    try { out.pickemEdges = await pickemEdges(env, now); } catch (e) { out.pickemEdges = []; out.evError = String((e && e.message) || e); }
-    try { out.record = await dayPickRecord(env.DB); } catch (e) { out.recordError = String((e && e.message) || e); }
+    try { out.edgeRecord = await edgeBetRecord(part('edge record')); } catch (e) { out.recordError = String((e && e.message) || e); }
+    try { out.pickemEdges = await pickemEdges(part('pickem'), now); } catch (e) { out.pickemEdges = []; out.evError = String((e && e.message) || e); }
+    try { out.record = await dayPickRecord(part('record').DB); } catch (e) { out.recordError = String((e && e.message) || e); }
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }

@@ -114,7 +114,7 @@ ok(reads === 1, 'one read of the log');
 reads = 0;
 await W.ptdTeams(DB, [other]);
 ok(reads === 0, 'no passing-TD leg on the card: no read at all');
-ok(/await ptdTeams\(env\.DB, onCard\)/.test(src) && src.indexOf('await ptdTeams(env.DB, onCard)') < src.indexOf('const shown = (l, i) =>'), 'and it runs before the legs are shown');
+ok(/await ptdTeams\((env\.DB|legDb), onCard\)/.test(src) && src.search(/await ptdTeams\((env\.DB|legDb), onCard\)/) < src.indexOf('const shown = (l, i) =>'), 'and it runs before the legs are shown');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
