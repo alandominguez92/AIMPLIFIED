@@ -518,6 +518,33 @@ ok(!/sp-one|spOne/.test(app) && !/sp-one/.test(css) && /const on = chips\.getBou
 ok((h.match(/class="sp-match" data-mid="[^"]+"/g) || []).length === 2 && /data-anchor="top"/.test(h) && /data-anchor="games"/.test(h), 'each game and both headings marked, to keep the place on a switch');
 ok(/\.sp-stick \{ position:sticky; top:calc\(var\(--hdrH\) \+ var\(--sportsH\)\); height:0;/.test(css) && /\.sp-sel \{[^}]*font-size:16px/.test(css),
   'sticky under the tabs inside the card, taking no room; 16px so iOS doesn\'t zoom');
+
+console.log('\n-- an open game\'s bar stays under the stat bar (2026-11-08) --');
+// The owner: once a game is open, keep its bar below the stat bar so it closes from there, not from
+// the top of its list. CSS sticks it; spKeepMatch keeps it where it was tapped when it closes.
+state.prMatch = { [D2.games[0].id]: true };
+const openG = card().match(/<div class="sp-match" data-mid="([^"]+)"><button type="button" class="sp-mh"[^>]*aria-expanded="true">/);
+ok(!!openG, 'an open game\'s bar is the first thing in its game, which is what it sticks inside');
+state.prMatch = {};
+const stickR = (css.match(/\.sp-match > \.sp-mh\[aria-expanded="true"\] \{([^}]*)\}/) || [])[1] || '';
+ok(/position:sticky;/.test(stickR) && /top:calc\(var\(--hdrH\) \+ var\(--sportsH\) \+ 52px\)/.test(stickR) && /z-index:4;/.test(stickR) && /background:color-mix\(in srgb, var\(--text\) 5%, var\(--card\)\)/.test(stickR),
+  'it sticks just under the 46px stat bar, beneath it (4 to its 5), opaque so the rows pass under');
+ok(/\.sp-match > \.sp-mh\.stuck \{ box-shadow:/.test(css) && /h\.classList\.toggle\('stuck', h\.parentElement\.getBoundingClientRect\(\)\.top < h\.getBoundingClientRect\(\)\.top - 1\)/.test(app),
+  'with the stat bar\'s shadow only while pinned');
+ok(/case 'pr-match': \{[\s\S]{0,120}spKeepMatch\(sp, id, \(\) => \{/.test(app) && /case 'socp-match': \{[\s\S]{0,80}spKeepMatch\('soccer', id, \(\) => \{/.test(app),
+  'the NBA, NHL and NFL cards and the soccer card all close it through spKeepMatch');
+{
+  // A pinned bar sits 96px down; closed, its game's natural place is 900px above the screen.
+  let top = 96, scrolled = null, synced = 0;
+  const fakeDoc = { querySelector: (s) => (/\.sp-match\[data-mid="g1"\] > \.sp-mh$/.test(s) ? { getBoundingClientRect: () => ({ top }) } : null) };
+  const keep = new Function('document', 'window', 'CSS', 'spStickSync', lift('spKeepMatch') + '\nreturn spKeepMatch;')(
+    fakeDoc, { scrollBy: (o) => { scrolled = o; } }, { escape: (x) => x }, () => { synced++; });
+  keep('nba', 'g1', () => { top = -804; });
+  ok(scrolled && scrolled.top === -900 && scrolled.behavior === 'instant' && synced === 1,
+    `closed from under the stat bar, the page moves up to keep the bar where it was tapped (${scrolled && scrolled.top}px)`);
+  top = 300; keep('nba', 'g1', () => {});
+  ok(scrolled.top === 0, 'closed where it sits in the list, nothing moves');
+}
 state.props = { nba: D };
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

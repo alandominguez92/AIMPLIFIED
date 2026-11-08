@@ -4742,8 +4742,10 @@
       case 'socp-save': socLineSave(target.dataset.key, Number(target.dataset.line), 0); socSaveMark(target.dataset.key); break;
       case 'socp-match': {
         const id = target.dataset.id;
-        state.socMatchOpen = { ...(state.socMatchOpen || {}), [id]: !(state.socMatchOpen && state.socMatchOpen[id]) };
-        renderSoccer();
+        spKeepMatch('soccer', id, () => {
+          state.socMatchOpen = { ...(state.socMatchOpen || {}), [id]: !(state.socMatchOpen && state.socMatchOpen[id]) };
+          renderSoccer();
+        });
         break;
       }
       // A row tapped opens its line setter; a stat chip lists that stat.
@@ -4764,9 +4766,11 @@
       case 'pr-stat': spSwitch(target.dataset.sport, () => { state.prStat = { ...(state.prStat || {}), [target.dataset.sport]: target.dataset.stat }; propRedraw(target.dataset.sport); }); break;
       case 'pr-top-all': state.prTopAll = { ...(state.prTopAll || {}), [target.dataset.sport]: true }; propRedraw(target.dataset.sport); break;
       case 'pr-match': {
-        const id = target.dataset.id;
-        state.prMatch = { ...(state.prMatch || {}), [id]: !(state.prMatch && state.prMatch[id]) };
-        propRedraw(target.dataset.sport);
+        const id = target.dataset.id, sp = target.dataset.sport;
+        spKeepMatch(sp, id, () => {
+          state.prMatch = { ...(state.prMatch || {}), [id]: !(state.prMatch && state.prMatch[id]) };
+          propRedraw(sp);
+        });
         break;
       }
       case 'pr-row': {
@@ -7586,6 +7590,10 @@
   const spTop = () => { const nav = document.querySelector('.sports'); return nav ? Math.max(0, nav.getBoundingClientRect().bottom) : 0; };
   function spStickSync() {
     const top = spTop();
+    // An open game's bar, pinned under the stat bar, gets the bar's shadow; in its place it has none.
+    for (const h of document.querySelectorAll('.sp-card .sp-match > .sp-mh[aria-expanded="true"]')) {
+      h.classList.toggle('stuck', h.parentElement.getBoundingClientRect().top < h.getBoundingClientRect().top - 1);
+    }
     for (const card of document.querySelectorAll('.sp-card[data-sp]')) {
       const chips = card.querySelector('.sp-chips'), stick = card.querySelector('.sp-stick');
       if (!chips || !stick || !card.getClientRects().length) continue;
@@ -7610,6 +7618,18 @@
     const now = document.querySelector(`.sp-card[data-sp="${sport}"]`);
     const n = key && now && now.querySelector(key === 'top' ? '[data-anchor="top"]' : `.sp-match[data-mid="${CSS.escape(key)}"]`);
     if (n) window.scrollBy({ top: n.getBoundingClientRect().top - at, behavior: 'instant' });
+    spStickSync();
+  }
+  // An open game's bar stays under the stat bar while its players scroll by, so it closes from
+  // there (2026-11-08, the owner: no scrolling back up). Closed from there, its players leave and
+  // the page would be left far below; the bar is kept where it was tapped, the next game under it.
+  function spKeepMatch(sport, id, apply) {
+    const head = () => document.querySelector(`.sp-card[data-sp="${sport}"] .sp-match[data-mid="${CSS.escape(id)}"] > .sp-mh`);
+    const was = head();
+    const at = was ? was.getBoundingClientRect().top : null;
+    apply();
+    const now = head();
+    if (now && at != null) window.scrollBy({ top: now.getBoundingClientRect().top - at, behavior: 'instant' });
     spStickSync();
   }
   function propsCardHtml(sport) {
