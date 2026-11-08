@@ -69,7 +69,7 @@ for (const u of ['/api/hist-props?job=nba', '/api/hist-props?job=nba&lines=1', '
 }
 
 console.log('\n-- the page calls none of them --');
-const page = ['app.js', 'track-record.js', 'nfl-priors.js'].map((f) => fs.readFileSync(path.join(BOARD, f), 'utf8')).join('\n');
+const page = ['app.js', 'track-record.js'].map((f) => fs.readFileSync(path.join(BOARD, f), 'utf8')).join('\n');
 const called = new Set([...page.matchAll(/['"`](\/api\/[a-z-]+)/g)].map((m) => m[1]));
 const lockedPaths = new Set(LOCKED.map((u) => u.split('?')[0]));
 const both = [...called].filter((p) => lockedPaths.has(p) && p !== '/api/hist-props' && p !== '/api/hist-backtest');

@@ -141,9 +141,10 @@ ok(/const NFL_ML_COLS = \['Game', 'Likelier winner', 'Best price', 'Value', 'Fai
   && /\$\{club\(g\.away, g\.awayLogo\)\}<span class="at-sep">@<\/span>\$\{club\(g\.home, g\.homeLogo\)\}/.test(lift('nflRow')),
   "the NBA and NHL tabs' heads, and each club's mark beside its name");
 const sec = html.slice(html.indexOf('<section id="nflBoard"'), html.indexOf('</section>', html.indexOf('<section id="nflBoard"')));
-ok(sec.indexOf('id="nflMlGrid"') < sec.indexOf('<details class="nfl-proj"') && /<details class="nfl-proj"[\s\S]*data-nflview="receiving"[\s\S]*id="nflGrid"[\s\S]*<\/details>/.test(sec)
-  && !/data-nflview="lines"/.test(sec) && !/0 postable|nflPostable/.test(sec),
-  'the moneylines first, the yardage projections folded under them, no "0 postable" and no lines button');
+// The yardage projections folded under the moneylines came off on 2026-11-08.
+ok(sec.includes('id="nflMlGrid"') && !/nfl-proj|data-nflview|id="nflGrid"/.test(sec)
+  && !/0 postable|nflPostable/.test(sec),
+  'the moneylines, with no yardage projections under them, no "0 postable" and no lines button');
 ok(/nfl: '#nflBoard'/.test(app) && /nfl: 'NFL'/.test(app), 'and Live Now sits on the NFL tab too');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');

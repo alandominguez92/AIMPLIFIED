@@ -42,8 +42,9 @@ ok(meta('name', 'twitter:image') === meta('property', 'og:image'), 'the Twitter 
 ok(!read('.assetsignore').split('\n').some((l) => /^(og\.png|\*\.png)$/.test(l.trim())), 'and it is not kept back from the deploy');
 
 console.log('\n-- the theme button --');
-const PAGES = ['index.html', 'track-record.html', 'nfl-priors.html'];
-ok(PAGES.every((p) => /<button class="theme-toggle"[^>]* aria-label="Switch between light and dark mode"/.test(read(p))), 'all three pages name the button for a screen reader');
+// The NFL priors page came off with the yardage projections (2026-11-08).
+const PAGES = ['index.html', 'track-record.html'];
+ok(PAGES.every((p) => /<button class="theme-toggle"[^>]* aria-label="Switch between light and dark mode"/.test(read(p))), 'both pages name the button for a screen reader');
 const css = read('style.css');
 const rule = (sel) => (css.match(new RegExp(`(?:^|\\n)${sel.replace(/[.[\]"=:]/g, '\\$&')} \\{([^}]*)\\}`)) || [])[1] || '';
 ok(/mask:url\("data:image\/svg\+xml/.test(rule('.theme-toggle::before')) && /mask-image:url\("data:image\/svg\+xml/.test(rule('[data-theme="light"] .theme-toggle::before')), 'the stylesheet draws one icon in dark mode and another in light, so no page has to fill it in');
@@ -56,9 +57,9 @@ const fieldOf = (theme) => (css.match(new RegExp(`\\[data-theme="${theme}"\\] \\
 const dark = fieldOf('dark'), light = fieldOf('light');
 console.log(`  --field: ${dark} dark, ${light} light`);
 ok(dark && light && dark !== light, 'the page has a different background in each theme');
-ok(PAGES.every((p) => read(p).includes(`<meta name="theme-color" content="${dark}">`)), 'all three pages start with the dark one, the default');
-ok(['app.js', 'track-record.js', 'nfl-priors.js'].every((f) => { const s = read(f); return s.includes(`querySelector('meta[name="theme-color"]')`) && s.includes(`'${dark}'`) && s.includes(`'${light}'`); }), 'and each page\'s script switches it to the page\'s own colour');
-ok(['track-record.js', 'nfl-priors.js'].every((f) => /setAttribute\('data-theme', next\);\n\s*paintStatusBar\(\);/.test(read(f))), 'on the other two pages, on the click as well as on load');
+ok(PAGES.every((p) => read(p).includes(`<meta name="theme-color" content="${dark}">`)), 'both pages start with the dark one, the default');
+ok(['app.js', 'track-record.js'].every((f) => { const s = read(f); return s.includes(`querySelector('meta[name="theme-color"]')`) && s.includes(`'${dark}'`) && s.includes(`'${light}'`); }), 'and each page\'s script switches it to the page\'s own colour');
+ok(['track-record.js'].every((f) => /setAttribute\('data-theme', next\);\n\s*paintStatusBar\(\);/.test(read(f))), 'on the record page, on the click as well as on load');
 
 console.log('\n-- the separator dot --');
 const body = (app.match(/const glueDots = (\(s\) => s\.replace\([^\n]*\));/) || [])[1];

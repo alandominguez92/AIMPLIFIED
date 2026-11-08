@@ -148,7 +148,7 @@ const API_ROUTES = new Set([
   '/api/odds', '/api/scores', '/api/hitters', '/api/pitchers',
   '/api/board', '/api/batters', '/api/track-record', '/api/injuries', '/api/live-now',
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
-  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-compare', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
+  '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health', '/api/d1-reads',
 ]);
 
@@ -361,16 +361,10 @@ const HANDLER = {
     if (p === '/api/nfl-ingest' || p === '/api/nfl-capture' || p === '/api/nfl-grade' || p === '/api/soccer-ingest' || p === '/api/mlb-void-moved' || p === '/api/hist-backtest' || p === '/api/hist-props' || p === '/api/links-probe') return handleApi(p, env, ctx, url);
     // The query string is dropped from the key on purpose — every viewer should
     // share one response — EXCEPT where it changes what the route returns.
-    // /api/nfl-compare was keyed by path alone, so ?all=1 (played games included,
-    // what the Monday grading run reads) could be answered from a cached
-    // upcoming-only response left by anyone who opened the NFL board in the last
-    // minute: zero graded rows, and a run concluding grading had failed. Its
-    // ?summary=1 form would have been worse the other way round — a rowless body
-    // cached under the path the board itself reads.
     // Routes whose answer depends on the query string. The edge cache key drops
     // the query everywhere else, so without this a ?summary=1 request and a full
     // board request would share one entry and serve each other's body.
-    const KEYED_BY_QUERY = p === '/api/d1-reads' || p === '/api/nba-props' || p === '/api/nhl-props' || p === '/api/nfl-props' || p === '/api/fair-probe' || p === '/api/nfl-compare' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
+    const KEYED_BY_QUERY = p === '/api/d1-reads' || p === '/api/nba-props' || p === '/api/nhl-props' || p === '/api/nfl-props' || p === '/api/fair-probe' || p === '/api/track-record' || p === '/api/bpicks-export' || p === '/api/mlpicks-export' || p === '/api/pppicks-export' || p === '/api/gmpicks-export' || p === '/api/top-legs' || p === '/api/soccer-board' || p === '/api/soccer-props' || p === '/api/nba-pp' || p === '/api/nhl-pp' || p === '/api/nba-cause' || p === '/api/hot-players' || p === '/api/pp-lines';
     // The MLB boards spend credits on a miss and only ?summary= changes their answer, so a
     // made-up query must not be a miss (2026-11-04).
     const mlbBoard = p === '/api/board' || p === '/api/batters';
@@ -725,7 +719,6 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
-  if (p === '/api/nfl-compare') return nflCompare(env, url);
   if (p === '/api/nfl-grade') return nflGrade(env, url);
   if (p === '/api/nfl-capture') {
     const o = await ingestNflProps(env, {
@@ -736,7 +729,6 @@ async function handleApi(p, env, ctx, url) {
   }
   if (p === '/api/nfl-board') return nflBoard(env, url);
   if (p === '/api/be-gate') return beGate(env, url);
-  if (p === '/api/nfl-props') return nflProps(env, url);
   if (p === '/api/usage') return oddsUsage(env);
 
   // Scores come from StatsAPI, which is free and authoritative for MLB. They
@@ -6194,8 +6186,8 @@ async function ensureNflSchema(db) {
   // both numbers.
   // The projection as it stood BEFORE kickoff, frozen.
   //
-  // /api/nfl-props recomputes from the current board every call, so a projection
-  // only exists for as long as the request that made it. On 2026-09-09 the model
+  // The yardage model (removed 2026-11-08) recomputed from the current board every
+  // call, so a projection only existed for as long as the request that made it. On 2026-09-09 the model
   // called Jaxon Smith-Njigba 126.2 (he had 122) and TreVeyon Henderson 55.3 (he
   // did not play) — and neither number survived the night. Nothing could be
   // graded, because nothing had been written down.
@@ -6258,12 +6250,15 @@ const NFL_GAME_MARKETS = 'h2h,spreads,totals';
 // spending to build a dataset with no question attached to it.
 //
 // `player_receptions` went out on 2026-09-14 for the same reason. It was captured
-// from the start, but nothing projects a reception COUNT — NFL_PROJ_TO_ODDS maps
-// only receiving and rushing yards — so no row was ever joined to it, graded
-// against it, or shown. It was still 1,869 of the 4,827 prop rows the Week 1
-// Sunday capture wrote, and a third of that capture's 42 credits (billing is per
-// market per event). tests/nflmarkets.mjs keeps this list equal to the markets
-// the model projects, so a market the model cannot use cannot creep back in.
+// from the start, but nothing projected a reception COUNT, so no row was ever
+// joined to it, graded against it, or shown. It was still 1,869 of the 4,827 prop
+// rows the Week 1 Sunday capture wrote, and a third of that capture's 42 credits
+// (billing is per market per event). It came back inside the day-of window on
+// 2026-11-01 (NFL_REC_MARKET), for its own log.
+// Receiving and rushing yards were bought for the yardage projections until
+// 2026-11-08, when those came off; since Nov 5 the NFL props card reads them from
+// this capture (nflPropsRawRow), so they stay. tests/nflmarkets.mjs keeps this
+// list to the markets the card reads or a log measures.
 // player_pass_tds joins them for a different reason, and on a different footing:
 // nothing projects it and nothing is posted from it. It is bought to be MEASURED.
 //
@@ -6353,7 +6348,7 @@ const NFL_HORIZON_DAYS = 10;
 async function ingestNflProps(env, opts, reqUrl) {
   const sp = NFL_SPORTS[(opts && opts.sport) || 'nfl'];
   const out = { sport: (opts && opts.sport) || 'nfl', seasonType: sp && sp.seasonType,
-    events: 0, eventsPriced: 0, wrote: 0, unchanged: 0, projFrozen: 0, markets: {}, credits: 0, errors: [] };
+    events: 0, eventsPriced: 0, wrote: 0, unchanged: 0, markets: {}, credits: 0, errors: [] };
   if (!sp) { out.errors.push('unknown sport'); return out; }
   const key = env && env.ODDS_API_KEY;
   if (!key) { out.errors.push('ODDS_API_KEY not configured'); return out; }
@@ -6505,30 +6500,9 @@ async function ingestNflProps(env, opts, reqUrl) {
     }
   }
 
-  // Freeze the projections for the same slate. Calling the handler and reading
-  // its body keeps one definition of the model rather than a second copy that
-  // could drift away from what the board serves.
-  let projRows = [];
-  try {
-    const pr = await nflProps(env, reqUrl);
-    const pd = await pr.json();
-    projRows = pd.rows || [];
-  } catch (e) { out.errors.push('projections: ' + String((e && e.message) || e)); }
-  const evByMatch = new Map();
-  for (const e of upcoming) evByMatch.set(`${nflAbbr(e.away_team)} @ ${nflAbbr(e.home_team)}`, e);
-  const projStmts = [];
-  for (const r of projRows) {
-    const e = evByMatch.get(r.game);
-    if (!e || typeof r.proj !== 'number') continue;
-    projStmts.push(env.DB.prepare(
-      `INSERT OR IGNORE INTO nfl_proj
-       (season, week, event_id, player, market, team, pos, game, commence, proj, p25, p50, p75, conf, actual, captured_at, graded_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,NULL)`
-    ).bind(2026, sp.seasonType === 'REG' ? nflWeekOf(e.commence_time) : null, e.id, r.player, r.market,
-      r.team || null, r.pos || null, r.game || null, r.commence || null,
-      r.proj, r.p25 ?? null, r.p50 ?? null, r.p75 ?? null, r.conf ?? null, stamp));
-  }
-  out.projFrozen = projStmts.length;
+  // The yardage projections were frozen here into nfl_proj until 2026-11-08, when
+  // the owner took them off the site. nflGrade still grades the rows already frozen,
+  // for the yardage legs logged in entries before then.
   // Passing touchdowns, logged off the rows this capture just wrote.
   //
   // This lives here and not in nflIngest: player_pass_tds is bought by THIS
@@ -6585,11 +6559,7 @@ async function ingestNflProps(env, opts, reqUrl) {
   } catch (e) { out.errors.push('receptions: ' + String((e && e.message) || e)); }
 
 
-  if (dry) { out.dryRun = true; return out; }
-  for (let i = 0; i < projStmts.length; i += 50) {
-    try { await env.DB.batch(projStmts.slice(i, i + 50)); }
-    catch (e) { out.errors.push('write: ' + String((e && e.message) || e)); }
-  }
+  if (dry) out.dryRun = true;
   return out;
 }
 
@@ -17319,29 +17289,10 @@ const nflNick = (t) => NFL_NICK[t] || lastWord(t);
 // BookMaker, Novig), so a game Pinnacle has not hung still has two shops.
 const NFL_GAMELINE_POOL = ['pinnacle', 'novig', 'lowvig', 'betonlineag'];
 const NFL_EXEC = ['draftkings', 'fanduel', 'betmgm', 'betrivers', 'williamhill_us'];
-// Sharp candidates for PLAYER PROPS, which is not the same list as the game
-// lines. The 2026-09-09 probe found lowvig and betonlineag quote game lines but
-// return nothing on props, while novig and prophetx only appear when asked for
-// by key. Counted, not pooled: prophetx came back with a booksum of 0.70-0.76,
-// which is below 1.0 and therefore not a real two-sided quote — unmatched
-// exchange orders at week 1. It is reported so the thin coverage is visible,
-// and deliberately not de-vigged into a fair number yet.
-const NFL_PROPS_SHARP = ['pinnacle', 'novig', 'prophetx', 'lowvig', 'betonlineag'];
-
-// -------------------------------------------------------------------------
-// /api/nfl-compare — the frozen projection next to the line that was captured
-// with it.
-//
-// This is a READER. It computes no fair line, no edge percentage, no tier, and
-// posts nothing. The gap it reports is the model DISAGREEING with the market,
-// which is not the same thing as value: the 58.9-61.8% under-mean the model was
-// built on was measured against our own mean, never against a posted line, so
-// calling the gap an edge would assert exactly the thing that has not been shown.
-//
-// It exists so the projections are legible and gradeable. Until nfl_proj.actual
-// is filled from box scores, "does the model beat the line" stays open.
-// -------------------------------------------------------------------------
-const NFL_PROJ_TO_ODDS = { receiving: 'player_reception_yds', rushing: 'player_rush_yds' };
+// The yardage projections, /api/nfl-props' model and /api/nfl-compare (each frozen
+// projection beside its captured line) came off on 2026-11-08, the owner's call:
+// /api/nfl-props had served the props card since Nov 5, so the board's projections
+// section read nothing. What they froze stays in nfl_proj, graded below.
 
 // -------------------------------------------------------------------------
 // /api/nfl-grade — fill nfl_proj.actual from the box score. Costs nothing: the
@@ -17595,205 +17546,6 @@ async function nflGrade(env, url) {
   } catch (e) { out.error = String((e && e.message) || e); }
   return cors(json(out, 30));
 }
-async function nflCompare(env, url) {
-  const out = {
-    note: 'frozen projection vs the captured market line — NOT a price. No fair line, no edge, no tier, nothing posted.',
-    gapMeans: 'proj minus line, in yards. A model/market disagreement, not value.',
-    rows: [], games: 0,
-  };
-  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 60)); }
-  try {
-    await ensureNflSchema(env.DB);
-    const all = url && url.searchParams && url.searchParams.get('all') === '1';
-    const nowIso = new Date().toISOString();
-    const projs = (await env.DB.prepare(
-      `SELECT event_id, player, market, team, pos, game, commence, proj, p25, p50, p75, conf, actual, captured_at
-         FROM nfl_proj WHERE season=2026 ${all ? '' : 'AND commence > ?'} ORDER BY commence, proj DESC`
-    ).bind(...(all ? [] : [nowIso])).all()).results || [];
-    if (!projs.length) { out.note += ' (no frozen projections for upcoming games — run /api/nfl-capture)'; return cors(json(out, 60)); }
-
-    const eventIds = [...new Set(projs.map((r) => r.event_id))];
-    out.games = eventIds.length;
-
-    // Latest quote per (event, market, player, point, book). captured_at is in
-    // the primary key so the table holds the full move history; only the most
-    // recent snapshot is the current line.
-    const latest = new Map();
-    for (let i = 0; i < eventIds.length; i += 20) {
-      const chunk = eventIds.slice(i, i + 20);
-      const q = await env.DB.prepare(
-        'SELECT event_id, market, player, point, book, over, under, captured_at FROM nfl_lines'
-        + ' WHERE event_id IN (' + chunk.map(() => '?').join(',') + ')'
-        + " AND market IN ('player_reception_yds','player_rush_yds')"
-      ).bind(...chunk).all();
-      for (const r of (q.results || [])) {
-        const k = `${r.event_id}|${r.market}|${r.player}|${r.point}|${r.book}`;
-        const prev = latest.get(k);
-        if (!prev || String(prev.captured_at) < String(r.captured_at)) latest.set(k, r);
-      }
-    }
-    // Regroup by (event, market, player) so each player's book quotes sit together.
-    const byPlayer = new Map();
-    for (const r of latest.values()) {
-      // normName is what the MLB prop matching uses, so a feed spelling like
-      // "A.J. Brown" joins the priors' "AJ Brown" instead of silently missing.
-      const k = `${r.event_id}|${r.market}|${normName(r.player)}`;
-      let bucket = byPlayer.get(k);
-      if (!bucket) { bucket = []; byPlayer.set(k, bucket); }
-      bucket.push(r);
-    }
-
-    for (const p of projs) {
-      const oddsMkt = NFL_PROJ_TO_ODDS[p.market];
-      const allQuotes = oddsMkt ? (byPlayer.get(`${p.event_id}|${oddsMkt}|${normName(p.player)}`) || []) : [];
-      // PrizePicks hangs its own number and pays by entry type, not by price, so
-      // it is carried beside the line and never counted in it: one vote for its
-      // number in the "most books agree" line would let it move the line it is
-      // being compared against.
-      const ppQuotes = allQuotes.filter((q) => q.book === 'prizepicks');
-      const quotes = allQuotes.filter((q) => q.book !== 'prizepicks');
-      // How far ahead of kickoff this projection was locked. The freeze is
-      // INSERT OR IGNORE on (season, event_id, player, market), so the FIRST
-      // capture to see a game owns its projection for the rest of the season --
-      // and the capture horizon is 10 days. Without this field there is no way
-      // to tell a number frozen the morning of the game from one frozen a week
-      // out on nothing but last season's priors, and the grader treats them
-      // identically.
-      const leadH = (p.captured_at && p.commence)
-        ? Math.round((Date.parse(p.commence) - Date.parse(p.captured_at)) / 36e5 * 10) / 10
-        : null;
-      const row = {
-        player: p.player, pos: p.pos, team: p.team, game: p.game, commence: p.commence,
-        market: p.market, proj: p.proj, p25: p.p25, p50: p.p50, p75: p.p75, conf: p.conf,
-        actual: p.actual, frozenAt: p.captured_at || null, frozenLeadHours: leadH,
-      };
-      // PrizePicks' current number: its latest capture, and of that capture the
-      // point nearest the books' line when it hangs more than one.
-      const ppLineNear = (ref) => {
-        if (!ppQuotes.length) return null;
-        const last = ppQuotes.reduce((m, q) => (String(q.captured_at) > m ? String(q.captured_at) : m), '');
-        const cur = ppQuotes.filter((q) => String(q.captured_at) === last).map((q) => Number(q.point)).filter(Number.isFinite);
-        if (!cur.length) return null;
-        return ref == null ? cur.sort((a, b) => a - b)[0] : cur.sort((a, b) => Math.abs(a - ref) - Math.abs(b - ref) || a - b)[0];
-      };
-      if (!quotes.length) {
-        // Named explicitly rather than left null: "no book quoted him" and "the
-        // capture missed him" are different problems and only one is ours.
-        row.line = null; row.lineStatus = 'no captured quote for this player/market';
-        row.ppLine = ppLineNear(null);
-        out.rows.push(row); continue;
-      }
-      // The main line is the point the most books agree on. Taking the first
-      // book's number instead would let one outlier alternate line stand in for
-      // the market.
-      const byPoint = {};
-      for (const q of quotes) byPoint[q.point] = (byPoint[q.point] || 0) + 1;
-      const line = Number(Object.keys(byPoint).sort((a, b) => byPoint[b] - byPoint[a] || Number(a) - Number(b))[0]);
-      const atLine = quotes.filter((q) => Number(q.point) === line);
-      const best = (side) => {
-        let price = null, book = null;
-        for (const q of atLine) {
-          if (!NFL_EXEC.includes(q.book)) continue;
-          const v = q[side];
-          if (typeof v !== 'number') continue;
-          if (price == null || payoutMult(v) > payoutMult(price)) { price = v; book = q.book; }
-        }
-        return { price, book };
-      };
-      const o = best('over'), u = best('under');
-      const sharp = [...new Set(atLine.filter((q) => NFL_PROPS_SHARP.includes(q.book)
-        && typeof q.over === 'number' && typeof q.under === 'number').map((q) => q.book))];
-      row.line = line;
-      row.ppLine = ppLineNear(line);
-      row.gap = round1(p.proj - line);
-      row.overPrice = o.price; row.overBook = o.book;
-      row.underPrice = u.price; row.underBook = u.book;
-      row.books = atLine.length;
-      row.sharpN = sharp.length;
-      row.sharpBooks = sharp;
-      // Whether a fair line COULD be built here under the two-book rule. Not
-      // whether one was — none is.
-      row.priceable = sharp.length >= 2;
-      out.rows.push(row);
-    }
-    const withLine = out.rows.filter((r) => r.line != null);
-    out.summary = {
-      projections: out.rows.length,
-      matchedToALine: withLine.length,
-      priceableUnderTwoBookRule: withLine.filter((r) => r.priceable).length,
-      note: 'matchedToALine < projections usually means the book has not quoted that player, not that the capture failed',
-    };
-
-    // The verdict block. Once rows are graded this settles the question the gap
-    // alone cannot: the model sits ~3.4 yards above the market on average, and
-    // that is either the model running hot or the market shading lines below the
-    // mean. Whichever predicts the ACTUAL better is the one telling the truth.
-    //
-    // modelMae vs lineMae is the whole test. If the line predicts outcomes more
-    // accurately than the projection does, the gap is model error and there is
-    // nothing to bet. Only if the model wins is the disagreement worth pricing.
-    //
-    // underMeanRate is the number the backtest reported (58.9-61.8%).
-    // underLineRate is the one that would actually pay. They are not the same
-    // statistic and the difference between them is exactly the bias above.
-    const g = withLine.filter((r) => typeof r.actual === 'number');
-    if (g.length) {
-      const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
-      const mae = (f) => mean(g.map((r) => Math.abs(f(r) - r.actual)));
-      out.graded = {
-        n: g.length,
-        meanActual: round1(mean(g.map((r) => r.actual))),
-        meanProj: round1(mean(g.map((r) => r.proj))),
-        meanLine: round1(mean(g.map((r) => r.line))),
-        modelMae: round1(mae((r) => r.proj)),
-        lineMae: round1(mae((r) => r.line)),
-        underMeanRate: round1(g.filter((r) => r.actual < r.proj).length / g.length * 100),
-        underLineRate: round1(g.filter((r) => r.actual < r.line).length / g.length * 100),
-        read: 'modelMae < lineMae = the projection beats the market and the gap is worth pricing. '
-          + 'modelMae > lineMae = the model runs hot and the gap is its own error. '
-          + 'underMeanRate is what the backtest measured; underLineRate is what would actually pay.',
-      };
-      out.graded.verdict = out.graded.modelMae < out.graded.lineMae
-        ? 'model predicts actuals better than the line — gap may be real'
-        : 'the LINE predicts actuals better than the model — the gap is model error, do not price it';
-    }
-    // PrizePicks' number, graded (captured since 2026-10-06). Its under wins
-    // below ITS number, and the split asks whether it wins more often where
-    // that number sits above the books' line. No model involved: the verdict
-    // above says the model loses to the line, so this is the other angle.
-    const ppG = out.rows.filter((r) => typeof r.actual === 'number' && r.ppLine != null);
-    if (ppG.length) {
-      out.ppGraded = {
-        ...ppSplitRecord(ppG.map((r) => ({
-          p: null, won: r.actual < r.ppLine ? 1 : (r.actual > r.ppLine ? 0 : null),
-          gap: r.line != null ? round1(r.ppLine - r.line) : null,
-        }))),
-        read: "hit = PrizePicks unders that landed below PrizePicks' number. byLineGap.ppHigher = its number sat above the books' line, so its under was easier than the market's.",
-      };
-    }
-  } catch (e) { out.error = String((e && e.message) || e); }
-  // ?summary=1 keeps the counts, the summary and the `graded` verdict and drops
-  // the per-row detail. The full response runs past 100KB with ?all=1, far more
-  // than a scheduled run can read inline, and `graded` — the one block it exists
-  // to report — sits at the very end of it. The Week 1 capture run stalled
-  // exactly there, writing a script to parse a response it could not read.
-  if (url && url.searchParams && url.searchParams.get('summary') === '1') {
-    out.rowCount = out.rows.length;
-    // The scheduled pre-kickoff check reads this form too, and the one list it
-    // reports is the largest projection/line disagreements for the upcoming
-    // games -- so those ride along, trimmed to the fields it reads. Played
-    // games (?all=1) are the grading run's business and get the verdict alone.
-    if (url.searchParams.get('all') !== '1') {
-      out.biggestGaps = out.rows.filter((r) => r.line != null && r.gap != null)
-        .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap)).slice(0, NFL_GAPS_TOP)
-        .map((r) => ({ player: r.player, team: r.team, game: r.game, market: r.market,
-          proj: r.proj, line: r.line, ppLine: r.ppLine == null ? null : r.ppLine, gap: r.gap, conf: r.conf }));
-    }
-    delete out.rows;
-  }
-  return cors(json(out, 60));
-}
-const NFL_GAPS_TOP = 20;
 
 // Split so the projection endpoint can reuse the same slate without re-querying
 // D1 or re-deriving fair from scratch. nflBoard is now only the response wrapper.
@@ -17938,8 +17690,8 @@ async function nflBoardData(env, url) {
     out.games.sort((x, y) => Date.parse(x.commence || 0) - Date.parse(y.commence || 0));
     // ONE slate day, not the whole week (2026-09-17). The board carried every
     // remaining game of the week, so a Thursday showed the Thursday game plus
-    // thirteen Sunday ones — and /api/nfl-props builds its player rows from this
-    // list, so it projected a week of players at once. The NFL week is three
+    // thirteen Sunday ones — and the yardage model (since removed) built its player
+    // rows from this list, so it projected a week of players at once. The NFL week is three
     // distinct slates (Thu, Sun, Mon) that are read on the day they are played.
     //
     // The day is taken from the EARLIEST remaining kickoff rather than from the
@@ -18196,297 +17948,6 @@ function erfApprox(x) {
   const t = 1 / (1 + 0.3275911 * x);
   const poly = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
   return s * (1 - poly * Math.exp(-x * x));
-}
-
-// ---------------------------------------------------------------------------
-// NFL yardage projections
-// ---------------------------------------------------------------------------
-// Receiving and rushing only. Passing is deliberately absent: backtested over
-// 2024 and 2025 it never once cleared 50% on "actual below projected mean"
-// (42.0% and 49.5%), because passing yards sum roughly twenty completions and
-// the central limit theorem flattens the right skew the whole thesis rests on.
-// A market that fails its own premise in both seasons does not get posted.
-//
-// Everything cascades from the two market numbers, same as the backtest:
-//   spread + total -> plays -> pass/run split -> opportunity share
-//   -> efficiency -> simulated stat line
-//
-// Constants below are the backtested ones. EFF_CAL is the only calibration and
-// it is earned: the trailing efficiency prior read ~5% low in BOTH seasons.
-const NFL_EFF_CAL = { receiving: 1.05, rushing: 1.05 };
-const NFL_REC_DISP = 1.35;      // variance/mean on receptions
-const NFL_RUSH_DISP = 2.6;      // carries swing on game script far more
-const NFL_RUSH_SHIFT = 3;       // a carry can lose yards; gamma cannot go negative
-const NFL_PACE_COEF = 0.006;    // plays per point of total
-const NFL_SCRIPT_COEF = 0.0075; // pass rate per point of spread
-const NFL_MIN_RP = 0.5;         // participation gate — RECEIVING only
-const NFL_PRIOR_ELIGIBLE = new Set(['same-team', 'moved-current', 'rookie-current']);
-const NFL_MIN_CARRIES = 20;     // rushing gate: volume, not routes
-const NFL_DRAWS = 400;          // enough for the quantiles reported; see nflPropsCost
-
-let NFL_PRIORS = null;
-async function nflPriors(env) {
-  if (NFL_PRIORS) return NFL_PRIORS;
-  try {
-    const r = await env.ASSETS.fetch(new Request('https://x/nfl-model-priors.json'));
-    if (r.ok) NFL_PRIORS = await r.json();
-  } catch (e) { /* asset missing -> no projections rather than wrong ones */ }
-  return NFL_PRIORS;
-}
-
-// Deterministic RNG so the same slate renders the same numbers on every colo and
-// every refresh. A projection that flickers between reloads is not a projection.
-function nflRng(seed) {
-  let s = seed | 0;
-  return function () {
-    s = s + 0x6D2B79F5 | 0;
-    let t = Math.imul(s ^ s >>> 15, 1 | s);
-    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-let nflSpare = null;
-function nflGauss(rnd) {
-  if (nflSpare !== null) { const v = nflSpare; nflSpare = null; return v; }
-  let u, v, s;
-  do { u = 2 * rnd() - 1; v = 2 * rnd() - 1; s = u * u + v * v; } while (s === 0 || s >= 1);
-  const f = Math.sqrt(-2 * Math.log(s) / s); nflSpare = v * f; return u * f;
-}
-function nflGamma(shape, scale, rnd) {
-  if (shape < 1) return nflGamma(shape + 1, scale, rnd) * Math.pow(rnd(), 1 / shape);
-  const d = shape - 1 / 3, c = 1 / Math.sqrt(9 * d);
-  for (;;) {
-    let x, v;
-    do { x = nflGauss(rnd); v = 1 + c * x; } while (v <= 0);
-    v = v * v * v; const u = rnd();
-    if (u < 1 - 0.0331 * x * x * x * x) return d * v * scale;
-    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v * scale;
-  }
-}
-function nflPoisson(lam, rnd) {
-  if (lam <= 0) return 0;
-  if (lam < 30) { const L = Math.exp(-lam); let k = 0, p = 1; do { k++; p *= rnd(); } while (p > L); return k - 1; }
-  return Math.max(0, Math.round(lam + Math.sqrt(lam) * nflGauss(rnd)));
-}
-function nflNegBin(m, disp, rnd) {
-  if (m <= 0) return 0;
-  if (disp <= 1) return nflPoisson(m, rnd);
-  return nflPoisson(nflGamma(m / (disp - 1), disp - 1, rnd), rnd);
-}
-
-// Projection confidence, NOT a betting tier.
-//
-// With no line there is nothing to rank by value, so this ranks by how much the
-// projection can be trusted: how many events the prior rests on, how stable the
-// player's role is, and how tight the resulting distribution is. A reader should
-// be able to use it to discount a thin projection, never to size a bet.
-//
-// Named `conf` rather than `tier` throughout so it cannot be mistaken for the
-// MLB board's tier, which means something different and is measured against a
-// price. On the MLB side tiering on edge turned out not to track profit at all;
-// naming this the same thing would invite exactly that confusion.
-function nflConfidence(market, p, q) {
-  // Relative width of the 50% band. A projection whose middle half spans more
-  // than the projection itself is not a confident number, however many carries
-  // sit behind it.
-  const width = q.proj > 0 ? (q.p75 - q.p25) / q.proj : 99;
-  const events = market === 'receiving' ? p.recN : p.carN;
-  const role = market === 'receiving' ? p.rp : p.carShare;
-
-  const strongVol  = market === 'receiving' ? events >= 60 : events >= 150;
-  const mediumVol  = market === 'receiving' ? events >= 30 : events >= 70;
-  const strongRole = market === 'receiving' ? role >= 0.70 : role >= 0.45;
-  const mediumRole = market === 'receiving' ? role >= 0.55 : role >= 0.28;
-
-  if (strongVol && strongRole && width <= 1.05) return 1;
-  if (mediumVol && mediumRole && width <= 1.45) return 2;
-  return 3;
-}
-
-// GET /api/nfl-props — projections for the ingested slate.
-// -------------------------------------------------------------------------
-// Injury gate. One free fetch of nflverse's league-wide weekly report.
-//
-// Week 1 is the argument for it: the board projected TreVeyon Henderson for 55.3
-// rushing yards and he did not play. He was listed Out with an ankle three days
-// earlier. A projection for a player who will not take the field is not a weak
-// projection, it is a guaranteed loss the moment anything is posted on it.
-//
-// Scope, stated honestly: this catches INJURY absences, not healthy scratches.
-// Of week 1's three no-shows it would have caught one — Henderson — while
-// Charbonnet and Boutte never appeared on a report at all. Worth having, not a
-// complete solution, and it should not be described as one.
-//
-// Out and Doubtful gate. Questionable does NOT: most Questionable players play,
-// and dropping them would throw away more signal than it saves.
-const NFLVERSE_INJURIES = 'https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_2026.csv';
-async function nflInjuryGate() {
-  const gated = new Map();   // key -> { status, injury, player }
-  try {
-    const r = await fetch(NFLVERSE_INJURIES, { headers: { accept: 'text/csv' } });
-    if (!r.ok) return { gated, error: `HTTP ${r.status}` };
-    const text = await r.text();
-    // Split on a plain newline rather than a regex literal. The CR/LF escapes
-    // in one are easy to mangle when this file is edited programmatically, and
-    // a broken regex throws at MODULE LOAD, taking every route down with it,
-    // not just this one. trim() removes the stray carriage return.
-    const lines = text.split(String.fromCharCode(10))
-      .map(function (l) { return l.trim(); })
-      .filter(Boolean);
-    if (lines.length < 2) return { gated, error: 'empty file' };
-    const cols = lines[0].split(',');
-    const iWk = cols.indexOf('week'), iTm = cols.indexOf('team');
-    const iNm = cols.indexOf('full_name'), iSt = cols.indexOf('report_status');
-    const iInj = cols.indexOf('report_primary_injury');
-    if (iWk < 0 || iTm < 0 || iNm < 0 || iSt < 0) return { gated, error: 'unexpected columns' };
-    let n = 0, skew = 0;
-    for (let i = 1; i < lines.length; i++) {
-      const f = lines[i].split(',');
-      // Split on commas with no quote handling, which the file currently allows:
-      // no quoted fields, and no injury description containing a comma. If that
-      // ever changes the columns shift and the wrong player gets gated, so a row
-      // whose field count disagrees with the header is skipped and counted
-      // rather than parsed into nonsense.
-      if (f.length !== cols.length) { skew++; continue; }
-      const st = (f[iSt] || '').trim();
-      if (st !== 'Out' && st !== 'Doubtful') continue;
-      const key = `${(f[iWk] || '').trim()}|${(f[iTm] || '').trim()}|${normName(f[iNm] || '')}`;
-      gated.set(key, {
-        status: st,
-        injury: iInj >= 0 ? (f[iInj] || '').trim() : '',
-        player: (f[iNm] || '').trim(),
-      });
-      n++;
-    }
-    return { gated, n, skew };
-  } catch (e) { return { gated, error: String((e && e.message) || e) }; }
-}
-async function nflProps(env, url) {
-  const out = { markets: ['receiving', 'rushing'], excluded: {
-    passing: 'not posted — under-mean was 42.0% (2024) and 49.5% (2025); '
-      + 'passing yards sum ~20 completions, so the right skew the model trades is absent',
-  }, confidenceMeans: 'how much the projection can be trusted (prior size, role stability, distribution width) — NOT value, and not a betting tier', rows: [], games: 0 };
-  if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 120)); }
-  try {
-    const pri = await nflPriors(env);
-    if (!pri || !pri.players) { out.error = 'priors asset unavailable'; return cors(json(out, 120)); }
-    out.builtFrom = pri.builtFrom;
-
-    const board = await nflBoardGames(env, url);
-    out.games = board.length;
-    out.seasonType = board.seasonType;
-
-    // Injury gate, loaded once per request. Its outcome is REPORTED, not silent:
-    // a gate that quietly removes players is indistinguishable from a model that
-    // never knew about them, and the difference matters when the board is short.
-    const inj = await nflInjuryGate();
-    out.injuryGate = inj.error
-      ? { active: false, error: inj.error, note: 'report unavailable — NOBODY was gated, projections include injured players' }
-      : { active: true, listedOutOrDoubtful: inj.n, rowsSkipped: inj.skew || 0, gated: [],
-          note: 'Out and Doubtful are dropped; Questionable is not, because most Questionable players play' };
-
-    const byTeam = {};
-    for (const [pid, p] of Object.entries(pri.players)) {
-      // Only a prior earned with the club he plays for now. 'same-team' pools
-      // last season with this one; a mover or rookie becomes '-current' once he
-      // has three games of reps with his new club (tools/build-nfl-priors.py).
-      // 'moved' and 'rookie-or-absent' are in the file for the priors page only.
-      if (!NFL_PRIOR_ELIGIBLE.has(p.status)) continue;
-      (byTeam[p.tm26 || p.tm] = byTeam[p.tm26 || p.tm] || []).push({ pid, ...p });
-    }
-
-    for (const g of board) {
-      if (g.total == null) continue;
-      for (const side of ['away', 'home']) {
-        const abbr = g[side];
-        const spread = side === 'away' ? g.away_spread : g.home_spread;
-        if (spread == null) continue;
-        const roster = byTeam[abbr] || [];
-        const plays = pri.league.playsPerTeamGame * (1 + NFL_PACE_COEF * (g.total - 44));
-        const passRate = Math.min(0.72, Math.max(0.45, pri.league.passRate + NFL_SCRIPT_COEF * spread));
-        const teamPass = plays * passRate, teamRush = plays * (1 - passRate);
-
-        const wk = g.week != null ? String(g.week) : '';
-        for (const p of roster) {
-          // Gated before any projection is built, so an Out player cannot reach
-          // the board, the frozen record, or a captured line.
-          // p.n, not p.name — the priors store the display name as `n` (see
-          // nflRow). p.name is undefined, which would have normalised to '' and
-          // matched nothing, leaving a gate that reported itself active while
-          // gating nobody.
-          const hit = inj.gated.get(`${wk}|${abbr}|${normName(p.n || '')}`);
-          if (hit) {
-            // Recorded with the designation and the injury, because the board
-            // has to be able to SAY why a player vanished. A silent drop is
-            // indistinguishable from a model that never knew him, which is the
-            // failure this gate was built to end, not to repeat.
-            if (out.injuryGate.gated) {
-              out.injuryGate.gated.push({
-                player: p.n, team: abbr, week: wk, pos: p.pos || null,
-                status: hit.status, injury: hit.injury || null,
-                game: `${g.away} @ ${g.home}`,
-              });
-            }
-            continue;
-          }
-          const seed = (p.pid.length * 7919 + abbr.charCodeAt(0) * 104729 + Math.round(g.total * 10)) | 0;
-
-          // Receiving carries the route-participation gate, as backtested.
-          if (p.recN >= 12 && p.rp >= NFL_MIN_RP) {
-            const ypr = ((p.ypr * p.recN + 12 * pri.league.yprCohort) / (p.recN + 12)) * NFL_EFF_CAL.receiving;
-            const shape = Math.max(1.2, Math.min(6, ypr / 3.2));
-            const q = nflSim(teamPass * p.recShare, NFL_REC_DISP, shape, ypr / shape, 0, nflRng(seed));
-            out.rows.push({ ...nflRow(p, abbr, g, 'receiving'), ...q, conf: nflConfidence('receiving', p, q) });
-          }
-          // Rushing does not. A back who never runs a route still carries the
-          // ball 300 times; the rushing backtest gated on carry volume alone and
-          // this must match it or the deployed model is not the validated one.
-          if (p.carN >= NFL_MIN_CARRIES) {
-            const ypc = ((p.ypc * p.carN + 15 * pri.league.ypcCohort) / (p.carN + 15)) * NFL_EFF_CAL.rushing;
-            const shifted = ypc + NFL_RUSH_SHIFT;
-            const shape = Math.max(1.5, Math.min(9, shifted / 1.6));
-            const q = nflSim(teamRush * p.carShare, NFL_RUSH_DISP, shape, shifted / shape, NFL_RUSH_SHIFT, nflRng(seed + 7));
-            out.rows.push({ ...nflRow(p, abbr, g, 'rushing'), ...q, conf: nflConfidence('rushing', p, q) });
-          }
-        }
-      }
-    }
-    // Biggest projections first — with no market line to rank against, volume is
-    // the only honest ordering. It is explicitly NOT an edge ranking.
-    out.rows.sort((a, b) => b.proj - a.proj);
-    // Written before the prop capture existed, this used to claim no book quoted
-    // NFL props through our feed. They do -- 96 of 145 rows carried DK, FD,
-    // Pinnacle, NoVig and ProphetX quotes the day this was corrected -- and the
-    // frozen projections are graded from box scores. What is still true is
-    // narrower: THIS endpoint holds no prices, and nothing anywhere is posted.
-    out.note = 'projections only — this endpoint carries no prices and ranks by volume, '
-      + 'never by edge. Books do quote NFL player props through the feed; those are '
-      + 'captured separately and joined to these projections in /api/nfl-compare, '
-      + 'which also carries the graded result. Nothing on either endpoint is posted as a play.';
-  } catch (e) { out.error = String((e && e.message) || e); }
-  return cors(json(out, 120));
-}
-
-function nflRow(p, abbr, g, market) {
-  return { player: p.n, pos: p.pos, team: abbr, market,
-    game: `${g.away} @ ${g.home}`, commence: g.commence, rp: Math.round(p.rp * 100) };
-}
-
-function nflSim(countMean, disp, shape, scale, shift, rnd) {
-  const d = new Array(NFL_DRAWS);
-  for (let i = 0; i < NFL_DRAWS; i++) {
-    const n = nflNegBin(Math.max(0.05, countMean), disp, rnd);
-    let y = 0;
-    for (let j = 0; j < n; j++) y += nflGamma(shape, scale, rnd) - shift;
-    d[i] = y;
-  }
-  d.sort((a, b) => a - b);
-  const q = (x) => Math.round(d[Math.min(d.length - 1, Math.floor(x * d.length))] * 10) / 10;
-  return {
-    proj: Math.round((d.reduce((s, x) => s + x, 0) / d.length) * 10) / 10,
-    p25: q(0.25), p50: q(0.50), p75: q(0.75),
-    count: Math.round(countMean * 10) / 10,
-  };
 }
 
 // ---------------------------------------------------------------------------

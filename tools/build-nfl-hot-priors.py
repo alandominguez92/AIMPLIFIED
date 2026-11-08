@@ -4,7 +4,8 @@ the box scores use.
 
 The Hot players section on the NFL tab holds a player with 5 to 9 games against
 these (see NFL_HOT_MARKETS in worker.js). A season is 17 games, so that is most
-of it. nfl-priors-2025.json is by the other id, and has no passing.
+of it. (The yardage projections' nfl-priors-2025.json, removed 2026-11-08, was
+by the other id, and had no passing.)
 
 Source, free: site.web.api.espn.com .../football/nfl/statistics/byathlete
 (season=2025 is the 2025 season; seasontype=2 is the regular season). Each list

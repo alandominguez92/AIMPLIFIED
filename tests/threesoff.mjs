@@ -90,7 +90,8 @@ ok(dl && dl.picks && dl.picks.on === false && dl.picks.why === WHY, 'and so does
 
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8');
-ok(/Strikeout unders, NBA threes and assists unders, NFL yardage[^<]*are left off/.test(app), '"What gets on the list" says they are left off');
+// "NFL yardage" left that sentence with the projections (2026-11-08).
+ok(/Strikeout unders, NBA threes and assists unders,[^<]*are left off/.test(app), '"What gets on the list" says they are left off');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

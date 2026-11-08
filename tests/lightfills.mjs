@@ -18,7 +18,7 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 
 // Dots, a checkbox and a play icon: nothing is written on them.
-const TEXTLESS = new Set(['.livecard-dot.live', '.hitter-card .checkbox.selected', '.play', '.calibration-dot', '.np-dot']);
+const TEXTLESS = new Set(['.livecard-dot.live', '.hitter-card .checkbox.selected', '.play', '.calibration-dot']);
 const fills = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
   .filter(([, , body]) => /(?:^|;)\s*background(?:-color)?\s*:\s*var\(--accent\)\s*(?:;|$)/.test(body))
   .map(([, sel]) => sel.trim());
@@ -29,10 +29,10 @@ ok(wrong.length === 0, `no surface with text on it is filled with the text gold 
 // must not find ".pk-card .hero-leg".
 const rule = (sel) => { const m = css.match(new RegExp('(?:^|\\n)\\s*' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}')); return m ? m[1] : ''; };
 ok(/background:var\(--accentFill\)/.test(rule('.le-save')), 'the slip\'s Save entry button is the bright gold');
-ok(/background:var\(--accentFill\)/.test(rule('.nflm.is-on')), 'and so is the NFL tab\'s selected market chip');
+// The NFL market chips and their banner came off with the yardage projections
+// (2026-11-08); the soccer league buttons are the chips that remain.
+ok(/background:var\(--accentFill\)/.test(rule('#soccerLeagues .nflm.active')), 'and so is the selected soccer league chip');
 ok(/--hl-tc:var\(--accentFill\)/.test(rule('.hero-leg')), 'the top card\'s tint is mixed from the fill gold, not the text gold');
-ok(/color:var\(--accentDim\)/.test(rule('[data-theme="light"] .ctx-banner.nfl-banner .ctx-banner-tag')),
-  'the NFL banner tag takes the darker gold on its blue tint in light mode');
 ok(/border-color:transparent;\s*background:transparent/.test(rule('[data-theme="light"] .nba-pp')),
   'and in light mode the Picks list, the NBA PrizePicks card and the soccer props card drop the outer box around their own white cards');
 

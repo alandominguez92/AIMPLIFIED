@@ -17,7 +17,7 @@ const BOARD = path.join(import.meta.dirname, '..');
 // Cloudflare's is. The worker builds its own cache key and DROPS the query string
 // on most routes, so an always-miss stub could not see a ?summary=1 request being
 // served the full board's cached body — which is exactly the bug that hit
-// /api/nfl-compare (see comparesummary.mjs).
+// /api/nfl-compare (since removed, with the yardage projections, 2026-11-08).
 const edge = new Map();
 globalThis.caches = {
   default: {

@@ -84,8 +84,8 @@ ok(later.games.length === 4 && later.slateDay === '2026-09-20',
   `the next slate day shows its games, Sunday night included (${later.games.length} on ${later.slateDay})`);
 ok(!later.empty, 'an off day rolls forward instead of showing an empty board');
 
-// The player projections build from this same list.
-ok(/const board = await nflBoardGames\(env, url\)/.test(src), 'nfl-props takes its games from the board, so players follow the same day');
+// The player projections built from this same list until they came off
+// (2026-11-08); the props card reads the capture by its own day.
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

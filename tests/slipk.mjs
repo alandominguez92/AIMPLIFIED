@@ -36,9 +36,9 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const names = ['ptDayOf', 'pkOf', 'pct1', 'kLeadOf', 'kSpec', 'buildKPropLeg', 'kLegIdFor', 'buildKPitcherLeg',
-  'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nbaNick', 'nflNick', 'nflMlLeg', 'nflYardsLeg', 'soccerMlLeg', 'gameStarted'];
+  'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nbaNick', 'nflNick', 'nflMlLeg', 'soccerMlLeg', 'gameStarted'];
 const body = names.map(lift).join('\n');
-const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, nflYardsLeg, soccerMlLeg, gameStarted, entryLegFrom };`);
+const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, soccerMlLeg, gameStarted, entryLegFrom };`);
 const state = { logSides: {}, logPrices: {}, logLines: {}, logBook: 'pp', slip: {} };
 const esc = (s) => String(s == null ? '' : s);
 const F = make(state, esc);
@@ -128,18 +128,10 @@ ok(carMl.odds === 168 && carMl.spec.book.win === 36.1 && carMl.edge === r(36.1 -
 ok(detMl.title === 'Lions ML' && detMl.sub === 'Lions @ Panthers' && detMl.id === 'nfl:ml:ev1:DET' && detMl.spec.team === 'DET' && /^DET @ CAR\|/.test(detMl.spec.gamePk),
   `off the NFL tab it reads as it does on Picks (${detMl.title}, ${detMl.sub}), on the same keys`);
 function r(v) { return Math.round(v * 10) / 10; }
-const gibbs = F.nflYardsLeg({ player: 'Jahmyr Gibbs', team: 'DET', game: 'DET @ CAR', commence: nflGame.commence, line: 88.5, underPrice: -112 }, 'rushing');
-ok(gibbs.spec.market === 'rush_yds' && gibbs.spec.side === 'Under' && gibbs.spec.book.line === 88.5 && gibbs.odds === -112,
-  `a yardage leg is the under at the captured line and its price (${gibbs.title} ${gibbs.odds})`);
-ok(gibbs.spec.gamePk === detMl.spec.gamePk, `and shares a game key with that game's moneyline (${gibbs.spec.gamePk})`);
-// PrizePicks' number (2026-10-06): an entry logged on PrizePicks takes it, one
-// logged on DraftKings takes the book's.
-const lamb = F.nflYardsLeg({ player: 'CeeDee Lamb', team: 'DAL', game: 'TB @ DAL', commence: nflGame.commence, line: 79.5, ppLine: 74.5, underPrice: -110 }, 'receiving');
-ok(/\(PP 74\.5\)/.test(lamb.title) && F.entryLegFrom(lamb, 'pp').line === 74.5 && F.entryLegFrom(lamb, 'dk').line === 79.5,
-  `a leg with both numbers logs at PrizePicks' on PrizePicks and the book's on DraftKings (${lamb.title})`);
-const irving = F.nflYardsLeg({ player: 'Bucky Irving', team: 'TB', game: 'TB @ DAL', commence: nflGame.commence, line: null, ppLine: 61.5, underPrice: null }, 'rushing');
-ok(/U 61\.5/.test(irving.title) && irving.spec.book.line === null && F.entryLegFrom(irving, 'pp').line === 61.5,
-  `a player only PrizePicks lists is a leg at its number (${irving.title})`);
+// A player leg from the same game. The yardage board's leg builder that made it
+// came off with the projections (2026-11-08); what the read keys on is the game.
+const gibbs = { ...detMl, id: 'nfl:rush_yds:gibbs', title: 'J. Gibbs U 88.5 rush yds', odds: -112,
+  spec: { ...detMl.spec, market: 'rush_yds', side: 'Under', player: 'Jahmyr Gibbs', team: 'DET', book: { line: 88.5, price: -112 } } };
 const nflRead = F.slipReadHtml([detMl, gibbs]);
 ok(/2 legs from one game/.test(nflRead) && !/points the same way|pulls against/.test(nflRead),
   'an NFL side beside its own player gets the same-game warning, and no baseball direction read');

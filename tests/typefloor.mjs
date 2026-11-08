@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 const BOARD = path.join(import.meta.dirname, '..');
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
-const files = ['style.css', 'app.js', 'index.html', 'track-record.html', 'methodology.html', 'legal.html', 'nfl-priors.html'];
+const files = ['style.css', 'app.js', 'index.html', 'track-record.html', 'methodology.html', 'legal.html'];
 
 let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };

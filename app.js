@@ -126,9 +126,6 @@
     sport: 'mlb',
     nfl: null,
     nflOpen: null,
-    nflView: 'receiving',
-    nflProps: null,
-    nflShowAll: false,
     feedError: null,
     // When the current outage started, when the next automatic retry lands, and
     // when a manual retry is allowed again. The banner reports all three, so a
@@ -137,10 +134,6 @@
     feedOutageSince: null,
     feedNextRetry: null,
     feedRetryAllowedAt: 0,
-    nflFilter: 'all',
-    nflSort: 'proj',
-    nflSortAsc: false,
-    nflSearch: '',
     batterShowPass: false,
     showPulled: false,
     alertsAll: false,
@@ -397,15 +390,10 @@
     soccerBoard: document.getElementById('soccerBoard'),
     soccerGrid: document.getElementById('soccerGrid'),
     soccerCount: document.getElementById('soccerCount'),
-    nflBannerTag: document.getElementById('nflBannerTag'),
-    nflBannerBody: document.getElementById('nflBannerBody'),
     nflBoardTitle: document.getElementById('nflBoardTitle'),
     nflCount: document.getElementById('nflCount'),
-    nflGrid: document.getElementById('nflGrid'),
     passMore: document.getElementById('passMore'),
     pulledMore: document.getElementById('pulledMore'),
-    nflEmpty: document.getElementById('nflEmpty'),
-    nflFoot: document.getElementById('nflFoot'),
     liveNowSection: document.getElementById('liveNow'),
     liveNowGrid: document.getElementById('liveNowGrid'),
     liveNowNote: document.getElementById('liveNowNote'),
@@ -4524,21 +4512,6 @@
         player: team, team, market: 'ml', side: home ? 'home' : 'away',
         book: { line: null, price: typeof price === 'number' ? price : null, win: fair != null ? r1(fair) : null }, pp: null } };
   }
-  // The under, at the captured line: the side this board's projections are
-  // built to read. The log form still flips it to the over.
-  // PrizePicks' number rides along as the leg's pp line (2026-10-06), so an
-  // entry logged on PrizePicks is logged, and graded, at PrizePicks' number.
-  function nflYardsLeg(r, market) {
-    const mk = market === 'receiving' ? 'rec_yds' : 'rush_yds';
-    const line = r.line != null ? r.line : r.ppLine;
-    const ppNote = r.ppLine != null && r.line != null && r.ppLine !== r.line ? ` (PP ${r.ppLine})` : '';
-    return { id: `nfl:${mk}:${r.game}:${r.player}`, board: 'NFL', title: `${r.player} U ${line} ${market === 'receiving' ? 'Rec' : 'Rush'} Yds${ppNote}`,
-      sub: r.game, odds: typeof r.underPrice === 'number' ? r.underPrice : null, tier: null, edge: null,
-      spec: { sport: 'nfl', date: ptDayOf(Date.parse(r.commence)), gamePk: nflGameKey(r.game, r.commence),
-        player: r.player, team: r.team || null, market: mk, side: 'Under',
-        book: { line: r.line != null ? r.line : null, price: typeof r.underPrice === 'number' ? r.underPrice : null, under: null },
-        pp: r.ppLine != null ? { line: r.ppLine, under: null } : null } };
-  }
   // NBA names are city plus nickname, and every nickname is unique; the
   // nickname is what fits a phone row (the "Trail Blazers" are "Blazers").
   const nbaNick = (name) => String(name || '').trim().split(/\s+/).pop();
@@ -4883,9 +4856,6 @@
         if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
         break;
       }
-      case 'nfl-view': setNflView(target.dataset.nflview); break;
-      case 'nfl-filter': setNflFilter(target.dataset.nflfilter); break;
-      case 'nfl-sort': setNflSort(target.dataset.nflsort); break;
       case 'toggle-pass': state.batterShowPass = !state.batterShowPass; renderBoard(); break;
       case 'toggle-pulled': state.showPulled = !state.showPulled; renderBoard(); break;
       // Filter, don't scroll. Scroll-to-row breaks when the row is filtered out
@@ -4914,7 +4884,6 @@
         refreshBatters();
         break;
       }
-      case 'nfl-showall': state.nflShowAll = !state.nflShowAll; renderNfl(); break;
       case 'nfl-toggle': {
         const id = target.dataset.id;
         state.nflOpen = state.nflOpen === id ? null : id;
@@ -5055,13 +5024,6 @@
     if (target.matches('.board-row[data-action="row-click"]')) refocusRow(target.dataset.id);
   });
 
-  {
-    const nq = document.getElementById('nflSearch');
-    if (nq) nq.addEventListener('input', (e) => {
-      state.nflSearch = e.target.value;
-      renderNfl();
-    });
-  }
   // The price checker's price, read as it is typed: only its line redraws,
   // so the field keeps its focus.
   document.body.addEventListener('input', (e) => {
@@ -5320,7 +5282,6 @@
     }
     if (nfl && !state.nfl) refreshNfl();          // lazy first load
     else if (nfl && Date.now() - ((state.propsAt && state.propsAt.nfl) || 0) > 120e3) refreshProps('nfl');
-    if (nfl && !state.nflProps) refreshNflProps();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -5354,74 +5315,12 @@
   const signed = (v) => (v == null ? '—' : (v > 0 ? '+' + v : String(v)));
 
   // The board in the NBA and NHL tabs' shape (2026-10-25): the moneyline table
-  // and its record first, the yardage projections folded underneath.
+  // and its record. The yardage projections that folded underneath came off on
+  // 2026-11-08; the props card above carries the NFL player lines.
   function renderNfl() {
     const d = state.nfl;
-    if (!d || !el.nflGrid) return;
-    const pre = d.seasonType === 'PRE';
-    renderNflMoneyline(d, pre);
-
-    const props = (state.nflProps && state.nflProps.rows) || [];
-    // Everything the toolbar can act on, before it acts.
-    const base = props.filter((r) => r.market === state.nflView);
-    renderNflControls(base);
-    const propRows = nflVisibleRows(base);
-
-    document.querySelectorAll('.nflm[data-nflview]').forEach((b) =>
-      b.classList.toggle('is-on', b.dataset.nflview === state.nflView));
-
-    if (el.nflBannerTag) el.nflBannerTag.textContent = pre ? 'Preseason · context only' : 'Projections · not plays';
-    if (el.nflBannerBody) {
-      // "Not priced" still holds: there is no fair line or edge on a player
-      // prop. Each projection is frozen before kickoff and graded against the
-      // box score after the game (/api/nfl-grade), and no grade is shown here.
-      el.nflBannerBody.innerHTML = 'These are <b>projections, not plays</b>. Lines are quoted and captured, and each projection is '
-        + 'frozen before kickoff and graded against the box score after the game — but nothing here is '
-        + 'priced: the bar shows where the model sits <b>against the market</b>, not value. '
-        + '<b>Passing yards are not shown</b>: backtested over two seasons the outcome landed below the '
-        + 'projected mean only 42% and 49% of the time, so the skew this model trades on is not there.';
-      if (pre) el.nflBannerBody.innerHTML += ' Preseason starters play a quarter: <b>nothing enters the public '
-        + 'record</b>, and preseason snaps and routes never reach the model’s priors.';
-      // The inputs behind the projections, one click away.
-      el.nflBannerBody.innerHTML += ' <a class="nfl-priors-link" href="/nfl-priors">'
-        + 'See the 2025 usage priors behind these numbers →</a>';
-    }
-    const pc = document.getElementById('nflProjCount');
-    if (pc) pc.textContent = propRows.length
-      ? `${propRows.length} of ${base.length} players · ${state.nflView} yards · not priced` : 'receiving · rushing · not priced';
-
-    const shown = propRows.length;
-    if (el.nflEmpty) el.nflEmpty.hidden = shown > 0;
-    // Why it is empty: still loading, a filter, or no slate to project.
-    if (el.nflEmpty && shown === 0) {
-      const k = el.nflEmpty.querySelector('.nfe-k');
-      const dd = el.nflEmpty.querySelector('.nfe-d');
-      if (k && dd) {
-        if (!state.nflProps) { k.textContent = 'Loading projections…'; dd.textContent = ''; }
-        else if (base.length > 0) {
-          k.textContent = 'Nothing matches this filter.';
-          dd.textContent = `${base.length} row${base.length === 1 ? '' : 's'} on the board — clear the search or choose All to see them.`;
-        } else {
-          k.textContent = 'No projections for this slate.';
-          dd.textContent = 'Projections need a slate to price against — a game supplies the spread and total everything else '
-            + 'cascades from. Nothing is scheduled inside the ingest window right now.';
-        }
-      }
-    }
-    // A toolbar over an empty board is furniture. Hide it when there is nothing
-    // it could act on, but keep it the moment a filter is what emptied the list.
-    const tb = document.querySelector('#nflBoard .board-toolbar');
-    if (tb) tb.hidden = base.length === 0;
-
-    el.nflGrid.innerHTML = shown ? nflPropTable(propRows, state.nflView) : '';
-
-    if (el.nflFoot) {
-      el.nflFoot.innerHTML = propRows.length
-        ? 'Volume-ordered — with no line to compare against there is no edge to rank by. '
-          + 'Priors from the <b>' + ((state.nflProps && state.nflProps.builtFrom) || '—') + '</b> season; '
-          + 'players who changed teams and rookies are held back until they have current-season usage.'
-        : (state.nflProps ? 'No projections for this slate.' : 'Loading projections…');
-    }
+    if (!d) return;
+    renderNflMoneyline(d, d.seasonType === 'PRE');
   }
 
   // The games still to kick off, one row each, as the NBA and NHL tabs draw
@@ -5582,217 +5481,6 @@
   }
 
 
-  // -------------------------------------------------------------------------
-  // NFL yardage projections — board
-  // -------------------------------------------------------------------------
-  // A projections board, not a plays board, and the columns say so. There is no
-  // line, no price, no edge and no tier, because none of those exist for a
-  // market no book quotes through our feed. Inventing a tier here would be the
-  // one dishonest thing this table could do.
-  const NFL_PROP_COLS = ['Player', 'Projection', '50% range', 'Median', 'Usage', 'Confidence', ''];
-
-  // Shared axes, one per market, so a bar in one row can honestly be compared
-  // with the bar in the next — every row on this board is the same market, the
-  // same call the strikeout board makes with K_AXIS_MAX. Sized to cover a real
-  // slate's projections and posted lines with headroom: the top receiving
-  // projection seen so far is ~126 and the top rushing line ~66.
-  const NFL_YARD_AXIS = { receiving: 150, rushing: 120 };
-
-  async function refreshNflProps() {
-    if (!LIVE_MODE) return;
-    try {
-      // Two calls, merged. /api/nfl-props is the projection source of truth and
-      // carries the usage fields the row needs; /api/nfl-compare carries the
-      // captured market line. Merging beats switching wholesale, because
-      // nfl-compare reads FROZEN projections and would silently drop usage.
-      //
-      // The line is taken but the gap is not: compare's gap is measured against
-      // the frozen projection, and this board draws the live one. Recomputing it
-      // here keeps the bar and its caption describing the same two numbers.
-      const [d, cmp] = await Promise.all([
-        fetchJson('/api/nfl-props'),
-        fetchJson('/api/nfl-compare').catch(() => null),
-      ]);
-      // Keyed by GAME as well as player and market. The board spans a 10-day
-      // horizon, so it carries two weeks at once, and six players appeared twice
-      // in week 1 alone -- Detroit and Buffalo meet in week 2, so their skill
-      // players hold a row in each. Without the game in the key the week-1 line
-      // was stamped onto the week-2 projection: a real line displayed against a
-      // projection it has nothing to do with.
-      const lineKey = (r) => `${r.player}|${r.market}|${r.game}`;
-      const lines = new Map();
-      for (const r of ((cmp && cmp.rows) || [])) {
-        // PrizePicks' number counts too: it lists players no book does.
-        if (r && (r.line != null || r.ppLine != null)) lines.set(lineKey(r), r);
-      }
-      const rows = (d && Array.isArray(d.rows)) ? d.rows : [];
-      for (const r of rows) {
-        const m = lines.get(lineKey(r));
-        if (!m) continue;
-        r.line = m.line;
-        r.ppLine = m.ppLine == null ? null : m.ppLine;
-        r.sharpN = m.sharpN;
-        r.underPrice = m.underPrice;
-        r.underBook = m.underBook;
-      }
-      state.nflProps = (d && Array.isArray(d.rows)) ? d : { rows: [], error: 'empty' };
-    } catch (e) {
-      state.nflProps = { rows: [], error: 'unreachable' };
-    }
-    renderNfl();
-  }
-
-  function setNflView(v) {
-    if (state.nflView === v) return;
-    state.nflView = v;
-    state.nflOpen = null;
-    state.nflFilter = 'all';
-    state.nflSort = 'proj';
-    state.nflSortAsc = false;
-    if (!state.nflProps) refreshNflProps();   // lazy first load
-    renderNfl();
-  }
-
-  // The injury gate, made visible. The MLB board already does this for batters
-  // who are not on tonight's card -- it names them and says what they were worth
-  // rather than quietly shortening the list -- and a gate the reader cannot
-  // audit is the same silent-absence problem in a new place.
-  //
-  // The unavailable case is louder than the active one on purpose. A gate that
-  // failed to load means injured players ARE on the board, which is the exact
-  // opposite of what the existence of a gate implies to someone reading it.
-  function nflGatedBlock() {
-    const g = (state.nflProps && state.nflProps.injuryGate) || null;
-    if (!g) return '';
-    if (!g.active) {
-      return `<div class="nfl-gate nfl-gate-off"><div class="nfl-gate-h">Injury gate unavailable</div>`
-        + `<div class="nfl-gate-sub">${esc(g.error || 'report not reachable')} — nobody was withheld, `
-        + `so players listed Out may still appear below.</div></div>`;
-    }
-    const rows = g.gated || [];
-    if (!rows.length) return '';
-    return `<div class="nfl-gate">`
-      + `<div class="nfl-gate-h">Injury gate — ${rows.length} projection${rows.length === 1 ? '' : 's'} withheld</div>`
-      + `<div class="nfl-gate-sub">listed Out or Doubtful on this week's report. A projection for a player `
-      + `who will not take the field is not a weak number, it is a certain loss the moment anything is posted on it.</div>`
-      + rows.map((r) => `<div class="nfl-gate-r"><b>${esc(r.player)}</b> ${nflBadge(r.team)}`
-        + `<span class="nfl-gate-pos">${esc(r.pos || '')}</span>`
-        + `<span class="bw-out">${esc(r.status)}${r.injury ? ' (' + esc(r.injury) + ')' : ''}`
-        + `${r.game ? ' · ' + esc(r.game) : ''} — projection withdrawn</span></div>`).join('')
-      + `</div>`;
-  }
-
-  function nflPropTable(rows, market) {
-    const head = NFL_PROP_COLS
-      .map((c) => (c ? `<span class="col-label">${c}</span>` : '<span></span>'))
-      .join('');
-    return `<div class="board view-nflprops"><div class="board-inner">`
-      + `<div class="board-head-row">${head}</div>`
-      + `<div class="np-rows${state.nflShowAll ? ' show-all' : ''}">${rows.map((r) => nflPropRow(r, market)).join('')}</div>`
-      + nflGatedBlock()
-      + (() => {
-        const low = rows.filter((r) => r.conf === 3).length;
-        if (!low) return '';
-        return `<button class="np-more" data-action="nfl-showall">${state.nflShowAll
-          ? 'Hide ' + low + ' low-confidence row' + (low === 1 ? '' : 's')
-          : 'Show ' + low + ' low-confidence row' + (low === 1 ? '' : 's')}</button>`;
-      })()
-      + `</div></div>`;
-  }
-
-  // The same bar the MLB boards draw: fill is our projection, tick is the
-  // posted line, and the space between them is the disagreement.
-  //
-  // Uncoloured on purpose, exactly as on the strikeout and moneyline boards.
-  // Green/red on the batter board means value for or against a bet we are
-  // actually making; this board posts nothing, so tinting a direction would read
-  // as a call that has not been earned. Which way the model leans is the message.
-  //
-  // The gap is emphatically NOT an edge. The model currently sits ~3.4 yards
-  // above the market on average (+8.1 where confidence is highest), and whether
-  // that is the market shading lines or the model running hot is unresolved
-  // until the graded record says so. The caption says "vs line", never "value".
-  function nflPropBar(r, market) {
-    if (r.line == null || typeof r.proj !== 'number') return '';
-    const axis = NFL_YARD_AXIS[market] || NFL_YARD_AXIS.receiving;
-    const gap = Math.round((r.proj - r.line) * 10) / 10;
-    const sharp = r.sharpN != null ? ` · ${r.sharpN} sharp` : '';
-    return miniBar(r.proj, r.line, (v) => v / axis * 100)
-      + `<span class="bw-cush">line ${r.line} · model <b>${Math.abs(gap)} ${gap >= 0 ? 'over' : 'under'}</b> vs line${sharp}</span>`;
-  }
-
-  function nflPropRow(r, market) {
-    const id = r.player + '|' + r.market;
-    const open = state.nflOpen === id;
-    // Usage is a different measurement per market and is labelled as such rather
-    // than collapsed into one number that means two things.
-    const usage = market === 'receiving'
-      ? `${r.rp}%<i class="bk-tag">routes</i>`
-      : `${r.count}<i class="bk-tag">carries</i>`;
-    // Low-confidence rows fold on a phone, the same rule the batter board uses
-    // for its Pass tier: what the model has least faith in gives way, everything
-    // it stands behind stays on screen. Marked here, hidden by CSS only.
-    const tail = r.conf === 3 ? ' np-low' : '';
-    // A star only where a book's line has been captured: with no line there is
-    // nothing to take, only a projection.
-    const star = (r.line != null || r.ppLine != null) && r.commence && Date.parse(r.commence) > Date.now()
-      ? offerStar(nflYardsLeg(r, market)) : '';
-    const row = `<div class="board-row${open ? ' expanded' : ''}${tail}" data-action="nfl-toggle" data-id="${esc(id)}"
-        role="button" tabindex="0" aria-expanded="${open ? 'true' : 'false'}"
-        aria-label="${esc(r.player)} — toggle breakdown">
-        <div class="matchup-cell">
-          <span class="mc-head">${star}<b>${esc(r.player)}</b> ${nflBadge(r.team)}${
-            r.commence ? `<span class="row-when">${esc(kickoff(r.commence))}</span>` : ''}</span>
-          <span class="matchup-sub">${esc(r.pos)} · ${esc(r.game)}${r.commence ? ' · ' + esc(kickoff(r.commence)) : ''}</span>
-          ${nflPropBar(r, market)}${r.ppLine != null ? ppTag({ point: r.ppLine }, r.line) : ''}
-        </div>
-        <span class="np-proj"><i class="np-k">proj</i>${r.proj}<i>yds</i></span>
-        <span class="np-range">${r.p25} – ${r.p75}</span>
-        <span class="interval-cell" style="color:var(--model)"><i class="np-k">median</i>${r.p50}</span>
-        <span class="np-usage">${usage}</span>
-        <span class="tier-cell">${confChip(r.conf)}</span>
-        <span class="chevron">${open ? '▲' : '▼'}</span>
-      </div>`;
-    return row + (open ? nflPropDetail(r, market) : '');
-  }
-
-  function nflPropDetail(r, market) {
-    const skew = Math.round((r.proj - r.p50) * 10) / 10;
-    const cell = (k, v) => `<div class="nfd-c"><span>${k}</span><b>${v}</b></div>`;
-    return `<div class="expanded-detail nfl-detail">
-      <div class="nfd-k">How this number is built</div>
-      <div class="nfd-read">
-        The game's spread and total set the team's plays and pass/run split; ${esc(r.player)}'s
-        share of that volume sets his opportunity; his own efficiency turns it into yards.
-        ${market === 'receiving'
-          ? 'Receptions are drawn from a negative binomial and each catch\'s yards from a gamma, then multiplied — receiving yards are a compound outcome, not a bell curve.'
-          : 'Carries are drawn from a negative binomial and each carry\'s yards from a shifted gamma, so a stuffed run can lose yardage.'}
-        The mean sits <b>${skew} yds above the median</b>, which is the whole reason this market is worth
-        fading: a line set near the mean is above the outcome that actually happens most often.
-      </div>
-      <div class="nfd-grid">
-        ${cell('Mean', r.proj)}
-        ${cell('Median', r.p50)}
-        ${cell('25th pct', r.p25)}
-        ${cell('75th pct', r.p75)}
-        ${cell(market === 'receiving' ? 'Routes' : 'Carries', market === 'receiving' ? r.rp + '%' : r.count)}
-        ${cell('Prior', state.nflProps && state.nflProps.builtFrom ? state.nflProps.builtFrom : '—')}
-      </div>
-      <div class="nfd-foot">No book quotes this market through our feed, so there is no line to price
-        against — this is a projection, not a play, and nothing here is graded.</div>
-    </div>`;
-  }
-
-  // Confidence chip. Deliberately not tierChip(): that renders the MLB board's
-  // T1/T2/T3, which is measured against a price and means "how strong is the
-  // play". This means "how much is the projection worth trusting", and reusing
-  // the same component would quietly merge two different claims.
-  function confChip(c) {
-    const label = c === 1 ? 'High' : c === 2 ? 'Med' : 'Low';
-    return `<span class="conf-chip c${c}" title="Projection confidence — prior size, role stability and distribution width. Not a betting tier.">${label}</span>`;
-  }
-
-
   // Run Line as table rows. Was the last view still built from cards, which made
   // it 220px a row against 81px everywhere else. The data was always table-
   // shaped — two sides, a price, a fair cover percentage and a verdict — so the
@@ -5873,99 +5561,6 @@
         <div class="nfd-foot">Context only — the run line is not graded and not posted.</div>
       </div>`;
     }).join('');
-  }
-
-
-  // -------------------------------------------------------------------------
-  // NFL toolbar — search, filter, sort
-  // -------------------------------------------------------------------------
-  // Same shape and styling as the MLB board, but the keys are per view and are
-  // never borrowed. The game-line read has an edge, a price and a win
-  // probability to sort on; the projection boards have none of those, because
-  // no book quotes the market. Offering Edge and Odds there would ship chips
-  // that sort nothing — the exact bug fixed on the MLB moneyline board, where a
-  // chip now appears only when the metric actually has values.
-  const NFL_VIEW_CFG = {
-    props: {
-      // Confidence, not tiers. The board has no price, so it has no tier — see
-      // the confidence chip comment. Labels match the chips exactly.
-      filters: [['all', 'All'], ['1', 'High'], ['2', 'Med'], ['3', 'Low']],
-      sorts: [['proj', 'Projection'], ['p50', 'Median'], ['usage', 'Usage'], ['time', 'Time']],
-      metric: {
-        proj: (r) => r.proj,
-        p50: (r) => r.p50,
-        usage: (r) => (r.market === 'receiving' ? r.rp : r.count),
-        time: (r) => Date.parse(r.commence || 0) || null,
-      },
-      // Deliberately NOT r.game. That string is "DAL @ SEA", so including it made
-      // a search for SEA return every Cowboy in the fixture too -- which
-      // contradicts the placeholder and makes a team search useless for
-      // isolating a team. Player, club and position only.
-      match: (r, q) => `${r.player} ${r.team} ${r.pos}`.toLowerCase().includes(q),
-      keep: (r, f) => f === 'all' || String(r.conf) === f,
-    },
-  };
-  const amProbLocal = (odds) => (typeof odds !== 'number' ? null
-    : odds > 0 ? 100 / (odds + 100) : -odds / (-odds + 100));
-
-  const nflCfg = () => NFL_VIEW_CFG.props;
-
-  // Time reads soonest-first; everything else reads biggest-first. Same default
-  // direction rule the MLB board uses, so a reader moving between them is not
-  // surprised by an inverted list.
-  const nflSortDefaultAsc = (key) => key === 'time';
-
-  function setNflSort(key) {
-    if (state.nflSort === key) state.nflSortAsc = !state.nflSortAsc;
-    else { state.nflSort = key; state.nflSortAsc = nflSortDefaultAsc(key); }
-    renderNfl();
-  }
-  function setNflFilter(f) { state.nflFilter = f; renderNfl(); }
-
-  // Rows the toolbar acts on, in display order.
-  function nflVisibleRows(all) {
-    const cfg = nflCfg();
-    const q = (state.nflSearch || '').trim().toLowerCase();
-    let rows = all.filter((r) => cfg.keep(r, state.nflFilter));
-    if (q) rows = rows.filter((r) => cfg.match(r, q));
-    const get = cfg.metric[state.nflSort] || cfg.metric[cfg.sorts[0][0]];
-    const asc = state.nflSortAsc;
-    return rows.slice().sort((a, b) => {
-      const x = get(a), y = get(b);
-      // A row with no value for the active key sinks, rather than being treated
-      // as zero and jumping to the top of an ascending sort.
-      if (x == null && y == null) return 0;
-      if (x == null) return 1;
-      if (y == null) return -1;
-      return asc ? x - y : y - x;
-    });
-  }
-
-  function renderNflControls(all) {
-    const cfg = nflCfg();
-    const fEl = document.getElementById('nflFilters');
-    const sEl = document.getElementById('nflSorts');
-    if (fEl) {
-      fEl.innerHTML = cfg.filters.map(([key, label]) => {
-        const n = all.filter((r) => cfg.keep(r, key)).length;
-        const active = state.nflFilter === key ? ' active' : '';
-        const empty = n === 0 && key !== 'all' ? ' chip-empty' : '';
-        return `<button class="filter-btn${active}${empty}" data-action="nfl-filter" data-nflfilter="${key}">`
-          + `${label}<span class="chip-count">${n}</span></button>`;
-      }).join('');
-    }
-    if (sEl) {
-      // Only offer a key something actually carries a value for.
-      sEl.innerHTML = cfg.sorts.filter(([key]) => all.some((r) => cfg.metric[key](r) != null))
-        .map(([key, label]) => {
-          const on = state.nflSort === key;
-          const arrow = on ? `<span class="sort-arrow">${state.nflSortAsc ? '↑' : '↓'}</span>` : '';
-          return `<button class="sort-btn${on ? ' active' : ''}" data-action="nfl-sort" data-nflsort="${key}">`
-            + `${label}${arrow}</button>`;
-        }).join('');
-    }
-    const q = document.getElementById('nflSearch');
-    if (q && q.value !== (state.nflSearch || '')) q.value = state.nflSearch || '';
   }
 
 
@@ -6334,7 +5929,7 @@
     const rules = `<details class="pk-rules"><summary>What gets on the list</summary><ul>${Object.values(kinds).map((k) => {
       const r = k.record || {};
       return `<li><b>${esc(k.label)}</b> at ${k.min}%+ · ${r.n ? `${r.hit} of ${r.n} landed (${pct0(r.hitRate)})` : 'no graded legs yet'}${r.n && !r.proven ? ' · <span class="pk-new">new</span>' : ''}</li>`;
-    }).join('')}</ul><p>Only the best leg of each game, because legs from one game tend to land or miss together. Strikeout unders, NBA threes and assists unders, NFL yardage, passing-TD unders under 60% and MLB unders under 70% are left off: their numbers have not held up.</p></details>`;
+    }).join('')}</ul><p>Only the best leg of each game, because legs from one game tend to land or miss together. Strikeout unders, NBA threes and assists unders, passing-TD unders under 60% and MLB unders under 70% are left off: their numbers have not held up.</p></details>`;
     const rec = d.record || {};
     const recLine = rec.legs && rec.legs.n
       ? `This list: <b>${rec.legs.hit} of ${rec.legs.n}</b> landed${rec.since ? ' since ' + esc(shortDay(rec.since) || rec.since) : ''}`
