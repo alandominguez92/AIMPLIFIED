@@ -496,7 +496,7 @@ console.log('\n-- the stat bar that stays under the tabs (2026-11-06) --');
 // slim bar with the phone's own list over pinning all the buttons (five rows on a phone). The page
 // shows it once the buttons have scrolled away (spStickSync, checked in the browser); here, what it
 // draws and what the page reads to keep the reader's place on a switch.
-state.props = { nba: D2 }; state.prStat = {}; state.spBarOn = {}; state.spOne = {};
+state.props = { nba: D2 }; state.prStat = {}; state.spBarOn = {};
 h = card();
 const sbar = (h.match(/<div class="sp-stick[^"]*">[\s\S]*?<\/select><\/span><\/div><\/div>/) || [''])[0];
 const opts = [...sbar.matchAll(/<option value="(\w+)"( selected)?>([^<]+)<\/option>/g)].map((m) => ({ v: m[1], sel: !!m[2], t: m[3] }));
@@ -508,12 +508,16 @@ ok(/<span class="sp-bar-v">Points · <b>1<\/b> at 54%\+<\/span>/.test(sbar) && /
 state.prStat = { nba: 'reb_ast' };
 ok(/<option value="reb_ast" selected>/.test(card()) && /<span class="sp-bar-v">Reb \+ Ast/.test(card()), 'a stat picked: the bar says so');
 state.prStat = {};
-state.spBarOn = { nba: true }; state.spOne = { nba: true };
-ok(/<div class="sp-stick on">/.test(card()) && /class="nba-pp pk-card sp-card sp-one" data-sp="nba"/.test(card()), 'redrawn while showing, it stays showing; one row of buttons stays the buttons');
-state.spBarOn = {}; state.spOne = {};
+state.spBarOn = { nba: true };
+ok(/<div class="sp-stick on">/.test(card()), 'redrawn while showing, it stays showing');
+state.spBarOn = {};
+// The same bar on every sport at every width (2026-11-08, the owner: "keep it similar"). Until then a
+// wide window pinned the buttons wherever they fit on one row: NBA's did, soccer's longer names wrapped.
+ok(!/sp-one|spOne/.test(app) && !/sp-one/.test(css) && /const on = chips\.getBoundingClientRect\(\)\.bottom < top && card\.getBoundingClientRect\(\)\.bottom > top \+ 60;/.test(app),
+  'no one-row exception: the bar shows on every sport once the buttons scroll away, however wide the window');
 ok((h.match(/class="sp-match" data-mid="[^"]+"/g) || []).length === 2 && /data-anchor="top"/.test(h) && /data-anchor="games"/.test(h), 'each game and both headings marked, to keep the place on a switch');
-ok(/\.sp-stick \{ position:sticky; top:calc\(var\(--hdrH\) \+ var\(--sportsH\)\); height:0;/.test(css) && /\.sp-card\.sp-one \.sp-chips \{ position:sticky;/.test(css) && /\.sp-sel \{[^}]*font-size:16px/.test(css),
-  'sticky under the tabs inside the card, taking no room; one row of buttons sticks itself; 16px so iOS doesn\'t zoom');
+ok(/\.sp-stick \{ position:sticky; top:calc\(var\(--hdrH\) \+ var\(--sportsH\)\); height:0;/.test(css) && /\.sp-sel \{[^}]*font-size:16px/.test(css),
+  'sticky under the tabs inside the card, taking no room; 16px so iOS doesn\'t zoom');
 state.props = { nba: D };
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

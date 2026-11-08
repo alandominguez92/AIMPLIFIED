@@ -7573,8 +7573,9 @@
   }
   // The stat bar (2026-11-06, the owner's pick): once the stat buttons have scrolled away, a slim
   // bar under the tabs switches stat through the phone's own list, without scrolling back up. It
-  // sticks inside its card, so it leaves once the last game has gone by. Where the buttons fit on
-  // one row they stay put instead (`sp-one`) and the bar never shows. Both are set by spStickSync.
+  // sticks inside its card, so it leaves once the last game has gone by. Set by spStickSync.
+  // Every sport at every width (2026-11-08, the owner: "keep it similar"): a wide window used to
+  // pin the buttons instead wherever they fit on one row, so NBA showed buttons and soccer the bar.
   function spBarHtml(sport, opts, view, strong) {
     const cur = opts.find((o) => o.value === view) || opts[0];
     const on = !!(state.spBarOn && state.spBarOn[sport]);
@@ -7589,11 +7590,8 @@
       const chips = card.querySelector('.sp-chips'), stick = card.querySelector('.sp-stick');
       if (!chips || !stick || !card.getClientRects().length) continue;
       const sp = card.dataset.sp;
-      const one = new Set([...chips.children].map((b) => b.offsetTop)).size === 1;
-      const on = !one && chips.getBoundingClientRect().bottom < top && card.getBoundingClientRect().bottom > top + 60;
-      card.classList.toggle('sp-one', one);
+      const on = chips.getBoundingClientRect().bottom < top && card.getBoundingClientRect().bottom > top + 60;
       stick.classList.toggle('on', on);
-      if (!!(state.spOne && state.spOne[sp]) !== one) state.spOne = { ...(state.spOne || {}), [sp]: one };
       if (!!(state.spBarOn && state.spBarOn[sp]) !== on) state.spBarOn = { ...(state.spBarOn || {}), [sp]: on };
     }
   }
@@ -7704,7 +7702,7 @@
           : `<div class="tc-wait-note">No ${view === 'best' ? 'player' : `${esc(name)} number`} at ${PROP_STRONG}%+ right now.</div>`)
         + '<div class="sp-sec" data-anchor="games">All games</div>';
     }
-    return `<div class="nba-pp pk-card sp-card${state.spOne && state.spOne[sport] ? ' sp-one' : ''}" data-sp="${esc(sport)}">${head}${chips}${top}${body}${nothing}</div>`;
+    return `<div class="nba-pp pk-card sp-card" data-sp="${esc(sport)}">${head}${chips}${top}${body}${nothing}</div>`;
   }
   // Back on a tab after two minutes, the card alone: the reads land through the day.
   async function refreshProps(sport) {
@@ -7812,7 +7810,7 @@
     // The page that still answers has none of these (socPageRows in worker.js).
     const stale = stats.some((s) => ['passes', 'tackles', 'clear', 'crosses', 'shot_ast'].includes(s))
       ? '<div class="tc-wait-note">Passes, tackles, clearances, crosses and shots assisted run on numbers from before Oct 12: ESPN stopped sending them, so new ones can\'t be graded.</div>' : '';
-    return `<div class="nba-pp pk-card sp-card${state.spOne && state.spOne.soccer ? ' sp-one' : ''}" data-sp="soccer">${head}${body}${nothing}${wait}${none}${stale}</div>`;
+    return `<div class="nba-pp pk-card sp-card" data-sp="soccer">${head}${body}${nothing}${wait}${none}${stale}</div>`;
   }
 
   // The best soccer prop in each stat, for the Picks tab (2026-10-21): across
