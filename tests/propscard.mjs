@@ -23,10 +23,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD = path.join(HERE, '..');
 const D = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'nba-props-board-20261105.json'), 'utf8'));
 const NOW = Date.parse(D.games[0].commence) - 3 * 3600e3;
+let CLOCK = null; // the day-of tests move the clock; everything else runs at NOW
 const RealDate = Date;
 globalThis.Date = class extends RealDate {
-  constructor(...a) { super(...(a.length ? a : [NOW])); }
-  static now() { return NOW; }
+  constructor(...a) { super(...(a.length ? a : [CLOCK ?? NOW])); }
+  static now() { return CLOCK ?? NOW; }
 };
 
 let fail = 0;
@@ -54,7 +55,7 @@ const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
   'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'PROP_TOP_N', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
-  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'PROP_MIN_MOVE', 'propMinTag', 'propLateTag', 'propRow', 'spBarHtml', 'propsCardHtml'];
+  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'PROP_MIN_MOVE', 'propMinTag', 'propLateTag', 'propRow', 'spBarHtml', 'ptDayOf', 'PROP_GAME_HOURS', 'propDay', 'propDayName', 'propDayTitle', 'propDayWait', 'propsCardHtml'];
 let C;
 try {
   C = new Function('state', 'esc', 'persistSlip', 'renderSlip', CARD.map(lift).join('\n') + '\nreturn { propsCardHtml, propView, propLeg, propSlipSync, propKey, propAgainstTag, LEG_OFFERS };')(state, esc, persistSlip, renderSlip);
@@ -384,7 +385,7 @@ console.log('\n-- the strongest above the games, each game a bar to tap (2026-11
 // so the list has two to draw from. Their lines and chances are the recorded ones.
 const G2 = { ...D.games[0], id: `${D.games[0].id}-2`, commence: new RealDate(Date.parse(D.games[0].commence) + 3600e3).toISOString() };
 const D2 = { ...D, games: [D.games[0], G2], players: D.players.map((p) => (p.team === 'MEM' ? { ...p, g: 1 } : p)) };
-const ALL_GAMES = '<div class="sp-sec" data-anchor="games">All games</div>';
+const ALL_GAMES = '<div class="sp-sec" data-anchor="games">Today’s games</div>';
 const secOf = (h) => (h.includes(ALL_GAMES) ? h.slice(h.indexOf('<div class="sp-sec" data-anchor="top">'), h.indexOf(ALL_GAMES)) : '');
 ok(!/sp-sec/.test(card()), 'one game, open already: no list above it');
 state.props = { nba: D2 };
@@ -395,7 +396,7 @@ const ptsWant = D2.players.filter((p) => { const f = fairAt(p.lines.pts); return
 console.log(`  Points at 54%+: ${ptsWant.join(', ')}`);
 ok(ptsWant.length >= 1 && /Strongest Points<span class="sp-badge">\d+ at 54%\+<\/span>/.test(sec) && sec.includes(`${ptsWant.length} at 54%+`), `two games: "Strongest Points", ${ptsWant.length} at 54%+`);
 ok(strongRows.length === ptsWant.length && strongRows.map((r) => /<b>([^<]+)<\/b>/.exec(r)[1]).sort().join() === ptsWant.join(), 'its rows are those players, before any game is opened');
-ok(h.indexOf('sp-sec') > h.indexOf('sp-chips') && h.indexOf('All games') < h.indexOf('class="sp-match"'), 'under the stat buttons, above the games');
+ok(h.indexOf('sp-sec') > h.indexOf('sp-chips') && h.indexOf('Today’s games') < h.indexOf('class="sp-match"'), 'under the stat buttons, above the games');
 ok((h.match(/class="sp-mh"[^>]*aria-expanded="false"/g) || []).length === 2, 'the games stay folded');
 state.prStat = { nba: 'best' };
 sec = secOf(card());
@@ -546,6 +547,68 @@ ok(/case 'pr-match': \{[\s\S]{0,120}spKeepMatch\(sp, id, \(\) => \{/.test(app) &
   ok(scrolled.top === 0, 'closed where it sits in the list, nothing moves');
 }
 state.props = { nba: D };
+
+console.log('\n-- only the day\'s games, the next day\'s once its last is over (2026-11-08) --');
+// The owner: "only add the teams that play the day of. Once the final game ends, we can start
+// getting the teams for the next day." The board recorded at 1:36 AM PT Sunday Nov 8 lists
+// Sunday's 7 games and Monday's 8. `asWorker` cuts it the way the worker sends it at a moment:
+// the games to come, their players, and the ones started in the last four hours as `underway`.
+{
+  const D8 = JSON.parse(fs.readFileSync(path.join(HERE, 'fixtures', 'nba-props-board-20261108.json'), 'utf8'));
+  const asWorker = (ms) => {
+    const keep = D8.games.map((g, i) => ({ g, i })).filter((x) => Date.parse(x.g.commence) > ms);
+    const at = new Map(keep.map((x, j) => [x.i, j]));
+    return { ...D8, games: keep.map((x) => x.g), players: D8.players.filter((p) => at.has(p.g)).map((p) => ({ ...p, g: at.get(p.g) })),
+      underway: D8.games.filter((g) => { const t = Date.parse(g.commence); return t <= ms && t > ms - 4 * 3600e3; })
+        .map(({ id, date, commence, home, away }) => ({ id, date, commence, home, away })) };
+  };
+  const sunday = D8.games.filter((g) => g.date === '2026-11-08').map((g) => g.id);
+  const monday = D8.games.filter((g) => g.date === '2026-11-09').map((g) => g.id);
+  const bars = (h) => [...h.matchAll(/<div class="sp-match" data-mid="([^"]+)"/g)].map((m) => m[1]);
+  const anyOf = (h, ids) => ids.some((id) => h.includes(esc(id)));
+  const at = (iso) => { CLOCK = Date.parse(iso); state.props = { nba: asWorker(CLOCK) }; state.prMatch = {}; state.prStat = {}; return card(); };
+  ok(sunday.length === 7 && monday.length === 8, `the recorded board: ${sunday.length} Sunday games, ${monday.length} Monday`);
+
+  h = at(D8.at);
+  ok(bars(h).length === 7 && bars(h).every((id) => sunday.includes(id)), `1:36 AM Sunday: Sunday's 7 games, none of Monday's (${bars(h).length} bars)`);
+  ok(!anyOf(h, monday), 'no Monday game anywhere on the card');
+  // A search opens every game it reaches, so each player row of the day is drawn.
+  state.prQuery = { nba: 'a' };
+  const found = card();
+  state.prQuery = {};
+  ok(found.includes('data-key="nba:2026-11-08:') && !found.includes('data-key="nba:2026-11-09:'),
+    `a search reaches Sunday's players only (Lakers in both days' games): ${(found.match(/data-key="nba:2026-11-08:/g) || []).length} Sunday rows, ${(found.match(/data-key="nba:2026-11-09:/g) || []).length} Monday`);
+  ok(h.includes('<div class="sp-sec" data-anchor="games">Today’s games</div>'), 'headed "Today’s games"');
+
+  h = at('2026-11-09T00:00:00Z');
+  ok(bars(h).length === 5 && bars(h).every((id) => sunday.includes(id)) && !anyOf(h, monday), `4:00 PM, two under way: the 5 still to tip, none of Monday's (${bars(h).length} bars)`);
+
+  h = at('2026-11-09T02:11:00Z');
+  ok(!bars(h).length && !anyOf(h, monday), '6:11 PM, all 7 under way: Monday\'s still held');
+  ok(text(h).includes('All of today’s games are under way. Tomorrow’s 8 games show here once the last one is over, by about 9:10 PM.'),
+    `and it says when they come: "${(/All of[^<]+/.exec(h) || [''])[0]}"`);
+
+  h = at('2026-11-09T05:09:00Z');
+  ok(!bars(h).length, '9:09 PM, the last two still inside their three hours: still held');
+  h = at('2026-11-09T05:11:00Z');
+  ok(bars(h).length === 8 && bars(h).every((id) => monday.includes(id)) && !anyOf(h, sunday), `9:11 PM, Sunday's last over: Monday's 8 (${bars(h).length} bars)`);
+  ok(h.includes('<div class="sp-sec" data-anchor="games">Tomorrow’s games</div>'), 'headed "Tomorrow’s games" before midnight');
+  h = at('2026-11-09T08:30:00Z');
+  ok(h.includes('<div class="sp-sec" data-anchor="games">Today’s games</div>'), 'and "Today’s games" after it');
+
+  // The NHL's, NFL's and soccer's lists drop a game once it's over, before its three hours are up;
+  // the next day comes then.
+  CLOCK = Date.parse('2026-11-09T04:30:00Z');
+  state.props = { nba: { ...asWorker(CLOCK), underway: [] } };
+  ok(bars(card()).length === 8, 'with nothing under way left on the list, the next day\'s show at once');
+  CLOCK = null;
+  state.props = { nba: D }; state.prMatch = {}; state.prStat = {};
+}
+const wk = fs.readFileSync(path.join(BOARD, 'worker.js'), 'utf8').replace(/\r\n/g, '\n');
+ok(/const all = await c\.slate\(db, now, PP_PROP_UNDERWAY_MS\);[\s\S]{0,200}out\.underway = all\.filter\(\(g\) => Date\.parse\(g\.commence\) <= now\)/.test(wk),
+  'the worker sends the NBA, NHL and NFL games under way beside the ones to come');
+ok(/const all = await socUpcoming\(env, now, PP_PROP_UNDERWAY_MS\);[\s\S]{0,260}out\.underway = all\.filter\(\(f\) => Date\.parse\(f\.commence\) <= now\)/.test(wk),
+  'and the soccer matches under way');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

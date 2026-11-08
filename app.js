@@ -7632,13 +7632,45 @@
     if (now && at != null) window.scrollBy({ top: now.getBoundingClientRect().top - at, behavior: 'instant' });
     spStickSync();
   }
+  // The day the props cards show (2026-11-08, the owner: "only the teams that play the day of"):
+  // the Pacific date of the earliest game not yet over, the next day's games held until the last
+  // of that day's is over. The worker sends the games under way beside the ones to come (soccer's
+  // until ESPN calls them over, the NHL's and NFL's until their list is next built); a game counts
+  // as over PROP_GAME_HOURS after its start at the latest, past nearly any game, overtime included.
+  const PROP_GAME_HOURS = { nba: 3, nhl: 3, nfl: 4, soccer: 3 };
+  function propDay(sport, games, underway, now) {
+    const len = (PROP_GAME_HOURS[sport] || 3) * 3600e3, t = (g) => Date.parse(g.commence);
+    const all = [...(underway || []), ...(games || [])].filter((g) => Number.isFinite(t(g)));
+    const open = all.filter((g) => t(g) + len > now);
+    if (!open.length) return null;
+    const day = ptDayOf(Math.min(...open.map(t)));
+    const ofDay = open.filter((g) => ptDayOf(t(g)) === day);
+    const later = all.filter((g) => ptDayOf(t(g)) > day);
+    const nextDay = later.length ? ptDayOf(Math.min(...later.map(t))) : null;
+    return { day, toStart: ofDay.filter((g) => t(g) > now).length, overBy: Math.max(...ofDay.map(t)) + len,
+      nextDay, nextN: later.filter((g) => ptDayOf(t(g)) === nextDay).length };
+  }
+  // "today", "tomorrow", or the weekday.
+  const propDayName = (day, now) => (day === ptDayOf(now) ? 'today' : day === ptDayOf(now + 864e5) ? 'tomorrow'
+    : new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long' }).format(new Date(day + 'T12:00:00Z')));
+  const propDayTitle = (day, now) => { const n = propDayName(day, now); return n[0].toUpperCase() + n.slice(1); };
+  // All of the day's games under way: when the next day's show.
+  function propDayWait(pd, now, noun = 'game') {
+    const at = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' }).format(new Date(pd.overBy));
+    const nouns = noun === 'match' ? 'matches' : `${noun}s`;
+    return `All of ${propDayName(pd.day, now) === 'today' ? 'today' : propDayTitle(pd.day, now)}’s ${nouns} are under way.`
+      + (pd.nextDay ? ` ${propDayTitle(pd.nextDay, now)}’s ${pd.nextN === 1 ? `${noun} shows` : `${pd.nextN} ${nouns} show`} here once the last one is over, by about ${at}.` : '');
+  }
   function propsCardHtml(sport) {
     const d = propData(sport);
     if (!d) return '';
     const now = Date.now(), stats = Object.keys(PROP_STATS[sport]);
     const picked = state.prStat && state.prStat[sport];
     const q =String((state.prQuery && state.prQuery[sport]) || '').trim().toLowerCase();
-    const games = (d.games || []).map((g, i) => ({ g, i })).filter((x) => Date.parse(x.g.commence) > now);
+    // One day's games at a time (propDay), the ones still to start.
+    const pd = propDay(sport, d.games, d.underway, now);
+    const games = (d.games || []).map((g, i) => ({ g, i }))
+      .filter((x) => Date.parse(x.g.commence) > now && pd && ptDayOf(Date.parse(x.g.commence)) === pd.day);
     const r = d.record;
     const rec = r && r.graded
       ? `<span class="tc-rec">Sharp 54%+: <b${r.at54.n >= 5 && r.at54.hit / r.at54.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${r.at54.hit} of ${r.at54.n}</b> · ${r.graded} graded${r.graded >= r.need ? '' : ` of ${r.need}`}</span>` : '';
@@ -7647,7 +7679,7 @@
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks props, one stat at a time</span>${rec}</div>`
       + `<button type="button" class="pr-how" data-action="pr-how" data-sport="${esc(sport)}" aria-expanded="${how}">How to read this ${how ? '▾' : '▸'}</button>`
       + `<div class="tc-sub"${how ? '' : ' hidden'}>The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Before PrizePicks posts, the side is the projection against the books’ line or PrizePicks’ last number for him. Tap a player to change the line: what you set is saved and graded there. ${r && r.graded >= (r.need || 100) ? `${esc(String(r.graded))} have graded: they join Picks only when you say.` : `These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.`}</div>`;
-    if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">${sport === 'nfl' ? 'No games in the coming week.' : 'No games in the next day and a half.'}</div></div>`;
+    if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">${pd ? propDayWait(pd, now) : sport === 'nfl' ? 'No games in the coming week.' : 'No games in the next day and a half.'}</div></div>`;
     // How many 54%+ numbers each stat has in the games to come (2026-11-05, the owner's pick): where
     // the strong ones are before tapping through a dozen stats. Best counts players with any.
     const strongAt = (v) => v.p != null && Math.max(v.fair, 100 - v.fair) >= PROP_STRONG;
@@ -7720,7 +7752,7 @@
           ? `<ol class="tc-legs sp-top">${shown.map((x) => propRow(sport, d, x.g, x.p, x.s)).join('')}</ol>`
             + (shown.length < tops.length ? `<button type="button" class="sp-more" data-action="pr-top-all" data-sport="${esc(sport)}">All ${tops.length}</button>` : '')
           : `<div class="tc-wait-note">No ${view === 'best' ? 'player' : `${esc(name)} number`} at ${PROP_STRONG}%+ right now.</div>`)
-        + '<div class="sp-sec" data-anchor="games">All games</div>';
+        + `<div class="sp-sec" data-anchor="games">${esc(propDayTitle(pd.day, now))}’s games</div>`;
     }
     return `<div class="nba-pp pk-card sp-card" data-sp="${esc(sport)}">${head}${chips}${top}${body}${nothing}</div>`;
   }
@@ -7760,7 +7792,10 @@
     const now = Date.now();
     const lg = state.soccerLeague;
     const q = String(state.socQuery || '').trim().toLowerCase();
-    const ms = (d.matches || []).filter((m) => Date.parse(m.commence) > now && (lg === 'all' || !lg || m.league === lg));
+    // One day's matches at a time (propDay), across the leagues, so a league picked shows that day's.
+    const pd = propDay('soccer', d.matches, d.underway, now);
+    const ms = (d.matches || []).filter((m) => Date.parse(m.commence) > now && pd && ptDayOf(Date.parse(m.commence)) === pd.day
+      && (lg === 'all' || !lg || m.league === lg));
     // Two records: the default line's, and the one at the lines saved here --
     // PrizePicks' own numbers, the one that counts.
     const ppr = d.ppRecord;
@@ -7826,7 +7861,10 @@
     const nothing = q && listed.length && !found ? `<div class="tc-wait-note">No player matches “${esc(state.socQuery)}”${view !== 'best' ? ` in ${esc(socStatWords(view))}` : ''}.</div>` : '';
     const wait = waiting.length
       ? `<div class="tc-wait-note">Lineups not posted yet: ${waiting.slice(0, 6).map((m) => `${esc(m.away)} @ ${esc(m.home)} ${esc(soccerKick(m.commence))}`).join(' · ')}${waiting.length > 6 ? ` · and ${waiting.length - 6} more` : ''}.</div>` : '';
-    const none = !listed.length && !waiting.length ? '<div class="tc-wait-note">No covered fixture in the next two days.</div>' : '';
+    // Nothing to show: no fixture at all, the day's all under way, or none of the day's in the league picked.
+    const lgName = (d.leagues && d.leagues[lg]) || 'covered';
+    const none = !listed.length && !waiting.length ? `<div class="tc-wait-note">${!pd ? 'No covered fixture in the next two days.'
+      : !pd.toStart ? propDayWait(pd, now, 'match') : `No ${esc(lgName)} match ${esc(propDayName(pd.day, now))}.`}</div>` : '';
     // The page that still answers has none of these (socPageRows in worker.js).
     const stale = stats.some((s) => ['passes', 'tackles', 'clear', 'crosses', 'shot_ast'].includes(s))
       ? '<div class="tc-wait-note">Passes, tackles, clearances, crosses and shots assisted run on numbers from before Oct 12: ESPN stopped sending them, so new ones can\'t be graded.</div>' : '';

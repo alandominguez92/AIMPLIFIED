@@ -15197,12 +15197,17 @@ async function socMatchCtx(db, f, ctxAll, pri) {
 }
 // The fixtures of the next two days, soonest first. Three days of dates: 48 hours
 // can touch three in Pacific time.
-async function socUpcoming(env, now) {
+// `back` (2026-11-08): matches under way that kicked off that long ago come too, until ESPN calls
+// them over -- the props card holds the next day's until the last of the day's is.
+async function socUpcoming(env, now, back = 0) {
   const days = [...new Set([0, 1, 2].map((d) => ptDateOf(now + d * 86400e3)))];
   const fixtures = [];
   for (const lg of Object.keys(SOC_PROP_LEAGUES)) for (const d of days) fixtures.push(...(await socFixtures(env, lg, d)));
-  return fixtures.filter((f) => { const t = Date.parse(f.commence); return f.state === 'pre' && t > now && t <= now + SOC_PROPS_AHEAD_MS; })
-    .sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
+  return fixtures.filter((f) => {
+    const t = Date.parse(f.commence);
+    if (t > now + SOC_PROPS_AHEAD_MS) return false;
+    return t > now ? f.state === 'pre' : back > 0 && t > now - back && f.state !== 'post';
+  }).sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence));
 }
 // A club's regulars: who started at least SOC_EXPECT_MIN_STARTS of its last five
 // whole matches, across its league and the cups. None with under five read, or
@@ -15271,7 +15276,7 @@ async function socPropsBoard(env, url) {
   const out = {
     note: 'LOGGED, not posted. Each starter\'s projection: last season per start blended with this season, moved half the way by what the opponent allows. '
       + 'No feed carries PrizePicks\' soccer lines: set the line to the app\'s and the chance follows. A line you set is saved and graded at that number (ppRecord).',
-    asOf: new Date().toISOString(), leagues: SOC_PROP_LABEL, matches: [], record: null,
+    asOf: new Date().toISOString(), leagues: SOC_PROP_LABEL, matches: [], underway: [], record: null,
   };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   try {
@@ -15279,7 +15284,11 @@ async function socPropsBoard(env, url) {
     await ensureSocPropSchema(db);
     const now = Date.now();
     const pri = await socPriors(env);
-    const up = await socUpcoming(env, now);
+    const all = await socUpcoming(env, now, PP_PROP_UNDERWAY_MS);
+    const up = all.filter((f) => Date.parse(f.commence) > now);
+    // Under way, until ESPN calls them over: the page holds the next day's matches till then.
+    out.underway = all.filter((f) => Date.parse(f.commence) <= now)
+      .map((f) => ({ id: f.id, league: f.lg, commence: f.commence, home: f.homeName || f.home, away: f.awayName || f.away }));
     const ctxAll = await socContext(env, pri);
     const expected = wantExpected ? await loadFeedCaches(db, up.map((f) => `soc_exp:${f.id}`)) : new Map();
     const logs = [];
@@ -18195,6 +18204,10 @@ const PP_PROP_READ_MS = 4 * 3600e3;
 const PP_PROP_RETRY_MS = 90 * 60e3;         // a read that found no PrizePicks line goes once more, this near the game
 const PP_PROP_PER_TICK = 2;
 const PP_PROP_AHEAD_MS = 48 * 3600e3;       // how far ahead the card lists: two days, as soccer's expected rows
+// The games under way that the props cards are sent beside the ones to come (2026-11-08): a card
+// shows one day's games and holds the next day's until the last of them is over, and a started
+// game is no longer in its list. Past the longest a game runs (an NFL one in overtime).
+const PP_PROP_UNDERWAY_MS = 4 * 3600e3;
 const PP_PROP_NEED = 100;
 const PP_PROP_READS = 'pp_props_reads';     // feed_cache: which games have had their read
 const PP_PROP_FORM = 'pp_props_form:';      // feed_cache: each player's last games, from the trigger
@@ -18498,7 +18511,9 @@ async function nhlPropsFormTick(env, now = Date.now()) {
         if (!r.ok) continue;
         answered = true;
         for (const g of (await r.json()).games || []) {
-          if (g.gameType !== 2 || !/FUT|PRE/.test(g.gameState || '') || g.id == null) continue;
+          // Under way too (LIVE, CRIT; 2026-11-08): the card holds the next day's games until
+          // the last of the day's is over (PP_PROP_UNDERWAY_MS). A final leaves at the next build.
+          if (g.gameType !== 2 || !/FUT|PRE|LIVE|CRIT/.test(g.gameState || '') || g.id == null) continue;
           games.push({ id: String(g.id), commence: g.startTimeUTC, home: g.homeTeam.abbrev, away: g.awayTeam.abbrev,
             homeNick: g.homeTeam.name && g.homeTeam.name.default, awayNick: g.awayTeam.name && g.awayTeam.name.default });
         }
@@ -18539,7 +18554,8 @@ async function nflPropsFormTick(env, now = Date.now()) {
     const wk = cur[0] && cur[0].week && cur[0].season && cur[0].season.type === 2 ? cur[0].week.number : null;
     const next = wk != null ? await espnScoreboard(`nfl/scoreboard?xhr=1&year=${NFL_HOT_YEAR}&seasontype=2&week=${wk + 1}`).catch(() => []) : [];
     if (cur.length) {
-      const games = [...cur, ...next].filter((e) => e && e.id && e.season && e.season.type === 2 && /SCHEDULED/.test((e.status && e.status.type && e.status.type.name) || '')).map((e) => {
+      // Under way too (2026-11-08), as the NHL's: the card holds Monday's game until Sunday's last is over.
+      const games = [...cur, ...next].filter((e) => e && e.id && e.season && e.season.type === 2 && /SCHEDULED|IN_PROGRESS|HALFTIME|END_PERIOD|DELAYED/.test((e.status && e.status.type && e.status.type.name) || '')).map((e) => {
         const cs = ((e.competitions || [])[0] || {}).competitors || [];
         const t = (side) => (cs.find((x) => x.homeAway === side) || {}).team || {};
         return { id: String(e.id), commence: e.date, home: t('home').abbreviation, away: t('away').abbreviation, homeNick: t('home').name || t('home').displayName, awayNick: t('away').name || t('away').displayName };
@@ -18615,13 +18631,14 @@ async function nhlGoalies(env, season, ttlMs) {
 
 // The games a card lists: ESPN's slate off the injury report's row (it has the team codes the box
 // scores use), with the odds feed's id for each, which the slip keys a game by.
-async function nbaPropsSlate(db, now) {
+// `back`: games that started that long ago come too (ppPropsBoard's `underway`).
+async function nbaPropsSlate(db, now, back = 0) {
   const byDay = await nbaInjuryDays(db, [ptDateOf(now), ptDateOf(now + 864e5), ptDateOf(now + 2 * 864e5)]);
   const ev = await loadFeedCache(db, 'nba_pp_events:reg');
   const events = (ev.present && ev.data && ev.data.events) || [];
   return [...byDay.values()].flat().filter((g) => {
     const t = Date.parse(g.commence);
-    return t > now && t - now <= PP_PROP_AHEAD_MS && g.homeAb && g.awayAb;
+    return t > now - back && t - now <= PP_PROP_AHEAD_MS && g.homeAb && g.awayAb;
   }).map((g) => {
     const t = Date.parse(g.commence);
     const e = events.find((x) => x && nbaMatch(x.home_team, g.home) && nbaMatch(x.away_team, g.away) && Math.abs(Date.parse(x.commence_time) - t) < 6 * 3600e3);
@@ -18632,13 +18649,13 @@ async function nbaPropsSlate(db, now) {
 }
 
 // The NHL's and the NFL's games: the league's own list, with the odds feed's id for each.
-async function ppPropsFeedSlate(db, sport, eventsKey, aheadMs, now) {
+async function ppPropsFeedSlate(db, sport, eventsKey, aheadMs, now, back = 0) {
   const hit = await loadFeedCache(db, PP_PROP_SLATE + sport);
   const ev = await loadFeedCache(db, eventsKey);
   const events = (ev.present && ev.data && ev.data.events) || [];
   return ((hit.present && hit.data && hit.data.games) || []).filter((g) => {
     const t = Date.parse(g.commence);
-    return t > now && t - now <= aheadMs;
+    return t > now - back && t - now <= aheadMs;
   }).map((g) => {
     const t = Date.parse(g.commence);
     const e = events.find((x) => x && nhlMatch(x.home_team, g.homeNick) && nhlMatch(x.away_team, g.awayNick) && Math.abs(Date.parse(x.commence_time) - t) < 6 * 3600e3);
@@ -18681,14 +18698,17 @@ function ppPropRecordOut(rec) {
 // key); the page lays those over from /api/prop-lines.
 async function ppPropsBoard(env, sport, now = Date.now()) {
   const c = PP_PROP_CFG[sport];
-  const out = { sport, at: new Date(now).toISOString(), cols: c.cols, sums: c.sums, readHours: c.fromCapture ? null : PP_PROP_READ_MS / 3600e3, games: [], players: [], record: null };
+  const out = { sport, at: new Date(now).toISOString(), cols: c.cols, sums: c.sums, readHours: c.fromCapture ? null : PP_PROP_READ_MS / 3600e3, games: [], underway: [], players: [], record: null };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   const db = env.DB;
   try {
     await c.ensure(db); await ensurePpPropSchema(db);
     const rec = await loadFeedCache(db, PP_PROP_REC + sport);
     out.record = ppPropRecordOut(rec.present ? rec.data : null);
-    const games = await c.slate(db, now);
+    const all = await c.slate(db, now, PP_PROP_UNDERWAY_MS);
+    const games = all.filter((g) => Date.parse(g.commence) > now);
+    // The ones under way: their starts tell the page when the day's last game is over.
+    out.underway = all.filter((g) => Date.parse(g.commence) <= now).map((g) => ({ id: g.id, date: g.date, commence: g.commence, home: g.home, away: g.away }));
     if (!games.length) return out;
     const today = ptDateOf(now);
     const read = (await db.prepare('SELECT * FROM pp_props WHERE sport = ? AND date >= ? AND read_at IS NOT NULL').bind(sport, today).all()).results || [];
@@ -18893,7 +18913,7 @@ const PP_PROP_CFG = {
   nhl: { lg: 'reg', sportKey: NHL_LEAGUES.reg, gamesKey: 'nhl_pp_games', cols: NHL_PROP_COLS, sums: {}, k: NHL_PRIOR_K, minMin: NHL_TOI_MIN,
     markets: { player_shots_on_goal: 'sog', player_total_saves: 'saves' }, sharpOnly: { player_shots_on_goal: 'sog', player_total_saves: 'saves' },
     name: nhlName, stat: (b, m) => (b && b[m] != null ? b[m] : null), dayBox: nhlPropDayBox, boxKey: nhlInitial, logTable: 'nhlpp',
-    slate: (db, now) => ppPropsFeedSlate(db, 'nhl', 'nhl_pp_events:reg', PP_PROP_AHEAD_MS, now),
+    slate: (db, now, back) => ppPropsFeedSlate(db, 'nhl', 'nhl_pp_events:reg', PP_PROP_AHEAD_MS, now, back),
     ensure: async (db) => { await ensureNhlBoxSchema(db); await ensureNhlPpSchema(db); }, teamMatch: nhlMatch },
   // Read by the capture the NFL already pays for (nflPropsRawRow): receiving and rushing yards and
   // passing TDs through the week, passing yards and catches inside 20 hours of kickoff. Rush +
@@ -18902,6 +18922,6 @@ const PP_PROP_CFG = {
     markets: { player_reception_yds: 'rec_yds', player_rush_yds: 'rush_yds', player_pass_tds: 'pass_td', player_pass_yds: 'pass_yds', player_receptions: 'rec' },
     sharpOnly: { player_reception_yds: 'rec_yds', player_rush_yds: 'rush_yds', player_pass_tds: 'pass_td', player_pass_yds: 'pass_yds', player_receptions: 'rec' },
     name: nbaBaseName, stat: nflPropStat, dayBox: nflPropDayBox,
-    slate: (db, now) => ppPropsFeedSlate(db, 'nfl', NFL_PROP_EVENTS, NFL_PROP_AHEAD_MS, now),
+    slate: (db, now, back) => ppPropsFeedSlate(db, 'nfl', NFL_PROP_EVENTS, NFL_PROP_AHEAD_MS, now, back),
     ensure: ensureNflBoxSchema, teamMatch: nhlMatch },
 };
