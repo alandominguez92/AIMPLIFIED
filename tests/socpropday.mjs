@@ -94,7 +94,7 @@ function lift(name) {
 }
 const NAMES = ['SOC_STAT', 'nbCdf', 'socChanceAt', 'socKey', 'socLineOf', 'socLean', 'socStatWords', 'SOC_POS', 'socPosWords', 'ptDayOf', 'pct1', 'pct0',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'socpLeg', 'socSaveHtml', 'socRecB', 'socPropRow', 'SOC_BEST_N', 'socRankP', 'socSideLineHtml', 'spBarHtml',
-  'PROP_GAME_HOURS', 'propDay', 'propDayName', 'propDayTitle', 'propDayWait', 'socPropsCardHtml'];
+  'PROP_GAME_HOURS', 'propDay', 'propDayName', 'propDayTitle', 'propDayWait', 'propKick', 'socPropsCardHtml'];
 const state = { socProps: board, socLines: {}, socSaved: {}, socSaving: {}, socOpen: {}, slip: {}, soccerLeague: 'all', socStat: 'best', socQuery: '' };
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const soccerKick = (t) => new RealDate(t).toISOString().slice(11, 16);
@@ -107,6 +107,13 @@ console.log('\n-- the card: today\'s until the last of today\'s is over --');
 let h = text(F.socPropsCardHtml());
 ok(/Lineups not posted yet: Tottenham Hotspur @ Fulham/.test(h) || /Lineups not posted yet: TOT @ FUL/.test(h), 'today\'s match to come is listed');
 ok(!/Aston Villa|AVL|Newcastle|NEW @/.test(h), 'tomorrow\'s is not');
+ok(/Lineups not posted yet: (Tottenham Hotspur @ Fulham|TOT @ FUL) \d{1,2}:\d{2}\s?[AP]M\./.test(h), `with its kickoff time alone, no weekday ("${(/Lineups not posted yet: [^.]+\./.exec(h) || [''])[0]}")`);
+// A match with its lineup in is a bar: the time alone there too.
+state.socProps = { ...board, matches: board.matches.map((m) => (m.id === 'NEXT1' ? { ...m, lineup: 'posted', rows: [{ id: '1', player: 'A Player', stat: 'shots', line: 1.5, proj: 1.2, nRecent: 5 }] } : m)) };
+const raw = F.socPropsCardHtml();
+const when = (/<span class="pk-when">([^<]*)<\/span>/.exec(raw) || [])[1];
+ok(raw.includes('data-mid="NEXT1"') && /^\d{1,2}:\d{2}\s?[AP]M$/.test(when || ''), `the match's bar gives its time alone (${when})`);
+state.socProps = board;
 
 // Fulham v Tottenham under way too: the day's all started, tomorrow's held till Liverpool's is over.
 CLOCK = NOW + 2.5 * H;

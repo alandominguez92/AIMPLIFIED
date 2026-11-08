@@ -55,7 +55,7 @@ const persistSlip = () => persisted.push(1);
 const renderSlip = () => {};
 const CARD = ['LEG_OFFERS', 'offerLeg', 'pct0', 'r1', 'miniBar', 'projLineHtml', 'trendBarsHtml', 'soccerKick', 'shortDay', 'injuryTag', 'nbaCardInjTag',
   'nbaNick', 'nhlNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'NFL_CODE_NICK', 'legOppText', 'propStartTag', 'PROP_STATS', 'PROP_NOTE', 'propNick', 'propCodes', 'PROP_STRONG', 'PROP_TOP_N', 'propKey', 'propData', 'propVals', 'propView', 'propLeg', 'propFind', 'propSlipSync',
-  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'PROP_MIN_MOVE', 'propMinTag', 'propLateTag', 'propRow', 'spBarHtml', 'ptDayOf', 'PROP_GAME_HOURS', 'propDay', 'propDayName', 'propDayTitle', 'propDayWait', 'propsCardHtml'];
+  'propSaveHtml', 'PROP_AGAINST', 'propAgainstTag', 'PROP_MIN_MOVE', 'propMinTag', 'propLateTag', 'propRow', 'spBarHtml', 'ptDayOf', 'PROP_GAME_HOURS', 'propDay', 'propDayName', 'propDayTitle', 'propDayWait', 'propKick', 'propsCardHtml'];
 let C;
 try {
   C = new Function('state', 'esc', 'persistSlip', 'renderSlip', CARD.map(lift).join('\n') + '\nreturn { propsCardHtml, propView, propLeg, propSlipSync, propKey, propAgainstTag, LEG_OFFERS };')(state, esc, persistSlip, renderSlip);
@@ -579,6 +579,9 @@ console.log('\n-- only the day\'s games, the next day\'s once its last is over (
   ok(found.includes('data-key="nba:2026-11-08:') && !found.includes('data-key="nba:2026-11-09:'),
     `a search reaches Sunday's players only (Lakers in both days' games): ${(found.match(/data-key="nba:2026-11-08:/g) || []).length} Sunday rows, ${(found.match(/data-key="nba:2026-11-09:/g) || []).length} Monday`);
   ok(h.includes('<div class="sp-sec" data-anchor="games">Today’s games</div>'), 'headed "Today’s games"');
+  // One day's card: each bar gives the time alone, no weekday (2026-11-08, the owner's yes).
+  const whens = [...h.matchAll(/<span class="pk-when">([^<]*)<\/span>/g)].map((m) => m[1]);
+  ok(whens.length === 7 && whens.every((w) => /^\d{1,2}:\d{2}\s?[AP]M$/.test(w)), `each game's bar gives its time alone (${whens.slice(0, 3).join(', ')} …)`);
 
   h = at('2026-11-09T00:00:00Z');
   ok(bars(h).length === 5 && bars(h).every((id) => sunday.includes(id)) && !anyOf(h, monday), `4:00 PM, two under way: the 5 still to tip, none of Monday's (${bars(h).length} bars)`);

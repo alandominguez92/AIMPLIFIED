@@ -7661,6 +7661,8 @@
     return `All of ${propDayName(pd.day, now) === 'today' ? 'today' : propDayTitle(pd.day, now)}’s ${nouns} are under way.`
       + (pd.nextDay ? ` ${propDayTitle(pd.nextDay, now)}’s ${pd.nextN === 1 ? `${noun} shows` : `${pd.nextN} ${nouns} show`} here once the last one is over, by about ${at}.` : '');
   }
+  // A game's start on the cards: the time alone, the card being one day's (2026-11-08, the owner's yes).
+  const propKick = (iso) => { const t = new Date(iso); return iso && !isNaN(t) ? t.toLocaleString([], { hour: 'numeric', minute: '2-digit' }) : ''; };
   function propsCardHtml(sport) {
     const d = propData(sport);
     if (!d) return '';
@@ -7724,7 +7726,7 @@
       const strong = rows.filter((x) => x.v.p != null && Math.max(x.v.fair, 100 - x.v.fair) >= PROP_STRONG).length;
       const mOpen = !!q || games.length === 1 || !!(state.prMatch && state.prMatch[g.id]);
       const mHead = `<button type="button" class="sp-mh" data-action="pr-match" data-sport="${esc(sport)}" data-id="${esc(g.id)}" aria-expanded="${mOpen}">`
-        + `<span class="sp-mt"><b>${esc(propNick(sport, g.away))} @ ${esc(propNick(sport, g.home))}</b> · <span class="pk-when">${esc(soccerKick(g.commence))}</span>`
+        + `<span class="sp-mt"><b>${esc(propNick(sport, g.away))} @ ${esc(propNick(sport, g.home))}</b> · <span class="pk-when">${esc(propKick(g.commence))}</span>`
         + `<span class="sp-mc">${rows.length} player${rows.length === 1 ? '' : 's'}${strong ? ` <span class="sp-badge">${strong} at ${PROP_STRONG}%+</span>` : ''}</span></span>`
         + `<span class="sp-chev" aria-hidden="true"></span></button>`;
       if (!mOpen) return `<div class="sp-match" data-mid="${esc(g.id)}">${mHead}</div>`;
@@ -7847,7 +7849,7 @@
       const isExp = m.lineup === 'expected';
       const count = q ? `${rows.length} found` : `${view === 'best' ? starters : rows.length} ${isExp ? 'expected' : `starter${(view === 'best' ? starters : rows.length) === 1 ? '' : 's'}`}`;
       const mHead = `<button type="button" class="sp-mh" data-action="socp-match" data-id="${esc(m.id)}" aria-expanded="${mOpen}">`
-        + `<span class="sp-mt"><b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(soccerKick(m.commence))}</span>`
+        + `<span class="sp-mt"><b>${esc(m.awayName || m.away)} @ ${esc(m.homeName || m.home)}</b> <span class="pk-sport">${esc(m.label || '')}</span> · <span class="pk-when">${esc(propKick(m.commence))}</span>`
         + `<span class="sp-mc">${count}</span></span><span class="sp-chev" aria-hidden="true"></span></button>`;
       if (!mOpen) return `<div class="sp-match" data-mid="${esc(m.id)}">${mHead}</div>`;
       // Best shows the top eight until asked for the rest; a stat's list and a
@@ -7860,7 +7862,7 @@
     }).join('');
     const nothing = q && listed.length && !found ? `<div class="tc-wait-note">No player matches “${esc(state.socQuery)}”${view !== 'best' ? ` in ${esc(socStatWords(view))}` : ''}.</div>` : '';
     const wait = waiting.length
-      ? `<div class="tc-wait-note">Lineups not posted yet: ${waiting.slice(0, 6).map((m) => `${esc(m.away)} @ ${esc(m.home)} ${esc(soccerKick(m.commence))}`).join(' · ')}${waiting.length > 6 ? ` · and ${waiting.length - 6} more` : ''}.</div>` : '';
+      ? `<div class="tc-wait-note">Lineups not posted yet: ${waiting.slice(0, 6).map((m) => `${esc(m.away)} @ ${esc(m.home)} ${esc(propKick(m.commence))}`).join(' · ')}${waiting.length > 6 ? ` · and ${waiting.length - 6} more` : ''}.</div>` : '';
     // Nothing to show: no fixture at all, the day's all under way, or none of the day's in the league picked.
     const lgName = (d.leagues && d.leagues[lg]) || 'covered';
     const none = !listed.length && !waiting.length ? `<div class="tc-wait-note">${!pd ? 'No covered fixture in the next two days.'
