@@ -81,6 +81,10 @@
      team, a rate on five carries. Never a strength, so it never reads as a call. */
   --caution:#d18a47;
   --cautionTint:#2a2418;
+  /* Card lift, light mode's alone (2026-11-09): on near-black a shadow reads as
+     nothing, so dark keeps its outlines. */
+  --lift:none;
+  --liftHi:none;
 }
 
 [data-theme="light"] {
@@ -89,7 +93,11 @@
   --board2:#E7EAF1;
   --board3:#F5F7FA;
   --card:#FFFFFF;
-  --border:#D8DDE6;
+  /* Lighter since 2026-11-09 (was #D8DDE6): cards now lift on a soft shadow
+     (--lift, below), so the edge no longer has to carry the outline alone. */
+  --border:#E1E5EC;
+  --lift:0 1px 2px rgba(16,24,40,.05), 0 2px 6px -1px rgba(16,24,40,.07);
+  --liftHi:0 1px 2px rgba(16,24,40,.05), 0 10px 24px -8px rgba(120,86,10,.22);
   --borderSoft:#E6EAF0;
   --borderFaint:#C9D0DA;
   --text:#141a23;
@@ -3140,3 +3148,18 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tk-n + .tk-n { border-left:1px solid var(--border); }
 .tk-n.on { background:var(--accentFill); color:var(--onAccent); }
 .tk-save { min-height:36px; padding:0 14px; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--text); font-weight:700; cursor:pointer; }
+
+/* Light mode: depth instead of outlines (2026-11-09, the owner's pick of the
+   mock-up). Grey bars and chips on the grey page, and a brown outline on every
+   tag, read flat and busy. White surfaces lift on a soft shadow; tags are soft
+   fills with no outline; the ticket's dashed brown edge is a solid gold one.
+   Light only: dark mode is untouched. */
+[data-theme="light"] :is(.tc-leg, .pk-recap, .pk-day, .sp-mh, .pk-entries, .board, .sp-bar, .pk-ticket) { box-shadow:var(--lift); }
+[data-theme="light"] .hero-leg { box-shadow:var(--liftHi); }
+[data-theme="light"] :is(.sp-mh, .sp-chip:not(.on), .pk-entries, .pk-ticket, .sp-search) { background:var(--card); }
+[data-theme="light"] .sp-mh:hover { background:#F8FAFC; }
+[data-theme="light"] .pk-ticket { border-style:solid; border-color:color-mix(in srgb, var(--accentFill) 55%, var(--border)); }
+[data-theme="light"] .tk-foot { border-top-style:solid; border-top-color:var(--borderSoft); }
+[data-theme="light"] .tc-wait { background:color-mix(in srgb, var(--caution) 8%, var(--card)); border-color:transparent; border-radius:6px; padding:2px 7px; }
+[data-theme="light"] :is(.tc-gap, .pr-start) { background:color-mix(in srgb, var(--positive) 10%, transparent); border-color:transparent; border-radius:6px; padding:1px 7px; }
+[data-theme="light"] .tc-dfs { background:var(--board2); border-color:transparent; border-radius:6px; }
