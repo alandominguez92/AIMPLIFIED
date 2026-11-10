@@ -9721,9 +9721,12 @@ const NBA_ROLE_STATS = ['pts', 'reb', 'ast', 'threes', 'blk', 'stl'];
 const NBA_ROLE_FLOOR = { threes: 1, blk: 0.5, stl: 0.5 };
 const NBA_ROLE_MIN_TEAM_GP = 5;      // fewer team games than this: no roles at all yet
 const NBA_ROLE_REG_GP = 3;
-// Pure. Rows as nba_box keeps them (dnp = 0 ones are enough). Out: { [player id]: role }, where a
-// role is { r: 1|2, st: [stats at that place] }, { min } for a starter who leads nothing, or
-// { gp, of } for one who has played under half his team's games. Players with none are left out.
+// Pure. Rows as nba_box keeps them (dnp = 0 ones are enough). Out: { players, teams }. players is
+// { [player id]: role }, where a role is { r: 1|2, st: [stats at that place] }, { min } for a
+// starter who leads nothing, { gp, of } for one who has played under half his team's games, or {}
+// for one who has played and is none of those. teams is { [ESPN abbreviation]: games played }, so a
+// listed player missing from players has not played at all (2026-11-10: the Magic's Isaac, Penda
+// and Nelson, no game this season, sat ahead of Banchero in the note and pushed him into "+2").
 function nbaTeamRoles(rows) {
   const teamGames = new Map(), pl = new Map();
   const sorted = [...(rows || [])].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
@@ -9738,10 +9741,11 @@ function nbaTeamRoles(rows) {
     p.gp++; p.gs += Number(r.starter) === 1 ? 1 : 0; p.min += Number(r.min);
     for (const st of NBA_ROLE_STATS) p.s[st] = (p.s[st] || 0) + (Number(r[st]) || 0);
   }
-  const out = {};
+  const out = {}, teams = {};
   for (const [team, games] of teamGames) {
     const of = games.size;
     if (of < NBA_ROLE_MIN_TEAM_GP) continue;
+    teams[team] = of;
     const mine = [...pl.entries()].filter(([, p]) => p.team === team);
     const avg = (p, st) => (p.gp ? p.s[st] / p.gp : 0);
     const regs = mine.filter(([, p]) => p.gp >= NBA_ROLE_REG_GP);
@@ -9755,24 +9759,28 @@ function nbaTeamRoles(rows) {
       const best = places.length ? Math.min(...places.map((x) => x[1])) : null;
       if (best) out[id] = { r: best, st: places.filter((x) => x[1] === best).map((x) => x[0]).slice(0, 2) };
       else if (p.gs >= p.gp / 2) out[id] = { min: Math.round(p.min / p.gp) };
+      else out[id] = {};
     }
   }
-  return out;
+  return { players: out, teams };
 }
 // Cron: built again every six hours from this season's box scores (a few thousand rows).
 async function nbaRolesTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
   const c = await loadFeedCache(env.DB, NBA_ROLES_KEY);
-  if (c.present && c.data && now - (c.data.builtAt || 0) < NBA_ROLES_EVERY_MS) return null;
+  // A row saved before it kept the teams (the first build, Nov 10) is built again at once.
+  if (c.present && c.data && c.data.players && now - (c.data.builtAt || 0) < NBA_ROLES_EVERY_MS) return null;
   await ensureNbaSchema(env.DB);
   const rows = (await env.DB.prepare(`SELECT game_id, player_id, team, date, min, starter, dnp, ${NBA_ROLE_STATS.join(', ')} FROM nba_box
     WHERE date >= ? AND season_type IN (2,3) AND dnp = 0`).bind(NBA_SEASON_FROM).all()).results || [];
-  await saveFeedCache(env.DB, NBA_ROLES_KEY, { builtAt: now, roles: nbaTeamRoles(rows) });
+  await saveFeedCache(env.DB, NBA_ROLES_KEY, { builtAt: now, ...nbaTeamRoles(rows) });
   return true;
 }
+// { players, teams } as nbaTeamRoles gives them, or null before the first build.
 async function nbaRolesLoad(db) {
   const c = await loadFeedCache(db, NBA_ROLES_KEY);
-  return (c.present && c.data && c.data.roles) || {};
+  const d = c.present && c.data;
+  return d && d.players ? { players: d.players, teams: d.teams || {} } : null;
 }
 // A team's list, the players who matter most first: a 1st, a 2nd, a starter, the rest, then those
 // out most of the season. Ties keep the order given (newest news first).
@@ -9782,7 +9790,9 @@ const NBA_ROLE_ORDER = (role) => (!role ? 3 : role.r === 1 ? 0 : role.r === 2 ? 
 // read; then what it lists for him, or { status: null } for nothing. A
 // moneyline (2026-11-01): each side's players out and day-to-day, the picked
 // side first -- { teams: [{ team, out: [{ n, what, role }], gtd: [...] }] }, each
-// player's role on his team from nbaTeamRoles when it has one (2026-11-10).
+// player's role on his team from nbaTeamRoles when it has one (2026-11-10); roles is
+// what nbaRolesLoad gives. One the box scores never saw, on a team they have, has
+// played none of its games: { gp: 0, of }.
 function nbaLegInjury(l, byDay, roles = null) {
   const s = l.spec || {};
   if (s.sport !== 'nba' || !l.teams || !(s.playerId || s.market === 'ml')) return null;
@@ -9791,12 +9801,20 @@ function nbaLegInjury(l, byDay, roles = null) {
   const at = new Date(g.at).toISOString();
   if (s.market === 'ml') {
     // Newest news first (ESPN's update time): a rest day ahead of a month-old surgery.
-    const roleOf = (i) => (roles && roles[i.id]) || null;
+    const P = (roles && roles.players) || null, T = (roles && roles.teams) || {};
+    const abOf = (i) => (i.tm && nbaMatch(i.tm, l.teams.home) ? g.homeAb : i.tm && nbaMatch(i.tm, l.teams.away) ? g.awayAb : null);
+    const roleOf = (i) => {
+      if (!P) return null;
+      const r = P[i.id];
+      if (r) return Object.keys(r).length ? r : null;
+      const of = T[abOf(i)];
+      return of ? { gp: 0, of } : null;
+    };
     const all = Object.entries(g.inj || {}).map(([id, i]) => ({ ...i, id }))
       .sort((a, b) => String(b.upd || '').localeCompare(String(a.upd || '')))
       .sort((a, b) => NBA_ROLE_ORDER(roleOf(a)) - NBA_ROLE_ORDER(roleOf(b)));
     if (all.some((i) => !('tm' in i))) return null;              // read before the report kept teams
-    const who = (i) => ({ n: i.ln || lastWord(i.name), what: i.what, ...(roleOf(i) ? { role: roleOf(i) } : {}) });
+    const who = (i) => { const r = roleOf(i); return { n: i.ln || lastWord(i.name), what: i.what, ...(r ? { role: r } : {}) }; };
     const sides = s.side === 'away' ? ['away', 'home'] : ['home', 'away'];
     return { teams: sides.map((sd) => { const mine = all.filter((i) => i.tm && nbaMatch(i.tm, l.teams[sd]));
       return { team: lastWord(l.teams[sd]), out: mine.filter(nbaInjOut).map(who), gtd: mine.filter((i) => !nbaInjOut(i)).map(who) }; }), at };
@@ -10007,7 +10025,7 @@ async function picksCandidates(env, now) {
   // ESPN's injury report on the NBA player legs (2026-11-01): one it lists out
   // leaves the list and the pool; the rest carry what it says.
   const injDays = await nbaInjuryDays(db, days).catch(() => new Map());
-  const roles = legs.some((l) => l.spec && l.spec.sport === 'nba' && l.spec.market === 'ml') ? await nbaRolesLoad(db).catch(() => ({})) : {};
+  const roles = legs.some((l) => l.spec && l.spec.sport === 'nba' && l.spec.market === 'ml') ? await nbaRolesLoad(db).catch(() => null) : null;
   const kept = legs.filter((l) => { const i = nbaLegInjury(l, injDays, roles); if (i) l.inj = i; return !(i && i.out); });
   await nhlLegGoalies(db, kept).catch(() => null);
   return { legs: kept, unavailable };
