@@ -5158,6 +5158,10 @@
     // Live Now — in-progress picks scored live; poll every 45s.
     refreshLiveNow();
     setInterval(refreshLiveNow, 45000);
+    // The NBA, NHL, soccer and NFL tabs: their boards once five minutes old (boardTick), and
+    // at once when the page comes back on screen.
+    setInterval(boardTick, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) boardTick(); });
   } else {
     // Mock mode: keep the demo lively — simulated win-prob and score nudges.
     setInterval(() => {
@@ -5258,15 +5262,16 @@
     renderFeedWarn();
     if (el.nflBoard) el.nflBoard.hidden = !nfl;
     if (el.soccerBoard) el.soccerBoard.hidden = s !== 'soccer';
-    if (s === 'soccer' && !state.soccer) refreshSoccer();   // lazy first load
+    // Each board read on the first visit and again once it is five minutes old (boardStale).
+    if (s === 'soccer' && boardStale('soccer')) refreshSoccer();
     else if (s === 'soccer' && Date.now() - (state.socPropsAt || 0) > 120e3) refreshSocProps();
     const nbaBoard = document.getElementById('nbaBoard');
     if (nbaBoard) nbaBoard.hidden = s !== 'nba';
-    if (s === 'nba' && !state.nba) refreshNba();             // lazy first load
+    if (s === 'nba' && boardStale('nba')) refreshNba();
     else if (s === 'nba' && Date.now() - ((state.propsAt && state.propsAt.nba) || 0) > 120e3) refreshProps('nba');
     const nhlBoard = document.getElementById('nhlBoard');
     if (nhlBoard) nhlBoard.hidden = s !== 'nhl';
-    if (s === 'nhl' && !state.nhl) refreshNhl();
+    if (s === 'nhl' && boardStale('nhl')) refreshNhl();
     else if (s === 'nhl' && Date.now() - ((state.propsAt && state.propsAt.nhl) || 0) > 120e3) refreshProps('nhl');
     const pb = document.getElementById('picksBoard');
     if (pb) pb.hidden = s !== 'picks';
@@ -5289,13 +5294,38 @@
       if (s !== 'mlb') el.slateSummary.hidden = true;
       else renderSlateSummary();
     }
-    if (nfl && !state.nfl) refreshNfl();          // lazy first load
+    if (nfl && boardStale('nfl')) refreshNfl();
     else if (nfl && Date.now() - ((state.propsAt && state.propsAt.nfl) || 0) > 120e3) refreshProps('nfl');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  // A sport tab's own feeds -- its game lines, and with them the cards on the tab -- read again
+  // once five minutes old (2026-11-10). They were read once a page load: a page left open from
+  // one day to the next (the desktop, where a phone opens it fresh) kept the first day's games,
+  // which dropped off as they started, and the next day's never came -- "No NBA games in the
+  // next day and a half" over a board of six. Every one of these reads is free: the last
+  // capture's snapshot from the database, cached two minutes at the edge.
+  const BOARD_STALE_MS = 300e3;
+  const BOARD_READ = { nba: () => refreshNba(), nhl: () => refreshNhl(), soccer: () => refreshSoccer(), nfl: () => refreshNfl() };
+  const BOARD_BOX = { nba: 'nbaBoard', nhl: 'nhlBoard', soccer: 'soccerBoard', nfl: 'nflBoard' };
+  function boardStale(s, now = Date.now()) {
+    return !state[s] || now - ((state.boardAt && state.boardAt[s]) || 0) > BOARD_STALE_MS;
+  }
+  const boardReadStart = (s) => { state.boardAt = { ...(state.boardAt || {}), [s]: Date.now() }; };
+  // The tab on show, while the page is on screen and nothing in the tab is being typed into:
+  // a redraw would take the cursor out of "Find a player". Out of sight it waits, and reads
+  // the moment the page is back (the visibilitychange listener under TIMERS).
+  function boardTick(now = Date.now()) {
+    const s = state.sport;
+    if (!BOARD_READ[s] || document.hidden || !boardStale(s, now)) return false;
+    const box = document.getElementById(BOARD_BOX[s]), a = document.activeElement;
+    if (box && a && a !== document.body && box.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return false;
+    BOARD_READ[s]();
+    return true;
   }
 
   async function refreshNfl() {
     if (!LIVE_MODE) return;
+    boardReadStart('nfl');
     const hot = fetchJson('/api/hot-players?sport=nfl').catch(() => null);
     const props = fetchJson('/api/nfl-props').catch(() => null);
     try {
@@ -5399,6 +5429,8 @@
     // and the roof when it is not simply outdoors.
     const sub = [
       g.awayFull && g.homeFull ? `${g.awayFull} at ${g.homeFull}` : null,
+      // Kickoff for the desktop, where the head line's .row-when is hidden (see mlTabRow).
+      g.commence ? esc(kickWhole(g.commence)) : null,
       g.away_spread != null ? `${g.away} ${signed(g.away_spread)}` : null,
       g.total != null ? `O/U ${g.total}` : null,
       g.roof && g.roof !== 'outdoors' ? g.roof : null,
@@ -6706,6 +6738,7 @@
   // board says how old they are rather than implying they are live.
   async function refreshNba() {
     if (!LIVE_MODE) return;
+    boardReadStart('nba');
     const [d, pp, props] = await Promise.all([
       fetchJson('/api/nba-board').catch(() => null),
       fetchJson('/api/nba-pp').catch(() => null),
@@ -7111,7 +7144,12 @@
         <div class="matchup-cell">
           <span class="mc-head">${star}${club(g.away, g.awayLogo)}<span class="at-sep">@</span>${club(g.home, g.homeLogo)}${
             g.commence ? `<span class="row-when">${esc(soccerKick(g.commence))}</span>` : ''}</span>
-          <span class="matchup-sub">${esc(g.away)} at ${esc(g.home)}${g.league === 'pre' ? ' · preseason' : ''}</span>
+          <span class="matchup-sub">${esc(g.away)} at ${esc(g.home)}${g.league === 'pre' ? ' · preseason' : ''}${
+            // The start, day and time, on the desktop too (2026-11-10). The head line's .row-when
+            // shows only on a phone, so a desktop row never said which day it was -- tonight's game
+            // and tomorrow's looked the same. The phone hides this line on a shut row, so the time
+            // never shows twice there.
+            g.commence ? ` · ${esc(kickWhole(g.commence))}` : ''}</span>
         </div>
         <span>${pick}</span>
         ${odds}
@@ -7157,6 +7195,7 @@
   // backtest (65%+ favourites won 114 of 171, stated 69.1%).
   async function refreshNhl() {
     if (!LIVE_MODE) return;
+    boardReadStart('nhl');
     const [d, pp, hot, props] = await Promise.all([
       fetchJson('/api/nhl-board').catch(() => null),
       fetchJson('/api/nhl-pp').catch(() => null),
@@ -7262,6 +7301,7 @@
   }
   async function refreshSoccer() {
     if (!LIVE_MODE) return;
+    boardReadStart('soccer');
     const [d, pp, hot] = await Promise.all([
       fetchJson('/api/soccer-board').catch(() => 'unreachable'),
       fetchJson('/api/soccer-props?expected=1').catch(() => null),
@@ -8013,6 +8053,9 @@
     const t = new Date(iso);
     return isNaN(t) ? '' : t.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
   };
+  // The same, held on one line (2026-11-10): a row's sub-line that wraps breaks before "Tue 4:40 PM",
+  // never inside it.
+  const kickWhole = (iso) => soccerKick(iso).replace(/\s/g, ' ');
 
   // The chips come from the payload, so adding a league to the worker is enough.
   function renderSoccerLeagues() {
@@ -8161,7 +8204,8 @@
           return `<i class="${isLead ? 'soc-ml-lead' : ''}"><b>${esc(who)}</b>${p.price == null ? '—' : AM(p.price)}</i>`;
         }).join('')}</span>`
       : '';
-    const sub = [g.leagueLabel, g.total ? `O/U ${g.total.point}` : null].filter(Boolean).join(' · ');
+    // Kickoff for the desktop, where the head line's .row-when is hidden (see mlTabRow).
+    const sub = [g.leagueLabel, g.commence ? kickWhole(g.commence) : null, g.total ? `O/U ${g.total.point}` : null].filter(Boolean).join(' · ');
     // Same bar as every other board: our fair is the fill, what the price implies
     // is the tick, and the gap between them is the value cell in picture form.
     const bar = (!isMkt && lead && lead.fair != null)

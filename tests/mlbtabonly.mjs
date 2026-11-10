@@ -24,7 +24,8 @@ let fail = 0;
 const ok = (c, m) => { console.log(`  ${c ? 'ok  ' : 'FAIL'}  ${m}`); if (!c) fail++; };
 
 const MLB = ['refreshBoard', 'refreshBatters', 'refreshTopLegs', 'refreshInjuries'];
-const OTHER = ['refreshLiveData', 'refreshTrackRecord', 'refreshPicks', 'refreshFeedHealth', 'refreshLiveNow'];
+// boardTick (2026-11-10): the NBA, NHL, soccer and NFL boards again once five minutes old (tests/boardrefresh.mjs).
+const OTHER = ['refreshLiveData', 'refreshTrackRecord', 'refreshPicks', 'refreshFeedHealth', 'refreshLiveNow', 'boardTick'];
 
 // ---- the timers, as app.js has them -------------------------------------------------------
 const at = app.indexOf('  if (LIVE_MODE) {\n    // Live mode:');
@@ -35,8 +36,8 @@ const calls = [];
 const timers = [];
 const state = { sport: 'picks', boardView: 'batter' };
 const stubs = Object.fromEntries([...MLB, ...OTHER].map((n) => [n, () => { calls.push(n); }]));
-new Function('LIVE_MODE', 'state', 'el', 'isBatter', 'BATTER_POLL_MS', 'TOP_HOST', 'setInterval', ...Object.keys(stubs), block)(
-  true, state, {}, () => state.boardView === 'batter', 300000, { mlb: 'slate', nba: 'nbaBoard' },
+new Function('LIVE_MODE', 'state', 'el', 'isBatter', 'BATTER_POLL_MS', 'TOP_HOST', 'document', 'setInterval', ...Object.keys(stubs), block)(
+  true, state, {}, () => state.boardView === 'batter', 300000, { mlb: 'slate', nba: 'nbaBoard' }, { hidden: false, addEventListener: () => {} },
   (f, ms) => { timers.push({ f, ms }); return timers.length; }, ...Object.values(stubs));
 const mlbCalls = () => calls.filter((n) => MLB.includes(n));
 const fireAll = (ms) => { for (const t of timers) if (!ms || t.ms === ms) t.f(); };
