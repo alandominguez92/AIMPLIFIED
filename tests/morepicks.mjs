@@ -287,7 +287,7 @@ function lift(name) {
   throw new Error(`could not lift ${name}`);
 }
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const hist = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
+const hist = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'HIST_DAYS_SHOWN', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
 const txt = (x) => x.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 const hh = txt(hist(h));
 console.log('  ' + hh.slice(0, 520));

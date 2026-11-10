@@ -197,7 +197,9 @@ ok(CT(tNem) === '' && CT({ player: 'x' }) === '', 'not listed or not read: no ta
 const cardFn = app.slice(app.indexOf('  function nbaPpCardHtml('), app.indexOf('  function nbaBlkMoreHtml('));
 const moreFn = app.slice(app.indexOf('  function ppMoreListHtml('), app.indexOf('  function ppMoreLineHtml('));
 ok(/soccerKick\(x\.commence\)\)\}\$\{nbaCardInjTag\(x\)\}\$\{same\}\$\{gap\}/.test(cardFn) && /soccerKick\(x\.commence\)\)\}\$\{nbaCardInjTag\(x\)\}\$\{same\}<\/span>/.test(moreFn), 'on the under rows and the blocks Overs');
-ok(/const it = injuryTag\(x\);\n\s+if \(it\) notes\.push\(it\.text\);/.test(app) && /const it = injuryTag\(x\);\n\s+if \(it\) for \(const t of it\.parts \|\| \[it\.text\]\) tags\.push/.test(app) && !/'check injuries'\)/.test(app),
+// The hero (2026-11-10): a player's note on the game line as before; a moneyline's report, a line a side.
+ok(/const it = injuryTag\(x\);\n[\s\S]{0,400}?const injLines = it && Array\.isArray\(it\.parts\) && it\.parts\.length \? it\.parts : null;\n\s+if \(it && !injLines\) notes\.push\(it\.text\);/.test(app)
+  && /\(injLines \? `<span class="hl-inj" title="\$\{esc\(it\.title\)\}">\$\{injLines\.map\(heroInjLine\)\.join\(''\)\}<\/span>` : ''\)/.test(app) && /const it = injuryTag\(x\);\n\s+if \(it\) for \(const t of it\.parts \|\| \[it\.text\]\) tags\.push/.test(app) && !/'check injuries'\)/.test(app),
   "on the list's rows and the hero, where the fixed reminder was");
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

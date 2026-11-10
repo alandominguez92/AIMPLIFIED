@@ -103,7 +103,7 @@ function lift(name) {
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 let card;
 try {
-  card = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
+  card = new Function('esc', ['shortDay', 'pct0', 'HIST_DAY_KEYS', 'HIST_DAYS_SHOWN', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml'].map(lift).join('\n') + '\nreturn pickHistoryHtml;')(esc);
 } catch (err) { console.log(`  FAIL  the card lifts out of app.js (${err.message})`); process.exit(1); }
 const html = card(h);
 const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
@@ -116,7 +116,7 @@ ok((html.match(/<details class="pk-day">/g) || []).length === 5, 'a line a day, 
 ok(/Top 2 Power refund/.test(text) && /Top 2 Power −1\.00u/.test(text) && /Top 3 Flex \+1\.25u/.test(text), 'each day says what its Power and Flex paid');
 ok(/1 of 1 landed · 2 still to play/.test(text) && /pk-lr pk-open/.test(html) && /pk-lr pk-void">void/.test(html), 'legs still to play and voids are marked as such');
 ok(card(null) === '' && card({ days: [] }) === '', 'nothing is drawn before a day has graded');
-ok(/const after = socBestStripHtml\(\) \+ pickHistoryHtml\(d\.record && d\.record\.history\);/.test(app), 'and the Picks tab draws it after the list, in every state');
+ok(/const after = socBestStripHtml\(\) \+ pickHistoryHtml\(d\.record && d\.record\.history, !!state\.daysAll\);/.test(app), 'and the Picks tab draws it after the list, in every state');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

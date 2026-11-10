@@ -222,7 +222,7 @@ const penv = {
   pct0: (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—'),
   pickFace: () => '<i class="face"></i>', movedLineHtml: () => '',
 };
-const names = ['pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'moneyTxt', 'stakeTxt', 'shortLeg', 'PP_PAY', 'ticketData', 'ticketHtml', 'HIST_DAY_KEYS', 'ppEntryRecordHtml', 'pickHistoryHtml'];
+const names = ['pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'moneyTxt', 'stakeTxt', 'shortLeg', 'PP_PAY', 'ticketData', 'ticketHtml', 'HIST_DAY_KEYS', 'HIST_DAYS_SHOWN', 'ppEntryRecordHtml', 'pickHistoryHtml'];
 let P;
 try {
   P = new Function(...Object.keys(penv), names.map(lift).join('\n') + '\nreturn { ticketData, ticketHtml, ppEntryRecordHtml, pickHistoryHtml };')(...Object.values(penv));

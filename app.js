@@ -2221,6 +2221,7 @@
       if (g.gamePk != null && g.tier !== 'model' && !g.pulled) gameCounts[g.gamePk] = (gameCounts[g.gamePk] || 0) + 1;
     });
     renderSlateSummary();
+    mlbOffSync();
     el.noResults.hidden = games.length !== 0;
     if (!games.length) el.noResults.textContent = emptyBoardMessage();
 
@@ -4911,6 +4912,10 @@
       case 'pp-line': ppLineSet(target.dataset.key, Math.max(0.5, Number(target.dataset.line) + Number(target.dataset.d)), Number(target.dataset.read), target.dataset.commence); break;
       case 'pp-line-reset': ppLineSet(target.dataset.key, null); break;
       case 'ticket-ml-n': state.ticketMlN = Number(target.dataset.n) || 3; renderPicks(); break;
+      // Most likely to land: a short row opens to its full leg and closes again; How the list
+      // did: the older days (2026-11-10). Kept in state, so a redraw leaves them as they were.
+      case 'likely-toggle': { const o = state.likelyOpen || (state.likelyOpen = {}); const k = target.dataset.leg; if (o[k]) delete o[k]; else o[k] = true; renderPicks(); break; }
+      case 'days-all': state.daysAll = !state.daysAll; renderPicks(); break;
       case 'ticket-ml-save': saveTicketImage(true); break;
       // A book's link that needs the state: open the bankroll fold at it.
       case 'bank-open': {
@@ -5743,6 +5748,8 @@
   const pickLineSetTag = (x) => (x.lineSet.off
     ? `<span class="tc-wait">off the entry: ${esc(String(x.spec.pp.line))} is not above the sharp ${esc(String(x.lineSet.main))}</span>`
     : `<span class="tc-gap">you set ${esc(String(x.spec.pp.line))}, read ${esc(String(x.lineSet.read))}</span>`);
+  // One side's line of the injury report on the hero card: "Jazz out:" then who.
+  const heroInjLine = (t) => { const k = String(t).indexOf(': '); return `<span>${k > 0 ? `<b>${esc(t.slice(0, k + 1))}</b>${esc(t.slice(k + 1))}` : esc(t)}</span>`; };
   function heroLegHtml(x0, opts) {
     const x = pickAtLine(x0);
     const lg = pickLeg(x);
@@ -5759,7 +5766,10 @@
     if (x.kind === 'mlb_pp') notes.push(x.lineup === 'in' ? 'lineup in' : 'lineup not posted');
     if (typeof x.vsBook === 'number' && x.vsBook !== 0) notes.push(`PP ${x.vsBook > 0 ? '+' : '−'}${Math.abs(x.vsBook)} vs book`);
     const it = injuryTag(x);
-    if (it) notes.push(it.text);
+    // A moneyline's report takes a line a side (2026-11-10): with each player's place beside
+    // his name, run into the game line it was five lines of a phone with no break.
+    const injLines = it && Array.isArray(it.parts) && it.parts.length ? it.parts : null;
+    if (it && !injLines) notes.push(it.text);
     const gn = goalieNote({ ...x, sport: x.sport || s.sport });
     if (gn) notes.push(gn.text);
     const mv = pickMoved(x);
@@ -5786,6 +5796,7 @@
       + `<div class="hl-p ring${good ? ' good' : ''}"><span class="hl-pct">${pct0(x.p)}</span><span class="hl-pk">chance</span>${chanceRingSvg(x)}</div>`
       // The game on its own line, so a long matchup never squeezes the name.
       + `<span class="hl-game">${pickTeamTag(x)}${esc(x.sub || '')}${notes.length ? ' · ' + esc(notes.join(' · ')) : ''}</span>`
+      + (injLines ? `<span class="hl-inj" title="${esc(it.title)}">${injLines.map(heroInjLine).join('')}</span>` : '')
       // A player leg's projection against its line, as the MLB board draws it;
       // a team's chance against its price.
       + `${pickBarHtml(x, s)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}</div>`
@@ -5840,7 +5851,8 @@
   // from the list as it stood when each game started. Not the user's own
   // entries: those are on the Entries tab.
   const HIST_DAY_KEYS = [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']];
-  function pickHistoryHtml(h) {
+  const HIST_DAYS_SHOWN = 5;
+  function pickHistoryHtml(h, allDays) {
     if (!h || !Array.isArray(h.days) || !h.days.length) return '';
     const units = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
     const tone = (v) => (v > 0 ? ' pk-up' : v < 0 ? ' pk-down' : '');
@@ -5848,7 +5860,7 @@
       + `<span>won ${e.won} of ${e.days}</span><span class="pk-u${tone(e.units)}">${units(e.units)}</span>`
       + `<span class="pk-roi${tone(e.units)}">${e.roi > 0 ? '+' : e.roi < 0 ? '−' : ''}${Math.abs(e.roi)}%</span></li>`).join('');
     const mark = { hit: ['✓', 'pk-hit'], miss: ['✗', 'pk-miss'], void: ['void', 'pk-void'], push: ['tie', 'pk-void'] };
-    const days = h.days.map((d) => {
+    const dayCards = h.days.map((d) => {
       const ents = HIST_DAY_KEYS.map(([k, label]) => {
         const e = d.entries && d.entries[k];
         if (!e) return '';
@@ -5877,7 +5889,11 @@
       const offN = (d.dropped || []).length ? `${d.dropped.length} off before the start` : '';
       return `<details class="pk-day"><summary><span class="pk-dd"><b>${esc(shortDay(d.date))}</b> ${[count, playing, offN].filter(Boolean).join(' · ')}</span>`
         + `${ents ? `<span class="pk-des">${ents}</span>` : ''}</summary><ul class="pk-legs">${legs}${pool}${mlDay}${off ? `<li class="pk-offh">Off the list before the start</li>${off}` : ''}</ul></details>`;
-    }).join('');
+    });
+    // The newest five days, the rest behind one button (2026-11-10, the owner's yes): by Nov 10
+    // the fourteen cards were two phone screens. The totals above still count every day.
+    const days = (allDays ? dayCards : dayCards.slice(0, HIST_DAYS_SHOWN)).join('')
+      + (dayCards.length > HIST_DAYS_SHOWN ? `<button type="button" class="pk-days-more" data-action="days-all" aria-expanded="${!!allDays}">${allDays ? `Show the last ${HIST_DAYS_SHOWN} days` : `Show all ${dayCards.length} days`}</button>` : '');
     // From the pool's first day the units are the PrizePicks entry's; the list's
     // own, from the days before, stay as a line.
     const fromPool = h.entriesFrom === 'pool';
@@ -5910,11 +5926,49 @@
   // opened they show only from 15 minutes before each game (captureCloses). In
   // season the list says so, rather than quietly going without MLB. March to
   // October: on a day with no games the line is still true.
-  const mlbInSeason = () => { const m = new Date().getMonth(); return m >= 2 && m <= 9; };
+  function mlbInSeason() { const m = new Date().getMonth(); return m >= 2 && m <= 9; }
+  // Out of season (2026-11-10, the owner's yes) the MLB tab was still second in the row and
+  // opened on an empty board that said to check back closer to first pitch. Its tab moves
+  // behind the sports that are playing, ahead of Entries, and the board's controls give way
+  // to one line; the record under it stays. A game on the slate brings the board back,
+  // whatever the month.
+  function placeMlbTab() {
+    const tab = document.querySelector('.stab[data-sport="mlb"]');
+    const ent = document.querySelector('.stab[data-sport="entries"]');
+    if (tab && ent && !mlbInSeason() && tab.nextElementSibling !== ent) ent.before(tab);
+  }
+  function mlbOffSync() {
+    const slate = document.getElementById('slate'), note = document.getElementById('mlbOff');
+    if (!slate || !note) return;
+    const off = !mlbInSeason() && !slateGames().length;
+    slate.classList.toggle('mlb-off', off);
+    note.hidden = !off;
+  }
   function mlbUnreadHtml(d) {
     if (state.liveBoard !== null || state.liveBatters !== null || !mlbInSeason()) return '';
     if ([...(d.legs || []), ...(d.ppPool || [])].some((x) => x.sport === 'mlb')) return '';
     return `<div class="pk-mlb-note">MLB legs are read when the MLB tab opens, or 15 minutes before each game. <button type="button" data-action="set-sport" data-sport="mlb">Open MLB</button></div>`;
+  }
+  // "Most likely to land" (2026-11-10, the owner's yes): each leg a short row -- the pick,
+  // when, its chance and, beside a moneyline, what its price leaves it (the gap the full
+  // leg's bar names, mlChanceLineHtml) -- that opens to the full leg on a tap and closes
+  // again. The entry cards above draw their legs in full already; drawn in full again here
+  // the list was 2.8 phone screens of a page of 11. full(foot) draws the open leg, its way
+  // back inside it.
+  function likelyRowHtml(x, open, full) {
+    const lg = pickLeg(x);
+    const tog = (on, inner, cls) => `<button type="button" class="${cls}" data-action="likely-toggle" data-leg="${esc(lg.id)}" aria-expanded="${on}">${inner}</button>`;
+    if (open) return full(tog(true, 'Show less', 'pk-lk-less'));
+    let gap = '';
+    const p = typeof x.kellyP === 'number' ? x.kellyP : x.p;
+    if (pickIsTeam(x) && typeof x.odds === 'number' && typeof p === 'number') {
+      const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
+      const g = Math.round((p - need) * 10) / 10;
+      gap = ` · ${esc(AM(x.odds))} <b class="${g > 0 ? 'u' : g < 0 ? 'o' : ''}">${g > 0 ? `${g} of edge` : g < 0 ? `${Math.abs(g)} short` : 'on the price'}</b>`;
+    }
+    return `<li class="pk-lk">${tog(false, `<span class="pk-lk-t"><b>${esc(x.title)}</b>`
+      + `<span class="pk-lk-m">${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${gap}</span></span>`
+      + `<span class="tc-p">${pct0(x.p)}</span><span class="pk-lk-c" aria-hidden="true"></span>`, 'pk-lk-row')}</li>`;
   }
   function renderPicks() {
     const grid = document.getElementById('picksGrid');
@@ -5925,7 +5979,7 @@
     // The soccer props strip follows the list in every state: its own feed,
     // and not on the list until it has a record at PrizePicks' lines. Then how
     // the list did, once a day has graded.
-    const after = socBestStripHtml() + pickHistoryHtml(d.record && d.record.history);
+    const after = socBestStripHtml() + pickHistoryHtml(d.record && d.record.history, !!state.daysAll);
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + after; return; }
     const legs = (d.legs || []).map(pickAtLine).filter((x) => Date.parse(x.commence) > Date.now());
     if (count) count.textContent = legs.length ? `${legs.length} leg${legs.length === 1 ? '' : 's'}` : '';
@@ -5948,7 +6002,7 @@
     // One leg's row: the list's, and the PrizePicks pool's (2026-10-28).
     // compact: its chance and record, for the moneyline entry; the same legs
     // sit with their prices and books in the list below it.
-    const legRow = (x, compact) => {
+    const legRow = (x, compact, foot) => {
       const lg = pickLeg(x);
       const team = pickIsTeam(x);
       const on = !!state.slip[offerLeg(lg)];
@@ -5987,9 +6041,11 @@
         + `${compact ? '' : `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${team ? '' : betLinkHtml(legLink(x))}${booksHtml(x.books, team)}`}</span>`
         + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
         + (!compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '')
-        + `</div></li>`;
+        + `</div>${foot || ''}</li>`;
     };
     const itemHtml = (x) => legRow(x, false);
+    // Most likely to land: short rows, the open ones in full (likelyRowHtml).
+    const likelyRow = (x) => likelyRowHtml(x, !!(state.likelyOpen && state.likelyOpen[pickLeg(x).id]), (foot) => legRow(x, false, foot));
     // Entry math over the legs still to come: the top two as a 2-pick power,
     // and the average leg of three to six against the flex break-even.
     // An entry is built from the legs PrizePicks takes (2026-10-27): its
@@ -6071,8 +6127,8 @@
       + `</div>`;
     const listCard = `<div class="nba-pp pk-card pk-likely">`
       + `<div class="tc-head"><span class="tc-title">Most likely to land</span></div>`
-      + `<div class="tc-sub">Every kind of leg, one a game, best chance first. Under a moneyline: its chance against the market's price.</div>`
-      + `<ol class="tc-legs">${legs.map(itemHtml).join('')}</ol>`
+      + `<div class="tc-sub">Every kind of leg, one a game, best chance first. Beside a moneyline: how its chance sits against the market's price. Tap a leg for the rest.</div>`
+      + `<ol class="tc-legs pk-lks">${legs.map(likelyRow).join('')}</ol>`
       + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
     grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + bankHtml() + ppCard + mlCard + evBetsHtml(d) + listCard + after;
     picksAnimate(grid);
@@ -8187,6 +8243,9 @@
     for (let t = walk.nextNode(); t; t = walk.nextNode()) if (t.data.includes(' · ')) t.data = glueDots(t.data);
   }
   glueDotsIn(document.body);
+  // Out of season: the MLB tab's place in the row, and its board's one line.
+  placeMlbTab();
+  mlbOffSync();
   // The props cards' stat bar follows the scroll, and every redraw (spStickSync).
   new MutationObserver((muts) => { for (const m of muts) m.addedNodes.forEach((n) => glueDotsIn(n)); spStickSoon(); }).observe(document.body, { childList: true, subtree: true });
   window.addEventListener('scroll', spStickSoon, { passive: true });

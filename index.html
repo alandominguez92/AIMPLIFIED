@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=bc77cf239e">
+<link rel="stylesheet" href="style.css?v=f2179dede8">
 </head>
 <body>
 
@@ -207,6 +207,9 @@
          so the page opens on it (2026-10-14). Filled by renderTopCard(). -->
     <div id="topCard" class="top-card" hidden></div>
     <div id="todayCard" class="today-card" hidden></div>
+    <!-- Out of season (mlbOffSync in app.js): the board's controls give way to
+         this line; the record below stays. -->
+    <div class="mlb-off-note" id="mlbOff" hidden><b>MLB is back in spring.</b> No games to price until then. Last season's record is below.</div>
     <!-- On a phone the hero is gone, so its explanation lives here, one tap
          away, instead of 2,300px of it sitting above the first pick. -->
     <details class="how-priced">
@@ -423,6 +426,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=bc77cf239e"></script>
+<script src="app.js?v=f2179dede8"></script>
 </body>
 </html>
