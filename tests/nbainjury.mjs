@@ -170,8 +170,8 @@ ok(drop && drop.why === 'ESPN listed him out (rest)', `the record says why Sharp
 // ---- the page -------------------------------------------------------------------------------------
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
-const at = app.indexOf('  function injuryTag(');
-const IT = new Function('Date', app.slice(at, app.indexOf('\n  }\n', at) + 4) + '\nreturn injuryTag;')(globalThis.Date);
+const at = app.indexOf('  const INJ_ROLE_WORD =');      // the role text (2026-11-10) sits just above it
+const IT = new Function('Date', app.slice(at, app.indexOf('\n  }\n', app.indexOf('  function injuryTag(')) + 4) + '\nreturn injuryTag;')(globalThis.Date);
 NOW = RealDate.parse('2026-11-01T19:47:00Z');
 const t1 = IT(ell), t2 = IT(sh), t3 = IT({ sport: 'nba', spec: { sport: 'nba', playerId: '1' } }), t4 = IT({ sport: 'nhl', spec: {} });
 ok(t1.warn && t1.text === 'GTD: back soreness' && t1.title === "ESPN's injury report, read 12 min ago", `Ellis: "${t1.text}" (${t1.title})`);

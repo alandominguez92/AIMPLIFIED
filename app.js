@@ -6514,6 +6514,17 @@
     return { warn: !g.confirmed, text: `${last(g.away)} @ ${last(g.home)}, ${g.confirmed ? 'confirmed' : 'expected'}`,
       title: g.confirmed ? "ESPN's confirmed starters" : "ESPN's expected starters, which can change until warm-ups" };
   }
+  // A listed player's place on his team (2026-11-10, the owner's yes): "1st in assists", "2nd in
+  // rebounds and blocks", "starter, 29 min", or "played 2 of 8" when he has missed most of the
+  // season, which the books have had for weeks. Context only, never a reason for a side.
+  const INJ_ROLE_WORD = { pts: 'points', reb: 'rebounds', ast: 'assists', threes: 'threes', blk: 'blocks', stl: 'steals' };
+  function injRoleText(r) {
+    if (!r) return '';
+    if (r.gp != null && r.of) return `played ${r.gp} of ${r.of}`;
+    if (r.r && Array.isArray(r.st) && r.st.length) return `${r.r === 1 ? '1st' : '2nd'} in ${r.st.map((s) => INJ_ROLE_WORD[s] || s).join(' and ')}`;
+    if (r.min) return `starter, ${r.min} min`;
+    return '';
+  }
   function injuryTag(x) {
     if ((x.sport || (x.spec || {}).sport) !== 'nba') return null;
     const i = x.inj;
@@ -6523,8 +6534,11 @@
     const read = ago == null ? '' : ago < 60 ? `, read ${ago} min ago` : `, read ${Math.round(ago / 60)}h ago`;
     // A moneyline (2026-11-01): each side's outs and day-to-days, the picked side first.
     if (Array.isArray(i.teams)) {
-      const few = (l) => l.slice(0, 3).map((p) => p.n).join(', ') + (l.length > 3 ? ` +${l.length - 3}` : '');
-      const full = (l) => l.map((p) => (p.what ? `${p.n} (${p.what})` : p.n)).join(', ');
+      // Each player's place on his team beside his name (2026-11-10): the worker lists the ones
+      // who matter most first, so the three shown are those.
+      const named = (p) => { const r = injRoleText(p.role); return r ? `${p.n} (${r})` : p.n; };
+      const few = (l) => l.slice(0, 3).map(named).join(', ') + (l.length > 3 ? ` +${l.length - 3}` : '');
+      const full = (l) => l.map((p) => { const r = [p.what, injRoleText(p.role)].filter(Boolean).join('; '); return r ? `${p.n} (${r})` : p.n; }).join(', ');
       const parts = [], lines = [];
       for (const t of i.teams) {
         if (t.out.length) { parts.push(`${t.team} out: ${few(t.out)}`); lines.push(`${t.team} out: ${full(t.out)}`); }

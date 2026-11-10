@@ -164,7 +164,7 @@ const penv = {
   LEG_OFFERS: new Map(), persistSlip: () => { penv.persisted++; }, renderSlip: () => {}, renderPicks: () => { penv.drawn++; }, renderNba: () => { penv.drawn++; },
   MARKET_SHORT: { reb: 'REB', ast: 'AST', blk: 'BLK', threes: '3PM' }, ptDayOf: (ms) => new RealDate(ms).toISOString().slice(0, 10), persisted: 0, drawn: 0,
 };
-const names = ['nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'PP_LINE_STORE', 'ppLinesLoad', 'ppLineOf', 'ppLineSet', 'ppChanceAt', 'nbaLegAtLine', 'pickAtLine', 'ppPoolAtLines', 'readAgeTag', 'injuryTag', 'nbaCardInjTag', 'ppLineTags', 'ppLineStepHtml', 'nbaPpLeg', 'pickLineSetTag', 'ppMovedTag'];
+const names = ['nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'PP_LINE_STORE', 'ppLinesLoad', 'ppLineOf', 'ppLineSet', 'ppChanceAt', 'nbaLegAtLine', 'pickAtLine', 'ppPoolAtLines', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'ppLineTags', 'ppLineStepHtml', 'nbaPpLeg', 'pickLineSetTag', 'ppMovedTag'];
 let P;
 try {
   P = new Function(...Object.keys(penv), names.map(lift).join('\n') + `\nreturn { ${names.filter((n) => !/^[A-Z]/.test(n)).join(', ')} };`)(...Object.values(penv));
