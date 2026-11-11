@@ -4721,6 +4721,19 @@
   // EVENTS
   // ---------------------------------------------------------------------
 
+  // The wordmark goes home, to Picks of the day (2026-11-11, the owner's "when ever we click the name
+  // lets link it to the picks page"). On Picks already, back to the top. A tap stays on the page; a
+  // ctrl/cmd/shift click is left to the browser, which opens / in a new tab -- the site opens on Picks.
+  // A hash the page was opened with (#slate, #nflBoard) goes, so a reload stays on Picks too, and so does
+  // the bare "#" a sport tab (href="#") leaves on the address.
+  function goHome(e) {
+    if (e && (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button)) return;
+    if (e) e.preventDefault();
+    if (location.hash || location.href.endsWith('#')) history.replaceState(null, '', location.pathname + location.search);
+    if (state.sport !== 'picks') setSport('picks');
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   function dispatchAction(target, e) {
     const action = target.dataset.action;
     switch (action) {
@@ -4728,6 +4741,7 @@
       case 'set-filter': setFilter(target.dataset.filter); break;
       case 'set-view': setView(target.dataset.view); break;
       case 'set-sport': setSport(target.dataset.sport); break;
+      case 'go-home': goHome(e); break;
       case 'soccer-league': setSoccerLeague(target.dataset.league); break;
       // A soccer prop's line, stepped to PrizePicks' number; whole numbers are
       // lines too (a 3-save line can push).
