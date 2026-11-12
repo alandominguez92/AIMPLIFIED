@@ -17811,7 +17811,14 @@ async function nflBoardData(env, url) {
     if (firstUp) {
       out.slateDay = ptDateOf(Date.parse(firstUp.commence));
       out.gamesAllUpcoming = out.games.length;
-      out.games = out.games.filter((g) => g.commence && ptDateOf(Date.parse(g.commence)) === out.slateDay);
+      // The next slate rides along as `later` (2026-11-11), as on the soccer board: the tab shows it once
+      // the slate's last game kicks off, or early on a tap, instead of an empty table for the six hours a
+      // kicked-off game keeps the slate. Nothing logs from it; every other reader takes `games`.
+      const dayOf = (g) => ptDateOf(Date.parse(g.commence));
+      const next = out.games.find((g) => g.commence && dayOf(g) > out.slateDay);
+      out.laterDay = next ? dayOf(next) : null;
+      out.later = out.laterDay ? out.games.filter((g) => g.commence && dayOf(g) === out.laterDay) : [];
+      out.games = out.games.filter((g) => g.commence && dayOf(g) === out.slateDay);
       out.slateNote = `one slate day only: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming games this season type)`;
     }
     out.empty = out.games.length === 0;

@@ -65,6 +65,9 @@ ok(board.games.length === 1, `only one slate day is shown (${board.games.length}
 ok(board.games[0] && board.games[0].away === 'DET', `and it is the Thursday game (${board.games[0] && board.games[0].away})`);
 ok(board.slateDay === '2026-09-17', `the Thursday-night kickoff counts as Thursday in Pacific time (${board.slateDay})`);
 ok(!board.empty && /one slate day/.test(board.slateNote || ''), `the payload says what it filtered (${board.slateNote})`);
+// The next slate rides along (2026-11-11), for the tab to show once Thursday's game kicks off.
+ok((board.later || []).length === 4 && board.laterDay === '2026-09-20' && board.later.every((g) => g.pickFair != null),
+  `Sunday's four come as \`later\`, priced, Sunday night included (${(board.later || []).length} on ${board.laterDay})`);
 
 // With Thursday gone, the board rolls to Sunday rather than emptying.
 rows.length = 0;
@@ -83,6 +86,7 @@ console.log(`\n  with Thursday played: slateDay ${later.slateDay}, ${later.games
 ok(later.games.length === 4 && later.slateDay === '2026-09-20',
   `the next slate day shows its games, Sunday night included (${later.games.length} on ${later.slateDay})`);
 ok(!later.empty, 'an off day rolls forward instead of showing an empty board');
+ok(Array.isArray(later.later) && later.later.length === 0 && later.laterDay === null, 'nothing after Sunday stored: nothing later');
 
 // The player projections built from this same list until they came off
 // (2026-11-08); the props card reads the capture by its own day.
