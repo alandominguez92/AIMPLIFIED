@@ -17849,7 +17849,8 @@ async function nflBoardData(env, url) {
     // and, for the page, the log's record with its 65%+ favourites first --
     // the bar NFL moneylines are listed on Picks of the day at. The cron's own
     // reads (no url) skip the record.
-    for (const g of out.games) { g.homeLogo = moneylineLogo('nfl', g.home); g.awayLogo = moneylineLogo('nfl', g.away); }
+    // The next slate's too (2026-11-11): without them its rows drew three-letter stand-ins.
+    for (const g of out.games.concat(out.later || [])) { g.homeLogo = moneylineLogo('nfl', g.home); g.awayLogo = moneylineLogo('nfl', g.away); }
     if (url) {
       try {
         const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'nfl'").all()).results) || [], 'nfl');

@@ -21,6 +21,8 @@ const GAMES = [
   { id: 'thu1', commence: THU, away: 'Detroit Lions', home: 'Buffalo Bills' },
   ...SUN.map((c, i) => ({ id: 'sun' + i, commence: c, away: `Away ${i} Team`, home: `Home ${i} Team` })),
 ];
+// One Sunday game between real clubs, for their marks on the later slate.
+Object.assign(GAMES[1], { away: 'Kansas City Chiefs', home: 'Seattle Seahawks' });
 // Two sharp books per side so each game has a fair line and a real board row.
 const rows = [];
 for (const g of GAMES) {
@@ -68,6 +70,9 @@ ok(!board.empty && /one slate day/.test(board.slateNote || ''), `the payload say
 // The next slate rides along (2026-11-11), for the tab to show once Thursday's game kicks off.
 ok((board.later || []).length === 4 && board.laterDay === '2026-09-20' && board.later.every((g) => g.pickFair != null),
   `Sunday's four come as \`later\`, priced, Sunday night included (${(board.later || []).length} on ${board.laterDay})`);
+const kc = (board.later || []).find((g) => g.id === 'sun0');
+ok(board.games[0] && board.games[0].awayLogo === 'nfl/500/det.png' && kc && kc.awayLogo === 'nfl/500/kc.png' && kc.homeLogo === 'nfl/500/sea.png',
+  `each club's mark on the later slate too, as on the slate (${kc && kc.awayLogo}, ${kc && kc.homeLogo})`);
 
 // With Thursday gone, the board rolls to Sunday rather than emptying.
 rows.length = 0;
