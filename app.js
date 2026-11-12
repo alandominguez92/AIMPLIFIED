@@ -4930,6 +4930,13 @@
       // did: the older days (2026-11-10). Kept in state, so a redraw leaves them as they were.
       case 'likely-toggle': { const o = state.likelyOpen || (state.likelyOpen = {}); const k = target.dataset.leg; if (o[k]) delete o[k]; else o[k] = true; renderPicks(); break; }
       case 'days-all': state.daysAll = !state.daysAll; renderPicks(); break;
+      // The next day's moneylines, early (mlLaterHtml); kept for the day it was opened on.
+      case 'ml-later': {
+        const s = target.dataset.sport, open = target.getAttribute('aria-expanded') === 'true';
+        state.mlLater = { ...(state.mlLater || {}), [s]: open ? null : target.dataset.day };
+        if (s === 'nba') renderNba(); else if (s === 'nhl') renderNhl();
+        break;
+      }
       case 'ticket-ml-save': saveTicketImage(true); break;
       // A book's link that needs the state: open the bankroll fold at it.
       case 'bank-open': {
@@ -7100,8 +7107,8 @@
     const note = document.getElementById('nbaNote');
     if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
-    const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
-    if (count) count.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}` : '';
+    const sp = mlDaySplit(d.games), games = mlTableGames('nba', sp);
+    if (count) count.textContent = mlCountText(sp);
     const pre = games.some((g) => g.league === 'pre');
     if (note) {
       note.textContent = 'Sharp-book fair line · best DK/FD price'
@@ -7118,7 +7125,7 @@
     grid.innerHTML = propsCardHtml('nba') + nbaPpCardHtml() + nbaHotCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map((g) => mlTabRow(g, 'nba')).join('')}</div>`
-      + `</div></div>`;
+      + `</div></div>` + mlLaterHtml('nba', sp);
   }
   // The NBA and NHL moneyline tabs draw one table. Per sport: the nickname
   // rule, the slip leg, the row toggle and the open-row key.
@@ -7199,6 +7206,36 @@
     </div>`;
   }
 
+  // The NBA and NHL tables, one day at a time (2026-11-11, the owner: "start with the games of the day
+  // then follow up by showing the games of the next day once all the games of the day take place"): the
+  // Pacific day of the earliest game still to start, as the props cards pick theirs (propDay). A game
+  // leaves the table at its start, its pre-game price gone, so the next day's come up as the day's last
+  // game starts -- not at its final, which would leave the table empty all evening. Until then one line
+  // under the table says when, and shows them early for an early price; that opening lasts the day.
+  function mlDaySplit(games, now = Date.now()) {
+    const t = (g) => Date.parse(g.commence);
+    const up = (games || []).filter((g) => t(g) > now);
+    if (!up.length) return { day: null, shown: [], later: [] };
+    const day = ptDayOf(Math.min(...up.map(t)));
+    return { day, shown: up.filter((g) => ptDayOf(t(g)) === day), later: up.filter((g) => ptDayOf(t(g)) !== day) };
+  }
+  const mlLaterOpen = (sport, sp) => !!sp.day && !!state.mlLater && state.mlLater[sport] === sp.day;
+  function mlLaterHtml(sport, sp, now = Date.now()) {
+    if (!sp.later.length) return '';
+    const t = (g) => Date.parse(g.commence), open = mlLaterOpen(sport, sp), one = sp.later.length === 1;
+    const days = [...new Set(sp.later.map((g) => ptDayOf(t(g))))].sort().map((d) => propDayTitle(d, now)).join(' and ');
+    const last = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
+      .format(new Date(Math.max(...sp.shown.map(t))));
+    const ofDay = `${propDayName(sp.day, now)}’s`;
+    const text = open ? `${days}’s ${one ? 'game is' : `${sp.later.length} games are`} in the table, after ${ofDay}.`
+      : `${days}’s ${one ? 'game shows' : `${sp.later.length} games show`} here once ${ofDay} last game starts, at ${last}.`;
+    return `<div class="ml-later"><p>${esc(text)}</p><button type="button" class="pk-days-more" data-action="ml-later" data-sport="${sport}" data-day="${esc(sp.day)}"`
+      + ` aria-expanded="${open}">${open ? (one ? 'Hide it' : 'Hide them') : (one ? 'Show it now' : 'Show them now')}</button></div>`;
+  }
+  // The day's games, and the later ones once shown early.
+  const mlTableGames = (sport, sp) => sp.shown.concat(mlLaterOpen(sport, sp) ? sp.later : []);
+  const mlCountText = (sp, now = Date.now()) => (sp.shown.length ? `${sp.shown.length} game${sp.shown.length === 1 ? '' : 's'} ${propDayName(sp.day, now)}` : '');
+
   // -------------------------------------------------------------------------
   // NHL — moneylines (2026-10-20)
   // -------------------------------------------------------------------------
@@ -7275,8 +7312,8 @@
     const note = document.getElementById('nhlNote');
     if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
-    const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
-    if (count) count.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}` : '';
+    const sp = mlDaySplit(d.games), games = mlTableGames('nhl', sp);
+    if (count) count.textContent = mlCountText(sp);
     if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '');
     // The props card first, under the best leg (2026-11-05, the owner's pick): it sat below the More card.
     const rec = nhlRecordHtml(d.record) + propsCardHtml('nhl') + nhlPpCardHtml() + hotCardHtml('nhl');
@@ -7289,7 +7326,7 @@
     grid.innerHTML = rec + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map((g) => mlTabRow(g, 'nhl')).join('')}</div>`
-      + `</div></div>`;
+      + `</div></div>` + mlLaterHtml('nhl', sp);
   }
 
   // -------------------------------------------------------------------------

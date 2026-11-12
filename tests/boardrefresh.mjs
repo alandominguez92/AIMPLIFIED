@@ -70,7 +70,7 @@ const boardReads = (p) => reads.filter((u) => u === p).length;
 const drawn = { nhl: 0, soccer: 0, nfl: 0 };
 const noop = () => '';
 
-const HELPERS = ['esc', 'AM', 'BOOK_LABEL', 'bkLabel', 'signed', 'impliedPct', 'r1', 'soccerKick', 'kickWhole', 'nbaNick', 'nflNick', 'nhlNick', 'ML_TABS',
+const HELPERS = ['esc', 'AM', 'BOOK_LABEL', 'bkLabel', 'signed', 'impliedPct', 'r1', 'soccerKick', 'kickWhole', 'nbaNick', 'nflNick', 'nhlNick', 'ML_TABS', 'ptDayOf', 'propDayName', 'propDayTitle', 'mlDaySplit', 'mlLaterOpen', 'mlLaterHtml', 'mlTableGames', 'mlCountText',
   'mlTabRow', 'renderNba', 'nflMlBar', 'nflRow', 'soccerRow'];
 const ARGS = { state, document: doc, LIVE_MODE: true, fetchJson,
   renderNhl: () => { drawn.nhl++; }, renderSoccer: () => { drawn.soccer++; }, renderNfl: () => { drawn.nfl++; }, renderSlip: noop,
@@ -103,7 +103,7 @@ if (B && R) {
   ok(B.boardStale('nba'), 'a board never read is due');
   await B.refreshNba();
   ok(boardReads('/api/nba-board') === 1 && state.nba.games.length === 6, `one read: ${state.nba.games.length} games`);
-  ok(rowCount() === 6 && els.nbaCount.textContent === '6 games', `the table draws them: ${els.nbaCount.textContent}`);
+  ok(rowCount() === 6 && els.nbaCount.textContent === '6 games today', `the table draws them: ${els.nbaCount.textContent}`);
 
   console.log('\n-- inside five minutes the timer leaves it; past five it reads --');
   NOW += 2 * MIN;
@@ -127,7 +127,7 @@ if (B && R) {
   ok(B.boardTick() === true, 'the timer reads');
   await settle();
   const subs = subsOf(els.nbaGrid.innerHTML);
-  ok(rowCount() === 6 && !/No NBA games/.test(els.nbaGrid.innerHTML), `the next day's six games are on the tab: ${els.nbaCount.textContent}`);
+  ok(rowCount() === 6 && els.nbaCount.textContent === '6 games tomorrow' && !/No NBA games/.test(els.nbaGrid.innerHTML), `the next day's six games are on the tab: ${els.nbaCount.textContent}`);
   ok(subs.length === 6 && subs.every((s) => new RegExp(` · Wed${NB}\\d`).test(s)), `each says it is Wednesday's: "${subs[0]}"`);
 
   console.log('\n-- out of sight, and typing --');

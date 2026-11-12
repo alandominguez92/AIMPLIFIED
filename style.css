@@ -3189,6 +3189,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 :is(.pk-lk-row, .pk-lk-less, .pk-days-more):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 [data-theme="light"] .pk-lk-row { box-shadow:var(--lift); }
 /* MLB out of season: one line where the board's controls were. */
+/* The NBA and NHL tables' next day, held until the day's last game starts (2026-11-11). */
+.ml-later { margin-top:12px; }
+.ml-later p { margin:0 4px 2px; font-size:13px; line-height:1.45; color:var(--textDim); }
 .mlb-off-note { margin:0 0 18px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; background:var(--card); font-size:14px; line-height:1.5; color:var(--textDim); }
 .mlb-off-note b { color:var(--text); }
 #slate.mlb-off > :is(.how-priced, #injuryAlerts, #injuryBar, .sec-head, .lineup-alerts, .board-view, .tabrow, .ctx-banner, .board-toolbar, .compare-hint, .board, .np-more, .board-foot, #comparePanel) { display:none; }
