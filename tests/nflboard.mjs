@@ -129,12 +129,15 @@ const document = { getElementById: (id) => (els[id] = els[id] || fakeEl()) };
 const el = { nflBoardTitle: fakeEl(), nflCount: fakeEl() };
 let tabled = null;
 const esc = (s) => String(s == null ? '' : s);
-const draw = new Function('document', 'el', 'esc', 'soccerKick', 'nflTable', 'hotCardHtml', 'propsCardHtml', lift('gmRecordHtml') + '\n' + lift('renderNflMoneyline') + '\nreturn renderNflMoneyline;')(
-  document, el, esc, (iso) => iso, (games) => { tabled = games; return '<table>'; }, () => '', () => '');
+// The table goes one day at a time from 2026-11-11 (tests/nflday.mjs); its day helpers come along.
+const liftConst = (name) => { const m = app.match(new RegExp(`const ${name} = [^\\n]*(?:\\n    [^\\n]*)*;\\n`)); if (!m) throw new Error('could not lift ' + name); return m[0]; };
+const DAY = ['ptDayOf', 'propDayName', 'propDayTitle', 'mlLaterOpen', 'mlTableGames', 'mlCountText'].map(liftConst).join('') + lift('mlDaySplit') + '\n' + lift('mlLaterHtml');
+const draw = new Function('document', 'el', 'esc', 'soccerKick', 'nflTable', 'hotCardHtml', 'propsCardHtml', 'state', DAY + '\n' + lift('gmRecordHtml') + '\n' + lift('renderNflMoneyline') + '\nreturn renderNflMoneyline;')(
+  document, el, esc, (iso) => iso, (games) => { tabled = games; return '<table>'; }, () => '', () => '', {});
 draw({ ...REC.board, record: b.record }, false);
 ok(tabled && tabled.map((x) => `${x.away}@${x.home}`).join() === 'KC@SEA',
   `at 3:18 PM the table is tonight's game alone; the ten under way or over, Panthers +3000 among them, are left out (${tabled && tabled.length})`);
-ok(el.nflCount.textContent === '1 game · week 7' && /prices as of/.test(els.nflNote.textContent), `"${el.nflCount.textContent}", "${els.nflNote.textContent}"`);
+ok(el.nflCount.textContent === '1 game today · week 7' &&/prices as of/.test(els.nflNote.textContent), `"${el.nflCount.textContent}", "${els.nflNote.textContent}"`);
 // From 2026-10-26 the line leads with the NFL's own bar, 75%+ (tests/nflbar.mjs).
 ok(/Record so far <b>[\d–]+<\/b> · favourites at 75%\+ <b>11 of 13<\/b>.* · at 65–75% <b>4 of 9<\/b>/.test(els.nflMlGrid.innerHTML), `the record line above it: ${els.nflMlGrid.innerHTML.replace(/<[^>]+>/g, '').split('.')[0]}`);
 ok(/const NFL_ML_COLS = \['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', ''\];/.test(app)

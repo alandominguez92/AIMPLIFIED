@@ -4934,7 +4934,7 @@
       case 'ml-later': {
         const s = target.dataset.sport, open = target.getAttribute('aria-expanded') === 'true';
         state.mlLater = { ...(state.mlLater || {}), [s]: open ? null : target.dataset.day };
-        if (s === 'nba') renderNba(); else if (s === 'nhl') renderNhl(); else if (s === 'soccer') renderSoccer();
+        if (s === 'nba') renderNba(); else if (s === 'nhl') renderNhl(); else if (s === 'soccer') renderSoccer(); else if (s === 'nfl') renderNfl();
         break;
       }
       case 'ticket-ml-save': saveTicketImage(true); break;
@@ -5386,19 +5386,24 @@
   // The games still to kick off, one row each, as the NBA and NHL tabs draw
   // them. A game under way is left out: the feed's prices for it are in-game
   // ones (Panthers +3000 with "56.7% value" on Oct 25), not a pregame read.
+  // One Pacific day at a time, as the NBA, NHL and soccer tables (2026-11-11, the owner: "do the same
+  // for the NFL table"): the worker sends its slate and, as `later`, the next one. The next slate comes
+  // up as the slate's last game kicks off -- the table sat empty for the six hours the worker keeps a
+  // kicked-off slate -- or early from the line under the table.
   function renderNflMoneyline(d, pre) {
     const grid = document.getElementById('nflMlGrid');
     if (!grid) return;
-    const games = (d.games || []).filter((g) => Date.parse(g.commence) > Date.now());
-    const wk = games.find((g) => g.week != null);
+    const sp = mlDaySplit((d.games || []).concat(d.later || []));
+    const games = mlTableGames('nfl', sp);
+    const wk = sp.shown.find((g) => g.week != null);
     if (el.nflBoardTitle) el.nflBoardTitle.textContent = pre ? 'Preseason Board' : 'NFL Board';
-    if (el.nflCount) el.nflCount.textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'}${wk ? ' · week ' + wk.week : ''}` : '';
+    if (el.nflCount) { const c = mlCountText(sp); el.nflCount.textContent = c ? `${c}${wk ? ' · week ' + wk.week : ''}` : ''; }
     const note = document.getElementById('nflNote');
     if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '')
       + (pre ? ' · preseason: starters sit' : '');
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
     const rec = gmRecordHtml(d.record, 'Record: logged from Week 1, graded from ESPN’s finals each morning.');
-    grid.innerHTML = rec + propsCardHtml('nfl') + hotCardHtml('nfl') + (games.length ? nflTable(games)
+    grid.innerHTML = rec + propsCardHtml('nfl') + hotCardHtml('nfl') + (games.length ? nflTable(games) + mlLaterHtml('nfl', sp)
       : `<div class="nfl-empty">No NFL games left on this slate${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`);
   }
 
