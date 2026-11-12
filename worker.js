@@ -15678,6 +15678,12 @@ async function soccerBoardData(env, url, opts = {}) {
       const target = priced.length ? dayOf(priced[0]) : null;
       if (target) {
         out.slateDay = target;
+        // The next priced day rides along as `later` (2026-11-11): the tab shows it once the matchday's
+        // last fixture kicks off, or early on a tap, instead of waiting out the three hours it keeps a
+        // kicked-off fixture. Nothing logs from it; the record still comes from `games` and the cron.
+        const nextPriced = priced.find((g) => dayOf(g) > target);
+        out.laterDay = nextPriced ? dayOf(nextPriced) : null;
+        out.later = out.laterDay ? out.games.filter((g) => g.commence && dayOf(g) === out.laterDay) : [];
         out.games = out.games.filter((g) => g.commence && dayOf(g) === target);
         const withFair = out.games.filter((g) => g.fairSrc !== 'MKT').length;
         out.slateNote = `next matchday: ${out.slateDay} (${out.games.length} of ${out.gamesAllUpcoming} upcoming fixtures, ${withFair} with a sharp fair line)`;

@@ -4934,7 +4934,7 @@
       case 'ml-later': {
         const s = target.dataset.sport, open = target.getAttribute('aria-expanded') === 'true';
         state.mlLater = { ...(state.mlLater || {}), [s]: open ? null : target.dataset.day };
-        if (s === 'nba') renderNba(); else if (s === 'nhl') renderNhl();
+        if (s === 'nba') renderNba(); else if (s === 'nhl') renderNhl(); else if (s === 'soccer') renderSoccer();
         break;
       }
       case 'ticket-ml-save': saveTicketImage(true); break;
@@ -7220,21 +7220,22 @@
     return { day, shown: up.filter((g) => ptDayOf(t(g)) === day), later: up.filter((g) => ptDayOf(t(g)) !== day) };
   }
   const mlLaterOpen = (sport, sp) => !!sp.day && !!state.mlLater && state.mlLater[sport] === sp.day;
-  function mlLaterHtml(sport, sp, now = Date.now()) {
-    if (!sp.later.length) return '';
+  // Soccer's table says it in fixtures that kick off (2026-11-11).
+  function mlLaterHtml(sport, sp, now = Date.now(), noun = 'game', starts = 'starts') {
+    if (!sp.later.length || !sp.shown.length) return '';
     const t = (g) => Date.parse(g.commence), open = mlLaterOpen(sport, sp), one = sp.later.length === 1;
     const days = [...new Set(sp.later.map((g) => ptDayOf(t(g))))].sort().map((d) => propDayTitle(d, now)).join(' and ');
     const last = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
       .format(new Date(Math.max(...sp.shown.map(t))));
     const ofDay = `${propDayName(sp.day, now)}’s`;
-    const text = open ? `${days}’s ${one ? 'game is' : `${sp.later.length} games are`} in the table, after ${ofDay}.`
-      : `${days}’s ${one ? 'game shows' : `${sp.later.length} games show`} here once ${ofDay} last game starts, at ${last}.`;
+    const text = open ? `${days}’s ${one ? `${noun} is` : `${sp.later.length} ${noun}s are`} in the table, after ${ofDay}.`
+      : `${days}’s ${one ? `${noun} shows` : `${sp.later.length} ${noun}s show`} here once ${ofDay} last ${noun} ${starts}, at ${last}.`;
     return `<div class="ml-later"><p>${esc(text)}</p><button type="button" class="pk-days-more" data-action="ml-later" data-sport="${sport}" data-day="${esc(sp.day)}"`
       + ` aria-expanded="${open}">${open ? (one ? 'Hide it' : 'Hide them') : (one ? 'Show it now' : 'Show them now')}</button></div>`;
   }
   // The day's games, and the later ones once shown early.
   const mlTableGames = (sport, sp) => sp.shown.concat(mlLaterOpen(sport, sp) ? sp.later : []);
-  const mlCountText = (sp, now = Date.now()) => (sp.shown.length ? `${sp.shown.length} game${sp.shown.length === 1 ? '' : 's'} ${propDayName(sp.day, now)}` : '');
+  const mlCountText = (sp, now = Date.now(), noun = 'game') => (sp.shown.length ? `${sp.shown.length} ${noun}${sp.shown.length === 1 ? '' : 's'} ${propDayName(sp.day, now)}` : '');
 
   // -------------------------------------------------------------------------
   // NHL — moneylines (2026-10-20)
@@ -8109,14 +8110,15 @@
   const kickWhole = (iso) => soccerKick(iso).replace(/\s/g, ' ');
 
   // The chips come from the payload, so adding a league to the worker is enough.
-  function renderSoccerLeagues() {
+  // `games` is the table as drawn on All, one day's fixtures (2026-11-11).
+  function renderSoccerLeagues(games = (state.soccer && state.soccer.games) || []) {
     const box = document.getElementById('soccerLeagues');
     if (!box) return;
     // Only leagues with a game on the board get a button (2026-10-15). All
     // seven showed every day -- eight buttons, four rows on a phone -- and
     // Nations League plays only in the international breaks. It, and MLS and
     // Liga MX after their seasons end, now come and go with their fixtures.
-    const playing = new Set(((state.soccer && state.soccer.games) || []).map((g) => g.league));
+    const playing = new Set(games.map((g) => g.league));
     const list = ((state.soccer && state.soccer.leagueList) || []).filter((l) => playing.has(l.key));
     // A league picked earlier that has nothing left falls back to All.
     if (state.soccerLeague !== 'all' && !list.some((l) => l.key === state.soccerLeague)) state.soccerLeague = 'all';
@@ -8160,19 +8162,24 @@
   }
   function renderSoccerGrid() {
     if (!el.soccerGrid) return;
-    renderSoccerLeagues();
     const d = state.soccer;
+    // One Pacific day at a time, as the NBA and NHL tables (2026-11-11, the owner: "do the same for
+    // soccer"). The worker sends its matchday and, as `later`, the next priced day's fixtures; a fixture
+    // leaves the table at kickoff (it stayed for three hours on its pre-game price), and the next day's
+    // come up as the day's last one kicks off, or early from the line under the table. The day is the
+    // whole board's, and a league button filters it.
+    const now = Date.now();
+    const sp = d && !d.error ? mlDaySplit((d.games || []).concat(d.later || []), now) : { day: null, shown: [], later: [] };
+    const board = mlTableGames('soccer', sp);
+    renderSoccerLeagues(board);
     if (!d) { el.soccerGrid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
     // The player-props card leads the tab in every state: it has its own feed,
     // and a day with no priced fixture can still have lineups posted.
     const props = socPropsCardHtml() + hotCardHtml('soccer');
     if (d.error) { el.soccerGrid.innerHTML = props + `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
-    const games = (d.games || []).filter((g) => state.soccerLeague === 'all' || g.league === state.soccerLeague);
-    if (el.soccerCount) {
-      el.soccerCount.textContent = games.length
-        ? `${games.length} fixture${games.length === 1 ? '' : 's'}${d.slateDay ? ' · one matchday' : ''}`
-        : '';
-    }
+    const lgOk = (g) => state.soccerLeague === 'all' || g.league === state.soccerLeague;
+    const games = board.filter(lgOk);
+    if (el.soccerCount) el.soccerCount.textContent = mlCountText({ ...sp, shown: sp.shown.filter(lgOk) }, now, 'fixture');
     if (!games.length) { el.soccerGrid.innerHTML = props + soccerEmptyHtml(d, state.soccerLeague); return; }
     // view-moneyline carries --bcols, and the soccer row has the same seven
     // cells as the NFL moneyline row. Without the wrapper .board-row has no
@@ -8186,7 +8193,7 @@
       + `<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map(soccerRow).join('')}</div>`
-      + `</div></div>`;
+      + `</div></div>` + mlLaterHtml('soccer', { ...sp, later: sp.later.filter(lgOk) }, now, 'fixture', 'kicks off');
   }
 
   // "Brighton and Hove Albion" cannot sit three-to-a-row on a phone. Drop the

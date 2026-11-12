@@ -143,6 +143,11 @@ ok(g && g.total && g.total.point === 2.5 && g.total.overFair != null && Math.abs
 ok(board.games.length === 2 && board.gamesAllUpcoming === 3,
   `one matchday only: today's two fixtures, not next week's (${board.games.length} of ${board.gamesAllUpcoming})`);
 ok(/next matchday/.test(board.slateNote || ''), `the payload says what it filtered (${board.slateNote})`);
+// The next priced day rides along (2026-11-11), for the tab to show once the matchday's last fixture
+// kicks off; it is not on the board's `games`, so nothing logs from it.
+const ptDay = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+ok((board.later || []).map((x) => x.id).join() === 'epl2' && board.laterDay === ptDay(LATER) && board.later[0].lead && board.later[0].lead.fair != null,
+  `next week's fixture comes as \`later\`, priced, dated ${board.laterDay} (${(board.later || []).map((x) => `${x.away} @ ${x.home}`).join(', ')})`);
 ok((board.games || []).some((x) => x.league === 'epl') && (board.games || []).some((x) => x.league === 'laliga'),
   'leagues share one board and are labelled');
 
