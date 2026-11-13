@@ -69,7 +69,7 @@ const h = F.history;
 const r1 = P.recapHtml(h, null);
 console.log('  ' + text(r1));
 ok(/<details class="pk-recap" open>/.test(r1) && store.aimplified_recap_seen === '2026-10-27', 'open the first time the day shows, and remembered');
-ok(text(r1).startsWith('Last night Oct 27 2 of 3 ✓✓✗') && /✓ Celtics ✓ AS Roma ✗ Ducks/.test(text(r1)),
+ok(text(r1).startsWith('Last night Oct 27 The list 2 of 3 ✓✓✗') && /✓ Celtics ✓ AS Roma ✗ Ducks/.test(text(r1)),
   "Tuesday's list: the Celtics and Roma landed, the Ducks lost");
 ok(/Top 2 Power \+2\.00u/.test(text(r1)) && /Top 3 Flex \+0\.25u/.test(text(r1)) && /Off before the start: Harper U1\.5 3PM, would have landed/.test(text(r1)),
   "its units, and Dylan Harper's pulled under, which would have landed");
@@ -96,7 +96,7 @@ P = build();
 const seenBefore = store.aimplified_recap_seen;
 const t1 = P.recapDay(withToday(todayPool(['hit', 'miss', null])), null, '2026-10-28', true);
 console.log('  ' + text(t1));
-ok(text(t1).startsWith('Today so far Oct 28 1 of 2 1 to go ✓✗'), 'named for today, how many landed, and how many to go');
+ok(text(t1).startsWith('Today so far Oct 28 PrizePicks entry 1 of 2 1 to go ✓✗'), 'named for today, how many landed, and how many to go');
 ok(/<details class="pk-recap">/.test(t1) && !/ open>/.test(t1), 'folded: the count is on its face');
 ok(store.aimplified_recap_seen === seenBefore, "and it doesn't use up last night's first showing");
 ok(!/Top 2 Power/.test(t1), 'no entry yet: a later game can still put a leg above these');
@@ -118,7 +118,7 @@ const r2 = P.recapHtml(G.history, G.edgeRecord);
 console.log('  ' + text(r2));
 const d28 = G.history.days.find((d) => d.date === '2026-10-28');
 const pend = d28.pool.filter((x) => x.result == null).length;
-ok(text(r2).startsWith(`Last night Oct 28 2 of 3 ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2)),
+ok(text(r2).startsWith(`Last night Oct 28 PrizePicks entry 2 of 3 ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2)),
   `the entry's legs, and the ${pend} NHL legs still to grade said so`);
 ok(/<li><span>Edge bets<\/span><b>1 of 5 · <i class="o">−2\.25u<\/i> · beat the close 4 of 5<\/b><\/li>/.test(r2) && /The list 9 of 9/.test(text(r2)),
   "the edge bets' first day: 1 of 5 and down, red on the units only -- 4 of 5 beat the close; the list 9 of 9");

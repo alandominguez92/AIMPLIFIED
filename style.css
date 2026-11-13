@@ -3118,6 +3118,15 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .rc-day { font-size:12px; color:var(--textDim); }
 .rc-n { font-family:var(--mono); font-weight:700; font-size:18px; color:var(--text); }
 .rc-dots { font-family:var(--mono); font-size:13px; letter-spacing:.08em; color:var(--textDim); margin-left:auto; }
+/* An entry a row: its name, its count, its dots (2026-11-13). */
+.rc-es { flex-basis:100%; display:grid; grid-template-columns:auto auto minmax(0, 1fr); gap:2px 12px; align-items:baseline; }
+.rc-g { display:contents; }
+.rc-w { font-size:12px; color:var(--textDim); white-space:nowrap; }
+.rc-x { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px; min-width:0; }
+.rc-ent { margin-top:12px; }
+.rc-cw { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--textFaint); }
+.rc-ent .rc-chips { margin-top:6px; }
+.rc-ent .rc-lines { margin-top:8px; }
 .rc-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
 .rc-chip { font-size:12.5px; padding:3px 9px; border-radius:999px; border:1px solid var(--border); color:var(--textDim); white-space:nowrap; }
 .rc-chip.rc-hit { color:var(--positive); border-color:color-mix(in srgb, var(--positive) 45%, var(--border)); background:color-mix(in srgb, var(--positive) 10%, transparent); }

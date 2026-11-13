@@ -163,6 +163,14 @@ const marshall = of(hot, 'Naji Marshall', 'pts');
 ok(marshall.pos === 1 && marshall.third === 'soft' && marshall.run === 5 && marshall.last5 === 18.4 && marshall.seasonAvg === 13.8, 'Marshall: 5 in a row, 18.4 over five against 13.8, and Utah allows the most points');
 const player = hot.players.find((p) => p.name === 'Naji Marshall');
 ok(player.team === 'DAL' && player.isHome === true && player.oppName === 'Utah Jazz' && Date.parse(player.commence) === TIP[MAVS], 'Marshall at home to the Jazz, at the real tip');
+// The odds feed's tip where it has the game (2026-11-13): ESPN listed this one at 5:30 PM, the
+// feed's events list (the real one, as the worker keeps it) at 5:40, and the tables show the feed's.
+const FEED_EVENTS = { at: new RealDate(NOW).toISOString(), events: P.events.map((e) => { const [away, home] = e.game.split(' @ '); return { id: e.id, commence_time: yearOn(e.commence), home_team: home, away_team: away }; }) };
+S.sq.prepare("INSERT OR REPLACE INTO feed_cache (key, data, updated_at) VALUES ('nba_pp_events:reg', ?, ?)").run(JSON.stringify(FEED_EVENTS), NOW);
+const atFeed = (await get('/api/nba-pp')).hot.players.find((p) => p.name === 'Naji Marshall');
+ok(atFeed && atFeed.commence === '2027-01-16T01:40:00Z' && FEED_EVENTS.events.some((e) => e.commence_time === '2027-01-16T01:40:00Z' && e.home_team === 'Dallas Mavericks'),
+  `with the feed's events list kept, its 5:40 tip, as the tables beside the card show (${atFeed && atFeed.commence})`);
+S.sq.prepare("DELETE FROM feed_cache WHERE key = 'nba_pp_events:reg'").run();
 ok(marshall.line === null && marshall.cleared === null && marshall.sharp === null, 'no number read yet, and none made up');
 ok(marshall.read.side === 'Under' && marshall.read.rate === 57 && marshall.read.sharp === 50.5 && marshall.read.n === 741 && marshall.read.clears === true, 'until there is one: what soft teams went, the Under 57.0% to the sharp books 50.5');
 // A chance on each run (2026-11-03): the table typed out here, each run's games counted here.

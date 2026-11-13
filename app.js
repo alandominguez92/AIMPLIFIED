@@ -6238,21 +6238,34 @@
   function recapDay(h, edge, date, today) {
     const d = h.days.find((x) => x.date === date);
     if (!d) return '';
-    const legs = d.pool && d.pool.length ? d.pool : d.legs;
-    const dec = legs.filter((x) => x.result === 'hit' || x.result === 'miss');
-    if (!dec.length) return '';
-    const hit = dec.filter((x) => x.result === 'hit').length;
     const units = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
     const glyph = { hit: '✓', miss: '✗', void: 'void', push: 'tie' };
-    const chips = legs.map((x) => `<span class="rc-chip rc-${esc(x.result || 'open')}">${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}</span>`).join('');
+    // Each entry under its name, with its own count and units (2026-11-13, the owner's "do all
+    // three"): Nov 12 read "2 of 9" and two red −1.00u, the PrizePicks entry's, with the moneyline
+    // entry's 6 of 6 nowhere. The list's legs on a day before the PrizePicks entry; the moneyline
+    // entry from Nov 1, where it had two legs or more.
+    const pool = d.pool && d.pool.length;
+    const ents = [[pool ? 'PrizePicks entry' : 'The list', pool ? d.pool : d.legs || [], d.entries],
+      ['Moneyline entry', Array.isArray(d.ml) && d.ml.length >= 2 ? d.ml : [], d.mlEntries]]
+      .map(([who, legs, es]) => {
+        const dec = legs.filter((x) => x.result === 'hit' || x.result === 'miss');
+        return { who, legs, es, dec, hit: dec.filter((x) => x.result === 'hit').length, toGo: legs.filter((x) => x.result == null).length };
+      }).filter((g) => g.legs.length);
+    if (!ents.some((g) => g.dec.length)) return '';
+    const face = ents.map((g) => `<span class="rc-g"><span class="rc-w">${g.who}</span><b class="rc-n">${g.dec.length ? `${g.hit} of ${g.dec.length}` : ''}</b>`
+      + `<span class="rc-x">${g.toGo ? `<span class="rc-pend">${g.toGo} ${today ? 'to go' : 'still to grade'}</span>` : ''}<span class="rc-dots">${g.dec.map((x) => (x.result === 'hit' ? '✓' : '✗')).join('')}</span></span></span>`).join('');
+    const block = (g) => {
+      const chips = g.legs.map((x) => `<span class="rc-chip rc-${esc(x.result || 'open')}">${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}</span>`).join('');
+      const rows = [];
+      // A game still to come can put a leg above these, so today's entries wait for the last of them.
+      for (const [k, label] of today && g.toGo ? [] : [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
+        const e = g.es && g.es[k];
+        // An entry a void or tie cut down pays as the smaller one (2026-11-01).
+        if (e) rows.push(`<li><span>${label}${e.legs ? ` <i>as a ${e.legs}-pick</i>` : ''}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
+      }
+      return `<div class="rc-ent"><div class="rc-cw">${g.who}</div><div class="rc-chips">${chips}</div>${rows.length ? `<ul class="rc-lines">${rows.join('')}</ul>` : ''}</div>`;
+    };
     const lines = [];
-    const toGo = legs.filter((x) => x.result == null).length;
-    // A game still to come can put a leg above these, so today's entries wait for the last of them.
-    for (const [k, label] of today && toGo ? [] : [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
-      const e = d.entries && d.entries[k];
-      // An entry a void or tie cut down pays as the smaller one (2026-11-01).
-      if (e) lines.push(`<li><span>${label}${e.legs ? ` <i>as a ${e.legs}-pick</i>` : ''}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
-    }
     const eb = edge && edge.byDay && edge.byDay[date];
     // Only the units take the colour: beating the close is good news on a
     // losing night too.
@@ -6263,14 +6276,16 @@
       ? eb.bets.map((b) => `${glyph[b.result] || '·'} ${esc(shortLeg(b.label))} ${esc(AM(b.price))}${b.book ? ' ' + esc(bkLabel(b.book)) : ''}${b.beat === true ? ', beat the close' : b.beat === false ? ', missed the close' : ''}`).join(' · ')
       : '';
     const went = { hit: ', would have landed', miss: ', would have missed', push: ', would have tied' };
-    const off = (d.dropped || []).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
+    // A leg off the list that stayed in an entry is graded above with it, not "off" (2026-11-13):
+    // Daniels' passing TDs left the Nov 12 list for six moneylines and stayed the PrizePicks
+    // entry's first leg, and showed twice, a ✗ in the entry and "off before the start".
+    const kept = new Set(ents.flatMap((g) => g.legs.map((x) => x.label)));
+    const off = (d.dropped || []).filter((x) => !kept.has(x.label)).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
     const open = !today && recapSeenAtLoad !== date;
     if (!today) { try { localStorage.setItem('aimplified_recap_seen', date); } catch (e) { /* private mode */ } }
     return `<details class="pk-recap"${open ? ' open' : ''}><summary><span class="rc-h">${today ? 'Today so far' : 'Last night'}</span>`
-      + `<span class="rc-day">${esc(shortDay(date))}</span><b class="rc-n">${hit} of ${dec.length}</b>`
-      + (toGo ? `<span class="rc-pend">${toGo} ${today ? 'to go' : 'still to grade'}</span>` : '')
-      + `<span class="rc-dots">${dec.map((x) => (x.result === 'hit' ? '✓' : '✗')).join('')}</span></summary>`
-      + `<div class="rc-chips">${chips}</div>`
+      + `<span class="rc-day">${esc(shortDay(date))}</span><span class="rc-es">${face}</span></summary>`
+      + ents.map(block).join('')
       + (lines.length ? `<ul class="rc-lines">${lines.join('')}</ul>` : '')
       + (ebs ? `<div class="rc-off rc-ebets">Edge bets: ${ebs}</div>` : '')
       + (off ? `<div class="rc-off">Off before the start: ${off}</div>` : '')
@@ -8115,7 +8130,14 @@
   const soccerKick = (iso) => {
     if (!iso) return '';
     const t = new Date(iso);
-    return isNaN(t) ? '' : t.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    if (isNaN(t)) return '';
+    // A game six or more days out carries its date (2026-11-13, the owner's "do all three"): a
+    // weekday alone named this week's. The NFL Hot card had the Bears "v Saints · Sun 10:00 AM",
+    // their game after the bye on Nov 22, with the Saints playing the Panthers that Sunday.
+    const day0 = new Date(), day1 = new Date(t);
+    day0.setHours(0, 0, 0, 0); day1.setHours(0, 0, 0, 0);
+    const far = Math.round((day1 - day0) / 864e5) >= 6;
+    return t.toLocaleString([], far ? { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' } : { weekday: 'short', hour: 'numeric', minute: '2-digit' });
   };
   // The same, held on one line (2026-11-10): a row's sub-line that wraps breaks before "Tue 4:40 PM",
   // never inside it.

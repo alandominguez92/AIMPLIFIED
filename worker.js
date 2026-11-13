@@ -13784,6 +13784,7 @@ async function nbaHotBoard(db, legs, injDays, now) {
   const logged = new Map(legs.map((l) => [`${nbaName(l.player)}|${l.market}`, l]));
   const report = injDays.has(day) ? injDays : await nbaInjuryDays(db, [day]).catch(() => new Map());
   const soft = (m) => m.third === 'soft', best = (p) => Math.max(...p.markets.map((m) => m.run));
+  const events = await hotFeedEvents(db, HOT_FEED_EVENTS.nba);
   for (const p of coming) {
     if (p.date !== day) continue;
     const inj = nbaLegInjury({ spec: { sport: 'nba', playerId: p.id, date: p.date, market: p.markets[0].market }, teams: { home: p.home, away: p.away } }, report);
@@ -13795,7 +13796,7 @@ async function nbaHotBoard(db, legs, injDays, now) {
       return { market: m.market, run: m.run, pos: Math.round((1 - m.rank) * (m.of - 1)) + 1, of: m.of, third: nbaHotThird(m.rank), seasonAvg: m.seasonAvg, lastSeason: m.lastSeason, last5: m.last5,
         line, sharp: sharp == null ? null : sharp, cleared, seen: m.last10.length, last10: m.last10, up: m.up, goesOn: nbaHotGoesOn(m), read: early || m.lastSeason != null ? null : nbaHotRead(m.rank, cleared, !!p.outs) };
     }).sort((a, b) => soft(b) - soft(a) || b.run - a.run);
-    base.players.push({ id: p.id, name: p.name, team: p.team, oppName: p.oppName, isHome: p.isHome, commence: p.commence, outs: p.outs, role: p.role, inj: inj && inj.status ? inj : undefined, markets });
+    base.players.push({ id: p.id, name: p.name, team: p.team, oppName: p.oppName, isHome: p.isHome, commence: hotFeedStart(p, events, 'nba'), outs: p.outs, role: p.role, inj: inj && inj.status ? inj : undefined, markets });
   }
   // A bigger role isn't sorted down: replayed on last season it made no difference (2026-11-03).
   base.players.sort((a, b) => soft(b.markets[0]) - soft(a.markets[0]) || best(b) - best(a) || Date.parse(a.commence) - Date.parse(b.commence));
@@ -13946,8 +13947,30 @@ async function hotPlayersRoute(env, url) {
     // And whether the props job's own table still gets rows, day by day.
     ingest.boxDays = (await env.DB.prepare('SELECT date, COUNT(DISTINCT game_id) AS games, COUNT(*) AS n FROM soc_box GROUP BY date ORDER BY date DESC LIMIT 30').all().catch(() => ({ results: null }))).results;
   }
+  const coming = l.players.filter((p) => Date.parse(p.commence) > now);
+  const events = HOT_FEED_EVENTS[sport] && coming.length ? await hotFeedEvents(env.DB, HOT_FEED_EVENTS[sport]) : [];
   return { hot: { ready: l.teamsReady >= l.teamsNeeded, early: l.ranksFrom < NBA_HOT_OPP_GAMES, teamsReady: l.teamsReady, teamsNeeded: l.teamsNeeded, gamesNeeded: l.ranksFrom,
-    players: l.players.filter((p) => Date.parse(p.commence) > now) }, ingest };
+    players: coming.map((p) => ({ ...p, commence: hotFeedStart(p, events, sport) })) }, ingest };
+}
+// The odds feed's start for a Hot player's game, where it has the game (2026-11-13, the owner's
+// "do all three"). ESPN and the NHL's schedule list the hour (Bucks @ Magic 4:00 PM), the feed and
+// the tables beside the card the tip (4:10), as on the props cards (`nbaPropsSlate`). What the card
+// shows only: which games are still to come goes by the list's own time. The NFL and soccer lists'
+// times are the kickoff already.
+const HOT_FEED_EVENTS = { nba: 'nba_pp_events:reg', nhl: 'nhl_pp_events:reg' };
+async function hotFeedEvents(db, key) {
+  const ev = await loadFeedCache(db, key).catch(() => null);
+  return (ev && ev.present && ev.data && ev.data.events) || [];
+}
+function hotFeedStart(p, events, sport) {
+  const t = Date.parse(p.commence);
+  const near = (x) => x && x.commence_time && Math.abs(Date.parse(x.commence_time) - t) < 6 * 3600e3;
+  // A team plays once in six hours, so the NHL's needs the team he plays alone: the list keeps
+  // only that one's name.
+  const e = sport === 'nba'
+    ? events.find((x) => near(x) && nbaMatch(x.home_team, p.home) && nbaMatch(x.away_team, p.away))
+    : events.find((x) => near(x) && nhlMatch(p.isHome ? x.away_team : x.home_team, p.oppNick));
+  return e ? e.commence_time : p.commence;
 }
 const hotDayAfter = (d) => new Date(Date.parse(`${d}T12:00:00Z`) + 86400e3).toISOString().slice(0, 10);
 
