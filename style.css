@@ -2790,7 +2790,12 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   font-size:13px; color:var(--textDim); }
 .pk-day summary::-webkit-details-marker { display:none; }
 .pk-day summary b { color:var(--text); font-weight:700; margin-right:4px; }
-.pk-des { display:flex; flex-wrap:wrap; gap:4px 10px; }
+/* One row an entry, its name first (2026-11-12): the PrizePicks entry's units, then the moneyline
+   entry's. Name | units as two columns, so on a phone a unit that wraps lines up under the first. */
+.pk-des { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:3px 10px; align-items:baseline; }
+.pk-dg { display:contents; }
+.pk-dw { font-size:11px; color:var(--textFaint); white-space:nowrap; }
+.pk-du { display:flex; flex-wrap:wrap; gap:2px 10px; }
 .pk-de { font-family:var(--mono); font-size:12px; white-space:nowrap; color:var(--textDim); }
 .pk-legs { list-style:none; margin:0; padding:0 12px 10px; display:grid; gap:4px; }
 .pk-legs li { display:grid; grid-template-columns:34px minmax(0, 1fr) auto; gap:8px; align-items:baseline; font-size:13px; color:var(--text); }

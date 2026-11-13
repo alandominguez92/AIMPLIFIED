@@ -3258,10 +3258,14 @@ function liveUnderState(stat, line, gone, proj) {
   for (let k = 1; k <= room; k++) { t *= m / k; p += t; }
   return p >= 0.8 && gone >= 0.75 ? 'cashing' : p >= 0.4 ? 'live' : 'cooling';
 }
-// The legs on today's Picks of the day, by leg id.
+// The legs on today's Picks of the day, by leg id: the list's, and the
+// PrizePicks entry's (2026-11-12, the owner's "do both": the entry's legs at
+// each start had never been followed, so on Nov 11 Jokic's and Zion's
+// rebounds were mid-game and off Live Now while three other Nuggets and
+// Grizzlies were on it).
 async function livePickIds(db, days, kinds) {
   await ensureDayPickSchema(db);
-  const rows = (await db.prepare(`SELECT leg_id FROM daypicks WHERE date IN (${days.map(() => '?').join(',')}) AND on_list = 1 AND kind IN (${kinds.map(() => '?').join(',')})`)
+  const rows = (await db.prepare(`SELECT leg_id FROM daypicks WHERE date IN (${days.map(() => '?').join(',')}) AND (on_list = 1 OR in_pool = 1) AND kind IN (${kinds.map(() => '?').join(',')})`)
     .bind(...days, ...kinds).all()).results || [];
   return new Set(rows.map((r) => r.leg_id));
 }
@@ -3270,9 +3274,14 @@ async function livePickIds(db, days, kinds) {
 // under, or with chance given, of the side followed (the NHL's More).
 function liveFollowed(rows, now, picked, idOf, ok, chance = (r) => r.model_under) {
   const started = ppStanding(rows).map(ppCurrent).filter((r) => { const t = Date.parse(r.commence); return t <= now && t > now - LIVE_LOOKBACK_MS; });
-  // One leg a player: the list's, else his best.
+  // One leg a player: the list's, else his best. A More on Picks (the NBA's
+  // blocks, the NHL's points and assists) has its leg id with ":over" after it.
   const out = new Map();
-  for (const r of started) if (picked.has(idOf(r))) out.set(r.player, { ...r, onPicks: true });
+  for (const r of started) {
+    const id = idOf(r);
+    if (picked.has(id)) out.set(r.player, { ...r, onPicks: true });
+    else if (picked.has(id + ':over')) out.set(r.player, { ...r, onPicks: true, pickOver: true });
+  }
   const byGame = new Map();
   for (const r of started.filter(ok).sort((a, b) => chance(b) - chance(a))) {
     const n = byGame.get(r.game_id) || 0;
@@ -3313,7 +3322,7 @@ async function nbaLiveCards(env, now, feeds) {
   const days = [ptDateOf(now), ptDateOf(now - 864e5)];
   await ensureNbaSchema(env.DB);
   const rows = (await env.DB.prepare('SELECT * FROM nbapp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
-  const picked = await livePickIds(env.DB, days, ['nba_pp', 'nba_reb_gap']);
+  const picked = await livePickIds(env.DB, days, ['nba_pp', 'nba_reb_gap', 'nba_blk_more']);
   const legs = liveFollowed(rows, now, picked, (r) => `nbapp:${r.game_id}:${r.player}:${r.market}`, (r) => r.min_proj >= NBA_ROTATION_MIN);
   if (!legs.length) return [];
   const cards = [];
@@ -3326,7 +3335,7 @@ async function nbaLiveCards(env, now, feeds) {
     const stat = b.dnp ? 0 : (nbaStat(b, r.market) || 0);
     const min = b.dnp ? 0 : (b.min || 0);
     cards.push(livePropCard('nba', r, g, stat, PICKS_NBA_MK[r.market] || r.market, min > 0,
-      b.dnp ? 'has not played' : `${min} of ${Math.round(r.min_proj)} min`, liveMeta(g)));
+      b.dnp ? 'has not played' : `${min} of ${Math.round(r.min_proj)} min`, liveMeta(g), r.pickOver ? 'Over' : 'Under'));
   }
   return rankLive(cards, LIVE_PER_SPORT);
 }
@@ -3341,7 +3350,9 @@ async function nhlLiveCards(env, now, feeds) {
   // The NHL card lists Mores since 2026-10-27, so Live follows them: each
   // game's best three at a More chance of PP_MORE_MIN or better.
   const more = (r) => (r.model_under == null ? -1 : 100 - r.model_under);
-  const legs = liveFollowed(rows, now, new Set(), (r) => `nhlpp:${r.game_id}:${r.player}:${r.market}`, (r) => more(r) >= PP_MORE_MIN, more);
+  // The Mores on Picks and in the PrizePicks entry come first, at any chance (2026-11-12).
+  const picked = await livePickIds(env.DB, days, ['nhl_more']);
+  const legs = liveFollowed(rows, now, picked, (r) => `nhlpp:${r.game_id}:${r.player}:${r.market}`, (r) => more(r) >= PP_MORE_MIN, more);
   if (!legs.length) return [];
   const cards = [];
   for (const r of legs) {
@@ -3414,7 +3425,7 @@ function rankLive(cards, n) {
   // compared on the same scale instead of in raw units.
   const order = { cashing: 0, live: 1, cooling: 2 };
   const cushion = (c) => (c.side === 'Under' ? c.line - c.stat : c.stat - c.line) / Math.max(c.line, 0.5);
-  return [...byPid.values()].sort((a, b) =>
+  const all = [...byPid.values()].sort((a, b) =>
     (order[a.state] - order[b.state])
     // Someone who has not come to the plate or thrown a pitch has nothing to
     // show yet. He keeps his card, but he should not hold a slot above a player
@@ -3423,10 +3434,13 @@ function rankLive(cards, n) {
     // A leg on Picks of the day before one that is only on its sport's card.
     || ((b.onPicks ? 1 : 0) - (a.onPicks ? 1 : 0))
     || (cushion(b) - cushion(a))
-    || (b._edge - a._edge))
-    // `started` goes to the page, which merges every sport's cards on the
-    // Picks tab and puts those under way before those yet to bat or skate.
-    .slice(0, n).map(({ _pid, _edge, _started, ...c }) => ({ ...c, started: !!_started }));
+    || (b._edge - a._edge));
+  // The legs on Picks always make the cut (2026-11-12): the PrizePicks entry runs to six, and
+  // nine cashing legs from the model's own three a game could otherwise push them off.
+  const kept = new Set([...all.filter((c) => c.onPicks), ...all.filter((c) => !c.onPicks)].slice(0, n));
+  // `started` goes to the page, which merges every sport's cards on the
+  // Picks tab and puts those under way before those yet to bat or skate.
+  return all.filter((c) => kept.has(c)).map(({ _pid, _edge, _started, ...c }) => ({ ...c, started: !!_started }));
 }
 
 function liveCard(o) {

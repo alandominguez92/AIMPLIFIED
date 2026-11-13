@@ -1062,7 +1062,9 @@
     if (el.liveNowNote) el.liveNowNote.textContent = `${cards.length} in-progress · updating ${state.sport === 'mlb' ? 'every pitch' : 'live'}`;
     el.liveNowGrid.innerHTML = cards.map((c) => {
       const unit = c.kind === 'ml' || c.statLabel === 'H+R+RBI' ? '' : c.statLabel;
-      const meta = [state.sport === 'picks' ? LIVE_SPORT_LABEL[c.sport || 'mlb'] : '', c.team, c.pos === 'P' ? 'P' : '', c.onPicks && state.sport !== 'picks' ? 'on Picks' : '']
+      // "on Picks" on the Picks tab too (2026-11-12): the entry's legs share the strip with each
+      // game's best three from the model, and nothing else told them apart.
+      const meta = [state.sport === 'picks' ? LIVE_SPORT_LABEL[c.sport || 'mlb'] : '', c.team, c.pos === 'P' ? 'P' : '', c.onPicks ? 'on Picks' : '']
         .filter(Boolean).join(' · ');
       return `
         <div class="livecard ${esc(c.state)}">
@@ -5919,11 +5921,16 @@
       + `<span class="pk-roi${tone(e.units)}">${e.roi > 0 ? '+' : e.roi < 0 ? '−' : ''}${Math.abs(e.roi)}%</span></li>`).join('');
     const mark = { hit: ['✓', 'pk-hit'], miss: ['✗', 'pk-miss'], void: ['void', 'pk-void'], push: ['tie', 'pk-void'] };
     const dayCards = h.days.map((d) => {
-      const ents = HIST_DAY_KEYS.map(([k, label]) => {
-        const e = d.entries && d.entries[k];
+      // Each entry's units under its own name (2026-11-12, the owner's "do both"): Nov 12 read
+      // "6 of 6 landed" beside two red −1.00u, the PrizePicks entry's, unnamed, while the
+      // moneyline entry's +24u that day was nowhere on the card.
+      const unitsOf = (es) => HIST_DAY_KEYS.map(([k, label]) => {
+        const e = es && es[k];
         if (!e) return '';
         return `<span class="pk-de${tone(e.net)}">${esc(label)} ${e.refund ? 'refund' : units(e.net)}</span>`;
       }).filter(Boolean).join('');
+      const ents = [[d.pool ? 'PrizePicks entry' : 'The list', unitsOf(d.entries)], ['Moneyline entry', unitsOf(d.mlEntries)]]
+        .filter(([, u]) => u).map(([who, u]) => `<span class="pk-dg"><span class="pk-dw">${who}</span><span class="pk-du">${u}</span></span>`).join('');
       const count = d.decided ? `${d.hit} of ${d.decided} landed` : '';
       const playing = d.pending ? `${d.pending} still to play` : '';
       const legRow = (x) => {
