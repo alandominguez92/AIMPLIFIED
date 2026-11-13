@@ -6029,9 +6029,13 @@
     if (pickIsTeam(x) && typeof x.odds === 'number' && typeof p === 'number') {
       const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
       const g = Math.round((p - need) * 10) / 10;
-      gap = ` · ${esc(AM(x.odds))} <b class="${g > 0 ? 'u' : g < 0 ? 'o' : ''}">${g > 0 ? `${g} of edge` : g < 0 ? `${Math.abs(g)} short` : 'on the price'}</b>`;
+      // The price and its gap wrap as one (2026-11-13): with the logo in the row, "-480 1.3" ended
+      // a phone line and "short" began the next.
+      gap = ` · <span class="pk-lk-g">${esc(AM(x.odds))} <b class="${g > 0 ? 'u' : g < 0 ? 'o' : ''}">${g > 0 ? `${g} of edge` : g < 0 ? `${Math.abs(g)} short` : 'on the price'}</b></span>`;
     }
-    return `<li class="pk-lk">${tog(false, `<span class="pk-lk-t"><b>${esc(x.title)}</b>`
+    // Its logo, or the player's face, as the full row has it (2026-11-13, the owner's ask: "keep
+    // showing the teams as we did before with the logo rather than just the name").
+    return `<li class="pk-lk">${tog(false, `${pickFace(x)}<span class="pk-lk-t"><b>${esc(x.title)}</b>`
       + `<span class="pk-lk-m">${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${gap}</span></span>`
       + `<span class="tc-p">${pct0(x.p)}</span><span class="pk-lk-c" aria-hidden="true"></span>`, 'pk-lk-row')}</li>`;
   }

@@ -64,7 +64,7 @@ const state = { slip: {} };
 let F;
 try {
   F = new Function('state', 'esc', 'document', 'slateGames', names.map(lift).join('\n')
-    + '\nreturn { heroLegHtml, injuryTag, mlChanceLineHtml, pickLeg, likelyRowHtml, pickHistoryHtml, shortDay, pct0, mlbInSeason, placeMlbTab, mlbOffSync, HIST_DAYS_SHOWN };')(state, esc, document, () => games);
+    + '\nreturn { heroLegHtml, injuryTag, mlChanceLineHtml, pickLeg, pickFace, likelyRowHtml, pickHistoryHtml, shortDay, pct0, mlbInSeason, placeMlbTab, mlbOffSync, HIST_DAYS_SHOWN };')(state, esc, document, () => games);
 } catch (e) { console.log(`  FAIL  the pieces lift out of app.js (${e.message})`); console.log('\n1 FAILED'); process.exit(1); }
 
 console.log('-- 1. the hero card: a line a side --');
@@ -93,7 +93,18 @@ for (const r of rows) console.log('        ' + text(r));
 ok(D.legs.length === 6 && rows.every((r, i) => r.startsWith('<li class="pk-lk"><button type="button" class="pk-lk-row" data-action="likely-toggle"')
   && r.includes(`data-leg="${esc(F.pickLeg(D.legs[i]).id)}"`) && r.includes('aria-expanded="false"')), 'each of the six legs is one button row, keyed by its leg, closed');
 ok(rows.every((r, i) => r.includes(`<b>${esc(D.legs[i].title)}</b>`) && r.includes(`<span class="tc-p">${F.pct0(D.legs[i].p)}</span>`)), 'with its pick and its chance');
-ok(rows.every((r) => !/pp-projbar|tb-boxes|tc-wait|tc-gap|pk-rec|tc-add|class="hs/.test(r.replace(/class="pk-lk[^"]*"/g, ''))), 'and none of the full leg\'s bars, boxes, tags, record or star');
+ok(rows.every((r) => !/pp-projbar|tb-boxes|tc-wait|tc-gap|pk-rec|tc-add/.test(r.replace(/class="pk-lk[^"]*"/g, ''))), 'and none of the full leg\'s bars, boxes, tags, record or star');
+// The logo stays (2026-11-13, the owner's ask): the row leads with the same face the full leg has.
+ok(rows.every((r, i) => r.includes(`aria-expanded="false">${F.pickFace(D.legs[i])}<span class="pk-lk-t">`)),
+  'each row leads with its logo, or the player\'s face, the same one the full leg draws');
+const rowOf = (title) => rows[D.legs.findIndex((l) => l.title === title)];
+const markOf = (r) => (/<span class="hs hs-team"[^>]*><span class="hs-mono">[^<]*<\/span><img class="hs-img" src="([^"]+)"/.exec(r) || [])[1] || '';
+console.log(`        Heat ${markOf(rowOf('Heat ML'))} · Magic ${markOf(rowOf('Magic ML'))}`);
+ok(/teamlogos\/nba\/500\/mia\.png/.test(markOf(rowOf('Heat ML'))) && /teamlogos\/nba\/500\/orl\.png/.test(markOf(rowOf('Magic ML'))),
+  "a moneyline row shows its team's mark: the Heat's and the Magic's logos");
+ok(/<span class="hs"[^>]*><span class="hs-mono">NS<\/span><img class="hs-img" src="[^"]*nhl[^"]*"/.test(rowOf('Nick Suzuki Over 0.5 PTS')), "a player's row, the player's face: Suzuki's NHL photo");
+ok(/ · <span class="pk-lk-g">-\d+ <b class="o">[\d.]+ short<\/b><\/span>/.test(rowOf('Heat ML')) && /\.pk-lk-g \{ white-space:nowrap; \}/.test(css),
+  'the price and its gap wrap as one: the logo narrows the row, and "short" had begun a line of its own');
 // A moneyline's gap, worked out here from its price and chance, and read off the full leg's bar.
 for (const x of D.legs.filter((l) => /ML$/.test(l.title))) {
   const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
