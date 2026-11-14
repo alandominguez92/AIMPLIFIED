@@ -220,7 +220,8 @@ const P = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'state',
   [aconst('BOOK_LABEL'), aconst('bkLabel'), aconst('moneyTxt'), aconst('stakeTxt'), alift('bankHtml'), aconst('LINK_BOOK'), aconst('STATE_SLOT'), alift('betLinkHtml'), alift('legLink'), alift('booksHtml'), alift('priceCheckHtml'), alift('priceCheckText'), aconst('impPct'), alift('priceSparkHtml'), alift('evBetsHtml'), alift('edgeRecordHtml'), alift('pickemHtml')].join('\n') + '\nreturn { evBetsHtml, edgeRecordHtml, bankHtml };')(
   esc, (o) => (o > 0 ? '+' + o : String(o)), (v) => `${Math.round(v)}%`, (t) => t, { nba: 'NBA', nhl: 'NHL', soccer: 'Soccer', nfl: 'NFL' }, ui,
   (d) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new RealDate(d + 'T12:00:00Z')));
-ok(text(P.edgeRecordHtml(R)) === `These bets since Oct 27: 3 of 4 won · +${flat.toFixed(2)}u at 1 unit each · beat the closing line ${R.clv.beat} of 4 (average ${R.clv.avg > 0 ? '+' : ''}${R.clv.avg}%)`,
+// The line for the long shots left off since Nov 14 (tests/edgeoff.mjs) follows it; this day was before.
+ok(text(P.edgeRecordHtml({ ...R, offCard: null })) === `These bets since Oct 27: 3 of 4 won · +${flat.toFixed(2)}u at 1 unit each · beat the closing line ${R.clv.beat} of 4 (average ${R.clv.avg > 0 ? '+' : ''}${R.clv.avg}%)`,
   `the card's record line: "${text(P.edgeRecordHtml(R))}"`);
 ok(/Logged from Oct 28/.test(P.edgeRecordHtml({ n: 0, clv: { n: 0 } })), 'and before any has graded, that they are being kept');
 // The card at 10:21 AM, as it showed them, against a $500 bankroll.

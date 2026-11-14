@@ -6488,7 +6488,9 @@
     const cap = (state.bank && state.bank.cap) || 5;
     return `At <b>${esc(AM(am))}</b>: EV <b class="u">+${esc(ev.toFixed(1))}%</b> on a ${esc(String(x.fair))}% fair · ${long ? '⅛' : '¼'} Kelly <b>${esc(stakeTxt(stake))}</b>${capped ? ' (cap)' : ''}${long ? ' (half: +200 or longer)' : ''}`
       + `${stake > cap ? ` · more than your ${esc(String(cap))}% daily cap` : ''}`
-      + `${ev < bar ? ` · under the ${esc(String(bar))}% the list asks of ${x.prop ? 'a prop' : 'a game line'}` : ''}. Breaks even at ${esc(AM(need))}.`;
+      + `${ev < bar ? ` · under the ${esc(String(bar))}% the list asks of ${x.prop ? 'a prop' : 'a game line'}` : ''}`
+      // At +300 or longer the list leaves it off (2026-11-14): those went 0 of 6.
+      + `${typeof k.offPrice === 'number' && am >= k.offPrice ? ` · ${esc(AM(k.offPrice))} or longer: the list leaves these off (0 of 6)` : ''}. Breaks even at ${esc(AM(need))}.`;
   }
   // How a side's price and the sharp line moved before the start (2026-10-29):
   // the chance its price needs and the fair chance, read by read, as steps (a
@@ -6735,7 +6737,7 @@
     const stakeOf = (b) => Math.round((b.stake || 0) * scale * 100) / 100;
     const total = scale < 1 ? cap : Math.round(raw * 100) / 100;
     const head = `<div class="tc-head"><span class="tc-title">Bets with an edge</span>${bets.length ? `<span class="tc-rec">¼ Kelly total <b>${esc(stakeTxt(total))}</b></span>` : ''}</div>`
-      + `<div class="tc-sub">At the sportsbook: prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check the book before you bet.</div>`
+      + `<div class="tc-sub">At the sportsbook: prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props${d && d.kelly && d.kelly.offPrice ? `, shorter than ${esc(AM(d.kelly.offPrice))}` : ''}. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check the book before you bet.</div>`
       + (scale < 1 ? `<div class="tc-sub pk-capped">Held to your ${esc(String(cap))}% daily cap: each stake is ${Math.round(scale * 100)}% of its Kelly.</div>` : '');
     const list = bets.length ? `<ol class="tc-legs pk-ev-list">${bets.map((b) => `<li><div class="tc-leg">`
       + `<span class="tc-l1"><b>${esc(b.label)}</b><span class="tc-p pk-ev-up">+${esc(String(b.ev))}%</span></span>`
@@ -6756,7 +6758,11 @@
     if (!r.n && !(r.clv && r.clv.n)) return '<div class="tc-sub pk-record">Logged from Oct 28: each bet as first shown, its closing price, and how it went.</div>';
     const u = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
     return `<div class="tc-sub pk-record">These bets since ${esc(shortDay(r.since))}: <b>${r.hit} of ${r.n}</b> won · ${u(r.units)} at 1 unit each`
-      + (r.clv && r.clv.n ? ` · beat the closing line <b>${r.clv.beat} of ${r.clv.n}</b> (average ${r.clv.avg > 0 ? '+' : ''}${r.clv.avg}%)` : '') + '</div>';
+      + (r.clv && r.clv.n ? ` · beat the closing line <b>${r.clv.beat} of ${r.clv.n}</b> (average ${r.clv.avg > 0 ? '+' : ''}${r.clv.avg}%)` : '') + '</div>'
+      // The long shots left off (2026-11-14, the owner's "do both"): +300 or longer went 0 of 6 on
+      // the card. Logged still, so their own line says whether they come back.
+      + (r.offCard && r.offCard.price ? `<div class="tc-sub pk-record">${esc(AM(r.offCard.price))} or longer: left off since ${esc(shortDay(r.offCard.from))}, 0 of 6 before`
+        + (r.offCard.n ? ` · since then <b>${r.offCard.hit} of ${r.offCard.n}</b> · ${u(r.offCard.units)} at 1 unit each` : ' · still logged, to see if they come back') + '</div>' : '');
   }
   // Pick6 lines the market has moved past (2026-10-27), the worker's
   // pickemEdges: the sharp books' chance at Pick6's own number, either side,
@@ -6944,9 +6950,13 @@
   // Its record: every leg the model leaned More on, and those at the bar.
   function ppMoreLineHtml(m, what) {
     if (!m || !m.leaned || !m.leaned.n) return '';
+    // By stat at the bar (2026-11-14, the owner's "do both"): the NHL's points Mores against its assists.
+    const by = m.byStat || {};
+    const stats = [['pts', 'points'], ['ast', 'assists']].map(([k, name]) => [name, by[k] && by[k].first && by[k].first.atBar]).filter(([, c]) => c && c.n);
     return `<div class="tc-sub tc-rec-line">${what}: where the model leaned More <b>${m.leaned.hit} of ${m.leaned.n}</b>`
       + `${m.atBar && m.atBar.n ? ` · at ${esc(String(m.bar))}%+ <b>${m.atBar.hit} of ${m.atBar.n}</b>` : ''}`
-      + `${m.since && m.since.n ? ` · since the rule (${esc(shortDay(m.since.from))}) <b>${m.since.hit} of ${m.since.n}</b>` : ''}</div>`;
+      + `${m.since && m.since.n ? ` · since the rule (${esc(shortDay(m.since.from))}) <b>${m.since.hit} of ${m.since.n}</b>` : ''}`
+      + `${stats.length ? ` · at ${esc(String(m.bar))}%+ by stat: ${stats.map(([name, c]) => `${name} <b>${c.hit} of ${c.n}</b>`).join(', ')}` : ''}</div>`;
   }
   // What the model's legs in a range have really landed, under its percentage
   // (2026-11-04). A higher number here doesn't mean a likelier hit: 70%+ has

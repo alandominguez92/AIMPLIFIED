@@ -9146,6 +9146,12 @@ const EV_MIN_LINE = 1.5;
 // says when the full stake can come back.
 const EDGE_LONG_PRICE = 200;
 const EDGE_LONG_FACTOR = 0.5;
+// Off the card at +300 or longer (2026-11-14, the owner's "do both"): on the half stake they went
+// 0 of 6 (−6u) from Oct 28 to Nov 13, every shorter price 16 of 25 (+4.56u), and last season's
+// game-model backtest had the biggest gaps from Pinnacle's line losing. Still logged (off = 1)
+// and graded on a line of their own, so the record can say whether they come back.
+const EDGE_OFF_PRICE = 300;
+const EDGE_OFF_SINCE = '2026-11-14';
 const EV_MIN_PROP = 3;
 const EV_MAX = 12;
 // Further out than the list's day: an early price is often the better one,
@@ -9186,8 +9192,10 @@ function rowPriceNow(r) {
 }
 async function evBets(env, now) { return (await evScan(env, now)).bets.map(evShown); }
 async function evScan(env, now) {
-  const out = [], all = [];
+  const out = [], off = [], all = [];
   const seen = new Set();
+  // From the day the rule came in (EDGE_OFF_SINCE, Pacific).
+  const offAt = ptDateOf(now) >= EDGE_OFF_SINCE ? EDGE_OFF_PRICE : Infinity;
   const add = (o) => {
     const t = Date.parse(o.commence);
     if (!(t > now && t - now <= EV_WINDOW_MS) || o.fair == null || typeof o.price !== 'number' || seen.has(o.key)) return;
@@ -9198,7 +9206,7 @@ async function evScan(env, now) {
     const d = decOf(o.price), ev = p * d - 1;
     if (ev * 100 < (o.prop ? EV_MIN_PROP : EV_MIN_LINE)) return;
     const long = o.price >= EDGE_LONG_PRICE;
-    out.push({ ...o, fair: round1(o.fair), ev: round1(ev * 100), ...capStake(round1(ev / (d - 1) * KELLY_FRACTION * (long ? EDGE_LONG_FACTOR : 1) * 100), o.prop ? PROP_STAKE_CAP : null),
+    (o.price >= offAt ? off : out).push({ ...o, fair: round1(o.fair), ev: round1(ev * 100), ...capStake(round1(ev / (d - 1) * KELLY_FRACTION * (long ? EDGE_LONG_FACTOR : 1) * 100), o.prop ? PROP_STAKE_CAP : null),
       ...(long ? { longHalf: true } : {}), betAt: amOfChance(p) });
   };
   // NBA and NHL: both sides of every game, as the last capture priced them.
@@ -9258,7 +9266,8 @@ async function evScan(env, now) {
       commence: r.commence, fair: r.sharp_under, price: r.book_under, book: 'DK/FD', fairSrc: 'sharp books', asOf: r.close_at || r.captured_at,
       grade: { t: 'under', date: r.date, game_id: r.game_id, player: r.player, market: r.market, line: r.point } });
   }
-  return { bets: out.sort((a, b) => b.ev - a.ev).slice(0, EV_MAX), all };
+  // off: past the bar at +300 or longer, logged and not shown.
+  return { bets: out.sort((a, b) => b.ev - a.ev).slice(0, EV_MAX), off: off.sort((a, b) => b.ev - a.ev).slice(0, EV_MAX), all };
 }
 // How a side from the game-line log grades: a moneyline or 1X2 side by the
 // game's final (the row's own pick can flip before the start), a goals total
@@ -9293,19 +9302,34 @@ async function ensureEdgeBetSchema(db) {
   // that beat its close.
   await db.prepare("UPDATE edgebets SET result = 'void', graded_at = ? WHERE date = '2026-10-28' AND key = 'soc:995383601ec82bc39259205612a1f007:res:FC Cincinnati' AND result IS NULL")
     .bind(new Date().toISOString()).run();
+  // off: 1 for a bet past the bar at +300 or longer, logged and not shown (2026-11-14). The ones
+  // still to start when the rule came in (Czech Republic +500, for Nov 15) join them: the owner
+  // dropped them before their games.
+  await addColumns(db, 'edgebets', [['off', 'INTEGER']]);
+  if (!EDGE_OFF_MARKED) {
+    await db.prepare('UPDATE edgebets SET off = 1 WHERE off IS NULL AND result IS NULL AND date >= ? AND first_price >= ?').bind(EDGE_OFF_SINCE, EDGE_OFF_PRICE).run();
+    EDGE_OFF_MARKED = true;
+  }
 }
+let EDGE_OFF_MARKED = false;
 // scan: evScan's. Writes only what changed, so an unchanged read costs nothing.
 async function logEdgeBets(db, scan, now) {
   await ensureEdgeBetSchema(db);
   const nowIso = new Date(now).toISOString();
-  const stmts = scan.bets.map((b) => db.prepare(
+  // The long shots off the card are logged as well, marked off (2026-11-14). One that shortens onto
+  // the card is the card's from then on, its bet the first price the card showed, as every bet's is.
+  const logged = [...scan.bets.map((b) => [b, 0]), ...(scan.off || []).map((b) => [b, 1])];
+  const onto = (col) => `${col} = CASE WHEN edgebets.off = 1 AND excluded.off = 0 THEN excluded.${col} ELSE edgebets.${col} END`;
+  const stmts = logged.map(([b, off]) => db.prepare(
     `INSERT INTO edgebets (date, key, sport, market, label, sub, commence, book, fair_src, prop, grade,
-       first_at, first_price, first_fair, first_ev, first_stake, last_at, last_price, last_fair, last_ev, close_at, close_price, close_fair)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-     ON CONFLICT(date, key) DO UPDATE SET last_at = excluded.last_at, last_price = excluded.last_price, last_fair = excluded.last_fair, last_ev = excluded.last_ev
+       first_at, first_price, first_fair, first_ev, first_stake, last_at, last_price, last_fair, last_ev, close_at, close_price, close_fair, off)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(date, key) DO UPDATE SET last_at = excluded.last_at, last_price = excluded.last_price, last_fair = excluded.last_fair, last_ev = excluded.last_ev,
+       ${['first_at', 'first_price', 'first_fair', 'first_ev', 'first_stake', 'book'].map(onto).join(', ')},
+       off = CASE WHEN excluded.off = 0 THEN 0 ELSE edgebets.off END
      WHERE julianday(edgebets.commence) > julianday(?) AND (edgebets.last_price IS NOT excluded.last_price OR edgebets.last_fair IS NOT excluded.last_fair)`
   ).bind(ptDateOf(Date.parse(b.commence)), b.key, b.sport, b.market, b.label, b.sub, b.commence, b.book || null, b.fairSrc || null, b.prop ? 1 : 0,
-    JSON.stringify(b.grade || null), nowIso, b.price, b.fair, b.ev, b.stake, nowIso, b.price, b.fair, b.ev, nowIso, b.price, b.fair, nowIso));
+    JSON.stringify(b.grade || null), nowIso, b.price, b.fair, b.ev, b.stake, nowIso, b.price, b.fair, b.ev, nowIso, b.price, b.fair, off, nowIso));
   // The close: every logged bet still to start, at this read of its side.
   const open = (await db.prepare('SELECT date, key, commence FROM edgebets WHERE result IS NULL').all()).results || [];
   const byKey = new Map(scan.all.map((o) => [o.key, o]));
@@ -9364,7 +9388,12 @@ async function gradeEdgeBets(db, now) {
 async function edgeBetRecord(env) {
   await ensureEdgeBetSchema(env.DB);
   return recordCached(env, 'edge-bets', async () => {
-    const rows = (await env.DB.prepare("SELECT date, label, book, first_price, first_fair, first_stake, close_fair, result FROM edgebets WHERE result IS NOT NULL").all()).results || [];
+    const logged = (await env.DB.prepare("SELECT date, label, book, first_price, first_fair, first_stake, close_fair, result, off FROM edgebets WHERE result IS NOT NULL").all()).results || [];
+    // The bets the card showed; the long shots kept off it since Nov 14 have a line of their own.
+    const rows = logged.filter((r) => !r.off), offRows = logged.filter((r) => r.off);
+    const offDec = offRows.filter((r) => r.result === 'hit' || r.result === 'miss');
+    const offCard = { price: EDGE_OFF_PRICE, from: EDGE_OFF_SINCE, n: offDec.length, hit: offDec.filter((r) => r.result === 'hit').length,
+      units: round2(offDec.reduce((s, r) => s + (r.result === 'hit' ? decOf(r.first_price) - 1 : -1), 0)) };
     const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
     let flat = 0, kelly = 0;
     for (const r of dec) { const d = decOf(r.first_price); flat += r.result === 'hit' ? d - 1 : -1; kelly += (r.first_stake || 0) * (r.result === 'hit' ? d - 1 : -1); }
@@ -9388,6 +9417,7 @@ async function edgeBetRecord(env) {
       n: dec.length, hit: dec.filter((r) => r.result === 'hit').length, push: rows.filter((r) => r.result === 'push').length, void: rows.filter((r) => r.result === 'void').length,
       units: round2(flat), kellyUnits: round2(kelly), roi: dec.length ? round1(flat / dec.length * 100) : null,
       clv: { n: clv.length, beat: clv.filter((v) => v > 0).length, avg: clv.length ? round1(clv.reduce((a, v) => a + v, 0) / clv.length) : null },
+      offCard,
     }, complete: true };
   });
 }
@@ -10652,7 +10682,7 @@ async function picksBoard(env) {
       // Every side priced, for the page's price checker (2026-10-29): a boost
       // or another book's number, read against the same fair and stake rule.
       out.priced = scan.all.map((o) => ({ key: o.key, sport: o.sport, label: o.label, sub: o.sub, commence: o.commence, fair: round1(o.fair), ...(o.prop ? { prop: true } : {}) }));
-      out.kelly = { fraction: KELLY_FRACTION, propCap: PROP_STAKE_CAP, minLine: EV_MIN_LINE, minProp: EV_MIN_PROP, longPrice: EDGE_LONG_PRICE, longFactor: EDGE_LONG_FACTOR };
+      out.kelly = { fraction: KELLY_FRACTION, propCap: PROP_STAKE_CAP, minLine: EV_MIN_LINE, minProp: EV_MIN_PROP, longPrice: EDGE_LONG_PRICE, longFactor: EDGE_LONG_FACTOR, offPrice: EDGE_OFF_PRICE };
       try { await logEdgeBets(evEnv.DB, scan, now); await gradeEdgeBets(evEnv.DB, now); } catch (e) { out.logError = String((e && e.message) || e); }
     } catch (e) { out.evBets = []; out.evError = String((e && e.message) || e); }
     try { out.edgeRecord = await edgeBetRecord(part('edge record')); } catch (e) { out.recordError = String((e && e.message) || e); }
@@ -12451,6 +12481,24 @@ async function gradeNhlPp(env, tonight = false) {
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
   return stmts.length;
 }
+// The More by stat and chance (2026-11-14, the owner's "do both"): in the PrizePicks entry from
+// Oct 28 to Nov 13 the points Mores landed 5 of 15 at about 62% and the assists 17 of 29, so
+// whether points belong at the bar. At the first read, as every leg grades, and at the pre-start
+// read where one was taken (its chance and its line's result), which is what Picks lists last.
+const NHL_MORE_BANDS = [['55-60', 55, 60], ['60-65', 60, 65], ['65+', 65, 101]];
+function nhlMoreByStat(graded) {
+  const cell = (l) => { const hit = l.filter((x) => x.won).length; return { n: l.length, hit, hitRate: l.length ? round1(hit / l.length * 100) : null }; };
+  const table = (l) => ({ atBar: cell(l.filter((x) => x.p >= PP_MORE_MIN)),
+    byBand: Object.fromEntries(NHL_MORE_BANDS.map(([k, lo, hi]) => [k, cell(l.filter((x) => x.p >= lo && x.p < hi))])) });
+  return Object.fromEntries(Object.values(NHL_PP_MARKETS).map((mk) => {
+    const l = graded.filter((g) => g.market === mk);
+    const first = l.filter((g) => g.model_under != null && g.model_under < 50 && (g.result === 'over' || g.result === 'under'))
+      .map((g) => ({ p: 100 - g.model_under, won: g.result === 'over' }));
+    const close = l.filter((g) => g.close_under != null && g.close_under < 50 && (g.close_result === 'over' || g.close_result === 'under'))
+      .map((g) => ({ p: 100 - g.close_under, won: g.close_result === 'over' }));
+    return [mk, { first: table(first), close: table(close) }];
+  }));
+}
 // GET /api/nhl-pp: tonight's logged legs, best under first, and the record --
 // the unders by band, market and line gap, and the overs the same way, as the
 // NBA log keeps them. ?raw=1: the last capture's payload. Free (D1 only).
@@ -12473,7 +12521,7 @@ async function nhlPpBoard(env, url) {
       book_line: r.book_line, book_under: r.book_under, vsBook: r.book_line != null && r.point != null ? round1(r.point - r.book_line) : null,
       first_point: r.first_point, first_under: r.first_under, first_at: r.captured_at, close_at: r.close_at,
     })).sort((a, b) => b.model_under - a.model_under);
-    const graded = (await env.DB.prepare("SELECT market, model_under, point, book_line, result, close_point, close_result FROM nhlpp WHERE result IN ('under','over','push')").all()).results || [];
+    const graded = (await env.DB.prepare("SELECT market, model_under, point, book_line, result, close_point, close_under, close_result FROM nhlpp WHERE result IN ('under','over','push')").all()).results || [];
     const gap = (g) => (g.book_line != null && g.point != null ? round1(g.point - g.book_line) : null);
     const un = ppSplitRecord(graded.map((g) => ({ p: g.model_under, won: g.result === 'under' ? 1 : (g.result === 'over' ? 0 : null), gap: gap(g) })));
     const lean = graded.filter((g) => g.model_under != null && g.model_under < 50);
@@ -12486,7 +12534,7 @@ async function nhlPpBoard(env, url) {
     out.record = { scope: `regular skaters (${NHL_TOI_MIN}+ minutes), at PrizePicks’ line`, graded: un.n, hit: un.hit, hitRate: un.hitRate,
       byBand: un.byBand, byLineGap: un.byLineGap, byMarket: byMarket(graded, 'under'),
       overs: { graded: ov.n, hit: ov.hit, hitRate: ov.hitRate, byBand: ov.byBand, byLineGap: ov.byLineGap, byMarket: byMarket(lean, 'over') },
-      more: ppMoreRecord(lean),
+      more: { ...ppMoreRecord(lean), byStat: nhlMoreByStat(graded) },
       ...ppCloseRecord(graded) };
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;

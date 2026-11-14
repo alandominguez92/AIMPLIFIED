@@ -162,6 +162,29 @@ ui.nhlPp = h;
 ok(/More: where the model leaned More <b>5 of 6<\/b> · at 55%\+ <b>2 of 3<\/b>/.test(C.nhlPpCardHtml()) && /Unders, no longer listed: <b>\d+ of \d+<\/b>/.test(C.nhlPpCardHtml()),
   'the card: the Mores record, and the unders as a record only');
 
+// ---- by stat (2026-11-14, the owner's "do both") -----------------------------------------------
+// In the PrizePicks entry from Oct 28 to Nov 13 the NHL points Mores landed 5 of 15 at about 62%,
+// the assists 17 of 29: the record splits the More by stat and chance, at the first read (as every
+// leg grades) and at the pre-start read (what Picks lists last). Monday's three at the bar are all
+// points: Roslovic 55.6 (1 point), Draisaitl 56.7 over 1.5 (1), Podkolzin 59.0 (1).
+console.log('\n-- NHL, the More by stat --');
+let bs = h.record.more.byStat;
+console.log('  byStat ' + JSON.stringify(bs));
+ok(bs && bs.pts.first.atBar.n === 3 && bs.pts.first.atBar.hit === 2 && bs.pts.first.byBand['55-60'].n === 3 && bs.pts.first.byBand['55-60'].hit === 2
+  && bs.pts.first.byBand['60-65'].n === 0 && bs.pts.first.byBand['65+'].n === 0 && bs.ast.first.atBar.n === 0,
+  'at the first read: points 2 of 3 at 55%+, all three at 55-60; no assists More at the bar (Panarin leaned Under)');
+ok(!!bs && bs.pts.close.atBar.n === 0 && bs.ast.close.atBar.n === 0, 'no pre-start read on these: nothing at the close');
+// A pre-start read on two of them (the shape ppCurrent reads): Podkolzin up to 63, Roslovic down to 52.
+sq.prepare("UPDATE nhlpp SET close_point = 0.5, close_under = 37, close_result = 'over' WHERE player = 'Vasily Podkolzin'").run();
+sq.prepare("UPDATE nhlpp SET close_point = 0.5, close_under = 48, close_result = 'over' WHERE player = 'Jack Roslovic'").run();
+h = await get('/api/nhl-pp');
+bs = h.record.more.byStat || { pts: { close: { atBar: {}, byBand: {} }, first: { atBar: {} } } };
+ok(bs.pts.close.atBar.n === 1 && bs.pts.close.atBar.hit === 1 && bs.pts.close.byBand['60-65'].n === 1 && bs.pts.first.atBar.n === 3,
+  'at the pre-start read: Podkolzin at 63, 1 of 1 at 60-65; Roslovic, down to 52, under the bar; the first read as it was');
+ui.nhlPp = h;
+ok(/at 55%\+ <b>2 of 3<\/b> · at 55%\+ by stat: points <b>2 of 3<\/b><\/div>/.test(C.nhlPpCardHtml()), 'the card: "at 55%+ by stat: points 2 of 3", no assists with none at the bar');
+ok(!/by stat/.test(C.nbaPpCardHtml()), "the NBA blocks More has no split: one stat");
+
 // ---- Live Now ----------------------------------------------------------------------------------
 console.log('\n-- Live: an over in progress --');
 const wlift = (name) => { const at = src.indexOf(`function ${name}(`); let d = 0;
