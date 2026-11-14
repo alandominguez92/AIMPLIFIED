@@ -6239,6 +6239,7 @@
     // Today's legs as their games finish (2026-11-04), folded above last night's.
     return recapDay(h, edge, ptDayOf(Date.now()), true) + recapDay(h, edge, ptDayOf(Date.now() - 864e5), false);
   }
+  const RECAP_ENTRY_MAX = 6;
   function recapDay(h, edge, date, today) {
     const d = h.days.find((x) => x.date === date);
     if (!d) return '';
@@ -6248,13 +6249,19 @@
     // three"): Nov 12 read "2 of 9" and two red −1.00u, the PrizePicks entry's, with the moneyline
     // entry's 6 of 6 nowhere. The list's legs on a day before the PrizePicks entry; the moneyline
     // entry from Nov 1, where it had two legs or more.
+    // An entry is its pool's top six at most, as the worker's units are (2026-11-13, the owner's "do
+    // both fixes"): Nov 13's moneyline entry read "6 of 9" with all six of its legs won (+24u as a
+    // 6-Flex); the three below them were in no entry, and show under it apart. The list keeps all
+    // its legs. Today's units still wait for every leg: one still to start can move into the six.
     const pool = d.pool && d.pool.length;
-    const ents = [[pool ? 'PrizePicks entry' : 'The list', pool ? d.pool : d.legs || [], d.entries],
-      ['Moneyline entry', Array.isArray(d.ml) && d.ml.length >= 2 ? d.ml : [], d.mlEntries]]
-      .map(([who, legs, es]) => {
+    const ents = [[pool ? 'PrizePicks entry' : 'The list', pool ? d.pool : d.legs || [], d.entries, !!pool],
+      ['Moneyline entry', Array.isArray(d.ml) && d.ml.length >= 2 ? d.ml : [], d.mlEntries, true]]
+      .map(([who, all, es, entry]) => {
+        const legs = entry ? all.slice(0, RECAP_ENTRY_MAX) : all, past = entry ? all.slice(RECAP_ENTRY_MAX) : [];
         const dec = legs.filter((x) => x.result === 'hit' || x.result === 'miss');
-        return { who, legs, es, dec, hit: dec.filter((x) => x.result === 'hit').length, toGo: legs.filter((x) => x.result == null).length };
-      }).filter((g) => g.legs.length);
+        return { who, all, legs, past, es, dec, hit: dec.filter((x) => x.result === 'hit').length,
+          toGo: legs.filter((x) => x.result == null).length, allGo: all.filter((x) => x.result == null).length };
+      }).filter((g) => g.all.length);
     if (!ents.some((g) => g.dec.length)) return '';
     const face = ents.map((g) => `<span class="rc-g"><span class="rc-w">${g.who}</span><b class="rc-n">${g.dec.length ? `${g.hit} of ${g.dec.length}` : ''}</b>`
       + `<span class="rc-x">${g.toGo ? `<span class="rc-pend">${g.toGo} ${today ? 'to go' : 'still to grade'}</span>` : ''}<span class="rc-dots">${g.dec.map((x) => (x.result === 'hit' ? '✓' : '✗')).join('')}</span></span></span>`).join('');
@@ -6262,12 +6269,13 @@
       const chips = g.legs.map((x) => `<span class="rc-chip rc-${esc(x.result || 'open')}">${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}</span>`).join('');
       const rows = [];
       // A game still to come can put a leg above these, so today's entries wait for the last of them.
-      for (const [k, label] of today && g.toGo ? [] : [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
+      for (const [k, label] of today && g.allGo ? [] : [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
         const e = g.es && g.es[k];
         // An entry a void or tie cut down pays as the smaller one (2026-11-01).
         if (e) rows.push(`<li><span>${label}${e.legs ? ` <i>as a ${e.legs}-pick</i>` : ''}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
       }
-      return `<div class="rc-ent"><div class="rc-cw">${g.who}</div><div class="rc-chips">${chips}</div>${rows.length ? `<ul class="rc-lines">${rows.join('')}</ul>` : ''}</div>`;
+      const past = g.past.length ? `<div class="rc-past">Past the top ${RECAP_ENTRY_MAX}, in no entry: ${g.past.map((x) => `${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}`).join(' · ')}</div>` : '';
+      return `<div class="rc-ent"><div class="rc-cw">${g.who}</div><div class="rc-chips">${chips}</div>${rows.length ? `<ul class="rc-lines">${rows.join('')}</ul>` : ''}${past}</div>`;
     };
     const lines = [];
     const eb = edge && edge.byDay && edge.byDay[date];
@@ -6283,7 +6291,7 @@
     // A leg off the list that stayed in an entry is graded above with it, not "off" (2026-11-13):
     // Daniels' passing TDs left the Nov 12 list for six moneylines and stayed the PrizePicks
     // entry's first leg, and showed twice, a ✗ in the entry and "off before the start".
-    const kept = new Set(ents.flatMap((g) => g.legs.map((x) => x.label)));
+    const kept = new Set(ents.flatMap((g) => g.all.map((x) => x.label)));
     const off = (d.dropped || []).filter((x) => !kept.has(x.label)).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
     const open = !today && recapSeenAtLoad !== date;
     if (!today) { try { localStorage.setItem('aimplified_recap_seen', date); } catch (e) { /* private mode */ } }
@@ -7690,6 +7698,9 @@
   // many he started (NBA), played (NHL, NFL) or started in goal, and ESPN's name for an NHL net.
   // The NBA marks its starters; the others say only when he's been missing.
   function propStartTag(sport, p) {
+    // ESPN lists him out (2026-11-13, the owner's "do both fixes"): Klay Thompson, out with ankle
+    // soreness, read "expected starter" from his last five starts. The injury tag says it instead.
+    if (p.inj && p.inj.out) return '';
     if (p.gl) return ` <span class="${p.gl === 'Confirmed' ? 'pr-start' : 'tc-wait'}" title="ESPN’s ${p.gl === 'Confirmed' ? 'confirmed' : 'expected'} starter in goal">${p.gl === 'Confirmed' ? 'confirmed' : 'expected'} starter</span>`;
     const [n, of] = p.st || [0, 0];
     if (sport === 'nfl' && p.qb1) return ' <span class="pr-start" title="Threw the most for his team last game">expected starter</span>';
@@ -7754,7 +7765,7 @@
     const trend = v.vals.length ? trendBarsHtml({ vals: v.vals, line: v.line, side: v.side === 'Under' ? 'under' : 'over', hit: v.side === 'Under' ? v.vals.filter((x) => x < v.line).length : v.over }) : '';
     return `<li class="sp-row${open ? ' open' : ''}">${star}<div class="tc-leg">`
       + `<button type="button" class="sp-tap" data-action="pr-row" data-key="${esc(key)}" aria-expanded="${open}">`
-      + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span>${v.p != null ? `<span class="tc-p${v.p >= PROP_STRONG ? ' sp-strong' : ''}">${pct0(v.p)}</span>` : ''}</span>`
+      + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span>${v.p != null ? `<span class="tc-p${v.p >= PROP_STRONG && !(p.inj && p.inj.out) ? ' sp-strong' : ''}">${pct0(v.p)}</span>` : ''}</span>`
       + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propLateTag(v)}${propAgainstTag(sport, v)}${propStartTag(sport, p)}${propMinTag(sport, p)}${nbaCardInjTag(p)}</span>`
       + (v.src === 'none' ? (v.proj != null ? `<span class="pr-clear dots"><span class="dots-in"><span>proj <b>${esc(String(v.proj))}</b></span>${v.vals.length ? ` <span><span class="dot">·</span> avg ${esc(String(r1(v.vals.reduce((a, x) => a + x, 0) / v.vals.length)))} in last ${v.vals.length}</span>` : ''}</span></span>` : '')
         : `${projLineHtml(v.proj, v.line, v.side)}${v.vals.length ? `<span class="pr-clear">over ${esc(String(v.line))} in ${v.over} of last ${v.vals.length}</span>` : ''}`) + `</span>`
@@ -7877,12 +7888,15 @@
     if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">${pd ? propDayWait(pd, now) : sport === 'nfl' ? 'No games in the coming week.' : 'No games in the next day and a half.'}</div></div>`;
     // How many 54%+ numbers each stat has in the games to come (2026-11-05, the owner's pick): where
     // the strong ones are before tapping through a dozen stats. Best counts players with any.
-    const strongAt = (v) => v.p != null && Math.max(v.fair, 100 - v.fair) >= PROP_STRONG;
+    // A player ESPN lists out isn't one of them (2026-11-13, the owner's "do both fixes"): Klay
+    // Thompson, out with ankle soreness, topped Strongest threes at 56%. He stays in his game's
+    // list with the injury tag, and leaves the Strongest list and its counts.
+    const strongAt = (p, v) => !(p.inj && p.inj.out) && v.p != null && Math.max(v.fair, 100 - v.fair) >= PROP_STRONG;
     const nStrong = { best: 0 };
     for (const { g, i } of games) {
       for (const p of (d.players || []).filter((x) => x.g === i)) {
         let any = false;
-        for (const s of stats) if (strongAt(propView(sport, d, g, p, s))) { nStrong[s] = (nStrong[s] || 0) + 1; any = true; }
+        for (const s of stats) if (strongAt(p, propView(sport, d, g, p, s))) { nStrong[s] = (nStrong[s] || 0) + 1; any = true; }
         if (any) nStrong.best++;
       }
     }
@@ -7916,7 +7930,7 @@
       if (!rows.length) return '';
       rows.sort((a, b) => dist(b) - dist(a) || (b.v.proj || 0) - (a.v.proj || 0));
       found += rows.length;
-      const strong = rows.filter((x) => x.v.p != null && Math.max(x.v.fair, 100 - x.v.fair) >= PROP_STRONG).length;
+      const strong = rows.filter((x) => strongAt(x.p, x.v)).length;
       const mOpen = !!q || games.length === 1 || !!(state.prMatch && state.prMatch[g.id]);
       const mHead = `<button type="button" class="sp-mh" data-action="pr-match" data-sport="${esc(sport)}" data-id="${esc(g.id)}" aria-expanded="${mOpen}">`
         + `<span class="sp-mt"><b>${esc(propNick(sport, g.away))} @ ${esc(propNick(sport, g.home))}</b> · <span class="pk-when">${esc(propKick(g.commence))}</span>`
@@ -7934,7 +7948,7 @@
       const tops = [];
       for (const { g, i } of games) {
         for (const p of (d.players || []).filter((x) => x.g === i)) {
-          const vs = (view === 'best' ? stats : [view]).map((s) => ({ g, p, s, v: propView(sport, d, g, p, s) })).filter((x) => strongAt(x.v));
+          const vs = (view === 'best' ? stats : [view]).map((s) => ({ g, p, s, v: propView(sport, d, g, p, s) })).filter((x) => strongAt(x.p, x.v));
           if (vs.length) tops.push(vs.sort((a, b) => dist(b) - dist(a))[0]);
         }
       }

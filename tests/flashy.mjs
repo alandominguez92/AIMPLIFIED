@@ -54,7 +54,7 @@ const env = {
   pct0: (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—'),
   pickFace: (x) => `<i class="face" data-who="${esc((x.spec || {}).player || x.title)}"></i>`,
 };
-const names = ['pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'moneyTxt', 'stakeTxt', 'recapSeenAtLoad', 'shortLeg', 'recapHtml', 'recapDay', 'PP_PAY', 'ticketData', 'ticketHtml', 'RING_C', 'chanceRingSvg'];
+const names = ['pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'moneyTxt', 'stakeTxt', 'recapSeenAtLoad', 'shortLeg', 'recapHtml', 'RECAP_ENTRY_MAX', 'recapDay', 'PP_PAY', 'ticketData', 'ticketHtml', 'RING_C', 'chanceRingSvg'];
 let P;
 // The seen-day read sits on the line after its declaration.
 const seenRead = (app.match(/\n  (let recapSeenAtLoad = null;\n  try \{ recapSeenAtLoad = localStorage\.getItem\('aimplified_recap_seen'\); \} catch \(e\) \{[^}]*\})/) || [])[1];
@@ -117,9 +117,11 @@ P = build();
 const r2 = P.recapHtml(G.history, G.edgeRecord);
 console.log('  ' + text(r2));
 const d28 = G.history.days.find((d) => d.date === '2026-10-28');
-const pend = d28.pool.filter((x) => x.result == null).length;
-ok(text(r2).startsWith(`Last night Oct 28 PrizePicks entry 2 of 3 ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2)),
-  `the entry's legs, and the ${pend} NHL legs still to grade said so`);
+// The entry is the top six (2026-11-13): Roslovic, seventh, was in no entry, and shows under it apart.
+const pend = d28.pool.slice(0, 6).filter((x) => x.result == null).length;
+ok(d28.pool.length === 7 && text(r2).startsWith(`Last night Oct 28 PrizePicks entry 2 of 3 ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2))
+  && /Past the top 6, in no entry: · Roslovic O0\.5 PTS/.test(text(r2)),
+  `the entry's legs, and the ${pend} NHL legs of its six still to grade said so; the seventh apart`);
 ok(/<li><span>Edge bets<\/span><b>1 of 5 · <i class="o">−2\.25u<\/i> · beat the close 4 of 5<\/b><\/li>/.test(r2) && /The list 9 of 9/.test(text(r2)),
   "the edge bets' first day: 1 of 5 and down, red on the units only -- 4 of 5 beat the close; the list 9 of 9");
 env.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } };
