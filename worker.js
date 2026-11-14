@@ -10060,10 +10060,22 @@ async function picksCandidates(env, now) {
   }
   await ensureNhlPpSchema(db);
   const nhl = (await db.prepare('SELECT * FROM nhlpp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
+  // Points Mores only where legs like them have landed (NHL_PTS_HOLD_SINCE): the record by band,
+  // read only when a points leg is up for it.
+  const held = ptDateOf(now) >= NHL_PTS_HOLD_SINCE;
+  let ptsBy;
   for (const row of ppStanding(nhl)) {
     const r = ppCurrent(row);
     if (!soon(r.commence) || r.model_under == null) continue;
     if (100 - r.model_under < PICK_KINDS.nhl_more.min) continue;
+    if (held && r.market === 'pts') {
+      if (ptsBy === undefined) {
+        ptsBy = ((await pickKindRecords(env).catch(() => null)) || {}).nhl_more;
+        ptsBy = (ptsBy && ptsBy.byStat) || null;
+        NHL_PTS_GATE = ptsBy;
+      }
+      if (!nhlPtsFavorable(ptsBy, ppMoreChance(r), row.close_point != null)) continue;
+    }
     legs.push(moreLeg('nhl', r, ppMoreChance(r), PICKS_NHL_MK[r.market] || r.market));
   }
   // ESPN's injury report on the NBA player legs (2026-11-01): one it lists out
@@ -10262,7 +10274,10 @@ function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   if (!(p >= min)) why.push(p == null ? `no chance was read at ${cur.point}` : `the chance at ${cur.point} was ${round1(p)}%, under the ${min}% bar`);
   else if (more && ppMoreChance(cur) < min) why.push(`the sharp books had it at ${round1(100 - cur.sharp_under)}%, ${ppMoreChance(cur)}% with the model's, under the ${min}% bar`);
   else if (!more && ppBelowBook(cur)) why.push(`PrizePicks' ${cur.point} sat below the books' ${cur.book_line}`);
-  else if (other) why.push(dropOutranked(other));
+  else if (kind === 'nhl_more' && cur.market === 'pts' && m.date >= NHL_PTS_HOLD_SINCE && NHL_PTS_GATE && !nhlPtsFavorable(NHL_PTS_GATE, ppMoreChance(cur), m.close_point != null)) {
+    const c = nhlPtsCell(NHL_PTS_GATE, ppMoreChance(cur), m.close_point != null);
+    why.push(`NHL points Mores go on Picks only where legs like them land 57.7%+: ${c && c.band ? `at ${c.band}%` : 'at 55%+'} they had landed ${c ? `${c.hit} of ${c.n}` : 'too few'}`);
+  } else if (other) why.push(dropOutranked(other));
   return why.length ? why.join('; ') : null;
 }
 // A moneyline or soccer favourite, by the game-line log's row at the start.
@@ -10375,9 +10390,12 @@ async function pickKindBuild(db) {
       if (r.date >= BLK_MORE_SINCE) { blkSince.n++; if (r.result === 'over') blkSince.hit++; }
     }
   }
-  for (const r of ((await db.prepare("SELECT model_under, result FROM nhlpp WHERE result IN ('under','over')").all()).results || [])) {
+  const nhlGraded = (await db.prepare("SELECT market, model_under, result, close_under, close_result FROM nhlpp WHERE result IN ('under','over')").all()).results || [];
+  for (const r of nhlGraded) {
     if (r.model_under != null && 100 - r.model_under >= PICK_KINDS.nhl_more.min) add('nhl_more', r.result === 'over');
   }
+  // By stat and band, for the points Mores' place on Picks (nhlPtsFavorable, 2026-11-14).
+  rec.nhl_more.byStat = nhlMoreByStat(nhlGraded);
   for (const v of Object.values(rec)) {
     v.hitRate = v.n ? round1(v.hit / v.n * 100) : null;
     v.proven = v.n >= PICKS_PROVEN_N;
@@ -12481,6 +12499,28 @@ async function gradeNhlPp(env, tonight = false) {
   for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
   return stmts.length;
 }
+// NHL points Mores on Picks only where legs like them have landed (2026-11-14, the owner: "let's
+// keep it for now, let's just not add it to the picks of the day if they are not favorable to
+// hit"). At 55%+ they had landed 48% at the pre-start read (41 of 85) and 52% at the first (71 of
+// 136), under the 57.7% a 2-pick Power needs, with no chance band past it. A points leg goes on
+// Picks and in the entry once its band (nhlMoreByStat's 55-60, 60-65, 65+), at the read it is on,
+// has landed 57.7% or better over 20 legs or more; a band with fewer goes by the points Mores at
+// the bar. Still logged, graded and on the NHL card; assists aren't held to it.
+const NHL_PTS_HOLD_SINCE = '2026-11-14';
+const NHL_PTS_FAVOR_PCT = 57.7, NHL_PTS_FAVOR_N = 20;
+// The record the last candidates read went by, for why a points leg left the list.
+let NHL_PTS_GATE = null;
+function nhlPtsCell(byStat, p, preStart) {
+  const t = byStat && byStat.pts && byStat.pts[preStart ? 'close' : 'first'];
+  if (!t) return null;
+  const band = NHL_MORE_BANDS.find(([, lo, hi]) => p >= lo && p < hi);
+  const c = band && t.byBand[band[0]];
+  return c && c.n >= NHL_PTS_FAVOR_N ? { band: band[0], ...c } : { band: null, ...t.atBar };
+}
+function nhlPtsFavorable(byStat, p, preStart) {
+  const c = nhlPtsCell(byStat, p, preStart);
+  return !!c && c.n >= NHL_PTS_FAVOR_N && c.hit / c.n * 100 >= NHL_PTS_FAVOR_PCT;
+}
 // The More by stat and chance (2026-11-14, the owner's "do both"): in the PrizePicks entry from
 // Oct 28 to Nov 13 the points Mores landed 5 of 15 at about 62% and the assists 17 of 29, so
 // whether points belong at the bar. At the first read, as every leg grades, and at the pre-start
@@ -12536,6 +12576,17 @@ async function nhlPpBoard(env, url) {
       overs: { graded: ov.n, hit: ov.hit, hitRate: ov.hitRate, byBand: ov.byBand, byLineGap: ov.byLineGap, byMarket: byMarket(lean, 'over') },
       more: { ...ppMoreRecord(lean), byStat: nhlMoreByStat(graded) },
       ...ppCloseRecord(graded) };
+    // A points More Picks holds off (nhlPtsFavorable, 2026-11-14) says so on the card, with the
+    // record it went by: listed still, not a pick.
+    if (ptDateOf(now) >= NHL_PTS_HOLD_SINCE) {
+      for (const l of out.legs) {
+        if (l.market !== 'pts' || l.model_under == null || 100 - l.model_under < PICK_KINDS.nhl_more.min) continue;
+        const p = ppMoreChance(l), pre = l.close_at != null, by = out.record.more.byStat;
+        if (nhlPtsFavorable(by, p, pre)) continue;
+        const c = nhlPtsCell(by, p, pre);
+        l.offPicks = c ? { band: c.band, hit: c.hit, n: c.n } : { band: null, hit: 0, n: 0 };
+      }
+    }
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
 }

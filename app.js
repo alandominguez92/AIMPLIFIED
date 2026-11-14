@@ -6933,6 +6933,9 @@
     const spread = Object.keys(perGame).length >= 3;
     return `<ol class="tc-legs">${legs.map((x) => {
       const same = spread && perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
+      // A points More Picks holds off (2026-11-14, the owner's call), with the record it went by.
+      const op = x.offPicks;
+      const held = op ? ` <span class="tc-wait" title="NHL points Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>` : '';
       const leg = ppMoreLeg(x, sport);
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
@@ -6942,7 +6945,7 @@
       // (projLineHtml, 2026-10-28) -- an NHL skater's is points a game.
       return `<li>${star}<div class="tc-leg has-hs">${face}`
         + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(ppMoreP(x))}%</span></span>`
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${opp ? `${esc(opp)} · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}</span>`
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${opp ? `${esc(opp)} · ` : ''}Over ${esc(String(x.point))} ${esc(ppMoreMk(x, sport))} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${held}</span>`
         + `${projLineHtml(x.proj, x.point, 'Over')}</span>`
         + `</div></li>`;
     }).join('')}</ol>`;
