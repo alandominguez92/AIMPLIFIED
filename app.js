@@ -6123,9 +6123,7 @@
     // list's six. Each entry's EV at PrizePicks' payouts and its quarter-Kelly
     // stake are the worker's entryStake -- while the pool is the one it priced
     // (no leg of it under way yet).
-    const allPool = d.ppPool || [];
-    const ppLegs = ppPoolAtLines(allPool).filter((x) => Date.parse(x.commence) > Date.now());
-    const whole = ppLegs.length === allPool.length;
+    const { legs: ppLegs, whole, off: ppOff } = ppEntryLegs(d);
     if (count && ppLegs.length) count.textContent = `${ppLegs.length}-leg entry`;
     const entryRows = (entLegs, priced) => {
       const rows = [];
@@ -6173,6 +6171,7 @@
       + `<div class="tc-sub pk-intro">The best leg PrizePicks takes in each of the day's games, best first, from everything that clears its bar. Under each: how legs like it have actually done.</div>`
       + (ppLegs.length ? hero + (ppLegs.length > 1 ? `<ol class="tc-legs pk-pool">${ppLegs.slice(1).map(itemHtml).join('')}</ol>` : '')
         : '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>')
+      + ppMovedHtml(d.ppMoved, ppOff)
       + entryNextHtml(d.ppNextAt, ppLegs)
       + ticketHtml(ticketData(d, ppLegs, whole))
       + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As a PrizePicks entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>`
@@ -6363,9 +6362,9 @@
   // headshot from another site would taint the canvas), the page's own colours.
   function saveTicketImage(ml) {
     const d = state.picks || {};
-    const all = (ml ? d.mlPool : d.ppPool) || [];
-    const legs = (ml ? all : ppPoolAtLines(all)).filter((x) => Date.parse(x.commence) > Date.now());
-    const t = ticketData(d, legs, legs.length === all.length, ml);
+    const all = d.mlPool || [];
+    const e = ml ? { legs: all.filter((x) => Date.parse(x.commence) > Date.now()) } : ppEntryLegs(d);
+    const t = ticketData(d, e.legs, ml ? e.legs.length === all.length : e.whole, ml);
     if (!t) return;
     const css = getComputedStyle(document.documentElement);
     const col = (v, f) => (css.getPropertyValue(v).trim() || f);
@@ -6613,6 +6612,41 @@
       lineSet: { read, main, off, under: c ? c.under : null, over: c ? c.over : null, tie: c ? c.tie : 0 } };
   }
   const ppPoolAtLines = (pool) => pool.map(pickAtLine).filter((x) => !(x.lineSet && x.lineSet.off));
+  // The PrizePicks entry as the page shows it (2026-11-14, the owner's "yes build both"): a leg a
+  // line you set took off, or one under way, gives its place to the next of the legs behind the
+  // entry (ppBench, each of another game), so a 6-Flex stays six. whole: the entry the worker
+  // priced, leg for leg. off: the legs your lines took off, for the note under the entry.
+  function ppEntryLegs(d) {
+    const now = Date.now(), all = d.ppPool || [], up = (x) => Date.parse(x.commence) > now;
+    const atLines = all.map(pickAtLine);
+    const off = atLines.filter((x) => x.lineSet && x.lineSet.off && up(x));
+    const legs = ppPoolAtLines(all).filter(up);
+    for (const b of ppPoolAtLines(d.ppBench || []).filter(up)) if (legs.length < all.length) legs.push(b);
+    const whole = legs.length === all.length && legs.every((x, i) => x.legId === all[i].legId);
+    return { legs, whole, off };
+  }
+  // The legs out of the entry because the line moved (2026-11-14): PrizePicks' moves (ppMoved,
+  // from the worker's reads) and the lines you set. A leg taken at the old number is kept: the old
+  // number is the one that landed.
+  const PP_MOVED_WHY = {
+    under: 'When PrizePicks lowered a rebounds or assists line (Oct 20-31), the Less at the old number landed 62% (66 of 106), at the new one 48% (43 of 89). PrizePicks keeps the number you took.',
+    over: 'When PrizePicks raised a rebounds or assists line (Oct 20-31), the More at the old number landed 59% (77 of 131), at the new one 49% (57 of 116). PrizePicks keeps the number you took.',
+  };
+  function ppMovedHtml(moved, off) {
+    const now = Date.now();
+    const rows = (moved || []).filter((m) => Date.parse(m.commence) > now).map((m) => ({ ...m, by: 'pp' }))
+      .concat((off || []).map((x) => ({ label: x.title.replace(/ (Under|Over) [\d.]+ /, ` $1 ${x.lineSet.read} `), side: 'under', from: x.lineSet.read,
+        to: x.spec.pp.line, p: x.lineSet.under, by: 'you' })));
+    if (!rows.length) return '';
+    const li = rows.map((m) => {
+      const k = String(m.label || '').match(/^(.*?) (Under|Over) [\d.]+ (.+)$/);
+      if (!k) return '';
+      const who = shortLeg(m.label).split(' ').slice(0, -2).join(' ') || k[1];
+      return `<li title="${esc(PP_MOVED_WHY[m.side] || PP_MOVED_WHY.under)}"><b>${esc(who)}</b> ${m.side === 'over' ? 'More' : 'Less'} ${esc(String(m.from))} → ${esc(String(m.to))} ${esc(k[3])}`
+        + `<span class="pk-lmv-x">${m.by === 'you' ? 'your line · ' : ''}${m.p != null ? `${pct0(m.p)} at ${esc(String(m.to))} · ` : ''}took ${esc(String(m.from))}? keep it</span></li>`;
+    }).filter(Boolean).join('');
+    return li ? `<div class="pk-lmv"><div class="pk-lmv-h">Out of the entry: the line moved</div><ul>${li}</ul></div>` : '';
+  }
   // A rebounds or assists line read before any book had posted: from the first
   // read to the pre-tip one, 193 of 382 of those moved, and 45 of 617 once a
   // book was up (Oct 20-31). And how old the read is. Neither once a line is set.

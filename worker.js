@@ -10125,11 +10125,12 @@ function nextEntryAt(legs) {
   return new Date(Math.max(...day.map((l) => Date.parse(l.commence)))).toISOString();
 }
 const ppEntryLeg = (l) => PP_ENTRY_KINDS.has(l.kind) || l.kind === 'nfl_ml';
-function ppPoolOf(legs) {
+// n past six gives the legs behind the entry's (ppBench), each of another game.
+function ppPoolOf(legs, n = PICKS_N) {
   const pool = [], games = new Set();
   let teamPick = false;
   for (const l of firstDayLegs(legs.filter(ppEntryLeg)).sort(pickOrder)) {
-    if (pool.length >= PICKS_N || games.has(l.gameKey)) continue;
+    if (pool.length >= n || games.has(l.gameKey)) continue;
     const team = l.kind === 'nfl_ml';
     if (!PP_ENTRY_KINDS.has(l.kind) && !(team && !teamPick)) continue;
     if (team) teamPick = true;
@@ -10137,6 +10138,37 @@ function ppPoolOf(legs) {
     pool.push(l);
   }
   return pool;
+}
+// The legs behind the entry (2026-11-14, the owner's "yes build both"): a leg you take off with a
+// line you set on the page, where it no longer clears, gives its place to the next of these, so a
+// 6-Flex stays six. The worker's own reads refill the entry as it is.
+const PP_BENCH_N = 4;
+const ppBenchOf = (legs, pool) => ppPoolOf(legs, PICKS_N + PP_BENCH_N).slice(pool.length);
+// A leg PrizePicks moved out of the entry (2026-11-14): one the day's entry held whose line has
+// since moved to a number where it no longer clears. The page says so, so a leg taken at the old
+// number is kept: when PrizePicks lowered a rebounds or assists line (Oct 20-31), the Less at the
+// old number landed 62% (66 of 106), at the new one 48% (43 of 89); raised, the More 59% (77 of
+// 131) against 49% (57 of 116). PrizePicks keeps the number an entry was placed at.
+const PP_MOVED_KINDS = ['nba_pp', 'nba_reb_gap', 'nba_blk_more', 'nhl_more'];
+async function ppMovedOff(db, now, pool) {
+  if (!pool.length) return [];
+  const rows = (await db.prepare(`SELECT kind, src_date, game_id, player_key, market, label, pool_p, commence FROM daypicks
+      WHERE date = ? AND in_pool = 0 AND pool_p IS NOT NULL AND julianday(commence) > julianday(?) AND kind IN (${PP_MOVED_KINDS.map(() => '?').join(',')})`)
+    .bind(ptDayOfLeg(pool[0]), new Date(now).toISOString(), ...PP_MOVED_KINDS).all()).results || [];
+  const out = [];
+  for (const r of rows) {
+    const from = Number((String(r.label || '').match(/ (?:Under|Over) (\d+(?:\.\d+)?) /) || [])[1]);
+    if (!isFinite(from)) continue;
+    const m = await db.prepare(`SELECT * FROM ${r.kind === 'nhl_more' ? 'nhlpp' : 'nbapp'} WHERE date = ? AND game_id = ? AND player = ? AND market = ?`)
+      .bind(r.src_date, r.game_id, r.player_key, r.market).first();
+    const cur = m && ppCurrent(m);
+    if (!cur || cur.point == null || cur.point === from) continue;
+    const more = r.kind === 'nba_blk_more' || r.kind === 'nhl_more';
+    const p = cur.model_under == null ? null : more ? ppMoreChance(cur)
+      : cur.sharp_under != null ? round1(NBA_PICK_MODEL_W * cur.model_under + (1 - NBA_PICK_MODEL_W) * cur.sharp_under) : round1(cur.model_under);
+    out.push({ label: r.label, side: more ? 'over' : 'under', from, to: cur.point, p, was: round1(r.pool_p), commence: r.commence });
+  }
+  return out.sort((a, b) => b.was - a.was);
 }
 // The moneyline-only entry's pool (2026-11-01, the owner's call): the best
 // moneyline of each game, any sport, from everything that clears its kind's bar.
@@ -10619,8 +10651,8 @@ async function picksBoard(env) {
   try {
     const now = Date.now();
     const { legs, unavailable } = await picksCandidates(part('candidates'), now);
-    const list = pickList(legs), pool = ppPoolOf(legs), mlPool = mlPoolOf(legs);
-    const onCard = [...new Map([...list, ...pool, ...mlPool].map((l) => [l.legId, l])).values()];
+    const list = pickList(legs), pool = ppPoolOf(legs), mlPool = mlPoolOf(legs), bench = ppBenchOf(legs, pool);
+    const onCard = [...new Map([...list, ...pool, ...bench, ...mlPool].map((l) => [l.legId, l])).values()];
     // Soccer marks are read while the log is written, and waited on only so long.
     const logos = soccerPickLogos(onCard).catch(() => {});
     const logDb = part('log').DB;
@@ -10688,6 +10720,9 @@ async function picksBoard(env) {
     // When tomorrow's entries take over, while today's still has legs to start (2026-11-14).
     out.ppNextAt = nextEntryAt(legs.filter(ppEntryLeg));
     out.mlNextAt = nextEntryAt(legs.filter((x) => ML_ENTRY_KINDS.has(x.kind)));
+    out.ppBench = bench.map((l, i) => shown(l, pool.length + i));
+    out.ppMoved = [];
+    try { out.ppMoved = await ppMovedOff(part('moved').DB, now, pool); } catch (e) { /* the entry stands without it */ }
     const inPool = new Set(pool.map((l) => l.legId));
     for (const l of out.legs) l.ppOk = inPool.has(l.legId);
     // The entry read: the top two as a 2-pick power (both have to land), and

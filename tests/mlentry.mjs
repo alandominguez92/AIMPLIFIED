@@ -236,7 +236,7 @@ ok(/data-action="ticket-ml-n"/.test(mlH) && /data-action="ticket-ml-save"/.test(
 const ppH = P.ticketHtml(P.ticketData(p, p.mlPool, true));
 ok(P.ticketData(p, p.mlPool, true).n === 2 && /data-action="ticket-n"/.test(ppH) && !/ticket-ml/.test(ppH), "and the entry's ticket keeps its own");
 ok(/case 'ticket-ml-n': state\.ticketMlN = Number\(target\.dataset\.n\) \|\| 3; renderPicks\(\); break;/.test(app) && /case 'ticket-ml-save': saveTicketImage\(true\); break;/.test(app), 'both wired up');
-ok(/const all = \(ml \? d\.mlPool : d\.ppPool\) \|\| \[\];/.test(lift('saveTicketImage')), 'the saved image draws the moneyline legs');
+ok(/const all = d\.mlPool \|\| \[\];/.test(lift('saveTicketImage')) && /const e = ml \? \{ legs: all\.filter/.test(lift('saveTicketImage')), 'the saved image draws the moneyline legs');
 
 const rec = P.ppEntryRecordHtml(hist, true);
 console.log('  ' + text(rec));

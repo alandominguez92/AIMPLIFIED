@@ -294,8 +294,10 @@ ok(dx.p === dx.modelP && dx.p < 50, `its number is the model's ${dx.p}%, not the
 const after = P.ppPoolAtLines(picks.ppPool);
 ok(after.length === poolN - 1 && !after.some((l) => l.legId === dan.legId), 'off the entry');
 const rp = lift('renderPicks');
-ok(/const ppLegs = ppPoolAtLines\(allPool\)\.filter/.test(rp) && /const whole = ppLegs\.length === allPool\.length;/.test(rp), "and the worker's edge is no longer quoted: it priced the pool as it stood");
-ok(/\(ml \? all : ppPoolAtLines\(all\)\)\.filter/.test(lift('saveTicketImage')), 'the saved ticket the same');
+// The entry the page shows, refilled from the legs behind it since 2026-11-14: tests/linemoved.mjs.
+ok(/= ppEntryLegs\(d\);/.test(rp) && /const legs = ppPoolAtLines\(all\)\.filter\(up\);/.test(lift('ppEntryLegs'))
+  && /const whole = legs\.length === all\.length && legs\.every\(\(x, i\) => x\.legId === all\[i\]\.legId\);/.test(lift('ppEntryLegs')), "and the worker's edge is no longer quoted: it priced the pool as it stood");
+ok(/: ppEntryLegs\(d\);/.test(lift('saveTicketImage')), 'the saved ticket the same');
 ok(/\(d\.legs \|\| \[\]\)\.map\(pickAtLine\)\.filter/.test(rp) && /!compact && x\.kind === 'nba_reb_gap' && x\.spec && x\.spec\.pp \? ppLineStepHtml\(/.test(rp), 'the rows carry the number and the steps');
 const hero = lift('heroLegHtml');
 ok(/const x = pickAtLine\(x0\);/.test(hero) && /x\.kind === 'nba_reb_gap' && s\.pp \? ppLineStepHtml\(/.test(hero), 'and so does the best leg at the top');
