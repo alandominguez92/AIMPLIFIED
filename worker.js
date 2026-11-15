@@ -10106,10 +10106,29 @@ function pickList(legs) {
 // moneyline as the entry's one team pick, from everything that qualifies --
 // not only the list's six, where the moneylines crowded its player picks out
 // (Oct 28: four moneylines on the list, two PrizePicks legs).
+// Each entry is one day's games (2026-11-14, the owner's "do all three"): it was the best legs
+// starting in the next 24 hours, so from 10 AM on Saturday Sunday's NFL legs (the Jaguars at 83%,
+// three passing-TD Unders at 65-68%) took four of its six places, and Saturday's later legs left
+// before their games: the day logged two legs and no 6-Flex. Now it is the legs of the first day
+// (Pacific) with any still to start: today's until the last of them starts, then tomorrow's.
+const ptDayOfLeg = (l) => ptDateOf(Date.parse(l.commence));
+function firstDayLegs(legs) {
+  let day = null;
+  for (const l of legs) { const d = ptDayOfLeg(l); if (day == null || d < day) day = d; }
+  return legs.filter((l) => ptDayOfLeg(l) === day);
+}
+// When the next day's entry takes over: the last start of the day's own legs, while a later day's
+// are waiting.
+function nextEntryAt(legs) {
+  const day = firstDayLegs(legs);
+  if (!day.length || day.length === legs.length) return null;
+  return new Date(Math.max(...day.map((l) => Date.parse(l.commence)))).toISOString();
+}
+const ppEntryLeg = (l) => PP_ENTRY_KINDS.has(l.kind) || l.kind === 'nfl_ml';
 function ppPoolOf(legs) {
   const pool = [], games = new Set();
   let teamPick = false;
-  for (const l of [...legs].sort(pickOrder)) {
+  for (const l of firstDayLegs(legs.filter(ppEntryLeg)).sort(pickOrder)) {
     if (pool.length >= PICKS_N || games.has(l.gameKey)) continue;
     const team = l.kind === 'nfl_ml';
     if (!PP_ENTRY_KINDS.has(l.kind) && !(team && !teamPick)) continue;
@@ -10123,8 +10142,8 @@ function ppPoolOf(legs) {
 // moneyline of each game, any sport, from everything that clears its kind's bar.
 function mlPoolOf(legs) {
   const pool = [], games = new Set();
-  for (const l of [...legs].sort(pickOrder)) {
-    if (pool.length >= PICKS_N || !ML_ENTRY_KINDS.has(l.kind) || games.has(l.gameKey)) continue;
+  for (const l of firstDayLegs(legs.filter((x) => ML_ENTRY_KINDS.has(x.kind))).sort(pickOrder)) {
+    if (pool.length >= PICKS_N || games.has(l.gameKey)) continue;
     games.add(l.gameKey);
     pool.push(l);
   }
@@ -10276,7 +10295,9 @@ function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   else if (!more && ppBelowBook(cur)) why.push(`PrizePicks' ${cur.point} sat below the books' ${cur.book_line}`);
   else if (kind === 'nhl_more' && cur.market === 'pts' && m.date >= NHL_PTS_HOLD_SINCE && NHL_PTS_GATE && !nhlPtsFavorable(NHL_PTS_GATE, ppMoreChance(cur), m.close_point != null)) {
     const c = nhlPtsCell(NHL_PTS_GATE, ppMoreChance(cur), m.close_point != null);
-    why.push(`NHL points Mores go on Picks only where legs like them land 57.7%+: ${c && c.band ? `at ${c.band}%` : 'at 55%+'} they had landed ${c ? `${c.hit} of ${c.n}` : 'too few'}`);
+    // Said as the other reasons are (2026-11-14): the first wording took five lines on a phone.
+    why.push(c ? `points Mores at ${c.band ? `${c.band}%` : '55%+'} had landed ${c.hit} of ${c.n}, under the ${NHL_PTS_FAVOR_PCT}% bar`
+      : `too few points Mores graded for the ${NHL_PTS_FAVOR_PCT}% bar`);
   } else if (other) why.push(dropOutranked(other));
   return why.length ? why.join('; ') : null;
 }
@@ -10664,6 +10685,9 @@ async function picksBoard(env) {
     });
     out.legs = list.map(shown);
     out.ppPool = pool.map(shown);
+    // When tomorrow's entries take over, while today's still has legs to start (2026-11-14).
+    out.ppNextAt = nextEntryAt(legs.filter(ppEntryLeg));
+    out.mlNextAt = nextEntryAt(legs.filter((x) => ML_ENTRY_KINDS.has(x.kind)));
     const inPool = new Set(pool.map((l) => l.legId));
     for (const l of out.legs) l.ppOk = inPool.has(l.legId);
     // The entry read: the top two as a 2-pick power (both have to land), and

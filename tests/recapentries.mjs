@@ -59,9 +59,9 @@ ok(faceOf(top) === 'Last night Nov 12 PrizePicks entry 1 of 6 ✗✓✗✗✗✗
 ok(/<span class="rc-es"><span class="rc-g"><span class="rc-w">PrizePicks entry<\/span><b class="rc-n">1 of 6<\/b><span class="rc-x"><span class="rc-dots">✗✓✗✗✗✗<\/span><\/span><\/span><span class="rc-g"><span class="rc-w">Moneyline entry<\/span><b class="rc-n">6 of 6<\/b>/.test(top),
   'a row an entry: its name, its count, its dots');
 const body = text(top.slice(top.indexOf('</summary>')));
-ok(/^PrizePicks entry ✗ Daniels U1\.5 Pass TDs ✓ Jones O0\.5 PTS ✗ Makar O0\.5 AST ✗ Roslovic O0\.5 PTS ✗ Pastrnak O0\.5 AST ✗ Strome O0\.5 PTS Top 2 Power −1\.00u Top 3 Flex −1\.00u Past the top 6, in no entry: ✗ Hughes O0\.5 AST · ✗ Reed Jr U7 REB · ✓ Gobert U11 REB Moneyline entry ✓ Spain ✓ Pistons ✓ England ✓ Montenegro ✓ Hurricanes ✓ 76ers Top 2 Power \+2\.00u Top 3 Flex \+1\.25u Edge bets 1 of 4 · −1\.52u · beat the close 4 of 4 The list 6 of 6 /.test(body),
+ok(/^PrizePicks entry ✗ Daniels U1\.5 Pass TDs ✓ Jones O0\.5 PTS ✗ Makar O0\.5 AST ✗ Roslovic O0\.5 PTS ✗ Pastrnak O0\.5 AST ✗ Strome O0\.5 PTS Top 2 Power −1\.00u Top 3 Flex −1\.00u Top 6 Flex −1\.00u Past the top 6, in no entry: ✗ Hughes O0\.5 AST · ✗ Reed Jr U7 REB · ✓ Gobert U11 REB Moneyline entry ✓ Spain ✓ Pistons ✓ England ✓ Montenegro ✓ Hurricanes ✓ 76ers Top 2 Power \+2\.00u Top 3 Flex \+1\.25u Top 6 Flex \+24\.00u Edge bets 1 of 4 · −1\.52u · beat the close 4 of 4 The list 6 of 6 /.test(body),
   "opened: the PrizePicks entry's six legs and units, the three past them, then the moneyline entry's, then the edge bets and the list");
-ok(/<div class="rc-ent"><div class="rc-cw">Moneyline entry<\/div>[^]*?<li><span>Top 2 Power<\/span><b class="u">\+2\.00u<\/b><\/li><li><span>Top 3 Flex<\/span><b class="u">\+1\.25u<\/b><\/li><\/ul><\/div>/.test(top),
+ok(/<div class="rc-ent"><div class="rc-cw">Moneyline entry<\/div>[^]*?<li><span>Top 2 Power<\/span><b class="u">\+2\.00u<\/b><\/li><li><span>Top 3 Flex<\/span><b class="u">\+1\.25u<\/b><\/li><li><span>Top 6 Flex<\/span><b class="u">\+24\.00u<\/b><\/li><\/ul><\/div>/.test(top),
   "the moneyline entry's units in its own block, in the up colour");
 ok(/Off before the start: Suns, would have landed · Bedard O0\.5 PTS, would have landed · Tkachuk O0\.5 AST, would have landed<\/div>/.test(top)
   && dayOf('2026-11-12').dropped.some((x) => x.label === 'Jayden Daniels Under 1.5 Pass TDs') && !/Daniels U1\.5 Pass TDs, would have/.test(top),
@@ -98,7 +98,7 @@ console.log('  ' + text(late));
 ok(faceOf(late) === 'Today so far Nov 13 PrizePicks entry 4 of 5 ✓✓✓✗✓ Moneyline entry 6 of 6 ✓✓✓✓✓✓', `"6 of 6", the entry's own legs ("${faceOf(late)}")`);
 ok(/<div class="rc-ent"><div class="rc-cw">Moneyline entry<\/div><div class="rc-chips">(<span class="rc-chip rc-hit">✓ [A-Za-z]+<\/span>){6}<\/div>/.test(late),
   'opened: its six legs as chips');
-ok(/<li><span>Top 2 Power<\/span><b class="u">\+2\.00u<\/b><\/li><li><span>Top 3 Flex<\/span><b class="u">\+1\.25u<\/b><\/li><\/ul><div class="rc-past">Past the top 6, in no entry: ✗ Knicks · ✗ Hawks · ✗ Thunder<\/div><\/div>/.test(late),
+ok(/<li><span>Top 2 Power<\/span><b class="u">\+2\.00u<\/b><\/li><li><span>Top 3 Flex<\/span><b class="u">\+1\.25u<\/b><\/li><li><span>Top 6 Flex<\/span><b class="u">\+24\.00u<\/b><\/li><\/ul><div class="rc-past">Past the top 6, in no entry: ✗ Knicks · ✗ Hawks · ✗ Thunder<\/div><\/div>/.test(late),
   'its units, then the three below the six, apart: "Past the top 6, in no entry: ✗ Knicks · ✗ Hawks · ✗ Thunder"');
 ok(!/rc-past/.test(late.slice(0, late.indexOf('Moneyline entry</div>'))), 'five PrizePicks legs: nothing past the six');
 ok(/The list<\/span><b>6 of 9<\/b>/.test(late), 'the list keeps all nine: 6 of 9');

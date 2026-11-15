@@ -44,16 +44,16 @@ const face = (all, day) => all.find((f) => f.startsWith(day + ' ')) || '';
 const shown = faces(card(h, false));
 for (const f of shown) console.log('  ' + f);
 console.log();
-ok(face(shown, 'Nov 12') === 'Nov 12 6 of 6 landed · 4 off before the start PrizePicks entry Top 2 Power −1.00u Top 3 Flex −1.00u Moneyline entry Top 2 Power +2.00u Top 3 Flex +1.25u',
+ok(face(shown, 'Nov 12') === 'Nov 12 6 of 6 landed · 4 off before the start PrizePicks entry Top 2 Power −1.00u Top 3 Flex −1.00u Top 6 Flex −1.00u Moneyline entry Top 2 Power +2.00u Top 3 Flex +1.25u Top 6 Flex +24.00u',
   "Nov 12: the list's 6 of 6, the PrizePicks entry's units under its name, and the moneyline entry's beside them");
-ok(face(shown, 'Nov 11') === 'Nov 11 2 of 3 landed · 5 off before the start PrizePicks entry Top 2 Power −1.00u Top 3 Flex −1.00u Moneyline entry Top 2 Power +2.00u Top 3 Flex +0.25u',
+ok(face(shown, 'Nov 11') === 'Nov 11 2 of 3 landed · 5 off before the start PrizePicks entry Top 2 Power −1.00u Top 3 Flex −1.00u Top 6 Flex −0.60u Moneyline entry Top 2 Power +2.00u Top 3 Flex +0.25u',
   "Nov 11: the moneyline entry's Top 3 Flex paid 2 of 3, +0.25u");
-ok(face(shown, 'Nov 10') === 'Nov 10 6 of 9 landed · 4 off before the start PrizePicks entry Top 2 Power −1.00u Top 3 Flex −1.00u Moneyline entry Top 2 Power +2.00u',
+ok(face(shown, 'Nov 10') === 'Nov 10 6 of 9 landed · 4 off before the start PrizePicks entry Top 2 Power −1.00u Top 3 Flex −1.00u Top 6 Flex −1.00u Moneyline entry Top 2 Power +2.00u',
   'Nov 10: two moneylines in that entry, the Heat and the Magic, so only its Power');
 ok(face(shown, 'Nov 13') === 'Nov 13 6 still to play', 'tomorrow, nothing graded: no units for either entry');
 const html = card(h, false);
 const nov12 = html.slice(html.indexOf('<b>Nov 12</b>'), html.indexOf('</summary>', html.indexOf('<b>Nov 12</b>')));
-ok(/<span class="pk-dg"><span class="pk-dw">PrizePicks entry<\/span><span class="pk-du"><span class="pk-de pk-down">Top 2 Power −1\.00u<\/span><span class="pk-de pk-down">Top 3 Flex −1\.00u<\/span><\/span><\/span><span class="pk-dg"><span class="pk-dw">Moneyline entry<\/span><span class="pk-du"><span class="pk-de pk-up">Top 2 Power \+2\.00u<\/span><span class="pk-de pk-up">Top 3 Flex \+1\.25u<\/span><\/span><\/span>/.test(nov12),
+ok(/<span class="pk-dg"><span class="pk-dw">PrizePicks entry<\/span><span class="pk-du"><span class="pk-de pk-down">Top 2 Power −1\.00u<\/span><span class="pk-de pk-down">Top 3 Flex −1\.00u<\/span><span class="pk-de pk-down">Top 6 Flex −1\.00u<\/span><\/span><\/span><span class="pk-dg"><span class="pk-dw">Moneyline entry<\/span><span class="pk-du"><span class="pk-de pk-up">Top 2 Power \+2\.00u<\/span><span class="pk-de pk-up">Top 3 Flex \+1\.25u<\/span><span class="pk-de pk-up">Top 6 Flex \+24\.00u<\/span><\/span><\/span>/.test(nov12),
   'one row an entry, its name then its units, amber down and teal up as before');
 
 const every = faces(card(h, true));

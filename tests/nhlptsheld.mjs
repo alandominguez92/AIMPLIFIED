@@ -136,7 +136,7 @@ p = await get('/api/picks');
 const day = p.record.history.days.find((d) => d.date === '2026-11-14');
 const jar = day && (day.dropped || []).find((x) => /Jarvis/.test(x.label));
 console.log('  dropped: ' + JSON.stringify(jar));
-ok(jar && jar.why === 'NHL points Mores go on Picks only where legs like them land 57.7%+: at 55-60% they had landed 44 of 84',
+ok(jar && jar.why === 'points Mores at 55-60% had landed 44 of 84, under the 57.7% bar',
   `off before the start, saying why: "${jar && jar.why}"`);
 
 // ---- before the rule ---------------------------------------------------------------------------

@@ -113,7 +113,7 @@ ppRow(TODAY, 'g849827', 999101, 'Some Starter', 'SD', 'K', 85, null, 4.5);  // s
 gmRow('nba', TODAY, 'evA', 'h2h', 'reg', iso(NOW + 2 * H), 'home', 'Boston Celtics', 'Boston Celtics', 'New York Knicks', 78, -320, null);
 gmRow('nba', TODAY, 'evPRE', 'h2h', 'pre', iso(NOW + 4 * H), 'home', 'Utah Jazz', 'Utah Jazz', 'Portland Trail Blazers', 85, -500, null);
 gmRow('nba', TODAY, 'evGONE', 'h2h', 'reg', iso(NOW - 1 * H), 'home', 'Miami Heat', 'Miami Heat', 'Orlando Magic', 80, -400, null);
-gmRow('nfl', ptDay(NOW + 20 * H), 'evN', 'h2h', 'REG', iso(NOW + 20 * H), 'home', 'DAL', 'DAL', 'TB', 76, -320, null);   // NFL's bar is 75 (2026-10-26)
+gmRow('nfl', ptDay(NOW + 10 * H), 'evN', 'h2h', 'REG', iso(NOW + 10 * H), 'home', 'DAL', 'DAL', 'TB', 76, -320, null);   // NFL's bar is 75 (2026-10-26); Wednesday night, in the day's entry (2026-11-14)
 gmRow('soccer', ptDay(NOW + 30 * H), 'evS', 'fav', 'epl', iso(NOW + 30 * H), 'home', 'Arsenal', 'Arsenal', 'Leeds United', 72, -260, null);
 gmRow('soccer', TODAY, 'evS2', 'fav', 'epl', iso(NOW + 6 * H), 'home', 'Chelsea', 'Chelsea', 'Brentford', 64, -170, null);
 // NBA PrizePicks unders.
@@ -152,7 +152,7 @@ ok(!L.some((x) => /Starter|Machado|Bench|Jazz|Heat|Arsenal|Chelsea|MIL ML/.test(
 const bru = leg('Jalen Brunson');
 ok(bru && bru.vsBook === 1 && bru.legId === 'nbapp:evB:Jalen Brunson:ast', "an NBA under carries PrizePicks' number against the book's (+1)");
 const dal = leg('Cowboys ML');
-ok(dal && dal.sub === 'Buccaneers @ Cowboys' && dal.spec.team === 'DAL' && dal.legId === 'nfl:ml:evN:DAL' && dal.spec.gamePk === `TB @ DAL|${ptDay(NOW + 20 * H)}`,
+ok(dal && dal.sub === 'Buccaneers @ Cowboys' && dal.spec.team === 'DAL' && dal.legId === 'nfl:ml:evN:DAL' && dal.spec.gamePk === `TB @ DAL|${ptDay(NOW + 10 * H)}`,
   'the NFL leg keys its game by matchup and day, as the NFL board\'s star does');
 ok(leg('Celtics ML') && leg('Celtics ML').legId === 'nba:ml:evA:home', 'and the NBA moneyline under the NBA board\'s id');
 

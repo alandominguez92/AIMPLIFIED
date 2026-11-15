@@ -5910,7 +5910,7 @@
   // day, then day by day with the legs. The worker works it out (pickHistory)
   // from the list as it stood when each game started. Not the user's own
   // entries: those are on the Entries tab.
-  const HIST_DAY_KEYS = [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']];
+  const HIST_DAY_KEYS = [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex'], ['f6', 'Top 6 Flex']];
   const HIST_DAYS_SHOWN = 5;
   function pickHistoryHtml(h, allDays) {
     if (!h || !Array.isArray(h.days) || !h.days.length) return '';
@@ -6170,9 +6170,10 @@
     const hero = ppLegs.length ? heroLegHtml(ppLegs[0], { size: 52 }) : '';
     const ppCard = `<div class="nba-pp pk-card pk-pp">`
       + `<div class="tc-head"><span class="tc-title">Your PrizePicks entry</span></div>`
-      + `<div class="tc-sub pk-intro">The best leg PrizePicks takes in each game, best first, from everything that clears its bar. Under each: how legs like it have actually done.</div>`
+      + `<div class="tc-sub pk-intro">The best leg PrizePicks takes in each of the day's games, best first, from everything that clears its bar. Under each: how legs like it have actually done.</div>`
       + (ppLegs.length ? hero + (ppLegs.length > 1 ? `<ol class="tc-legs pk-pool">${ppLegs.slice(1).map(itemHtml).join('')}</ol>` : '')
         : '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>')
+      + entryNextHtml(d.ppNextAt, ppLegs)
       + ticketHtml(ticketData(d, ppLegs, whole))
       + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As a PrizePicks entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>`
         : (ppLegs.length ? `<div class="tc-sub pk-noentry">One leg PrizePicks takes clears its bar so far: an entry needs two.</div>` : ''))
@@ -6190,6 +6191,7 @@
       + `<div class="tc-head"><span class="tc-title">Moneyline-only entry</span></div>`
       + `<div class="tc-sub pk-intro">The best moneyline in each game, any sport, best chance first. The edge assumes PrizePicks' standard payouts, so check what the app shows before you place it.</div>`
       + `<ol class="tc-legs pk-pool">${mlLegs.map((x) => legRow(x, true)).join('')}</ol>`
+      + entryNextHtml(d.mlNextAt, mlLegs)
       + ticketHtml(ticketData(d, mlLegs, mlWhole, true), true)
       + (mlEnt.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>At standard payouts</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${mlEnt.join('')}</ul>` : '')
       + ppEntryRecordHtml(d.record && d.record.history, true)
@@ -6239,6 +6241,15 @@
     // Today's legs as their games finish (2026-11-04), folded above last night's.
     return recapDay(h, edge, ptDayOf(Date.now()), true) + recapDay(h, edge, ptDayOf(Date.now() - 864e5), false);
   }
+  // Each entry is one day's games (2026-11-14, the owner's "do all three"): under one short of six,
+  // when the next day's takes over.
+  function entryNextHtml(at, legs) {
+    if (!at || !legs.length || legs.length >= RECAP_ENTRY_MAX) return '';
+    const day = ptDayOf(Date.parse(legs[0].commence)), now = Date.now();
+    const next = ptDayOf(Date.parse(day + 'T12:00:00Z') + 864e5);
+    const t = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' }).format(new Date(at));
+    return `<div class="tc-sub pk-next">${esc(propDayTitle(day, now))}’s games only. ${esc(propDayTitle(next, now))}’s entry shows here once ${esc(propDayName(day, now))}’s last leg starts, at ${esc(t)}.</div>`;
+  }
   const RECAP_ENTRY_MAX = 6;
   function recapDay(h, edge, date, today) {
     const d = h.days.find((x) => x.date === date);
@@ -6259,7 +6270,7 @@
       .map(([who, all, es, entry]) => {
         const legs = entry ? all.slice(0, RECAP_ENTRY_MAX) : all, past = entry ? all.slice(RECAP_ENTRY_MAX) : [];
         const dec = legs.filter((x) => x.result === 'hit' || x.result === 'miss');
-        return { who, all, legs, past, es, dec, hit: dec.filter((x) => x.result === 'hit').length,
+        return { who, entry, all, legs, past, es, dec, hit: dec.filter((x) => x.result === 'hit').length,
           toGo: legs.filter((x) => x.result == null).length, allGo: all.filter((x) => x.result == null).length };
       }).filter((g) => g.all.length);
     if (!ents.some((g) => g.dec.length)) return '';
@@ -6269,10 +6280,14 @@
       const chips = g.legs.map((x) => `<span class="rc-chip rc-${esc(x.result || 'open')}">${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}</span>`).join('');
       const rows = [];
       // A game still to come can put a leg above these, so today's entries wait for the last of them.
-      for (const [k, label] of today && g.allGo ? [] : [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex']]) {
+      // The 6-Flex too, the entry the owner plays most (2026-11-14): Nov 13's moneyline entry went
+      // 6 of 6, +24u as a 6-Flex, and the box showed +2.00u and +1.25u. A day logged short of six
+      // legs says so, rather than leaving it out.
+      for (const [k, label] of today && g.allGo ? [] : [['p2', 'Top 2 Power'], ['f3', 'Top 3 Flex'], ['f6', 'Top 6 Flex']]) {
         const e = g.es && g.es[k];
         // An entry a void or tie cut down pays as the smaller one (2026-11-01).
         if (e) rows.push(`<li><span>${label}${e.legs ? ` <i>as a ${e.legs}-pick</i>` : ''}</span><b class="${e.net > 0 ? 'u' : e.net < 0 ? 'o' : ''}">${e.refund ? 'refund' : units(e.net)}</b></li>`);
+        else if (k === 'f6' && g.entry && g.all.length < 6 && !g.allGo) rows.push(`<li class="rc-short"><span>${label}</span><i>${g.all.length} legs logged</i></li>`);
       }
       const past = g.past.length ? `<div class="rc-past">Past the top ${RECAP_ENTRY_MAX}, in no entry: ${g.past.map((x) => `${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}`).join(' · ')}</div>` : '';
       return `<div class="rc-ent"><div class="rc-cw">${g.who}</div><div class="rc-chips">${chips}</div>${rows.length ? `<ul class="rc-lines">${rows.join('')}</ul>` : ''}${past}</div>`;

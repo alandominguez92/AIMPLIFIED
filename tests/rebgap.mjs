@@ -83,7 +83,7 @@ ok(!legOf(d, 'C.J. McCollum') && !legOf(d, 'Toumani Camara'), "McCollum's 2.5 le
   const lift = (name) => { const at = src.indexOf(`function ${name}(`); let dd = 0;
     for (let i = src.indexOf(') {', at) + 2; i < src.length; i++) { if (src[i] === '{') dd++; else if (src[i] === '}' && --dd === 0) return src.slice(at, i + 1); } };
   const line = (name) => src.slice(src.indexOf(`const ${name} =`), src.indexOf('\n', src.indexOf(`const ${name} =`)));
-  const P = new Function([line('PICKS_N'), line('PP_ENTRY_KINDS'), line('ppWholeLine'), line('pickOrder'), lift('pickList'), lift('ppPoolOf')].join('\n') + '\nreturn { pickList, ppPoolOf };')();
+  const P = new Function([line('PICKS_N'), line('PP_ENTRY_KINDS'), line('ppWholeLine'), line('pickOrder'), src.slice(src.indexOf('const ptDateOf ='), src.indexOf('\n};', src.indexOf('const ptDateOf =')) + 3), line('ptDayOfLeg'), lift('firstDayLegs'), line('ppEntryLeg'), lift('pickList'), lift('ppPoolOf')].join('\n') + '\nreturn { pickList, ppPoolOf };')();
   const at = (l, line, i, game) => ({ ...l, legId: `${l.legId}-${i}`, gameKey: game || `${l.gameKey}-${i}`, title: `${i} Under ${line} REB`,
     commence: new RealDate(Date.parse(l.commence) + i * 60e3).toISOString(), spec: { ...l.spec, pp: { ...l.spec.pp, line } } });
   const half = at(dan, 5.5, 1, dan.gameKey);
