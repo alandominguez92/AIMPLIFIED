@@ -54,7 +54,7 @@ const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
   'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
   'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
-  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord'];
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const state = { slip: {} };
@@ -140,7 +140,7 @@ ok(/class="sp-line pp-line"/.test(Q) && /data-action="pp-line"/.test(Q) && !/sp-
 const NC = F.legRow(nuggets, true), JC = F.legRow(jabari, true);
 // compact is the Simple view since step 4: the top row alone.
 ok(!/lc-more|lc-tiles/.test(NC) && !/lc-more|lc-tiles|sp-line/.test(JC) && tilesOf(NC).length === 0, 'Simple (compact): the top row alone, no tiles, nothing under them');
-ok(NC.includes('<b class="lc-pct">80%</b>') && /<span class="lc-name"><b>Nuggets<\/b>/.test(NC) && /data-action="leg-add"/.test(NC), 'and that row keeps the star, the name and pick, and the chance');
+ok(NC.includes('<b class="lc-pct">80%</b>') && /<span class="lc-name"><button type="button" class="lc-nb" data-action="leg-open"[^>]*><b>Nuggets<\/b>/.test(NC) && /data-action="leg-add"/.test(NC), 'and that row keeps the star, the name and pick, and the chance');
 ok(/<span class="tc-gap"[^>]*>over in 7 of last 10<\/span>/.test(tagsOf(JC)) && !/over in 7 of last 10/.test(tagsOf(J)), "his run against the line is a tag in Simple, where his last games aren't drawn");
 ok(/pk-books/.test(N) && !/pk-books/.test(NC), 'every book folds under a full moneyline card');
 

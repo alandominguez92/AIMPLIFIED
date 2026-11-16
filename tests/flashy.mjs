@@ -71,7 +71,7 @@ console.log('  ' + text(r1));
 // Since 2026-11-16 (the page brief's step 6) last night is the "Picks of the day" card, always
 // open, rather than a fold that opened the first time a day showed (tests/podcard.mjs).
 ok(/^<section class="pk-pod"/.test(r1) && !/<details class="pk-recap"/.test(r1), 'last night is the "Picks of the day" card, open, not a fold');
-ok(text(r1).startsWith('Picks of the day Last night · Oct 27 · logged as shown The list 2 of 3') && /✓ Celtics ✓ AS Roma ✗ Ducks/.test(text(r1)),
+ok(text(r1).startsWith('Picks of the day Last night · Oct 27 · logged as shown Minimize The list 2 of 3') && /✓ Celtics ✓ AS Roma ✗ Ducks/.test(text(r1)),
   "Tuesday's list: the Celtics and Roma landed, the Ducks lost");
 ok(/Top 2 Power \+2\.00u/.test(text(r1)) && /Top 3 Flex \+0\.25u/.test(text(r1)) && /Off before the start: Harper U1\.5 3PM, would have landed/.test(text(r1)),
   "its units, and Dylan Harper's pulled under, which would have landed");
@@ -122,7 +122,7 @@ console.log('  ' + text(r2));
 const d28 = G.history.days.find((d) => d.date === '2026-10-28');
 // The entry is the top six (2026-11-13): Roslovic, seventh, was in no entry, and shows under it apart.
 const pend = d28.pool.slice(0, 6).filter((x) => x.result == null).length;
-ok(d28.pool.length === 7 && text(r2).startsWith(`Picks of the day Last night · Oct 28 · logged as shown PrizePicks entry 2 of 3 · ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2))
+ok(d28.pool.length === 7 && text(r2).startsWith(`Picks of the day Last night · Oct 28 · logged as shown Minimize PrizePicks entry 2 of 3 · ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2))
   && /Past the top 6, in no entry: · Roslovic O0\.5 PTS/.test(text(r2)),
   `the entry's legs, and the ${pend} NHL legs of its six still to grade said so; the seventh apart`);
 ok(/<li><span>Edge bets<\/span><b>1 of 5 · <i class="o">−2\.25u<\/i> · beat the close 4 of 5<\/b><\/li>/.test(r2) && /The list 9 of 9/.test(text(r2)),

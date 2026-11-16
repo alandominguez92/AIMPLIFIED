@@ -3240,6 +3240,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 /* His last games filled where they went his way, as the design draws them. */
 .lc .tb-boxes i.h { background:var(--positive); border-color:var(--positive); color:var(--field); }
 [data-theme="light"] .pk-card .tc-legs li.lc { box-shadow:var(--lift); }
+/* Simple view: tap a leg to open its detailed card in place (2026-11-16, the owner's ask), tap
+   again to close it. The name is the button for keyboards and screen readers. */
+.lc-top[data-action] { cursor:pointer; }
+.lc-nb { display:inline; padding:0; margin:0; font:inherit; color:inherit; text-align:left; background:none; border:0; cursor:pointer; }
+.lc-nb:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+.lc-chev { display:block; margin-top:6px; font-family:var(--mono); font-size:11px; line-height:1; white-space:nowrap; color:var(--accent); }
+.pk-card .tc-legs li.lc.lc-opened { border-color:var(--accent); }
 @media (max-width:520px) {
   .pk-card .tc-legs li.lc { padding:10px 12px; }
   .lc-top { column-gap:8px; }
@@ -3395,7 +3402,25 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pod-edge a { color:var(--accent); text-decoration:none; }
 .pod-edge a:hover { text-decoration:underline; }
 .pk-pod .pk-recap { margin:14px 0 0; background:transparent; }
+/* Minimize / Enlarge (2026-11-16, the owner's ask): minimized, each entry is its name, its count,
+   its dots and its largest entry's units on one line; the chips, the units rows, the edge bets and
+   the legs taken off fold away. The edge line, the track-record link and "Today so far" stay. */
+.pod-h { justify-content:flex-start; align-items:center; }
+.pod-meta { margin-left:auto; }
+.pod-tg { min-height:44px; padding:0 14px; font-family:var(--mono); font-size:12px; color:var(--textDim); background:none;
+  border:1px solid var(--border); border-radius:8px; cursor:pointer; }
+.pod-tg:hover { color:var(--text); }
+.pod-tg:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.pod-sum { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; margin-top:6px; font-family:var(--mono); font-size:13px; color:var(--textDim); }
+.pod-sum .rc-dots { margin-left:0; }
+.pod-sum .u { color:var(--positive); }
+.pod-sum .o { color:var(--caution); }
+.pk-pod:not(.min) .pod-sum { display:none; }
+.pk-pod.min .pod-body, .pk-pod.min .pod-more { display:none; }
+.pk-pod.min .pod-cols { gap:12px 28px; }
 @media (max-width: 640px) {
   .pk-pod { padding:14px; }
   .pod-h h2 { font-size:22px; }
+  .pod-tg { order:2; margin-left:auto; }
+  .pod-meta { order:3; flex-basis:100%; margin-left:0; }
 }

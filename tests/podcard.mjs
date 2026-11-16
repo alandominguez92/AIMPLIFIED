@@ -57,9 +57,9 @@ const h = F.recapHtml(D.record.history, D.edgeRecord), t = text(h);
 console.log('        ' + t.slice(0, 220));
 
 console.log('\n-- 1. the card --');
-ok(/^<section class="pk-pod" aria-labelledby="pkPodH"><div class="pod-h"><h2 id="pkPodH">Picks of the day<\/h2><span class="pod-meta">Last night · Nov 15 · logged as shown<\/span><\/div>/.test(h),
+ok(/^<section class="pk-pod" aria-labelledby="pkPodH"><div class="pod-h"><h2 id="pkPodH">Picks of the day<\/h2><span class="pod-meta">Last night · Nov 15 · logged as shown<\/span><button type="button" class="pod-tg" data-action="pod-min" aria-expanded="true">Minimize<\/button><\/div>/.test(h),
   'PICKS OF THE DAY, "Last night · Nov 15 · logged as shown"');
-const cols = (/<div class="pod-cols">([\s\S]*?)<\/div><ul class="rc-lines pod-lines">/.exec(h) || [])[1] || '';
+const cols = (/<div class="pod-cols">([\s\S]*?)<\/div><ul class="rc-lines pod-lines pod-more">/.exec(h) || [])[1] || '';
 ok((cols.match(/<div class="rc-ent">/g) || []).length === 2, 'two columns: the PrizePicks entry and the moneyline entry');
 ok(/<div class="rc-cw"><b>PrizePicks entry<\/b><span class="rc-n">4 of 6<\/span><\/div>/.test(cols) && /<div class="rc-cw"><b>Moneyline entry<\/b><span class="rc-n">5 of 6<\/span><\/div>/.test(cols),
   'each with its count: 4 of 6 and 5 of 6');
@@ -84,7 +84,7 @@ ok(/^<section class="pk-pod"/.test(F.recapHtml(null, null)) && /<a href="\/track
 
 console.log('\n-- 3. on the page --');
 const rp = lift('renderPicks');
-ok(/grid\.innerHTML = recapHtml\(d\.record && d\.record\.history, d\.edgeRecord\) \+ mlbUnreadHtml\(d\) \+ legsCols/.test(rp), 'the card first, then today’s legs');
+ok(/grid\.innerHTML = recapHtml\(d\.record && d\.record\.history, d\.edgeRecord, state\.podMin\) \+ mlbUnreadHtml\(d\) \+ legsCols/.test(rp), 'the card first, then today’s legs');
 ok(!/<h2>Picks of the day<\/h2>/.test(html) && !/id="picksCount"/.test(html) && /<section id="picksBoard">\n\s+<div id="picksGrid"><\/div>/.test(html), 'index.html carries no heading of its own now');
 ok(F.PICKS_HEAD === '<section class="pk-pod"><div class="pod-h"><h2>Picks of the day</h2></div></section>'
   && /const PICKS_SKELETON = PICKS_HEAD\n/.test(src) && /grid\.innerHTML = PICKS_HEAD \+ `<div class="nfl-empty">Picks unavailable/.test(rp), 'the heading while it loads, and over an error');

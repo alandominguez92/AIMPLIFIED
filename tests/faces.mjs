@@ -102,7 +102,7 @@ ok(/document\.addEventListener\('load', \(e\) => \{[\s\S]*?hs-img[\s\S]*?classLi
 
 console.log('\n-- the legs that carry one --');
 ok(/class="tc-leg has-hs" data-action="today-jump"[^`]*\$\{face\}/.test(lift('renderTodayCard')), 'Today\'s card');
-ok(/<div class="lc-top">\$\{star\}\$\{pickFace\(x\)\}/.test(lift('renderPicks')), 'Picks of the day');
+ok(/<div class="lc-top"[^\n]*>\$\{star\}\$\{pickFace\(x\)\}/.test(lift('renderPicks')), 'Picks of the day');
 ok(/avatarHtml\(\{ sport: 'nba', playerId: x\.player_id/.test(lift('nbaPpCardHtml')), 'the NBA PrizePicks card, by its ESPN id');
 ok(/playerId: r\.player_id \|\| null, player: r\.player/.test(worker), 'and /api/picks passes an NBA leg\'s ESPN id along (it was null)');
 

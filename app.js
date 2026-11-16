@@ -304,6 +304,8 @@
     const v = localStorage.getItem('aimplified_leg_view');
     if (v === 'simple' || v === 'detailed') state.legView = v;
   } catch (e) {}
+  // "Picks of the day" minimized or not (2026-11-16, the owner's ask), kept between visits.
+  try { state.podMin = localStorage.getItem('aimplified_pod_min') === '1'; } catch (e) {}
   // The bankroll the Picks tab's stakes are read against (2026-10-28), and
   // the most of it the day's sportsbook bets may take together.
   state.bank = { amount: null, cap: 5 };
@@ -4984,6 +4986,27 @@
         renderPicks();
         break;
       }
+      // In Simple, a tap on a leg opens that one card in full; a second tap folds it again.
+      case 'leg-open': {
+        const id = target.dataset.leg;
+        if (PICK_OPEN.has(id)) PICK_OPEN.delete(id); else PICK_OPEN.add(id);
+        const fromName = target.classList.contains('lc-nb');
+        renderPicks();
+        const sel = `.lc-nb[data-leg="${window.CSS && CSS.escape ? CSS.escape(id) : id}"]`;
+        const again = fromName && document.querySelector(sel);
+        if (again) again.focus({ preventScroll: true });
+        break;
+      }
+      // "Picks of the day" minimized to a line an entry, or in full; done in place, and kept.
+      case 'pod-min': {
+        state.podMin = !state.podMin;
+        try { localStorage.setItem('aimplified_pod_min', state.podMin ? '1' : '0'); } catch (err) { /* private mode */ }
+        const pod = target.closest('.pk-pod');
+        if (pod) pod.classList.toggle('min', state.podMin);
+        target.setAttribute('aria-expanded', String(!state.podMin));
+        target.textContent = state.podMin ? 'Enlarge' : 'Minimize';
+        break;
+      }
       case 'days-all': state.daysAll = !state.daysAll; renderPicks(); break;
       // The next day's moneylines, early (mlLaterHtml); kept for the day it was opened on.
       case 'ml-later': {
@@ -6086,6 +6109,9 @@
   const pickShortName = (x) => String(x.title || '').replace(/ (Under|Over) .*$/, '').replace(/ ML$/, '');
   // The moneyline with the best chance on show, by leg id (step 6's "Today's best moneyline").
   const PICK_TOP = { ml: null };
+  // The legs opened in full in the Simple view, by leg id (2026-11-16, the owner's ask), kept
+  // through the list's redraws.
+  const PICK_OPEN = new Set();
   // "Today's" or "Tomorrow's" by the leg's own Pacific day, as the big card has said since
   // 2026-10-21; further out, nothing.
   const pickDayWord = (iso) => {
@@ -6119,7 +6145,7 @@
         + (rec.voided ? ` · ${rec.voided} void` : '')
       : 'This list keeps its own record from today: each leg on it when its game starts is graded.';
     if (!legs.length) {
-      grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
+      grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord, state.podMin) + mlbUnreadHtml(d) + `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
       syncSlipSection();
       return;
@@ -6135,6 +6161,11 @@
     const legRow = (x, compact, foot, best) => {
       if (best) compact = false;
       const lg = pickLeg(x);
+      // In Simple, the top row opens this card in full and folds it again (the owner, 2026-11-16:
+      // a tap on the player "rather than having to go all the way back up" to Detailed).
+      const tap = !!compact;
+      const opened = tap && PICK_OPEN.has(lg.id);
+      if (opened) compact = false;
       const team = pickIsTeam(x);
       const on = !!state.slip[offerLeg(lg)];
       const star = `<button type="button" class="lc-star${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
@@ -6236,13 +6267,15 @@
       }
       // The sport rides on the game line, not beside the title: on a phone the
       // chip pushed "Inter Miami CF ML" onto two lines.
-      return `<li class="lc">`
-        + `<div class="lc-top">${star}${pickFace(x)}`
-        + `<div class="lc-what"><span class="lc-name"><b>${esc(name)}</b>${pick ? ` <span class="lc-pick">${esc(pick)}</span>` : ''}</span>`
+      const who = `<b>${esc(name)}</b>${pick ? ` <span class="lc-pick">${esc(pick)}</span>` : ''}`;
+      return `<li class="lc${opened ? ' lc-opened' : ''}">`
+        + `<div class="lc-top"${tap ? ` data-action="leg-open" data-leg="${esc(lg.id)}"` : ''}>${star}${pickFace(x)}`
+        + `<div class="lc-what"><span class="lc-name">${tap
+          ? `<button type="button" class="lc-nb" data-action="leg-open" data-leg="${esc(lg.id)}" aria-expanded="${opened}">${who}</button>` : who}</span>`
         // A soccer leg's league says the sport; the others name it.
         + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
         + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
-        + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span></div></div>`
+        + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span>${tap ? `<span class="lc-chev" aria-hidden="true">${opened ? 'less ▴' : 'more ▾'}</span>` : ''}</div></div>`
         + (!compact && tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
         + (more ? `<div class="lc-more">${more}</div>` : '')
         + stepper
@@ -6391,7 +6424,7 @@
     // The slip beside the legs (step 5), once a leg is starred.
     const slipPanel = slipPanelHtml(d);
     const legsCols = slipPanel ? `<div class="pk-cols">${todayCard}${slipPanel}</div>` : todayCard;
-    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + legsCols + bankHtml() + evBetsHtml(d) + siteCard + after;
+    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord, state.podMin) + mlbUnreadHtml(d) + legsCols + bankHtml() + evBetsHtml(d) + siteCard + after;
     for (const k of kept) { const dt = grid.querySelector(`details[data-keep="${k}"]`); if (dt) dt.open = true; }
     syncSlipSection();
     picksAnimate(grid);
@@ -6431,15 +6464,18 @@
   // "Picks of the day" (2026-11-16, the page brief's step 6), the card the page opens on: last
   // night's entries side by side, each leg hit or missed, the units, the edge bets' night and their
   // run against the close since they were first logged, and the full track record a tap away.
-  // Today's legs as their games finish (2026-11-04) fold under it.
-  function recapHtml(h, edge) {
+  // Today's legs as their games finish (2026-11-04) fold under it. min (the owner, 2026-11-16):
+  // minimized, each entry on one line -- its count, its dots, its largest entry's units.
+  function recapHtml(h, edge, min) {
     const days = h && Array.isArray(h.days);
     const last = ptDayOf(Date.now() - 864e5);
     const night = days ? recapDay(h, edge, last, false, true) : '';
     const clv = edge && edge.clv && edge.clv.n && edge.since
       ? `Since ${shortDay(edge.since)} the edge bets have beaten the close ${edge.clv.beat} of ${edge.clv.n}` : '';
-    return '<section class="pk-pod" aria-labelledby="pkPodH">'
-      + `<div class="pod-h"><h2 id="pkPodH">Picks of the day</h2><span class="pod-meta">${night ? `Last night · ${esc(shortDay(last))} · ` : ''}logged as shown</span></div>`
+    return `<section class="pk-pod${night && min ? ' min' : ''}" aria-labelledby="pkPodH">`
+      + `<div class="pod-h"><h2 id="pkPodH">Picks of the day</h2><span class="pod-meta">${night ? `Last night · ${esc(shortDay(last))} · ` : ''}logged as shown</span>`
+      + (night ? `<button type="button" class="pod-tg" data-action="pod-min" aria-expanded="${!min}">${min ? 'Enlarge' : 'Minimize'}</button>` : '')
+      + '</div>'
       + (night || '<p class="pod-none">Last night’s legs show here once they are graded, after midnight PT.</p>')
       + `<p class="pod-edge">${clv ? `${esc(clv)} · ` : ''}<a href="/track-record">Full track record</a></p>`
       + (days ? recapDay(h, edge, ptDayOf(Date.now()), true) : '')
@@ -6495,9 +6531,16 @@
         else if (k === 'f6' && g.entry && g.all.length < 6 && !g.allGo) rows.push(`<li class="rc-short"><span>${label}</span><i>${g.all.length} legs logged</i></li>`);
       }
       const past = g.past.length ? `<div class="rc-past">Past the top ${RECAP_ENTRY_MAX}, in no entry: ${g.past.map((x) => `${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}`).join(' · ')}</div>` : '';
-      const head = card ? `<div class="rc-cw"><b>${g.who}</b><span class="rc-n">${g.dec.length ? `${g.hit} of ${g.dec.length}` : ''}${g.toGo ? `${g.dec.length ? ' · ' : ''}${g.toGo} still to grade` : ''}</span></div>`
-        : `<div class="rc-cw">${g.who}</div>`;
-      return `<div class="rc-ent">${head}<div class="rc-chips">${chips}</div>${rows.length ? `<ul class="rc-lines">${rows.join('')}</ul>` : ''}${past}</div>`;
+      const body = `<div class="rc-chips">${chips}</div>${rows.length ? `<ul class="rc-lines">${rows.join('')}</ul>` : ''}${past}`;
+      if (!card) return `<div class="rc-ent"><div class="rc-cw">${g.who}</div>${body}</div>`;
+      // On the card, minimized (the owner, 2026-11-16), the entry is one line under its name: its
+      // dots and its largest entry's units, the 6-Flex where it settled (the one played most).
+      const big = [['f6', 'Top 6 Flex'], ['f3', 'Top 3 Flex'], ['p2', 'Top 2 Power']].find(([k]) => g.es && g.es[k]);
+      const be = big && g.es[big[0]];
+      const sum = `<div class="pod-sum"><span class="rc-dots">${g.dec.map((x) => (x.result === 'hit' ? '✓' : '✗')).join('')}</span>`
+        + (be ? `<span>${big[1]}${be.legs ? ` as a ${be.legs}-pick` : ''} <b class="${be.net > 0 ? 'u' : be.net < 0 ? 'o' : ''}">${be.refund ? 'refund' : units(be.net)}</b></span>` : '') + '</div>';
+      return `<div class="rc-ent"><div class="rc-cw"><b>${g.who}</b><span class="rc-n">${g.dec.length ? `${g.hit} of ${g.dec.length}` : ''}${g.toGo ? `${g.dec.length ? ' · ' : ''}${g.toGo} still to grade` : ''}</span></div>`
+        + `${sum}<div class="pod-body">${body}</div></div>`;
     };
     const lines = [];
     const eb = edge && edge.byDay && edge.byDay[date];
@@ -6517,9 +6560,9 @@
     const off = (d.dropped || []).filter((x) => !kept.has(x.label)).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
     if (card) {
       return `<div class="pod-cols">${ents.map(block).join('')}</div>`
-        + (lines.length ? `<ul class="rc-lines pod-lines">${lines.join('')}</ul>` : '')
-        + (ebs ? `<div class="rc-off rc-ebets">Edge bets: ${ebs}</div>` : '')
-        + (off ? `<div class="rc-off">Off before the start: ${off}</div>` : '');
+        + (lines.length ? `<ul class="rc-lines pod-lines pod-more">${lines.join('')}</ul>` : '')
+        + (ebs ? `<div class="rc-off rc-ebets pod-more">Edge bets: ${ebs}</div>` : '')
+        + (off ? `<div class="rc-off pod-more">Off before the start: ${off}</div>` : '');
     }
     const open = !today && recapSeenAtLoad !== date;
     if (!today) { try { localStorage.setItem('aimplified_recap_seen', date); } catch (e) { /* private mode */ } }

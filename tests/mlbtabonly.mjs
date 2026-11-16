@@ -131,7 +131,7 @@ for (const [when, want] of [['2026-11-04T19:00:00Z', false], ['2026-12-15T19:00:
   NOW = RealDate.parse(when);
   ok(L.mlbInSeason() === want && (L.mlbUnreadHtml(noMlb) !== '') === want, `${when.slice(0, 10)}: ${want ? 'in season' : 'off season, no line'}`);
 }
-ok((app.match(/recapHtml\(d\.record && d\.record\.history, d\.edgeRecord\) \+ mlbUnreadHtml\(d\)/g) || []).length === 2, 'drawn in both of the list\'s states, with legs and with none');
+ok((app.match(/recapHtml\(d\.record && d\.record\.history, d\.edgeRecord, state\.podMin\) \+ mlbUnreadHtml\(d\)/g) || []).length === 2, 'drawn in both of the list\'s states, with legs and with none');
 const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n');
 ok(/\.pk-mlb-note \{/.test(css), 'and styled');
 
