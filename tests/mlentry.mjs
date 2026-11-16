@@ -254,7 +254,7 @@ ok(/todayCard \+ bankHtml\(\) \+ evBetsHtml\(d\) \+ siteCard \+ after;/.test(rp)
 ok(/const siteCard = !\(ppLegs\.length > 1 \|\| mlLegs\.length > 1\) \? ''\s*:/.test(rp), 'no entry under two legs still to play');
 ok(/Date\.parse\(x\.commence\) > Date\.now\(\)/.test(rp.slice(rp.indexOf('const mlLegs'), rp.indexOf('const mlWhole'))) && /entryRows\(mlLegs, mlWhole && \(d\.mlEntries \|\| \[\]\)\)/.test(rp), 'still to play only; a started leg takes the priced edge away, as on the entry');
 ok(/check what the app shows before you place it/.test(rp), "and it says the edge is at PrizePicks' standard payouts, to be checked");
-ok(/for \(const x of \[\.\.\.ppLegs, \.\.\.mlLegs, \.\.\.legs\]\)/.test(rp) && /group\('Moneylines', mls\)/.test(rp) && /const itemHtml = \(x\) => legRow\(x, false\);/.test(rp), 'its legs in full in today\'s list, under Moneylines');
+ok(/for \(const x of \[\.\.\.ppLegs, \.\.\.mlLegs, \.\.\.legs\]\)/.test(rp) && /group\('Moneylines', mls\)/.test(rp) && /const itemHtml = \(x\) => legRow\(x, simple\);/.test(rp), 'its legs in today\'s list, under Moneylines, in full or Simple as the reader picks');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

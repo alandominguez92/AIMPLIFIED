@@ -138,7 +138,10 @@ const more = (h) => (/<div class="lc-more">([\s\S]*?)<\/div>(?=<div class="pp-st
 ok(/pp-projbar/.test(J) && J.includes(F.trendBarsHtml(jabari.trend)), 'a full card keeps the projection bar and the last ten games');
 ok(/class="sp-line pp-line"/.test(Q) && /data-action="pp-line"/.test(Q) && !/sp-line pp-line/.test(J), 'the rebounds leg keeps its line stepper ("PP shows − 6 +"); the blocks leg has none');
 const NC = F.legRow(nuggets, true), JC = F.legRow(jabari, true);
-ok(!/lc-more/.test(NC) && !/lc-more/.test(JC) && tilesOf(NC).length === 3, 'compact (the moneyline entry\'s card): the face and tiles, nothing under them');
+// compact is the Simple view since step 4: the top row alone.
+ok(!/lc-more|lc-tiles/.test(NC) && !/lc-more|lc-tiles|sp-line/.test(JC) && tilesOf(NC).length === 0, 'Simple (compact): the top row alone, no tiles, nothing under them');
+ok(NC.includes('<b class="lc-pct">80%</b>') && /<span class="lc-name"><b>Nuggets<\/b>/.test(NC) && /data-action="leg-add"/.test(NC), 'and that row keeps the star, the name and pick, and the chance');
+ok(/<span class="tc-gap"[^>]*>over in 7 of last 10<\/span>/.test(tagsOf(JC)) && !/over in 7 of last 10/.test(tagsOf(J)), "his run against the line is a tag in Simple, where his last games aren't drawn");
 ok(/pk-books/.test(N) && !/pk-books/.test(NC), 'every book folds under a full moneyline card');
 
 console.log('\n-- 6. today\'s legs: one list, a size to read it at (step 3) --');
@@ -154,9 +157,9 @@ console.log('        ' + (/<span class="tc-wait"[^>]*>(Same game as [^<]+)</.exe
 ok(/<span class="tc-wait" title="Legs from one game tend to land or miss together">Same game as Hurricanes<\/span>/.test(tagsOf(JV)), 'the second leg from a game says whose game it shares, in amber');
 ok(!/Same game/.test(F.legRow(jarvis, false)), 'and only while the list has the other one');
 const rpSrc = rp;
-ok(/for \(const x of \[\.\.\.ppLegs, \.\.\.mlLegs, \.\.\.legs\]\) \{\n\s+const id = x\.legId \|\| x\.title;\n\s+if \(seenLeg\.has\(id\)\) continue;/.test(rpSrc) && /\(pickIsTeam\(x\) \? mls : props\)\.push\(x\);/.test(rpSrc),
+ok(/for \(const x of \[\.\.\.ppLegs, \.\.\.mlLegs, \.\.\.legs\]\) \{\n\s+const id = x\.legId \|\| x\.title;\n\s+if \(seenLeg\.has\(id\)\) continue;/.test(rpSrc) && /\(pickIsTeam\(x\) \? allMls : allProps\)\.push\(x\);/.test(rpSrc),
   'the PrizePicks pool, the moneyline pool and the likeliest legs, each once, a team pick among the moneylines');
-ok(/props\.sort\(byChance\);\n\s+mls\.sort\(byChance\);/.test(rpSrc) && /const byChance = \(a, b\) => \(b\.p \|\| 0\) - \(a\.p \|\| 0\);/.test(rpSrc), 'best chance first in each group');
+ok(/const byChance = \(a, b\) => \(b\.p \|\| 0\) - \(a\.p \|\| 0\);/.test(rpSrc) && /const sortKey = \['record', 'time'\]\.includes\(state\.legSort\) \? state\.legSort : 'chance';/.test(rpSrc), 'best chance first in each group, until another order is picked');
 ok(/\[2, 3, 4, 5, 6\]\.map\(\(n\) => `<button type="button" class="pk-sz\$\{n === size \? ' on' : ''\}" data-action="entry-size" data-n="\$\{n\}" aria-pressed="\$\{n === size\}">\$\{n\}<\/button>`\)/.test(rpSrc)
   && /Entry size · \$\{esc\(sizeName\)\} needs \$\{sizeBe\[1\]\}% a leg/.test(rpSrc), 'five buttons, 2 to 6, the chosen one pressed, its break-even named above them');
 ok(/Entry size only changes the break-even on each leg\. Every prop and moneyline stays listed\./.test(rpSrc), 'and it says no leg leaves the list');
@@ -164,7 +167,32 @@ ok(/case 'entry-size': \{\n\s+const n = Number\(target\.dataset\.n\);\n\s+if \(P
   && /const n = Number\(localStorage\.getItem\('aimplified_entry_size'\)\);\n\s+if \(n >= 2 && n <= 6\) state\.entrySize = n;/.test(src), 'a tap sets it and keeps it for the next visit');
 ok(/\.pk-sz \{[^}]*min-height:44px;/.test(css) && /\.pk-sz\.on \{[^}]*border-color:var\(--accentFill\);[^}]*background:var\(--tintAccent\);/.test(css), 'the buttons are 44px, the chosen one gold');
 
-console.log('\n-- 7. the styles --');
+console.log('\n-- 7. Simple or Detailed, a sport, an order (step 4) --');
+ok(/case 'leg-view': \{\n\s+state\.legView = target\.dataset\.view === 'simple' \? 'simple' : 'detailed';\n\s+try \{ localStorage\.setItem\('aimplified_leg_view', state\.legView\); \}/.test(src)
+  && /const v = localStorage\.getItem\('aimplified_leg_view'\);\n\s+if \(v === 'simple' \|\| v === 'detailed'\) state\.legView = v;/.test(src), 'the reader\'s choice of view is kept for the next visit');
+ok(/const pickLegView = \(\) => state\.legView \|\| \(window\.matchMedia && window\.matchMedia\('\(max-width: 640px\)'\)\.matches \? 'simple' : 'detailed'\);/.test(src),
+  'until they choose: Simple on a phone, Detailed on a wide screen');
+ok(/const simple = pickLegView\(\) === 'simple';\n\s+const itemHtml = \(x\) => legRow\(x, simple\);/.test(rpSrc) && /\(best \? heroLegHtml\(best, \{ size: 52 \}\)/.test(rpSrc),
+  'every list card follows it; the best leg stays in full');
+ok(/data-action="leg-view" data-view="\$\{v\}" aria-pressed="\$\{v === view\}"/.test(rpSrc), 'two buttons, the one in force pressed');
+ok(/const sports = \['nba', 'nhl', 'nfl', 'soccer', 'mlb'\]\.filter\(\(s\) => \[\.\.\.allProps, \.\.\.allMls\]\.some\(\(x\) => x\.sport === s\)\);/.test(rpSrc)
+  && /const sport = sports\.includes\(state\.legSport\) \? state\.legSport : 'all';/.test(rpSrc), 'the filter offers the sports on the list, and falls back to all of them');
+ok(/const props = allProps\.filter\(shown\)\.sort\(byChance\);\n\s+const best = props\[0\] \|\| null;\n\s+const rest = props\.slice\(1\)\.sort\(bySort\);\n\s+const mls = allMls\.filter\(shown\)\.sort\(bySort\);/.test(rpSrc),
+  'the large card is the best prop by chance; the order is the rest\'s, props and moneylines each');
+const sortSrc = (/const bySort = [\s\S]*?: byChance;/.exec(rpSrc) || [''])[0];
+const hitOf = (x) => (x.record && typeof x.record.hitRate === 'number' && x.record.n ? x.record.hitRate : -1);
+const byChance = (a, b) => (b.p || 0) - (a.p || 0);
+const sortWith = (key) => new Function('sortKey', 'hitOf', 'byChance', `${sortSrc}\nreturn bySort;`)(key, hitOf, byChance);
+const pool = [...D.mlPool];
+const byTime = pool.slice().sort(sortWith('time')).map((x) => x.commence);
+ok(byTime.every((t, i) => i === 0 || Date.parse(byTime[i - 1]) <= Date.parse(t)), `Start time: earliest first (${byTime.map((t) => t.slice(11, 16)).join(', ')})`);
+const recPool = [jabari, queen, nuggets, jag];
+ok(recPool.slice().sort(sortWith('record')).map((x) => x.record.hitRate).join(',') === '81,80.9,60.3,52.6', 'Legs like this: the best record first (81, 80.9, 60.3, 52.6)');
+ok(/if \(t\.dataset\.action === 'leg-sport'\) \{ state\.legSport = t\.value \|\| 'all'; renderPicks\(\); \}/.test(src) && /if \(t\.dataset\.action === 'leg-sort'\) \{ state\.legSort = t\.value \|\| 'chance'; renderPicks\(\); \}/.test(src),
+  'either one redraws the list, and the slip keeps what is starred');
+ok(/\.pk-vw \{[^}]*min-height:44px;/.test(css) && /\.pk-sel \{[^}]*height:44px;/.test(css), 'the buttons and the dropdowns are 44px');
+
+console.log('\n-- 8. the styles --');
 ok(/\.lc-star \{[^}]*width:44px;[^}]*height:44px;/.test(css), 'the star is a 44px target');
 ok(/\.lc-tiles \{[^}]*grid-template-columns:repeat\(auto-fit, ?minmax\(140px, ?1fr\)\)/.test(css), 'tiles sit side by side and wrap at 140px');
 ok(/\.lc-pct \{[^}]*font-family:var\(--display\)/.test(css) && /@media \(max-width:520px\) \{[^@]*\.lc-pct \{ font-size:28px; \}/.test(css), 'the chance in the display face, a size down on a phone');

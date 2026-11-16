@@ -46,7 +46,7 @@ const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
   'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
   'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText', 'heroInjLine', 'heroLegHtml',
-  'likelyRowHtml', 'HIST_DAY_KEYS', 'HIST_DAYS_SHOWN', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml', 'mlbInSeason', 'placeMlbTab', 'mlbOffSync'];
+  'HIST_DAY_KEYS', 'HIST_DAYS_SHOWN', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml', 'mlbInSeason', 'placeMlbTab', 'mlbOffSync'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 // The page, as much of it as the MLB pieces touch: the tab row in index.html's own order, the
@@ -64,7 +64,7 @@ const state = { slip: {} };
 let F;
 try {
   F = new Function('state', 'esc', 'document', 'slateGames', names.map(lift).join('\n')
-    + '\nreturn { heroLegHtml, injuryTag, mlChanceLineHtml, pickLeg, pickFace, likelyRowHtml, pickHistoryHtml, shortDay, pct0, mlbInSeason, placeMlbTab, mlbOffSync, HIST_DAYS_SHOWN };')(state, esc, document, () => games);
+    + '\nreturn { heroLegHtml, injuryTag, mlChanceLineHtml, pickLeg, pickFace, pickHistoryHtml, shortDay, pct0, mlbInSeason, placeMlbTab, mlbOffSync, HIST_DAYS_SHOWN };')(state, esc, document, () => games);
 } catch (e) { console.log(`  FAIL  the pieces lift out of app.js (${e.message})`); console.log('\n1 FAILED'); process.exit(1); }
 
 console.log('-- 1. the hero card: a line a side --');
@@ -86,50 +86,16 @@ const clear = F.heroLegHtml({ ...heat, inj: { ...heat.inj, teams: heat.inj.teams
 ok(!/hl-inj/.test(clear) && /no injuries listed/.test(clear), 'the same game with nobody listed: "no injuries listed" on the game line, as before');
 ok(/\.hl-inj \{ grid-column:1 \/ -1; display:grid;/.test(css), 'the lines span the card and stack');
 
-console.log('\n-- 2. Most likely to land: short rows that open --');
-const full = (foot) => `<li>FULL${foot}</li>`;
-const rows = D.legs.map((x) => F.likelyRowHtml(x, false, full));
-for (const r of rows) console.log('        ' + text(r));
-ok(D.legs.length === 6 && rows.every((r, i) => r.startsWith('<li class="pk-lk"><button type="button" class="pk-lk-row" data-action="likely-toggle"')
-  && r.includes(`data-leg="${esc(F.pickLeg(D.legs[i]).id)}"`) && r.includes('aria-expanded="false"')), 'each of the six legs is one button row, keyed by its leg, closed');
-ok(rows.every((r, i) => r.includes(`<b>${esc(D.legs[i].title)}</b>`) && r.includes(`<span class="tc-p">${F.pct0(D.legs[i].p)}</span>`)), 'with its pick and its chance');
-ok(rows.every((r) => !/pp-projbar|tb-boxes|tc-wait|tc-gap|pk-rec|tc-add/.test(r.replace(/class="pk-lk[^"]*"/g, ''))), 'and none of the full leg\'s bars, boxes, tags, record or star');
-// The logo stays (2026-11-13, the owner's ask): the row leads with the same face the full leg has.
-ok(rows.every((r, i) => r.includes(`aria-expanded="false">${F.pickFace(D.legs[i])}<span class="pk-lk-t">`)),
-  'each row leads with its logo, or the player\'s face, the same one the full leg draws');
-const rowOf = (title) => rows[D.legs.findIndex((l) => l.title === title)];
-const markOf = (r) => (/<span class="hs hs-team"[^>]*><span class="hs-mono">[^<]*<\/span><img class="hs-img" src="([^"]+)"/.exec(r) || [])[1] || '';
-console.log(`        Heat ${markOf(rowOf('Heat ML'))} · Magic ${markOf(rowOf('Magic ML'))}`);
-ok(/teamlogos\/nba\/500\/mia\.png/.test(markOf(rowOf('Heat ML'))) && /teamlogos\/nba\/500\/orl\.png/.test(markOf(rowOf('Magic ML'))),
-  "a moneyline row shows its team's mark: the Heat's and the Magic's logos");
-ok(/<span class="hs"[^>]*><span class="hs-mono">NS<\/span><img class="hs-img" src="[^"]*nhl[^"]*"/.test(rowOf('Nick Suzuki Over 0.5 PTS')), "a player's row, the player's face: Suzuki's NHL photo");
-ok(/ · <span class="pk-lk-g">-\d+ <b class="o">[\d.]+ short<\/b><\/span>/.test(rowOf('Heat ML')) && /\.pk-lk-g \{ white-space:nowrap; \}/.test(css),
-  'the price and its gap wrap as one: the logo narrows the row, and "short" had begun a line of its own');
-// A moneyline's gap, worked out here from its price and chance, and read off the full leg's bar.
-for (const x of D.legs.filter((l) => /ML$/.test(l.title))) {
-  const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
-  const short = Math.round((need - x.kellyP) * 10) / 10;
-  const bar = text(F.mlChanceLineHtml(x));
-  const r = text(F.likelyRowHtml(x, false, full));
-  ok(short > 0 && r.includes(`${x.odds} ${short} short`) && bar.includes(`${short} points short`), `${x.title}: "${x.odds} ${short} short", the gap its full bar names (${(/[\d.]+ points short/.exec(bar) || [])[0]})`);
-}
-const better = { ...heat, odds: heat.books.reduce((b, k) => Math.max(b, k.price), -1e9) };
-ok(/short<\/b>/.test(F.likelyRowHtml(better, false, full)), `at the best price any of its ${heat.books.length} books has (${better.odds}) the Heat are still short`);
-const dog = { ...heat, odds: 150 };
-ok(text(F.likelyRowHtml(dog, false, full)).includes(`+150 ${Math.round((heat.kellyP - 40) * 10) / 10} of edge`) && /<b class="u">/.test(F.likelyRowHtml(dog, false, full)), 'a price its chance beats reads "of edge", in the bar\'s green');
-ok(D.legs.filter((l) => !/ML$/.test(l.title)).every((x) => { const r = text(F.likelyRowHtml(x, false, full)); return !/short|edge|[+-]\d{3}/.test(r) && r.includes('NHL') && r.includes(x.spec.team || '\u0000'); }),
-  'a player leg: his team, the sport, the time, no price');
-const opened = F.likelyRowHtml(heat, true, full);
-ok(opened === `<li>FULL<button type="button" class="pk-lk-less" data-action="likely-toggle" data-leg="${esc(F.pickLeg(heat).id)}" aria-expanded="true">Show less</button></li>`, 'open: the full leg, its way back inside it');
+console.log('\n-- 2. Today\'s legs: one list of full cards --');
+// "Most likely to land" and its short rows that opened (2026-11-10) gave way to today's legs on
+// 2026-11-16 (the page brief's steps 3 and 4): the Simple view shows each card's top row instead,
+// and the card's own checks are in tests/legcard.mjs.
 const rp = lift('renderPicks');
-// Since the page brief (2026-11-16) one list, today's legs, draws every leg through the full card.
 ok(/const group = \(title, xs\) => \(xs\.length \? `<h3 class="pk-gh">\$\{title\}<\/h3><ol class="tc-legs pk-pool">\$\{xs\.map\(itemHtml\)\.join\(''\)\}<\/ol>` : ''\);/.test(rp)
-  && /group\('Props', props\.slice\(1\)\)/.test(rp) && /group\('Moneylines', mls\)/.test(rp), 'the list draws them all through the same full card, props then moneylines');
-ok(/\+ `\$\{foot \|\| ''\}<\/li>`;/.test(rp), 'which takes the way back as its foot');
+  && /group\('Props', rest\)/.test(rp) && /group\('Moneylines', mls\)/.test(rp), 'the list draws them all through the same card, props then moneylines');
+ok(/\+ `\$\{foot \|\| ''\}<\/li>`;/.test(rp), 'the card still takes a foot');
 ok(/\(best \? heroLegHtml\(best, \{ size: 52 \}\)/.test(rp) && /const best = props\[0\] \|\| null;/.test(rp), 'the leading prop is the large card above both, as the entry\'s was');
-ok(/case 'likely-toggle': \{ const o = state\.likelyOpen \|\| \(state\.likelyOpen = \{\}\); const k = target\.dataset\.leg; if \(o\[k\]\) delete o\[k\]; else o\[k\] = true; renderPicks\(\); break; \}/.test(src),
-  'a tap opens or closes that one leg, kept in state so a redraw leaves it');
-ok(/\.pk-lk-row \{[^}]*min-height:48px/.test(css) && /\[data-theme="light"\] \.pk-lk-row \{ box-shadow:var\(--lift\); \}/.test(css), 'the row is a full-size tap target, lifted in light mode like the other cards');
+ok(!/likelyRowHtml|likely-toggle|likelyOpen/.test(src) && !/\.pk-lk-row/.test(css), 'the short rows are gone, code and styles: Simple shows each card\'s top row');
 
 console.log('\n-- 3. How the list did: five days, the rest behind a button --');
 const H = D.record.history;

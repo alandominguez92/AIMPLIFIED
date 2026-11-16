@@ -298,6 +298,12 @@
     const n = Number(localStorage.getItem('aimplified_entry_size'));
     if (n >= 2 && n <= 6) state.entrySize = n;
   } catch (e) {}
+  // Simple or Detailed legs on Picks (2026-11-16, the page brief's step 4): the reader's choice,
+  // kept. Until they make one, Detailed on a wide screen and Simple on a phone (pickLegView).
+  try {
+    const v = localStorage.getItem('aimplified_leg_view');
+    if (v === 'simple' || v === 'detailed') state.legView = v;
+  } catch (e) {}
   // The bankroll the Picks tab's stakes are read against (2026-10-28), and
   // the most of it the day's sportsbook bets may take together.
   state.bank = { amount: null, cap: 5 };
@@ -4957,7 +4963,12 @@
       case 'ticket-ml-n': state.ticketMlN = Number(target.dataset.n) || 3; renderPicks(); break;
       // Most likely to land: a short row opens to its full leg and closes again; How the list
       // did: the older days (2026-11-10). Kept in state, so a redraw leaves them as they were.
-      case 'likely-toggle': { const o = state.likelyOpen || (state.likelyOpen = {}); const k = target.dataset.leg; if (o[k]) delete o[k]; else o[k] = true; renderPicks(); break; }
+      case 'leg-view': {
+        state.legView = target.dataset.view === 'simple' ? 'simple' : 'detailed';
+        try { localStorage.setItem('aimplified_leg_view', state.legView); } catch (err) { /* private mode */ }
+        renderPicks();
+        break;
+      }
       case 'days-all': state.daysAll = !state.daysAll; renderPicks(); break;
       // The next day's moneylines, early (mlLaterHtml); kept for the day it was opened on.
       case 'ml-later': {
@@ -5106,6 +5117,9 @@
       try { localStorage.setItem('aimplified_bankroll', JSON.stringify(state.bank)); } catch (err) {}
       renderPicks();
     }
+    // Today's legs filtered to a sport, or sorted (the page brief's step 4). The slip keeps its legs.
+    if (t.dataset.action === 'leg-sport') { state.legSport = t.value || 'all'; renderPicks(); }
+    if (t.dataset.action === 'leg-sort') { state.legSort = t.value || 'chance'; renderPicks(); }
     // The price checker's side (2026-10-29).
     if (t.dataset.action === 'chk-side') {
       state.chk = { ...(state.chk || {}), key: t.value };
@@ -6041,36 +6055,13 @@
     if ([...(d.legs || []), ...(d.ppPool || [])].some((x) => x.sport === 'mlb')) return '';
     return `<div class="pk-mlb-note">MLB legs are read when the MLB tab opens, or 15 minutes before each game. <button type="button" data-action="set-sport" data-sport="mlb">Open MLB</button></div>`;
   }
-  // "Most likely to land" (2026-11-10, the owner's yes): each leg a short row -- the pick,
-  // when, its chance and, beside a moneyline, what its price leaves it (the gap the full
-  // leg's bar names, mlChanceLineHtml) -- that opens to the full leg on a tap and closes
-  // again. The entry cards above draw their legs in full already; drawn in full again here
-  // the list was 2.8 phone screens of a page of 11. full(foot) draws the open leg, its way
-  // back inside it.
-  function likelyRowHtml(x, open, full) {
-    const lg = pickLeg(x);
-    const tog = (on, inner, cls) => `<button type="button" class="${cls}" data-action="likely-toggle" data-leg="${esc(lg.id)}" aria-expanded="${on}">${inner}</button>`;
-    if (open) return full(tog(true, 'Show less', 'pk-lk-less'));
-    let gap = '';
-    const p = typeof x.kellyP === 'number' ? x.kellyP : x.p;
-    if (pickIsTeam(x) && typeof x.odds === 'number' && typeof p === 'number') {
-      const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
-      const g = Math.round((p - need) * 10) / 10;
-      // The price and its gap wrap as one (2026-11-13): with the logo in the row, "-480 1.3" ended
-      // a phone line and "short" began the next.
-      gap = ` · <span class="pk-lk-g">${esc(AM(x.odds))} <b class="${g > 0 ? 'u' : g < 0 ? 'o' : ''}">${g > 0 ? `${g} of edge` : g < 0 ? `${Math.abs(g)} short` : 'on the price'}</b></span>`;
-    }
-    // Its logo, or the player's face, as the full row has it (2026-11-13, the owner's ask: "keep
-    // showing the teams as we did before with the logo rather than just the name").
-    return `<li class="pk-lk">${tog(false, `${pickFace(x)}<span class="pk-lk-t"><b>${esc(x.title)}</b>`
-      + `<span class="pk-lk-m">${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${gap}</span></span>`
-      + `<span class="tc-p">${pct0(x.p)}</span><span class="pk-lk-c" aria-hidden="true"></span>`, 'pk-lk-row')}</li>`;
-  }
   // Picks' legs that share a game with a leg above them, by leg id: the name of that first leg
   // ("Same game as Hurricanes"). Filled by renderPicks before it draws.
   const PICK_SAME = new Map();
   const pickGameKey = (x) => `${x.sport}:${(x.spec && x.spec.gamePk) || `${x.sub}|${x.commence}`}`;
   const pickShortName = (x) => String(x.title || '').replace(/ (Under|Over) .*$/, '').replace(/ ML$/, '');
+  // Simple or Detailed: the reader's choice once they make one, else Simple on a phone (the brief).
+  const pickLegView = () => state.legView || (window.matchMedia && window.matchMedia('(max-width: 640px)').matches ? 'simple' : 'detailed');
   function renderPicks() {
     const grid = document.getElementById('picksGrid');
     if (!grid) return;
@@ -6100,13 +6091,12 @@
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
       return;
     }
-    // One leg's card (2026-11-16, the page brief's step 2), for the PrizePicks pool, the moneyline
-    // entry and a "Most likely" row opened: the star, the face, the pick and its game with its
-    // tags, and the chance large on the right; then up to three tiles -- the sharp books' chance
-    // (on a moneyline, what its price needs), how legs like it have landed, and that record
-    // against the entry's break-even -- each left out when it has nothing to say; then a
-    // player's bar and last games, the price, the books. compact (the moneyline entry): the top
-    // and the tiles, since the same legs sit in full in the list below it.
+    // One leg's card (2026-11-16, the page brief's step 2) in today's legs: the star, the face, the
+    // pick and its game with its tags, and the chance large on the right; then up to three tiles --
+    // the sharp books' chance (on a moneyline, what its price needs), how legs like it have
+    // landed, and that record against the entry's break-even -- each left out when it has nothing
+    // to say; then a player's bar and last games, the price, the books. compact is the Simple
+    // view (step 4): the top row alone.
     const legRow = (x, compact, foot) => {
       const lg = pickLeg(x);
       const team = pickIsTeam(x);
@@ -6186,12 +6176,14 @@
         + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
         + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
         + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span></div></div>`
-        + (tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
+        + (!compact && tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
         + (more ? `<div class="lc-more">${more}</div>` : '')
         + (!compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '')
         + `${foot || ''}</li>`;
     };
-    const itemHtml = (x) => legRow(x, false);
+    // Simple (the top row) or Detailed (step 4): the reader's choice, else by the screen.
+    const simple = pickLegView() === 'simple';
+    const itemHtml = (x) => legRow(x, simple);
     // Entry math over the legs still to come: the top two as a 2-pick power,
     // and the average leg of three to six against the flex break-even.
     // An entry is built from the legs PrizePicks takes (2026-10-27): its
@@ -6201,7 +6193,6 @@
     // stake are the worker's entryStake -- while the pool is the one it priced
     // (no leg of it under way yet).
     const { legs: ppLegs, whole, off: ppOff } = ppEntryLegs(d);
-    if (count && ppLegs.length) count.textContent = `${ppLegs.length}-leg entry`;
     const entryRows = (entLegs, priced) => {
       const rows = [];
       const evOf = (n) => {
@@ -6254,37 +6245,58 @@
     // moneylines the moneyline pool; and a leg of "Most likely to land" in neither joins its
     // group, so nothing that list showed goes missing. An NFL team pick in the PrizePicks pool is
     // a moneyline here. The leading prop is the large card above both, as the entry's was.
-    const seenLeg = new Set(), props = [], mls = [];
+    const seenLeg = new Set(), allProps = [], allMls = [];
     for (const x of [...ppLegs, ...mlLegs, ...legs]) {
       const id = x.legId || x.title;
       if (seenLeg.has(id)) continue;
       seenLeg.add(id);
-      (pickIsTeam(x) ? mls : props).push(x);
+      (pickIsTeam(x) ? allMls : allProps).push(x);
     }
+    // One sport or all of them, and an order (step 4). The large card is the best prop by chance
+    // of the sport shown; the order is the rest's. The slip keeps whatever is starred.
+    const sports = ['nba', 'nhl', 'nfl', 'soccer', 'mlb'].filter((s) => [...allProps, ...allMls].some((x) => x.sport === s));
+    const sport = sports.includes(state.legSport) ? state.legSport : 'all';
+    const shown = (x) => sport === 'all' || x.sport === sport;
     const byChance = (a, b) => (b.p || 0) - (a.p || 0);
-    props.sort(byChance);
-    mls.sort(byChance);
+    const sortKey = ['record', 'time'].includes(state.legSort) ? state.legSort : 'chance';
+    const hitOf = (x) => (x.record && typeof x.record.hitRate === 'number' && x.record.n ? x.record.hitRate : -1);
+    const bySort = sortKey === 'record' ? (a, b) => hitOf(b) - hitOf(a) || byChance(a, b)
+      : sortKey === 'time' ? (a, b) => Date.parse(a.commence) - Date.parse(b.commence) || byChance(a, b) : byChance;
+    const props = allProps.filter(shown).sort(byChance);
     const best = props[0] || null;
+    const rest = props.slice(1).sort(bySort);
+    const mls = allMls.filter(shown).sort(bySort);
+    const nAll = allProps.length + allMls.length;
+    if (count) count.textContent = nAll ? `${nAll} leg${nAll === 1 ? '' : 's'} today` : '';
     // A second leg from one game is tagged with the first leg's name, in the order they show.
     PICK_SAME.clear();
     const firstOfGame = new Map();
-    for (const x of [...props, ...mls]) {
+    for (const x of [...props.slice(0, 1), ...rest, ...mls]) {
       const k = pickGameKey(x);
       if (firstOfGame.has(k)) PICK_SAME.set(pickLeg(x).id, firstOfGame.get(k));
       else firstOfGame.set(k, pickShortName(x));
     }
+    const view = simple ? 'simple' : 'detailed';
+    const viewBtns = `<div class="pk-view" role="group" aria-label="How much each leg shows">${[['simple', 'Simple'], ['detailed', 'Detailed']]
+      .map(([v, l]) => `<button type="button" class="pk-vw${v === view ? ' on' : ''}" data-action="leg-view" data-view="${v}" aria-pressed="${v === view}">${l}</button>`).join('')}</div>`;
+    const opt = (v, l, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
     const size = PP_BREAK_EVEN[state.entrySize] ? state.entrySize : 2;
     const sizeBe = PP_BREAK_EVEN[size];
     const sizeName = sizeBe[0].replace(/(power|flex)$/, (w) => w[0].toUpperCase() + w.slice(1));
-    const tools = `<div class="pk-tools"><div class="pk-tool pk-size"><span class="pk-tl" id="pkSizeLbl">Entry size · ${esc(sizeName)} needs ${sizeBe[1]}% a leg</span>`
+    const tools = '<div class="pk-tools">'
+      + `<div class="pk-tool"><label class="pk-tl" for="pkSport">Filter these legs</label><select id="pkSport" class="pk-sel" data-action="leg-sport">${opt('all', 'All sports', sport)}${sports.map((s) => opt(s, PICK_SPORT[s] || s, sport)).join('')}</select></div>`
+      + `<div class="pk-tool"><label class="pk-tl" for="pkSort">Sort by</label><select id="pkSort" class="pk-sel" data-action="leg-sort">${opt('chance', 'Chance', sortKey)}${opt('record', 'Legs like this', sortKey)}${opt('time', 'Start time', sortKey)}</select></div>`
+      + `<div class="pk-tool pk-size"><span class="pk-tl" id="pkSizeLbl">Entry size · ${esc(sizeName)} needs ${sizeBe[1]}% a leg</span>`
       + `<div class="pk-seg" role="group" aria-labelledby="pkSizeLbl">${[2, 3, 4, 5, 6].map((n) => `<button type="button" class="pk-sz${n === size ? ' on' : ''}" data-action="entry-size" data-n="${n}" aria-pressed="${n === size}">${n}</button>`).join('')}</div></div></div>`
       + '<p class="pk-tnote">Entry size only changes the break-even on each leg. Every prop and moneyline stays listed.</p>';
     const group = (title, xs) => (xs.length ? `<h3 class="pk-gh">${title}</h3><ol class="tc-legs pk-pool">${xs.map(itemHtml).join('')}</ol>` : '');
     const todayCard = '<section class="nba-pp pk-card pk-today" aria-labelledby="pkTodayH">'
-      + '<div class="pk-th"><h2 class="pk-h2" id="pkTodayH">Today’s legs</h2><p class="pk-tsub">Every prop and moneyline that clears the bar, for your PrizePicks entry. The call is yours.</p></div>'
+      + '<div class="pk-th"><div class="pk-tt"><h2 class="pk-h2" id="pkTodayH">Today’s legs</h2><p class="pk-tsub">Every prop and moneyline that clears the bar, for your PrizePicks entry. The call is yours.</p></div>'
+      + `${viewBtns}</div>`
       + tools
-      + (best ? heroLegHtml(best, { size: 52 }) : '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>')
-      + group('Props', props.slice(1))
+      + (best ? heroLegHtml(best, { size: 52 })
+        : sport === 'all' ? '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>' : '')
+      + group('Props', rest)
       + ppMovedHtml(d.ppMoved, ppOff)
       + entryNextHtml(d.ppNextAt, ppLegs)
       + group('Moneylines', mls)
