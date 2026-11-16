@@ -124,7 +124,7 @@ ok(opened === `<li>FULL<button type="button" class="pk-lk-less" data-action="lik
 const rp = lift('renderPicks');
 ok(/const likelyRow = \(x\) => likelyRowHtml\(x, !!\(state\.likelyOpen && state\.likelyOpen\[pickLeg\(x\)\.id\]\), \(foot\) => legRow\(x, false, foot\)\);/.test(rp)
   && /<ol class="tc-legs pk-lks">\$\{legs\.map\(likelyRow\)\.join\(''\)\}<\/ol>/.test(rp), 'the list draws them, the open ones through the same full row as the entry\'s');
-ok(/\+ `<\/div>\$\{foot \|\| ''\}<\/li>`;/.test(rp), 'which takes the way back as its foot');
+ok(/\+ `\$\{foot \|\| ''\}<\/li>`;/.test(rp), 'which takes the way back as its foot');
 ok(/ppLegs\.slice\(1\)\.map\(itemHtml\)/.test(rp) && /mlLegs\.map\(\(x\) => legRow\(x, true\)\)/.test(rp), 'the PrizePicks entry and the moneyline entry draw their legs as they did');
 ok(/case 'likely-toggle': \{ const o = state\.likelyOpen \|\| \(state\.likelyOpen = \{\}\); const k = target\.dataset\.leg; if \(o\[k\]\) delete o\[k\]; else o\[k\] = true; renderPicks\(\); break; \}/.test(src),
   'a tap opens or closes that one leg, kept in state so a redraw leaves it');

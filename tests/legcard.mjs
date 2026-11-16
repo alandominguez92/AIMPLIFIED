@@ -1,0 +1,152 @@
+// The leg card on Picks (2026-11-16, step 2 of the page brief): the star on the
+// left, the name with the pick beside it, the game line and its tags under
+// them, the chance big on the right, then tiles for what used to be a run of
+// chips -- the sharp books (or what a moneyline's price needs), the record for
+// legs like this, and that record against the entry's break-even.
+//
+// Read on the Picks payload recorded on Nov 16 at 09:10 UTC (the one the
+// preview drew): Jabari Smith Jr's blocks More, Derik Queen's rebounds Less
+// above the sharp line, the Nuggets at -420.
+//
+//   node tests/legcard.mjs
+import fs from 'node:fs';
+import path from 'node:path';
+
+const root = path.join(import.meta.dirname, '..');
+const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
+const src = read('app.js'), css = read('style.css');
+const D = JSON.parse(read('tests/fixtures/picks-20261116-0040.json'));
+const D14 = JSON.parse(read('tests/fixtures/picks-20261114-2200.json'));
+const RealDate = Date;
+const NOW = RealDate.parse(D.asOf);
+globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [NOW])); } static now() { return NOW; } };
+
+let fail = 0;
+const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
+// The text from `at` to the bracket that closes what it opens.
+function closeFrom(text, at, isConst) {
+  let depth = 0, seen = false;
+  for (let i = at; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{' || c === '(' || c === '[') { depth++; seen = true; }
+    else if (c === '}' || c === ')' || c === ']') depth--;
+    if (seen && depth === 0) {
+      if (!isConst && c === '}') return text.slice(at, i + 1);
+      if (isConst && (text[i + 1] === ';' || text[i + 1] === '\n')) return text.slice(at, i + 2);
+    }
+  }
+  return null;
+}
+function lift(name) {
+  let at = src.indexOf(`function ${name}(`);
+  const isConst = at < 0;
+  if (isConst) at = src.indexOf(`const ${name} =`);
+  if (at < 0) throw new Error(`app.js has no ${name}`);
+  const out = closeFrom(src, at, isConst);
+  if (!out) throw new Error(`could not close ${name}`);
+  return out;
+}
+// legRow lives inside renderPicks.
+const rp = lift('renderPicks');
+const lrAt = rp.indexOf('const legRow = (x, compact, foot) =>');
+const legRowSrc = lrAt < 0 ? null : closeFrom(rp, lrAt, true);
+const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml'];
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const state = { slip: {} };
+let F;
+try {
+  if (!legRowSrc) throw new Error('renderPicks has no legRow(x, compact, foot)');
+  F = new Function('state', 'esc', names.filter((n) => src.includes(`function ${n}(`) || src.includes(`const ${n} =`)).map(lift).join('\n')
+    + `\n${legRowSrc}\nreturn { legRow, pickLeg, offerLeg, pct0, mlChanceLineHtml, trendBarsHtml };`)(state, esc);
+} catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); console.log('\n1 FAILED'); process.exit(1); }
+
+const all = [...D.legs, ...D.ppPool, ...D.mlPool];
+const leg = (t) => all.find((x) => x.title === t);
+const jabari = leg('Jabari Smith Jr Over 0.5 BLK'), queen = leg('Derik Queen Under 6 REB'), nuggets = leg('Nuggets ML');
+const tilesOf = (h) => [...h.matchAll(/<div class="lc-tile"(?: title="([^"]*)")?><span class="lc-tk">([^<]*)<\/span><b class="lc-tv([^"]*)">([^<]*)<\/b>(?:<span class="lc-ts">([\s\S]*?)<\/span>)?<\/div>/g)]
+  .map((m) => ({ title: m[1] || '', key: m[2], cls: m[3].trim(), value: m[4], sub: text(m[5] || '') }));
+const tile = (h, re) => tilesOf(h).find((t) => re.test(t.key)) || {};
+const tagsOf = (h) => (/<span class="lc-tags">([\s\S]*?)<\/span><\/div><div class="lc-p">/.exec(h) || [])[1] || '';
+for (const x of [jabari, queen, nuggets]) console.log(`        ${x.title}: p ${x.p}${x.sharp != null ? `, sharp ${x.sharp}, model ${x.modelP}` : ''}${x.odds != null ? `, ${x.odds}, kelly ${x.kellyP}` : ''}, record ${x.record.hit} of ${x.record.n} (${x.record.hitRate}%)`);
+
+console.log('-- 1. the face of the card --');
+const J = F.legRow(jabari, false);
+console.log('        ' + text(J).slice(0, 160));
+ok(J.startsWith('<li class="lc"><div class="lc-top"><button type="button" class="lc-star" data-action="leg-add"') && J.endsWith('</li>'), 'one card a leg, the star first');
+ok(J.includes(`data-leg="${esc(F.pickLeg(jabari).id)}" aria-pressed="false" aria-label="Add ${esc(jabari.title)} to your slip">☆</button>`), 'the star adds that leg to the slip, and says so to a screen reader');
+ok(/<span class="lc-name"><b>Jabari Smith Jr<\/b> <span class="lc-pick">Over 0\.5 BLK<\/span><\/span>/.test(J), 'the name, and the pick beside it: "Jabari Smith Jr" and "Over 0.5 BLK"');
+ok(new RegExp(`<div class="lc-p"><b class="lc-pct">${F.pct0(jabari.p)}</b><span class="lc-pk">chance</span></div>`).test(J) && F.pct0(jabari.p) === '62%',
+  `the chance Picks has always shown, big on the right: ${F.pct0(jabari.p)} (x.p, ${jabari.p})`);
+ok(/<span class="lc-game">[\s\S]*<span class="pk-sport">NBA<\/span> · [^<]+ · <span class="pk-when">/.test(J), 'the game line under the name: team, sport, game, time');
+const N = F.legRow(nuggets, false);
+ok(/<span class="lc-name"><b>Nuggets<\/b> <span class="lc-pick">to win<\/span><\/span>/.test(N), 'a moneyline reads "Nuggets" and "to win"');
+state.slip[F.offerLeg(F.pickLeg(jabari))] = true;
+const Jon = F.legRow(jabari, false);
+delete state.slip[F.offerLeg(F.pickLeg(jabari))];
+ok(/class="lc-star on"/.test(Jon) && /aria-pressed="true" aria-label="Remove [^"]+ from your slip">★<\/button>/.test(Jon), 'on the slip: the star fills, and the label says it takes it off');
+
+console.log('\n-- 2. tiles in place of the chips --');
+const rec = (x) => ({ v: `${F.pct0(x.record.hitRate)} · ${x.record.hit} of ${x.record.n}`, d: Math.round((x.record.hitRate - 57.7) * 10) / 10 });
+const jt = tilesOf(J), jr = rec(jabari);
+console.log('        ' + jt.map((t) => `[${t.key}: ${t.value}${t.sub ? ' / ' + t.sub : ''}]`).join(' '));
+ok(tile(J, /^Legs like this$/).value === jr.v && jr.v === '60% · 47 of 78', `the record for legs like this: "${jr.v}", the payload's own`);
+ok(/since the rule \(Oct 27\): 31 of 55/.test(tile(J, /^Legs like this$/).sub), 'with its count since the rule changed, as the record line had it');
+ok(tile(J, /^2-pick Power needs 57\.7%$/).value === `clears by ${jr.d}` && jr.d === 2.6 && tile(J, /2-pick/).cls === 'u', 'against a 2-pick Power\'s 57.7%: "clears by 2.6", in green');
+ok(!tile(J, /^Sharp books$/).key, 'no sharp tile where the payload has no sharp chance (a blocks More)');
+const Q = F.legRow(queen, false), qr = rec(queen);
+console.log('        ' + tilesOf(Q).map((t) => `[${t.key}: ${t.value}${t.sub ? ' / ' + t.sub : ''}]`).join(' '));
+ok(tile(Q, /^Sharp books$/).value === F.pct0(queen.sharp) && tile(Q, /^Sharp books$/).sub === `model ${F.pct0(queen.modelP)}`, `the sharp books' chance with the model's under it: ${F.pct0(queen.sharp)}, model ${F.pct0(queen.modelP)}`);
+ok(tile(Q, /2-pick/).value === `record ${Math.abs(qr.d)} short` && qr.d === -5.1 && tile(Q, /2-pick/).cls === 'o', 'a record under the break-even: "record 5.1 short", in the warning colour');
+ok(!/tc-sharp|>model \d+%</.test(tagsOf(Q)) && /PP \+0\.5 vs book/.test(tagsOf(Q)), 'the sharp and model chips leave the tags; "PP +0.5 vs book" stays');
+// Its 56.1 is last season's rate for the kind (REB_GAP_P), not a blend: the tile's note says what it is.
+ok(/last season/.test(tile(Q, /^Sharp books$/).title) && !/a quarter the model's/.test(tile(Q, /^Sharp books$/).title),
+  "the rebounds leg's note says its chance is last season's rate for the kind, not a blend of these two");
+const blended = { ...queen, kind: 'nba_pp', p: Math.round((0.25 * queen.modelP + 0.75 * queen.sharp) * 10) / 10 };
+ok(/a quarter the model's and three quarters the sharp books'/.test(tile(F.legRow(blended, false), /^Sharp books$/).title), 'an unders leg keeps the blend note');
+const same = { ...queen, kind: 'nba_pp', modelP: queen.p };
+ok(tile(F.legRow(same, false), /^Sharp books$/).sub === 'at this line', 'no model figure where it is the chance itself: "at this line"');
+
+console.log('\n-- 3. a moneyline: what its price needs --');
+const need = 420 / 520 * 100, gap = Math.round((nuggets.kellyP - need) * 10) / 10;
+const nt = tile(N, /^Book at -420 needs$/);
+console.log(`        [${nt.key}: ${nt.value} / ${nt.sub}]`);
+ok(nt.value === `${Math.round(need * 10) / 10}%` && nt.value === '80.8%', '-420 needs 80.8%');
+ok(nt.sub === `${Math.abs(gap)} short` && gap === -1.3 && /<span class="lc-ts"><span class="o">1\.3 short<\/span>/.test(N), `and the Nuggets' ${nuggets.kellyP} sits 1.3 short of it`);
+const mlBar = text(F.mlChanceLineHtml(nuggets));
+ok(mlBar.includes('1.3 points short') && !N.includes(F.mlChanceLineHtml(nuggets)), 'the gap the old bar drew ("1.3 points short"), now a tile; the bar itself is gone');
+const dog = { ...nuggets, odds: 150 };
+ok(tile(F.legRow(dog, false), /^Book at \+150 needs$/).value === '40%' && /<span class="u">39\.5 of edge<\/span>/.test(F.legRow(dog, false)), 'at +150: needs 40%, "39.5 of edge" in green');
+ok(tile(N, /^Legs like this$/).value === rec(nuggets).v && tile(N, /2-pick/).value === `clears by ${rec(nuggets).d}`, `its record and the break-even, as a prop's: ${rec(nuggets).v}, clears by ${rec(nuggets).d}`);
+const jag = D14.legs.find((x) => x.title === 'Jaguars ML');
+const JG = F.legRow(jag, false);
+ok(!jag.record.proven && tile(JG, /^Legs like this$/).cls === 'thin' && /new$/.test(tile(JG, /^Legs like this$/).sub), "a record still short of proven is dimmed and marked new (the NFL's 17 of 21)");
+
+console.log('\n-- 4. the entry size sets the break-even --');
+state.entrySize = 6;
+const J6 = F.legRow(jabari, false), Q6 = F.legRow(queen, false);
+delete state.entrySize;
+ok(tile(J6, /^6-pick Flex needs 54\.2%$/).value === 'clears by 6.1' && tile(Q6, /^6-pick Flex needs 54\.2%$/).value === 'record 1.6 short', 'a 6-pick Flex: Jabari clears 54.2% by 6.1, Queen\'s record is 1.6 short');
+ok(!!tile(J, /^2-pick Power needs 57\.7%$/).key, 'with none picked yet, the 2-pick Power');
+
+console.log('\n-- 5. what opens under the tiles --');
+const more = (h) => (/<div class="lc-more">([\s\S]*?)<\/div>(?=<div class="pp-step|<\/li>|$)/.exec(h) || [])[1] || '';
+ok(/pp-projbar/.test(J) && J.includes(F.trendBarsHtml(jabari.trend)), 'a full card keeps the projection bar and the last ten games');
+ok(/class="sp-line pp-line"/.test(Q) && /data-action="pp-line"/.test(Q) && !/sp-line pp-line/.test(J), 'the rebounds leg keeps its line stepper ("PP shows − 6 +"); the blocks leg has none');
+const NC = F.legRow(nuggets, true), JC = F.legRow(jabari, true);
+ok(!/lc-more/.test(NC) && !/lc-more/.test(JC) && tilesOf(NC).length === 3, 'compact (the moneyline entry\'s card): the face and tiles, nothing under them');
+ok(/pk-books/.test(N) && !/pk-books/.test(NC), 'every book folds under a full moneyline card');
+
+console.log('\n-- 6. the styles --');
+ok(/\.lc-star \{[^}]*width:44px;[^}]*height:44px;/.test(css), 'the star is a 44px target');
+ok(/\.lc-tiles \{[^}]*grid-template-columns:repeat\(auto-fit, ?minmax\(140px, ?1fr\)\)/.test(css), 'tiles sit side by side and wrap at 140px');
+ok(/\.lc-pct \{[^}]*font-family:var\(--display\)/.test(css) && /@media \(max-width:520px\) \{[^@]*\.lc-pct \{ font-size:28px; \}/.test(css), 'the chance in the display face, a size down on a phone');
+ok(/\[data-theme="light"\] \.pk-card \.tc-legs li\.lc \{ box-shadow:var\(--lift\); \}/.test(css), 'lifted off the page in light');
+ok(!/#[0-9a-fA-F]{3,8}\b/.test((css.slice(css.indexOf('li.lc')) || '')), 'colours from the theme tokens only');
+
+console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
+process.exit(fail ? 1 : 0);

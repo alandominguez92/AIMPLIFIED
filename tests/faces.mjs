@@ -102,7 +102,7 @@ ok(/document\.addEventListener\('load', \(e\) => \{[\s\S]*?hs-img[\s\S]*?classLi
 
 console.log('\n-- the legs that carry one --');
 ok(/class="tc-leg has-hs" data-action="today-jump"[^`]*\$\{face\}/.test(lift('renderTodayCard')), 'Today\'s card');
-ok(/<div class="tc-leg has-hs">\$\{pickFace\(x\)\}/.test(lift('renderPicks')), 'Picks of the day');
+ok(/<div class="lc-top">\$\{star\}\$\{pickFace\(x\)\}/.test(lift('renderPicks')), 'Picks of the day');
 ok(/avatarHtml\(\{ sport: 'nba', playerId: x\.player_id/.test(lift('nbaPpCardHtml')), 'the NBA PrizePicks card, by its ESPN id');
 ok(/playerId: r\.player_id \|\| null, player: r\.player/.test(worker), 'and /api/picks passes an NBA leg\'s ESPN id along (it was null)');
 
@@ -131,7 +131,9 @@ const rodgers = F.heroLegHtml({ ...pp, kind: 'nfl_ptd', sport: 'nfl', title: 'Aa
   link: 'https://sportsbook.fanduel.com/addToBetslip?marketId=42.621093728&selectionId=60427', spec: { sport: 'nfl', player: 'Aaron Rodgers', market: 'pass_tds', side: 'Under', pp: { line: 1.5, under: 61.8 } } });
 ok(/Bet at FanDuel/.test(rodgers) && /hl-edge/.test(rodgers), "a passing-TD under keeps FanDuel's button and its price line");
 const rpSrc = lift('renderPicks');
-ok(rpSrc.includes("${team ? '' : pickEdgeHtml(x)}") && rpSrc.includes("${team ? '' : betLinkHtml(legLink(x))}${booksHtml(x.books, team)}"), "the list and the pool the same: a moneyline's row has its price, no edge line, no button, and its books to read only");
+// Since the leg card (2026-11-16) a moneyline's price sits in its "Book at -420 needs" tile.
+ok(rpSrc.includes("tiles.push(tile(`Book at ${esc(AM(x.odds))} needs`") && rpSrc.includes("!team && typeof x.odds === 'number' ? `<div class=\"lc-line\">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>`")
+  && /team \? '' : betLinkHtml\(legLink\(x\)\),\n\s+booksHtml\(x\.books, team\),/.test(rpSrc), "the list and the pool the same: a moneyline's row has its price, no edge line, no button, and its books to read only");
 ok(!/moneylines are sportsbook bets/.test(rpSrc), 'and the list no longer calls moneylines sportsbook bets');
 const nbaMl = F.heroLegHtml({ ...pp, kind: 'nba_ml', sport: 'nba', title: 'Celtics ML', odds: -330,
   spec: { sport: 'nba', team: 'Celtics', market: 'ml', logo: 'nba/500/bos.png' } });

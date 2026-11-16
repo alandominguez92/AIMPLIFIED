@@ -6083,24 +6083,27 @@
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
       return;
     }
-    // One leg's row: the list's, and the PrizePicks pool's (2026-10-28).
-    // compact: its chance and record, for the moneyline entry; the same legs
-    // sit with their prices and books in the list below it.
+    // One leg's card (2026-11-16, the page brief's step 2), for the PrizePicks pool, the moneyline
+    // entry and a "Most likely" row opened: the star, the face, the pick and its game with its
+    // tags, and the chance large on the right; then up to three tiles -- the sharp books' chance
+    // (on a moneyline, what its price needs), how legs like it have landed, and that record
+    // against the entry's break-even -- each left out when it has nothing to say; then a
+    // player's bar and last games, the price, the books. compact (the moneyline entry): the top
+    // and the tiles, since the same legs sit in full in the list below it.
     const legRow = (x, compact, foot) => {
       const lg = pickLeg(x);
       const team = pickIsTeam(x);
       const on = !!state.slip[offerLeg(lg)];
-      const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
+      const star = `<button type="button" class="lc-star${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
+      const trendShown = !compact && !!trendBarsHtml(x.trend);
       const tags = [];
       if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
       if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
       // Underdog or Pick6 above PrizePicks on the same under (2026-10-25).
       if (x.dfs && x.spec && x.spec.pp) { const t = dfsLinesHtml(x.spec.pp.line, x.dfs.ud, x.dfs.p6).trim(); if (t) tags.push(t); }
-      // The sharp books' chance at the line shown (2026-10-25), and the
-      // model's own beside the chance shown, which blends the two (2026-10-27).
-      if (typeof x.sharp === 'number') tags.push(sharpTag(x.sharp, null, true));
-      if (typeof x.modelP === 'number' && x.modelP !== x.p) tags.push(`<span class="tc-wait" title="The chance shown is a quarter the model's and three quarters the sharp books'">model ${esc(pct0(x.modelP))}</span>`);
-      const tt = trendTag(x.trend);
+      // The sharp books' chance and the model's (2026-10-25, 2026-10-27) are a tile now.
+      // His run against the line is a tag only where his last games aren't drawn below.
+      const tt = trendShown ? null : trendTag(x.trend);
       if (tt) tags.push(`<span class="${tt.good ? 'tc-gap' : 'tc-wait'}" title="His last games against this line. A run is context: the chance shown is the price's">${esc(tt.text)}</span>`);
       const ra = x.lineSet ? null : readAgeTag(x);
       if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
@@ -6112,20 +6115,61 @@
       const mv = pickMoved(x);
       if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
       const r = x.record || {};
-      const recTxt = r.n ? `Legs like this: ${r.hit} of ${r.n} (${pct0(r.hitRate)})${recSinceText(r)}${r.proven ? '' : ' · new'}` : 'Legs like this: none graded yet';
+      // The pick split from the name, as the big card has it: "Jabari Smith Jr" and "Over 0.5 BLK",
+      // "Nuggets" and "to win".
+      const m = team ? null : String(x.title || '').match(/^(.*?) (Under|Over) (.+)$/);
+      const name = m ? m[1] : String(x.title || '').replace(/ ML$/, '');
+      const pick = m ? `${m[2]} ${m[3]}` : / ML$/.test(String(x.title || '')) ? 'to win' : '';
+      const tile = (label, value, sub, cls) => `<div class="lc-tile"><span class="lc-tk">${label}</span><b class="lc-tv${cls ? ' ' + cls : ''}">${value}</b>${sub ? `<span class="lc-ts">${sub}</span>` : ''}</div>`;
+      const tiles = [];
+      if (team && typeof x.odds === 'number') {
+        // What its price needs, and where its chance sits against that (mlChanceLineHtml's gap).
+        const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
+        const kp = typeof x.kellyP === 'number' ? x.kellyP : x.p;
+        const g = typeof kp === 'number' ? Math.round((kp - need) * 10) / 10 : null;
+        tiles.push(tile(`Book at ${esc(AM(x.odds))} needs`, `${Math.round(need * 10) / 10}%`,
+          g == null ? '' : g > 0 ? `<span class="u">${g} of edge</span>` : g < 0 ? `<span class="o">${Math.abs(g)} short</span>` : 'on the price'));
+      } else if (typeof x.sharp === 'number') {
+        // The chance shown blends the model's with the sharp books' (2026-10-27) where they differ,
+        // save a rebounds Less above the sharp line: its chance is last season's rate for the kind
+        // (the worker's REB_GAP_P), so the note says that instead.
+        const blend = typeof x.modelP === 'number' && x.modelP !== x.p;
+        const note = x.kind === 'nba_reb_gap' ? "The chance shown is last season's rate for rebounds Less above the sharp books' line. This is the sharp books' own chance at PrizePicks' line, de-vigged"
+          : blend ? "The chance shown is a quarter the model's and three quarters the sharp books'" : "The sharp books' chance at the line shown, de-vigged";
+        tiles.push(`<div class="lc-tile" title="${note}"><span class="lc-tk">Sharp books</span><b class="lc-tv">${esc(pct0(x.sharp))}</b><span class="lc-ts">${blend ? `model ${esc(pct0(x.modelP))}` : 'at this line'}</span></div>`);
+      }
+      if (!r.n) tiles.push(tile('Legs like this', 'none graded yet', '', 'thin'));
+      else {
+        tiles.push(tile('Legs like this', `${esc(pct0(r.hitRate))} · ${r.hit} of ${r.n}`,
+          esc(`${recSinceText(r).replace(/^ · /, '')}${r.proven ? '' : `${recSinceText(r) ? ' · ' : ''}new`}`), r.proven ? '' : 'thin'));
+        // That record against the entry's break-even a leg (PP_BREAK_EVEN).
+        const be = PP_BREAK_EVEN[state.entrySize] || PP_BREAK_EVEN[2];
+        const d = Math.round((r.hitRate - be[1]) * 10) / 10;
+        tiles.push(tile(`${esc(be[0].replace(/(power|flex)$/, (w) => w[0].toUpperCase() + w.slice(1)))} needs ${be[1]}%`,
+          d >= 0 ? `clears by ${d}` : `record ${Math.abs(d)} short`, 'on its record', d >= 0 ? 'u' : 'o'));
+      }
+      const more = compact ? '' : [
+        // A player leg's projection against its line and his last games, as the boards draw them.
+        team ? '' : pickBarHtml(x, x.spec),
+        trendBarsHtml(x.trend),
+        !team && typeof x.odds === 'number' ? `<div class="lc-line">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '',
+        priceSparkHtml(x.hist),
+        team ? '' : betLinkHtml(legLink(x)),
+        booksHtml(x.books, team),
+      ].join('');
       // The sport rides on the game line, not beside the title: on a phone the
       // chip pushed "Inter Miami CF ML" onto two lines.
-      return `<li>${star}<div class="tc-leg has-hs">${pickFace(x)}`
-        + `<span class="tc-l1"><b>${esc(x.title)}</b><span class="tc-p">${pct0(x.p)}</span></span>`
+      return `<li class="lc">`
+        + `<div class="lc-top">${star}${pickFace(x)}`
+        + `<div class="lc-what"><span class="lc-name"><b>${esc(name)}</b>${pick ? ` <span class="lc-pick">${esc(pick)}</span>` : ''}</span>`
         // A soccer leg's league says the sport; the others name it.
-        + `<span class="tc-l2"><span>${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${tags.length ? ' ' + tags.join(' ') : ''}</span>`
-        + `${!compact && typeof x.odds === 'number' ? `<span class="tc-book">${esc(AM(x.odds))}${team ? '' : pickEdgeHtml(x)}</span>` : ''}`
-        // A player leg's projection against its line, as the MLB board draws it;
-        // a team's chance against its price.
-        + `${compact ? '' : `${pickBarHtml(x, x.spec)}${trendBarsHtml(x.trend)}${priceSparkHtml(x.hist)}${team ? '' : betLinkHtml(legLink(x))}${booksHtml(x.books, team)}`}</span>`
-        + `<span class="pk-rec${r.proven ? '' : ' thin'}">${esc(recTxt)}</span>`
+        + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
+        + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
+        + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span></div></div>`
+        + (tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
+        + (more ? `<div class="lc-more">${more}</div>` : '')
         + (!compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '')
-        + `</div>${foot || ''}</li>`;
+        + `${foot || ''}</li>`;
     };
     const itemHtml = (x) => legRow(x, false);
     // Most likely to land: short rows, the open ones in full (likelyRowHtml).

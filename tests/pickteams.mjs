@@ -72,7 +72,7 @@ const noTeam = { ...cade, spec: { ...cade.spec, team: null } };
 ok(P.pickTeamTag(noTeam) === '' && P.pickLeg(noTeam).sub === cade.sub, 'no team known: the leg reads as it did');
 
 console.log('\n-- the rows and the ticket draw it --');
-ok(/<span class="tc-l2"><span>\$\{pickTeamTag\(x\)\}<span class="pk-sport">/.test(app), "the list's rows and the pool's lead with it");
+ok(/<span class="lc-game">\$\{pickTeamTag\(x\)\}<span class="pk-sport">/.test(app), "the list's rows and the pool's lead with it");
 ok(/<b>\$\{esc\(l\.short\)\}<\/b>\$\{pickTeamCode\(l\.x\) \? `<span class="tk-team">/.test(lift('ticketHtml')), "the entry's ticket has it under the name");
 const css = fs.readFileSync(BOARD + '/style.css', 'utf8').replace(/\r\n/g, '\n');
 ok(/\.hl-game \.tc-team \{[^}]*color:var\(--text\)/.test(css) && /\.tk-leg \.tk-team \{[^}]*color:var\(--textDim\)/.test(css), 'and both are styled');

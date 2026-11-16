@@ -56,7 +56,7 @@ ok(has('socPropRow', /projLineHtml\(r\.proj, l\.line, l\.side\)/), 'the soccer p
 // Through pickBarHtml since 2026-10-28, which draws a moneyline's chance
 // against its price beside it (tests/mlbars.mjs).
 ok(/const pickBarHtml = \(x, s\) => \(s && s\.pp \? projLineHtml\(x\.proj, s\.pp\.line, s\.side\)/.test(app)
-  && /\$\{pickBarHtml\(x, x\.spec\)\}/.test(app) && has('heroLegHtml', /pickBarHtml\(x, s\)/),
+  && /team \? '' : pickBarHtml\(x, x\.spec\),/.test(app) && has('heroLegHtml', /pickBarHtml\(x, s\)/),
   "Picks of the day's player legs and its hero");
 
 // ---- Picks of the day's NBA legs carry the projection --------------------------------------------

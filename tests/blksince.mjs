@@ -95,7 +95,8 @@ ok(P.recSinceText({ ...kind, since: { from: '2026-10-27', n: 0, hit: 0, hitRate:
 const line = text(P.ppMoreLineHtml(card, 'Blocks'));
 ok(line === 'Blocks: where the model leaned More 45 of 78 · at 55%+ 27 of 43 · since the rule (Oct 27) 11 of 20', `on the NBA tab: "${line}"`);
 ok(text(P.ppMoreLineHtml({ ...card, since: undefined }, 'Blocks')) === 'Blocks: where the model leaned More 45 of 78 · at 55%+ 27 of 43', 'the NHL card, or a stale record, reads as it did');
-ok(/const recTxt = r\.n \? `Legs like this: \$\{r\.hit\} of \$\{r\.n\} \(\$\{pct0\(r\.hitRate\)\}\)\$\{recSinceText\(r\)\}/.test(app), "Picks' rows show it");
+// A tile on the leg card since 2026-11-16 (tests/legcard.mjs): "60% · 47 of 78", the count since under it.
+ok(/tiles\.push\(tile\('Legs like this', `\$\{esc\(pct0\(r\.hitRate\)\)\} · \$\{r\.hit\} of \$\{r\.n\}`,\s+esc\(`\$\{recSinceText\(r\)/.test(app), "Picks' rows show it");
 ok(/landed \(\$\{pct0\(r\.hitRate\)\}\)\$\{recSinceText\(r\)\}/.test(lift('heroLegHtml')), 'and its top card');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

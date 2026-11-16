@@ -98,7 +98,8 @@ ok(JSON.stringify(tt(log('8478440', 'points'), 0.5, 'over')) === JSON.stringify(
 ok(JSON.stringify(tt([2, 2, 2, 1, 2], 1.5, 'under')) === JSON.stringify({ good: false, text: 'under in only 1 of last 5' }), "Love's under: only 1 of 5, against the pick");
 ok(JSON.stringify(tt([1, 0, 1, 1, 0, 1, 1], 1.5, 'under')) === JSON.stringify({ good: true, text: 'under in 7 of last 7' }), 'seven of seven its way');
 ok(tt([0, 1, 0, 1], 1.5, 'under') === null && tt([1, 2, 1, 2, 1, 2], 1.5, 'under') === null, 'fewer than five games, or no run either way: nothing');
-ok(/const tt = trendTag\(x\.trend\);\n\s+if \(tt\) tags\.push/.test(app) && /const tt = trendTag\(x\.trend\);\n\s+if \(tt\) notes\.push\(tt\.text\);/.test(app), 'on the list\'s rows and the hero');
+// On the leg card (2026-11-16) the tag only where the last games aren't drawn under it.
+ok(/const tt = trendShown \? null : trendTag\(x\.trend\);\n\s+if \(tt\) tags\.push/.test(app) && /const tt = trendTag\(x\.trend\);\n\s+if \(tt\) notes\.push\(tt\.text\);/.test(app), 'on the list\'s rows and the hero');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
