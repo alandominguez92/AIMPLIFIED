@@ -54,7 +54,7 @@ const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
   'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
   'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
-  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml'];
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const state = { slip: {} };
@@ -62,7 +62,7 @@ let F;
 try {
   if (!legRowSrc) throw new Error('renderPicks has no legRow(x, compact, foot)');
   F = new Function('state', 'esc', names.filter((n) => src.includes(`function ${n}(`) || src.includes(`const ${n} =`)).map(lift).join('\n')
-    + `\n${legRowSrc}\nreturn { legRow, pickLeg, offerLeg, pct0, mlChanceLineHtml, trendBarsHtml };`)(state, esc);
+    + `\n${legRowSrc}\nreturn { legRow, pickLeg, offerLeg, pct0, mlChanceLineHtml, trendBarsHtml, PICK_SAME, pickGameKey, pickShortName };`)(state, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); console.log('\n1 FAILED'); process.exit(1); }
 
 const all = [...D.legs, ...D.ppPool, ...D.mlPool];
@@ -141,7 +141,30 @@ const NC = F.legRow(nuggets, true), JC = F.legRow(jabari, true);
 ok(!/lc-more/.test(NC) && !/lc-more/.test(JC) && tilesOf(NC).length === 3, 'compact (the moneyline entry\'s card): the face and tiles, nothing under them');
 ok(/pk-books/.test(N) && !/pk-books/.test(NC), 'every book folds under a full moneyline card');
 
-console.log('\n-- 6. the styles --');
+console.log('\n-- 6. today\'s legs: one list, a size to read it at (step 3) --');
+// Nov 14's 00:04 payload has Seth Jarvis's points More in the PrizePicks pool and the Hurricanes in
+// the moneyline pool: the same game, Kraken @ Hurricanes.
+const D4 = JSON.parse(read('tests/fixtures/picks-20261114-0004.json'));
+const jarvis = D4.ppPool.find((x) => /^Seth Jarvis/.test(x.title)), canes = D4.mlPool.find((x) => x.title === 'Hurricanes ML');
+ok(F.pickGameKey(jarvis) === F.pickGameKey(canes) && F.pickGameKey(jarvis) !== F.pickGameKey(D4.ppPool[0]), 'a player leg and a moneyline from one game share its key (the feed\'s game id)');
+F.PICK_SAME.set(F.pickLeg(jarvis).id, F.pickShortName(canes));
+const JV = F.legRow(jarvis, false);
+F.PICK_SAME.clear();
+console.log('        ' + (/<span class="tc-wait"[^>]*>(Same game as [^<]+)</.exec(JV) || [])[1]);
+ok(/<span class="tc-wait" title="Legs from one game tend to land or miss together">Same game as Hurricanes<\/span>/.test(tagsOf(JV)), 'the second leg from a game says whose game it shares, in amber');
+ok(!/Same game/.test(F.legRow(jarvis, false)), 'and only while the list has the other one');
+const rpSrc = rp;
+ok(/for \(const x of \[\.\.\.ppLegs, \.\.\.mlLegs, \.\.\.legs\]\) \{\n\s+const id = x\.legId \|\| x\.title;\n\s+if \(seenLeg\.has\(id\)\) continue;/.test(rpSrc) && /\(pickIsTeam\(x\) \? mls : props\)\.push\(x\);/.test(rpSrc),
+  'the PrizePicks pool, the moneyline pool and the likeliest legs, each once, a team pick among the moneylines');
+ok(/props\.sort\(byChance\);\n\s+mls\.sort\(byChance\);/.test(rpSrc) && /const byChance = \(a, b\) => \(b\.p \|\| 0\) - \(a\.p \|\| 0\);/.test(rpSrc), 'best chance first in each group');
+ok(/\[2, 3, 4, 5, 6\]\.map\(\(n\) => `<button type="button" class="pk-sz\$\{n === size \? ' on' : ''\}" data-action="entry-size" data-n="\$\{n\}" aria-pressed="\$\{n === size\}">\$\{n\}<\/button>`\)/.test(rpSrc)
+  && /Entry size · \$\{esc\(sizeName\)\} needs \$\{sizeBe\[1\]\}% a leg/.test(rpSrc), 'five buttons, 2 to 6, the chosen one pressed, its break-even named above them');
+ok(/Entry size only changes the break-even on each leg\. Every prop and moneyline stays listed\./.test(rpSrc), 'and it says no leg leaves the list');
+ok(/case 'entry-size': \{\n\s+const n = Number\(target\.dataset\.n\);\n\s+if \(PP_BREAK_EVEN\[n\]\) \{ state\.entrySize = n; try \{ localStorage\.setItem\('aimplified_entry_size', String\(n\)\);/.test(src)
+  && /const n = Number\(localStorage\.getItem\('aimplified_entry_size'\)\);\n\s+if \(n >= 2 && n <= 6\) state\.entrySize = n;/.test(src), 'a tap sets it and keeps it for the next visit');
+ok(/\.pk-sz \{[^}]*min-height:44px;/.test(css) && /\.pk-sz\.on \{[^}]*border-color:var\(--accentFill\);[^}]*background:var\(--tintAccent\);/.test(css), 'the buttons are 44px, the chosen one gold');
+
+console.log('\n-- 7. the styles --');
 ok(/\.lc-star \{[^}]*width:44px;[^}]*height:44px;/.test(css), 'the star is a 44px target');
 ok(/\.lc-tiles \{[^}]*grid-template-columns:repeat\(auto-fit, ?minmax\(140px, ?1fr\)\)/.test(css), 'tiles sit side by side and wrap at 140px');
 ok(/\.lc-pct \{[^}]*font-family:var\(--display\)/.test(css) && /@media \(max-width:520px\) \{[^@]*\.lc-pct \{ font-size:28px; \}/.test(css), 'the chance in the display face, a size down on a phone');

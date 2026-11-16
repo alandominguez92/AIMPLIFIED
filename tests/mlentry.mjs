@@ -248,11 +248,13 @@ ok(/The moneyline entry, best first/.test(histHtml) && /The moneyline entry sinc
 ok((histHtml.match(/The moneyline entry, best first/g) || []).length === hist.days.filter((d) => (d.ml || []).length).length, 'on the days it has');
 
 const rp = lift('renderPicks');
-ok(/bankHtml\(\) \+ ppCard \+ mlCard \+ evBetsHtml\(d\) \+ listCard \+ after;/.test(rp), 'the card sits under the entry, above the sportsbook bets');
-ok(/const mlCard = mlLegs\.length < 2 \? '' :/.test(rp), 'no card under two legs still to play');
+// Since the page brief (2026-11-16): its legs join today's list as moneylines, and the entry itself
+// folds with the PrizePicks one under the sportsbook bets.
+ok(/todayCard \+ bankHtml\(\) \+ evBetsHtml\(d\) \+ siteCard \+ after;/.test(rp) && /\+ \(mlLegs\.length > 1 \? '<h3 class="pk-gh">Moneyline entry<\/h3>/.test(rp), 'the entry sits with the site\'s own, under the sportsbook bets');
+ok(/const siteCard = !\(ppLegs\.length > 1 \|\| mlLegs\.length > 1\) \? ''\s*:/.test(rp), 'no entry under two legs still to play');
 ok(/Date\.parse\(x\.commence\) > Date\.now\(\)/.test(rp.slice(rp.indexOf('const mlLegs'), rp.indexOf('const mlWhole'))) && /entryRows\(mlLegs, mlWhole && \(d\.mlEntries \|\| \[\]\)\)/.test(rp), 'still to play only; a started leg takes the priced edge away, as on the entry');
 ok(/check what the app shows before you place it/.test(rp), "and it says the edge is at PrizePicks' standard payouts, to be checked");
-ok(/\$\{mlLegs\.map\(\(x\) => legRow\(x, true\)\)\.join\(''\)\}/.test(rp) && /const itemHtml = \(x\) => legRow\(x, false\);/.test(rp), 'its legs compact, since the same legs sit in full in the list below');
+ok(/for \(const x of \[\.\.\.ppLegs, \.\.\.mlLegs, \.\.\.legs\]\)/.test(rp) && /group\('Moneylines', mls\)/.test(rp) && /const itemHtml = \(x\) => legRow\(x, false\);/.test(rp), 'its legs in full in today\'s list, under Moneylines');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

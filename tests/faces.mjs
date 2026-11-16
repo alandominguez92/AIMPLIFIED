@@ -179,8 +179,9 @@ ok(/queueMicrotask\(\(\) => \{\s*state\.sport = null;\s*setSport\(START_SPORT\);
   'loaded with the page, after the script, and read by whichever tab opens');
 // Since 2026-10-28 the Picks tab leads with the PrizePicks entry, so the hero
 // is its first leg (tests/edgebets.mjs).
-ok(/const hero = ppLegs\.length \? heroLegHtml\(ppLegs\[0\], \{ size: 52 \}\) : '';[\s\S]*?ppLegs\.slice\(1\)\.map\(itemHtml\)/.test(lift('renderPicks')),
-  'on the Picks tab it is the PrizePicks entry\'s first leg, and the rest follow');
+// Since the page brief (2026-11-16) it is today's best prop, and the rest follow under Props.
+ok(/const best = props\[0\] \|\| null;[\s\S]*?\(best \? heroLegHtml\(best, \{ size: 52 \}\)[\s\S]*?group\('Props', props\.slice\(1\)\)/.test(lift('renderPicks')),
+  'on the Picks tab it is the best prop of today\'s legs, and the rest follow');
 
 // ---- the worker: which logo a moneyline leg carries (2026-10-14) ----------------------
 // ESPN's file names are its own codes. Guessed ones fail quietly: uta.png and

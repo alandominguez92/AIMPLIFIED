@@ -292,6 +292,12 @@
     const savedTheme = localStorage.getItem('aimplified_theme');
     if (savedTheme === 'dark' || savedTheme === 'light') state.theme = savedTheme;
   } catch (e) {}
+  // The entry size each Picks leg's break-even tile reads (2026-11-16, the page brief's step 3):
+  // 2 to 6, kept between visits. Unset reads as the 2-pick Power.
+  try {
+    const n = Number(localStorage.getItem('aimplified_entry_size'));
+    if (n >= 2 && n <= 6) state.entrySize = n;
+  } catch (e) {}
   // The bankroll the Picks tab's stakes are read against (2026-10-28), and
   // the most of it the day's sportsbook bets may take together.
   state.bank = { amount: null, cap: 5 };
@@ -4939,6 +4945,12 @@
       case 'row-click': onRowClick(target.dataset.id); break;
       // The entry ticket (2026-10-28): how many legs, and a picture of it.
       case 'ticket-n': state.ticketN = Number(target.dataset.n) || 3; renderPicks(); break;
+      // Every leg's break-even tile follows it; no leg leaves the list (the page brief's step 3).
+      case 'entry-size': {
+        const n = Number(target.dataset.n);
+        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); }
+        break;
+      }
       case 'ticket-save': saveTicketImage(); break;
       case 'pp-line': ppLineSet(target.dataset.key, Math.max(0.5, Number(target.dataset.line) + Number(target.dataset.d)), Number(target.dataset.read), target.dataset.commence); break;
       case 'pp-line-reset': ppLineSet(target.dataset.key, null); break;
@@ -6054,6 +6066,11 @@
       + `<span class="pk-lk-m">${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · <span class="pk-when">${esc(soccerKick(x.commence))}</span>${gap}</span></span>`
       + `<span class="tc-p">${pct0(x.p)}</span><span class="pk-lk-c" aria-hidden="true"></span>`, 'pk-lk-row')}</li>`;
   }
+  // Picks' legs that share a game with a leg above them, by leg id: the name of that first leg
+  // ("Same game as Hurricanes"). Filled by renderPicks before it draws.
+  const PICK_SAME = new Map();
+  const pickGameKey = (x) => `${x.sport}:${(x.spec && x.spec.gamePk) || `${x.sub}|${x.commence}`}`;
+  const pickShortName = (x) => String(x.title || '').replace(/ (Under|Over) .*$/, '').replace(/ ML$/, '');
   function renderPicks() {
     const grid = document.getElementById('picksGrid');
     if (!grid) return;
@@ -6114,6 +6131,9 @@
       if (gn) tags.push(`<span class="${gn.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(gn.title)}">${esc(gn.text)}</span>`);
       const mv = pickMoved(x);
       if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
+      // A second leg from a game already on the list (the page brief, 2026-11-16).
+      const sg = PICK_SAME.get(lg.id);
+      if (sg) tags.push(`<span class="tc-wait" title="Legs from one game tend to land or miss together">Same game as ${esc(sg)}</span>`);
       const r = x.record || {};
       // The pick split from the name, as the big card has it: "Jabari Smith Jr" and "Over 0.5 BLK",
       // "Nuggets" and "to win".
@@ -6172,8 +6192,6 @@
         + `${foot || ''}</li>`;
     };
     const itemHtml = (x) => legRow(x, false);
-    // Most likely to land: short rows, the open ones in full (likelyRowHtml).
-    const likelyRow = (x) => likelyRowHtml(x, !!(state.likelyOpen && state.likelyOpen[pickLeg(x).id]), (foot) => legRow(x, false, foot));
     // Entry math over the legs still to come: the top two as a 2-pick power,
     // and the average leg of three to six against the flex break-even.
     // An entry is built from the legs PrizePicks takes (2026-10-27): its
@@ -6222,24 +6240,6 @@
       return rows;
     };
     const ent = entryRows(ppLegs, whole && (d.entries || []));
-    // The night's questions in the order they are asked (2026-10-28, the
-    // owner's call): what goes in the PrizePicks entry, what to bet at the
-    // sportsbook, and under both, the legs most likely to land of any kind.
-    // The list led with its likeliest leg, which on Oct 28 was the Spurs at
-    // -520: 2.4 points short of its price, and not a leg PrizePicks takes.
-    const hero = ppLegs.length ? heroLegHtml(ppLegs[0], { size: 52 }) : '';
-    const ppCard = `<div class="nba-pp pk-card pk-pp">`
-      + `<div class="tc-head"><span class="tc-title">Your PrizePicks entry</span></div>`
-      + `<div class="tc-sub pk-intro">The best leg PrizePicks takes in each of the day's games, best first, from everything that clears its bar. Under each: how legs like it have actually done.</div>`
-      + (ppLegs.length ? hero + (ppLegs.length > 1 ? `<ol class="tc-legs pk-pool">${ppLegs.slice(1).map(itemHtml).join('')}</ol>` : '')
-        : '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>')
-      + ppMovedHtml(d.ppMoved, ppOff)
-      + entryNextHtml(d.ppNextAt, ppLegs)
-      + ticketHtml(ticketData(d, ppLegs, whole))
-      + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As a PrizePicks entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>`
-        : (ppLegs.length ? `<div class="tc-sub pk-noentry">One leg PrizePicks takes clears its bar so far: an entry needs two.</div>` : ''))
-      + ppEntryRecordHtml(d.record && d.record.history)
-      + `</div>`;
     // The moneyline-only entry (2026-11-01, the owner: PrizePicks takes all
     // moneylines; DraftKings and FanDuel won't take moneyline-only picks). Its
     // edge is at PrizePicks' standard payouts, so the card says to check them:
@@ -6248,21 +6248,67 @@
     const mlLegs = allMl.filter((x) => Date.parse(x.commence) > Date.now());
     const mlWhole = mlLegs.length === allMl.length;
     const mlEnt = entryRows(mlLegs, mlWhole && (d.mlEntries || []));
-    const mlCard = mlLegs.length < 2 ? '' : `<div class="nba-pp pk-card pk-ml">`
-      + `<div class="tc-head"><span class="tc-title">Moneyline-only entry</span></div>`
-      + `<div class="tc-sub pk-intro">The best moneyline in each game, any sport, best chance first. The edge assumes PrizePicks' standard payouts, so check what the app shows before you place it.</div>`
-      + `<ol class="tc-legs pk-pool">${mlLegs.map((x) => legRow(x, true)).join('')}</ol>`
-      + entryNextHtml(d.mlNextAt, mlLegs)
-      + ticketHtml(ticketData(d, mlLegs, mlWhole, true), true)
-      + (mlEnt.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>At standard payouts</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${mlEnt.join('')}</ul>` : '')
-      + ppEntryRecordHtml(d.record && d.record.history, true)
-      + `</div>`;
-    const listCard = `<div class="nba-pp pk-card pk-likely">`
-      + `<div class="tc-head"><span class="tc-title">Most likely to land</span></div>`
-      + `<div class="tc-sub">Every kind of leg, one a game, best chance first. Beside a moneyline: how its chance sits against the market's price. Tap a leg for the rest.</div>`
-      + `<ol class="tc-legs pk-lks">${legs.map(likelyRow).join('')}</ol>`
-      + `<div class="tc-sub pk-record">${recLine}</div>${rules}</div>`;
-    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + bankHtml() + ppCard + mlCard + evBetsHtml(d) + listCard + after;
+    // Today's legs (2026-11-16, the page brief's step 3): every prop and moneyline that clears its
+    // bar, in one list, props then moneylines, best chance first. The props are the PrizePicks
+    // pool at the lines it can be played at (refilled from the bench where a line moved); the
+    // moneylines the moneyline pool; and a leg of "Most likely to land" in neither joins its
+    // group, so nothing that list showed goes missing. An NFL team pick in the PrizePicks pool is
+    // a moneyline here. The leading prop is the large card above both, as the entry's was.
+    const seenLeg = new Set(), props = [], mls = [];
+    for (const x of [...ppLegs, ...mlLegs, ...legs]) {
+      const id = x.legId || x.title;
+      if (seenLeg.has(id)) continue;
+      seenLeg.add(id);
+      (pickIsTeam(x) ? mls : props).push(x);
+    }
+    const byChance = (a, b) => (b.p || 0) - (a.p || 0);
+    props.sort(byChance);
+    mls.sort(byChance);
+    const best = props[0] || null;
+    // A second leg from one game is tagged with the first leg's name, in the order they show.
+    PICK_SAME.clear();
+    const firstOfGame = new Map();
+    for (const x of [...props, ...mls]) {
+      const k = pickGameKey(x);
+      if (firstOfGame.has(k)) PICK_SAME.set(pickLeg(x).id, firstOfGame.get(k));
+      else firstOfGame.set(k, pickShortName(x));
+    }
+    const size = PP_BREAK_EVEN[state.entrySize] ? state.entrySize : 2;
+    const sizeBe = PP_BREAK_EVEN[size];
+    const sizeName = sizeBe[0].replace(/(power|flex)$/, (w) => w[0].toUpperCase() + w.slice(1));
+    const tools = `<div class="pk-tools"><div class="pk-tool pk-size"><span class="pk-tl" id="pkSizeLbl">Entry size · ${esc(sizeName)} needs ${sizeBe[1]}% a leg</span>`
+      + `<div class="pk-seg" role="group" aria-labelledby="pkSizeLbl">${[2, 3, 4, 5, 6].map((n) => `<button type="button" class="pk-sz${n === size ? ' on' : ''}" data-action="entry-size" data-n="${n}" aria-pressed="${n === size}">${n}</button>`).join('')}</div></div></div>`
+      + '<p class="pk-tnote">Entry size only changes the break-even on each leg. Every prop and moneyline stays listed.</p>';
+    const group = (title, xs) => (xs.length ? `<h3 class="pk-gh">${title}</h3><ol class="tc-legs pk-pool">${xs.map(itemHtml).join('')}</ol>` : '');
+    const todayCard = '<section class="nba-pp pk-card pk-today" aria-labelledby="pkTodayH">'
+      + '<div class="pk-th"><h2 class="pk-h2" id="pkTodayH">Today’s legs</h2><p class="pk-tsub">Every prop and moneyline that clears the bar, for your PrizePicks entry. The call is yours.</p></div>'
+      + tools
+      + (best ? heroLegHtml(best, { size: 52 }) : '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>')
+      + group('Props', props.slice(1))
+      + ppMovedHtml(d.ppMoved, ppOff)
+      + entryNextHtml(d.ppNextAt, ppLegs)
+      + group('Moneylines', mls)
+      + (mlLegs.length ? entryNextHtml(d.mlNextAt, mlLegs) : '')
+      + `<div class="tc-sub pk-record">${recLine}</div>${rules}`
+      + '</section>';
+    // The entries the site logs and grades itself (the night's recap reports them): its best legs
+    // in order at PrizePicks' payouts, the ticket image, and how each size has done. Folded under
+    // the list since the page brief, which leaves the entry to the reader.
+    const siteCard = !(ppLegs.length > 1 || mlLegs.length > 1) ? ''
+      : '<details class="nba-pp pk-card pk-site" data-keep="site"><summary><span class="tc-title">The site’s own entries today</span><span class="pk-site-k">logged and graded each night</span></summary>'
+        + (ppLegs.length > 1 ? '<h3 class="pk-gh">PrizePicks entry</h3><div class="tc-sub pk-intro">The best leg PrizePicks takes in each of the day’s games, best first. The recap above grades it.</div>'
+          + ticketHtml(ticketData(d, ppLegs, whole))
+          + (ent.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>As a PrizePicks entry</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${ent.join('')}</ul>` : '')
+          + ppEntryRecordHtml(d.record && d.record.history) : '')
+        + (mlLegs.length > 1 ? '<h3 class="pk-gh">Moneyline entry</h3><div class="tc-sub pk-intro">The best moneyline in each game, any sport. The edge assumes PrizePicks’ standard payouts, so check what the app shows before you place it.</div>'
+          + ticketHtml(ticketData(d, mlLegs, mlWhole, true), true)
+          + (mlEnt.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>At standard payouts</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${mlEnt.join('')}</ul>` : '')
+          + ppEntryRecordHtml(d.record && d.record.history, true) : '')
+        + '</details>';
+    // Folds the reader opened stay open through the five-minute redraws.
+    const kept = new Set([...grid.querySelectorAll('details[data-keep][open]')].map((x) => x.dataset.keep));
+    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + todayCard + bankHtml() + evBetsHtml(d) + siteCard + after;
+    for (const k of kept) { const dt = grid.querySelector(`details[data-keep="${k}"]`); if (dt) dt.open = true; }
     picksAnimate(grid);
   }
   // The bars and the ring fill in once a page load (2026-10-28), after the

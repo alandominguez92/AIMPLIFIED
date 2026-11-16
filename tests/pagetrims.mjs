@@ -122,10 +122,11 @@ ok(D.legs.filter((l) => !/ML$/.test(l.title)).every((x) => { const r = text(F.li
 const opened = F.likelyRowHtml(heat, true, full);
 ok(opened === `<li>FULL<button type="button" class="pk-lk-less" data-action="likely-toggle" data-leg="${esc(F.pickLeg(heat).id)}" aria-expanded="true">Show less</button></li>`, 'open: the full leg, its way back inside it');
 const rp = lift('renderPicks');
-ok(/const likelyRow = \(x\) => likelyRowHtml\(x, !!\(state\.likelyOpen && state\.likelyOpen\[pickLeg\(x\)\.id\]\), \(foot\) => legRow\(x, false, foot\)\);/.test(rp)
-  && /<ol class="tc-legs pk-lks">\$\{legs\.map\(likelyRow\)\.join\(''\)\}<\/ol>/.test(rp), 'the list draws them, the open ones through the same full row as the entry\'s');
+// Since the page brief (2026-11-16) one list, today's legs, draws every leg through the full card.
+ok(/const group = \(title, xs\) => \(xs\.length \? `<h3 class="pk-gh">\$\{title\}<\/h3><ol class="tc-legs pk-pool">\$\{xs\.map\(itemHtml\)\.join\(''\)\}<\/ol>` : ''\);/.test(rp)
+  && /group\('Props', props\.slice\(1\)\)/.test(rp) && /group\('Moneylines', mls\)/.test(rp), 'the list draws them all through the same full card, props then moneylines');
 ok(/\+ `\$\{foot \|\| ''\}<\/li>`;/.test(rp), 'which takes the way back as its foot');
-ok(/ppLegs\.slice\(1\)\.map\(itemHtml\)/.test(rp) && /mlLegs\.map\(\(x\) => legRow\(x, true\)\)/.test(rp), 'the PrizePicks entry and the moneyline entry draw their legs as they did');
+ok(/\(best \? heroLegHtml\(best, \{ size: 52 \}\)/.test(rp) && /const best = props\[0\] \|\| null;/.test(rp), 'the leading prop is the large card above both, as the entry\'s was');
 ok(/case 'likely-toggle': \{ const o = state\.likelyOpen \|\| \(state\.likelyOpen = \{\}\); const k = target\.dataset\.leg; if \(o\[k\]\) delete o\[k\]; else o\[k\] = true; renderPicks\(\); break; \}/.test(src),
   'a tap opens or closes that one leg, kept in state so a redraw leaves it');
 ok(/\.pk-lk-row \{[^}]*min-height:48px/.test(css) && /\[data-theme="light"\] \.pk-lk-row \{ box-shadow:var\(--lift\); \}/.test(css), 'the row is a full-size tap target, lifted in light mode like the other cards');

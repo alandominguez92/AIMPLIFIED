@@ -3262,3 +3262,32 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .lc-tile { padding:7px 9px; }
   .lc-tv { font-size:13px; }
 }
+
+/* Today's legs (2026-11-16, the page brief's step 3): one list for every prop and moneyline that
+   clears its bar, on the page rather than in a panel, each leg its own card. */
+.nba-pp.pk-today { padding:0; border:0; background:none; box-shadow:none; }
+.pk-th { margin:0 0 12px; }
+.pk-h2 { margin:0; font-family:var(--sans); font-size:22px; font-weight:800; line-height:1.2; letter-spacing:-.02em; text-transform:uppercase; color:var(--text); }
+.pk-tsub { margin:4px 0 0; font-size:14px; line-height:1.45; color:var(--textDim); }
+.pk-tools { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; }
+.pk-tool { flex:1 1 160px; min-width:0; }
+.pk-tool.pk-size { flex:2 1 300px; }
+.pk-tl { display:block; margin-bottom:4px; font-size:12px; line-height:1.4; color:var(--textDim); }
+.pk-seg { display:flex; gap:6px; }
+.pk-sz { flex:1; min-height:44px; padding:0 6px; border-radius:8px; border:1px solid var(--border); background:transparent;
+  color:var(--textDim); font-family:var(--sans); font-size:14px; font-weight:700; cursor:pointer; }
+.pk-sz:hover { color:var(--text); border-color:var(--borderFaint); }
+.pk-sz.on { border-color:var(--accentFill); background:var(--tintAccent); color:var(--accent); }
+.pk-sz:focus-visible { outline:2px solid var(--accentFill); outline-offset:2px; }
+.pk-tnote { margin:8px 0 14px; font-size:13px; line-height:1.45; color:var(--textDim); }
+.pk-gh { margin:22px 0 0; font-family:var(--sans); font-size:13px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--textDim); }
+.pk-today .tc-legs.pk-pool { margin-top:10px; gap:12px; }
+.pk-today .pk-record { margin-top:16px; }
+/* The site's own entries, folded under the list. */
+.pk-site > summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; min-height:44px; cursor:pointer; list-style:none; }
+.pk-site > summary::-webkit-details-marker { display:none; }
+.pk-site > summary::before { content:'▸'; color:var(--textDim); font-size:14px; }
+.pk-site[open] > summary::before { content:'▾'; }
+.pk-site > summary .tc-title { font-size:17px; line-height:24px; }
+.pk-site-k { font-size:12.5px; color:var(--textDim); }
+.pk-site .pk-gh:first-of-type { margin-top:8px; }
