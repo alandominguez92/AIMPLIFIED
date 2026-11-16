@@ -3288,3 +3288,63 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-sel { width:100%; height:44px; padding:0 10px; border-radius:8px; border:1px solid var(--borderFaint); background:var(--card);
   color:var(--text); font-family:var(--sans); font-size:14px; cursor:pointer; }
 .pk-sel:focus-visible { outline:2px solid var(--accentFill); outline-offset:2px; }
+
+/* The slip beside today's legs (2026-11-16, the page brief's step 5): on a PC a panel pinned beside
+   the legs, on a phone a bar at the bottom that opens it as a sheet. */
+.pks-hint { margin:4px 0 0; color:var(--accent); font-size:13px; font-weight:600; }
+.pks { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:18px; color:var(--text); }
+.pks-h { display:flex; align-items:center; gap:8px; }
+.pks-h h2 { margin:0; font-family:var(--sans); font-size:15px; font-weight:800; letter-spacing:.3px; text-transform:uppercase; }
+.pks-n { margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--textDim); }
+.pks-x { display:none; width:44px; height:44px; margin:-10px -10px -10px 0; padding:0; border:0; border-radius:8px; background:transparent;
+  color:var(--textDim); font-size:18px; cursor:pointer; }
+.pks-warn { margin-top:12px; padding:10px 12px; border-radius:8px; border:1px solid var(--caution); background:var(--cautionTint);
+  color:var(--text); font-size:13px; line-height:1.45; }
+.pks-legs { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; font-size:14px; }
+.pks-leg { display:flex; align-items:center; gap:10px; min-height:44px; }
+.pks-leg + .pks-leg { border-top:1px solid var(--borderSoft); }
+.pks-nm { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.pks-leg.started .pks-nm { color:var(--textDim); }
+.pks-st { color:var(--caution); font-weight:600; }
+.pks-p { font-family:var(--mono); }
+.pks-rm { flex:none; width:44px; height:44px; margin-right:-12px; padding:0; border:0; border-radius:8px; background:transparent;
+  color:var(--textFaint); font-size:14px; cursor:pointer; }
+.pks-rm:hover, .pks-x:hover { color:var(--text); }
+.pks-sum { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:10px; padding-top:14px; border-top:1px solid var(--border); }
+.pks-rec { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-top:4px; }
+.pks-sum span, .pks-rec span { font-size:13px; color:var(--textDim); }
+.pks-sum b { font-family:var(--display); font-weight:700; font-size:30px; line-height:1; }
+.pks-rec b { font-family:var(--mono); font-size:15px; font-weight:500; }
+.pks-note { margin:12px 0 0; font-size:13px; color:var(--textDim); }
+.pks-save { width:100%; min-height:48px; margin-top:14px; border:0; border-radius:8px; background:var(--accentFill); color:var(--onAccent);
+  font-family:var(--sans); font-size:15px; font-weight:800; cursor:pointer; }
+.pks-more { display:flex; gap:8px; margin-top:8px; }
+.pks-more button { flex:1 1 0; min-height:44px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--textDim);
+  font-family:var(--sans); font-size:13px; font-weight:700; cursor:pointer; }
+.pks-more button:hover { color:var(--text); border-color:var(--borderFaint); }
+.pks-save:focus-visible, .pks-more button:focus-visible, .pks-rm:focus-visible, .pks-x:focus-visible, .pks-open:focus-visible {
+  outline:2px solid var(--accent); outline-offset:2px; }
+.pks-bar, .pks-dim { display:none; }
+@media (min-width: 1000px) {
+  .pk-cols { display:grid; grid-template-columns:minmax(0, 1fr) 300px; gap:24px; align-items:start; }
+  .pks { position:sticky; top:calc(var(--hdrH) + var(--sportsH) + 16px); max-height:calc(100vh - var(--hdrH) - var(--sportsH) - 32px); overflow:auto; }
+}
+@media (max-width: 999.98px) {
+  .pks { display:none; }
+  .pks.open { display:block; position:fixed; left:0; right:0; bottom:0; z-index:52; max-height:85vh; overflow:auto;
+    border-radius:14px 14px 0 0; padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px)); box-shadow:0 -8px 28px rgba(0,0,0,.35); }
+  .pks.open .pks-x { display:flex; align-items:center; justify-content:center; }
+  .pks.open ~ .pks-dim { display:block; position:fixed; inset:0; z-index:51; background:rgba(0,0,0,.55); }
+  .pks-bar { display:flex; position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom, 0px)); z-index:40;
+    align-items:center; justify-content:space-between; gap:12px; padding:12px; border-radius:12px; background:var(--board2);
+    border:1px solid var(--border); box-shadow:0 8px 28px rgba(0,0,0,.35); }
+  .pks.open ~ .pks-bar { display:none; }
+  .pks-bt { min-width:0; }
+  .pks-bt b { display:block; font-size:14px; font-weight:700; }
+  .pks-bt span { display:block; font-family:var(--mono); font-size:12px; color:var(--textDim); }
+  .pks-open { flex:none; min-height:44px; padding:0 16px; border:0; border-radius:8px; background:var(--accentFill); color:var(--onAccent);
+    font-family:var(--sans); font-size:14px; font-weight:800; cursor:pointer; }
+  /* Room under the last card for the bar, and the toast above it. */
+  #picksGrid:has(.pks-bar) { padding-bottom:88px; }
+  body:has(#picksBoard:not([hidden]) .pks-bar) .toast { bottom:96px; }
+}

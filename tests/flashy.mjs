@@ -153,7 +153,9 @@ ok(/¼ Kelly \$10 \(2%\) cap/.test(text(P.ticketHtml(P.ticketData({ entries: F.e
 env.state.bank = { amount: null, cap: 5 };
 ok(P.ticketData({ entries: F.entries }, pool.slice(0, 1), true) === null, 'no ticket for one leg');
 ok(/case 'ticket-n': state\.ticketN = Number\(target\.dataset\.n\) \|\| 3; renderPicks\(\); break;/.test(app) && /case 'ticket-save': saveTicketImage\(\); break;/.test(app)
-  && /cv\.toBlob\(/.test(lift('saveTicketImage')) && /navigator\.canShare && navigator\.canShare\(\{ files: \[file\] \}\)/.test(lift('saveTicketImage')),
+  // The canvas moved into entryImage on 2026-11-16, so the slip saves one the same way.
+  && /entryImage\(\{/.test(lift('saveTicketImage'))
+  && /cv\.toBlob\(/.test(lift('entryImage')) && /navigator\.canShare && navigator\.canShare\(\{ files: \[file\] \}\)/.test(lift('entryImage')),
   'Save image draws it on a canvas, to the share sheet where the phone has one, else a download');
 ok(/\+ ticketHtml\(ticketData\(d, ppLegs, whole\)\)/.test(lift('renderPicks')), "on the entry's card, under its legs");
 

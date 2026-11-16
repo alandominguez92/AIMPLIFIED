@@ -1633,7 +1633,7 @@
     else if (PHONE_MQ.addListener) PHONE_MQ.addListener(placePhoneControlsSafe);
   }
   window.addEventListener('resize', placePhoneControlsSafe);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCtlSheet(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeCtlSheet(); if (state.slipOpen) slipSheet(false); } });
 
   // Park + weather chips for a pitcher's projection detail. Only shows a factor
   // when it actually moves the number (park ≠ 1.00) or a real temp is posted.
@@ -4613,6 +4613,7 @@
     const adding = !next[leg.id];
     if (adding) next[leg.id] = leg; else delete next[leg.id];
     state.slip = next;
+    if (!Object.keys(next).length) state.slipOpen = false;
     persistSlip();
     renderControls(); renderBoard(); renderSlip(); renderTodayCard();
     // The other sports' boards draw their own stars.
@@ -4684,13 +4685,17 @@
     renderControls();
     renderBoard();
     renderSlip();
+    if (!Object.keys(next).length) state.slipOpen = false;
+    if (state.sport === 'picks') renderPicks();
   }
   function clearSlip() {
     state.slip = {};
+    state.slipOpen = false;
     persistSlip();
     renderControls();
     renderBoard();
     renderSlip();
+    if (state.sport === 'picks') renderPicks();
   }
   function setStake(v) {
     const n = parseFloat(v);
@@ -4958,6 +4963,16 @@
         break;
       }
       case 'ticket-save': saveTicketImage(); break;
+      case 'slip-save': saveSlipImage(); break;
+      case 'slip-sheet': slipSheet(target.dataset.open === '1'); break;
+      case 'slip-log': {
+        state.slipLog = true;
+        slipSheet(false);
+        syncSlipSection();
+        const ss = document.getElementById('slipSection');
+        if (ss) ss.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      }
       case 'pp-line': ppLineSet(target.dataset.key, Math.max(0.5, Number(target.dataset.line) + Number(target.dataset.d)), Number(target.dataset.read), target.dataset.commence); break;
       case 'pp-line-reset': ppLineSet(target.dataset.key, null); break;
       case 'ticket-ml-n': state.ticketMlN = Number(target.dataset.n) || 3; renderPicks(); break;
@@ -5347,6 +5362,7 @@
     const eb = document.getElementById('entriesBoard');
     if (eb) eb.hidden = s !== 'entries';
     placeRail();
+    syncSlipSection();
     renderTopCard();
     if (s === 'entries') { if (!state.entries) refreshEntries(); else renderEntries(); }
     // Hiding on the way out was only half of it. Coming BACK to MLB left the
@@ -5765,9 +5781,14 @@
       renderPicks();
     }
   }
+  // A Picks leg as the slip keeps it. Since the slip panel (2026-11-16, the page brief's step 5) it
+  // also keeps the leg's chance, its record and its start, for a leg that has left the list since.
   function pickLeg(x) {
+    const r = x.record;
     return { id: x.legId, board: PICK_BOARD[x.kind] || 'Pick', title: x.title, sub: pickTeamCode(x) ? `${pickTeamCode(x)} · ${x.sub}` : x.sub,
-      odds: typeof x.odds === 'number' ? x.odds : null, tier: null, edge: null, spec: x.spec };
+      odds: typeof x.odds === 'number' ? x.odds : null, tier: null, edge: null, spec: x.spec,
+      p: typeof x.p === 'number' ? x.p : null, rec: r && r.n && typeof r.hitRate === 'number' ? { n: r.n, hit: r.hit, hitRate: r.hitRate } : null,
+      commence: x.commence || null };
   }
   const pct0 = (v) => (typeof v === 'number' ? `${Math.round(v)}%` : '—');
   // Blocks More since its rule was set (2026-11-04): the whole record counts the
@@ -6291,7 +6312,8 @@
       + '<p class="pk-tnote">Entry size only changes the break-even on each leg. Every prop and moneyline stays listed.</p>';
     const group = (title, xs) => (xs.length ? `<h3 class="pk-gh">${title}</h3><ol class="tc-legs pk-pool">${xs.map(itemHtml).join('')}</ol>` : '');
     const todayCard = '<section class="nba-pp pk-card pk-today" aria-labelledby="pkTodayH">'
-      + '<div class="pk-th"><div class="pk-tt"><h2 class="pk-h2" id="pkTodayH">Today’s legs</h2><p class="pk-tsub">Every prop and moneyline that clears the bar, for your PrizePicks entry. The call is yours.</p></div>'
+      + '<div class="pk-th"><div class="pk-tt"><h2 class="pk-h2" id="pkTodayH">Today’s legs</h2><p class="pk-tsub">Every prop and moneyline that clears the bar, for your PrizePicks entry. The call is yours.</p>'
+      + (Object.keys(state.slip).length ? '' : '<p class="pks-hint">Tap the star on any leg to start your slip.</p>') + '</div>'
       + `${viewBtns}</div>`
       + tools
       + (best ? heroLegHtml(best, { size: 52 })
@@ -6319,8 +6341,12 @@
         + '</details>';
     // Folds the reader opened stay open through the five-minute redraws.
     const kept = new Set([...grid.querySelectorAll('details[data-keep][open]')].map((x) => x.dataset.keep));
-    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + todayCard + bankHtml() + evBetsHtml(d) + siteCard + after;
+    // The slip beside the legs (step 5), once a leg is starred.
+    const slipPanel = slipPanelHtml(d);
+    const legsCols = slipPanel ? `<div class="pk-cols">${todayCard}${slipPanel}</div>` : todayCard;
+    grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + legsCols + bankHtml() + evBetsHtml(d) + siteCard + after;
     for (const k of kept) { const dt = grid.querySelector(`details[data-keep="${k}"]`); if (dt) dt.open = true; }
+    syncSlipSection();
     picksAnimate(grid);
   }
   // The bars and the ring fill in once a page load (2026-10-28), after the
@@ -6486,6 +6512,17 @@
     const e = ml ? { legs: all.filter((x) => Date.parse(x.commence) > Date.now()) } : ppEntryLegs(d);
     const t = ticketData(d, e.legs, ml ? e.legs.length === all.length : e.whole, ml);
     if (!t) return;
+    entryImage({
+      name: t.name,
+      edge: t.ev == null ? null : { text: t.ev > 0 ? `+${t.ev}% edge` : 'no edge', up: t.ev > 0 },
+      legs: t.legs.map((l) => ({ who: l.who, team: pickIsTeam(l.x), pick: l.pick, p: l.p })),
+      foot: [`All ${t.n} land ${pct0(t.all)}   ·   pays ${t.pays}`].concat(t.stake != null && t.stake > 0 ? [`¼ Kelly ${stakeTxt(t.stake)}${t.capped ? ' (cap)' : ''}`] : []),
+    });
+  }
+  // An entry as a picture (split out of the ticket's 2026-11-16, so the slip saves one too): a
+  // name and an edge across the top, a row a leg -- initials, who, the pick, its chance --, the
+  // lines under them, the day. Shared where the phone offers it, else downloaded.
+  function entryImage(t) {
     const css = getComputedStyle(document.documentElement);
     const col = (v, f) => (css.getPropertyValue(v).trim() || f);
     const W = 1080, top = 250, row = 128, H = top + t.legs.length * row + 260;
@@ -6496,20 +6533,19 @@
     g.fillStyle = col('--card', '#12161d'); g.fillRect(0, 0, W, H);
     g.fillStyle = col('--accent', '#f2c34d'); g.font = font(800, 40); g.fillText('AIMPLIFIED.', 64, 96);
     g.fillStyle = col('--text', '#e8ecf2'); g.font = font(800, 64); g.fillText(t.name, 64, 190);
-    if (t.ev != null) { g.textAlign = 'right'; g.fillStyle = t.ev > 0 ? col('--positive', '#3ecf8e') : col('--textDim', '#98a2b3'); g.font = font(700, 40); g.fillText(t.ev > 0 ? `+${t.ev}% edge` : 'no edge', W - 64, 190); g.textAlign = 'left'; }
+    if (t.edge) { g.textAlign = 'right'; g.fillStyle = t.edge.up ? col('--positive', '#3ecf8e') : col('--textDim', '#98a2b3'); g.font = font(700, 40); g.fillText(t.edge.text, W - 64, 190); g.textAlign = 'left'; }
     t.legs.forEach((l, i) => {
       const y = top + i * row + 64;
       g.fillStyle = col('--board2', '#1b212a'); g.beginPath(); g.arc(112, y - 14, 44, 0, Math.PI * 2); g.fill();
-      g.fillStyle = col('--text', '#e8ecf2'); g.font = font(700, 30); g.textAlign = 'center'; g.fillText(initialsOf(l.who, pickIsTeam(l.x)), 112, y - 4); g.textAlign = 'left';
+      g.fillStyle = col('--text', '#e8ecf2'); g.font = font(700, 30); g.textAlign = 'center'; g.fillText(initialsOf(l.who, l.team), 112, y - 4); g.textAlign = 'left';
       g.font = font(700, 40); g.fillText(l.who, 184, y - 22);
       g.fillStyle = col('--accent', '#f2c34d'); g.font = font(600, 32); g.fillText(l.pick, 184, y + 22);
       g.fillStyle = col('--text', '#e8ecf2'); g.font = font(700, 44); g.textAlign = 'right'; g.fillText(pct0(l.p), W - 64, y); g.textAlign = 'left';
     });
     const fy = top + t.legs.length * row + 70;
     g.fillStyle = col('--textDim', '#98a2b3'); g.font = font(500, 32);
-    g.fillText(`All ${t.n} land ${pct0(t.all)}   ·   pays ${t.pays}`, 64, fy);
-    if (t.stake != null && t.stake > 0) g.fillText(`¼ Kelly ${stakeTxt(t.stake)}${t.capped ? ' (cap)' : ''}`, 64, fy + 52);
-    g.fillText(`${ptDayOf(Date.now())} · aimplified`, 64, fy + 104);
+    t.foot.forEach((s, i) => g.fillText(s, 64, fy + i * 52));
+    g.fillText(`${ptDayOf(Date.now())} · aimplified`, 64, fy + Math.max(2, t.foot.length) * 52);
     cv.toBlob(async (blob) => {
       if (!blob) return;
       const file = new File([blob], `aimplified-entry-${ptDayOf(Date.now())}.png`, { type: 'image/png' });
@@ -6521,6 +6557,104 @@
       document.body.appendChild(a); a.click();
       setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }, 'image/png');
+  }
+
+  // The slip beside today's legs (2026-11-16, the page brief's step 5). Each starred leg with its
+  // chance: today's while the leg is on the list, else the one it had when starred; a leg starred
+  // on another tab has none here, and says so with a dash rather than borrow one. Then the chance
+  // all of them land, on those chances and on the record of legs like them, and a leg whose game
+  // has started flagged to come off. A PC shows it beside the legs, pinned; a phone, a bar at the
+  // bottom that opens it. The payout field is step 12's.
+  function slipRows(d, now = Date.now()) {
+    const byId = new Map();
+    for (const x of [...(d.legs || []), ...(d.ppPool || []), ...(d.mlPool || []), ...(d.ppBench || [])]) if (x && x.legId && !byId.has(x.legId)) byId.set(x.legId, x);
+    return Object.values(state.slip).map((lg) => {
+      const x = byId.get(lg.id) || null;
+      const title = String((x && x.title) || lg.title || '');
+      const s = (x && x.spec) || lg.spec || {};
+      const team = s.market === 'ml' || / ML$/.test(title);
+      const m = title.match(/^(.*?) (Under|Over) ([\d.]+) (.+)$/);
+      const line = s.pp && s.pp.line != null ? s.pp.line : m && m[3];
+      let name = title, who = title, pick = lg.sub || '';
+      if (team) { who = title.replace(/ ML$/, ''); name = `${who} to win`; pick = 'to win'; }
+      else if (m) {
+        const w = m[1].split(/\s+/);
+        const sur = w.length > 2 && /^(Jr\.?|Sr\.?|II|III|IV)$/.test(w[w.length - 1]) ? w.slice(-2).join(' ') : w[w.length - 1];
+        name = `${sur} ${m[2].toLowerCase()} ${line} ${m[4]}`;
+        who = s.player || m[1];
+        pick = `${m[2] === 'Over' ? 'More' : 'Less'} ${line} ${m[4]}`;
+      }
+      const p = x && typeof x.p === 'number' ? x.p : typeof lg.p === 'number' ? lg.p : null;
+      const r = (x && x.record) || lg.rec || null;
+      const at = Date.parse((x && x.commence) || lg.commence || '');
+      return { id: lg.id, name, who, pick, team, p, rec: r && r.n && typeof r.hitRate === 'number' ? r.hitRate : null, started: isFinite(at) && at <= now };
+    });
+  }
+  // The chance every one of them lands, taking each on its own.
+  const slipAll = (xs, k) => (xs.length ? xs.reduce((a, r) => a * r[k] / 100, 1) * 100 : null);
+  function slipPanelHtml(d, now = Date.now()) {
+    const rows = slipRows(d, now);
+    const n = rows.length;
+    if (!n) return '';
+    const withP = rows.filter((r) => r.p != null), withR = rows.filter((r) => r.rec != null);
+    const allP = slipAll(withP, 'p'), allR = slipAll(withR, 'rec');
+    const started = rows.filter((r) => r.started);
+    const warn = !started.length ? ''
+      : `<div class="pks-warn" role="status"><b>${started.length === 1 ? `${esc(started[0].name)} has started.` : `${started.length} legs have started.`}</b> `
+        + `Remove ${started.length === 1 ? 'it' : 'them'} or swap for a leg still to play.</div>`;
+    const legs = rows.map((r) => `<li class="pks-leg${r.started ? ' started' : ''}"><span class="pks-nm">${esc(r.name)}${r.started ? '<span class="pks-st"> · started</span>' : ''}</span>`
+      + `<span class="pks-p">${r.p != null ? esc(pct0(r.p)) : '—'}</span>`
+      + `<button type="button" class="pks-rm" data-action="remove-leg" data-leg="${esc(r.id)}" aria-label="Remove ${esc(r.name)} from your slip">✕</button></li>`).join('');
+    const allLbl = withP.length === n ? `All ${n} land, on the chances shown` : `All ${withP.length} with a chance land`;
+    const recLbl = withR.length === n ? 'On the record of legs like these' : withR.length ? `On the record, the ${withR.length} with one` : 'On the record of legs like these';
+    const size = n < 2 ? '<p class="pks-note">A PrizePicks entry takes two legs or more: star another.</p>'
+      : n > 6 ? '<p class="pks-note">A PrizePicks entry takes six legs at most: remove one.</p>' : '';
+    const panel = `<aside class="pks${state.slipOpen ? ' open' : ''}" id="pksPanel" aria-labelledby="pksH">`
+      + `<div class="pks-h"><h2 id="pksH">My slip</h2><span class="pks-n">${n} leg${n === 1 ? '' : 's'}</span>`
+      + '<button type="button" class="pks-x" data-action="slip-sheet" data-open="0" aria-label="Close the slip">✕</button></div>'
+      + warn
+      + `<ul class="pks-legs">${legs}</ul>`
+      + `<div class="pks-sum"><span>${esc(allLbl)}</span><b>${allP != null ? esc(pct0(allP)) : '—'}</b></div>`
+      + `<div class="pks-rec"><span>${esc(recLbl)}</span><b>${allR != null ? esc(pct0(allR)) : '—'}</b></div>`
+      + size
+      + (n >= 2 && n <= 6 && withP.length === n ? '<button type="button" class="pks-save" data-action="slip-save">Save entry image</button>' : '')
+      + '<div class="pks-more"><button type="button" data-action="slip-log">Log this entry</button><button type="button" data-action="clear-slip">Clear the slip</button></div>'
+      + '</aside>';
+    const bar = '<div class="pks-dim" data-action="slip-sheet" data-open="0"></div>'
+      + `<div class="pks-bar"><div class="pks-bt"><b>My slip · ${n} leg${n === 1 ? '' : 's'}</b>`
+      + `<span>${withP.length === n && n > 1 ? `All ${n} land ${esc(pct0(allP))}` : n === 1 && allP != null ? `${esc(pct0(allP))} to land` : 'tap to see it'}${started.length ? ' · a leg has started' : ''}</span></div>`
+      + `<button type="button" class="pks-open" data-action="slip-sheet" data-open="1" aria-controls="pksPanel" aria-expanded="${!!state.slipOpen}">Open slip</button></div>`;
+    return panel + bar;
+  }
+  function saveSlipImage() {
+    const rows = slipRows(state.picks || {});
+    const n = rows.length;
+    if (n < 2 || n > 6 || rows.some((r) => r.p == null)) return;
+    const withR = rows.filter((r) => r.rec != null);
+    entryImage({
+      name: `${n}-pick entry`, edge: null,
+      legs: rows.map((r) => ({ who: r.who, team: r.team, pick: r.pick, p: r.p })),
+      foot: [`All ${n} land ${pct0(slipAll(rows, 'p'))}, on the chances shown`]
+        .concat(withR.length === n ? [`On the record of legs like these ${pct0(slipAll(withR, 'rec'))}`] : []),
+    });
+  }
+  // The phone's sheet opens and closes in place: a redraw would lose the scroll.
+  function slipSheet(open) {
+    state.slipOpen = !!open;
+    const pn = document.getElementById('pksPanel');
+    if (pn) pn.classList.toggle('open', state.slipOpen);
+    const btn = document.querySelector('.pks-open');
+    if (btn) btn.setAttribute('aria-expanded', String(state.slipOpen));
+    const to = state.slipOpen ? document.querySelector('.pks-x') : btn;
+    if (to && to.offsetParent) to.focus();
+  }
+  // The slip's old card (the log form, the parlay sums) stays off Picks, where the panel is the
+  // slip, until "Log this entry" asks for it. Every other tab keeps it as it was.
+  function syncSlipSection() {
+    const ss = document.getElementById('slipSection');
+    if (!ss) return;
+    if (!Object.keys(state.slip).length) state.slipLog = false;
+    ss.hidden = state.sport === 'picks' && !!document.querySelector('#picksGrid .pk-today') && !state.slipLog;
   }
 
   // The entry's own units since its pool was first logged (2026-10-28), from

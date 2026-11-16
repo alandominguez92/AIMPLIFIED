@@ -268,8 +268,9 @@ ok(sq.prepare('SELECT result FROM edgebets WHERE key = ?').get(CIN).result === '
 const rp = alift('renderPicks');
 // (Since later on 2026-10-28 the "Last night" recap leads: tests/flashy.mjs.)
 // Since the page brief (2026-11-16, tests/legcard.mjs): today's legs, props then moneylines, then
-// the sportsbook bets, then the site's own entries folded.
-ok(/grid\.innerHTML = recapHtml\(d\.record && d\.record\.history, d\.edgeRecord\) \+ mlbUnreadHtml\(d\) \+ todayCard \+ bankHtml\(\) \+ evBetsHtml\(d\) \+ siteCard \+ after;/.test(rp) && /Today’s legs<\/h2>/.test(rp) && /The site’s own entries today<\/span>/.test(rp),
+// the sportsbook bets, then the site's own entries folded. Since step 5 the slip sits beside the
+// legs once a leg is starred (legsCols, tests/slippanel.mjs).
+ok(/grid\.innerHTML = recapHtml\(d\.record && d\.record\.history, d\.edgeRecord\) \+ mlbUnreadHtml\(d\) \+ legsCols \+ bankHtml\(\) \+ evBetsHtml\(d\) \+ siteCard \+ after;/.test(rp) && /Today’s legs<\/h2>/.test(rp) && /The site’s own entries today<\/span>/.test(rp),
   'Picks leads with today\'s legs, then the sportsbook bets, then the site\'s own entries');
 // (The state the books' links name rides with them since 2026-10-29: tests/betlinks.mjs.)
 ok(/if \(t\.dataset\.action === 'bank-amount' \|\| t\.dataset\.action === 'bank-cap'( \|\| t\.dataset\.action === 'bank-state')?\)/.test(app) && /localStorage\.setItem\('aimplified_bankroll'/.test(app), 'the bankroll is kept on the device');

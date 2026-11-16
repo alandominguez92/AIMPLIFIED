@@ -87,7 +87,7 @@ ok(/id="ctlSheetBtn" data-action="open-ctl-sheet"/.test(html) && /<span class="c
   'one "Filter · Sort" button, with a slot saying what is set');
 ok(/id="ctlSheet" hidden/.test(html) && /role="dialog" aria-modal="true"/.test(html) && /class="ctl-sheet-done" data-action="close-ctl-sheet"/.test(html),
   'a sheet, hidden until opened, with a Done button');
-ok(/case 'open-ctl-sheet'/.test(src) && /case 'close-ctl-sheet'/.test(src) && /e\.key === 'Escape'\) closeCtlSheet\(\)/.test(src), 'opened and closed by action, and Escape closes it');
+ok(/case 'open-ctl-sheet'/.test(src) && /case 'close-ctl-sheet'/.test(src) && /e\.key === 'Escape'\) \{ closeCtlSheet\(\);/.test(src), 'opened and closed by action, and Escape closes it');
 ok(/\.ctl-sheet-btn\s*\{\s*display:none;/.test(css) && /@media \(max-width:640px\)\s*\{\s*#slate \.tabrow\s*\{\s*display:none;/.test(css),
   'the button shows on a phone only, and the emptied tab row goes');
 // The toolbar rules are the MLB board's. Unscoped, ".board-toolbar >

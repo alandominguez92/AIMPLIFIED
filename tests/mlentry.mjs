@@ -250,7 +250,7 @@ ok((histHtml.match(/The moneyline entry, best first/g) || []).length === hist.da
 const rp = lift('renderPicks');
 // Since the page brief (2026-11-16): its legs join today's list as moneylines, and the entry itself
 // folds with the PrizePicks one under the sportsbook bets.
-ok(/todayCard \+ bankHtml\(\) \+ evBetsHtml\(d\) \+ siteCard \+ after;/.test(rp) && /\+ \(mlLegs\.length > 1 \? '<h3 class="pk-gh">Moneyline entry<\/h3>/.test(rp), 'the entry sits with the site\'s own, under the sportsbook bets');
+ok(/legsCols \+ bankHtml\(\) \+ evBetsHtml\(d\) \+ siteCard \+ after;/.test(rp) && /\+ \(mlLegs\.length > 1 \? '<h3 class="pk-gh">Moneyline entry<\/h3>/.test(rp), 'the entry sits with the site\'s own, under the sportsbook bets');
 ok(/const siteCard = !\(ppLegs\.length > 1 \|\| mlLegs\.length > 1\) \? ''\s*:/.test(rp), 'no entry under two legs still to play');
 ok(/Date\.parse\(x\.commence\) > Date\.now\(\)/.test(rp.slice(rp.indexOf('const mlLegs'), rp.indexOf('const mlWhole'))) && /entryRows\(mlLegs, mlWhole && \(d\.mlEntries \|\| \[\]\)\)/.test(rp), 'still to play only; a started leg takes the priced edge away, as on the entry');
 ok(/check what the app shows before you place it/.test(rp), "and it says the edge is at PrizePicks' standard payouts, to be checked");
