@@ -164,7 +164,7 @@ const penv = {
   LEG_OFFERS: new Map(), persistSlip: () => { penv.persisted++; }, renderSlip: () => {}, renderPicks: () => { penv.drawn++; }, renderNba: () => { penv.drawn++; },
   MARKET_SHORT: { reb: 'REB', ast: 'AST', blk: 'BLK', threes: '3PM' }, ptDayOf: (ms) => new RealDate(ms).toISOString().slice(0, 10), persisted: 0, drawn: 0,
 };
-const names = ['nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'PP_LINE_STORE', 'ppLinesLoad', 'ppLineOf', 'ppLineSet', 'ppChanceAt', 'nbaLegAtLine', 'pickAtLine', 'ppPoolAtLines', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'ppLineTags', 'ppLineStepHtml', 'nbaPpLeg', 'pickLineSetTag', 'ppMovedTag'];
+const names = ['nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'PP_LINE_STORE', 'ppLinesLoad', 'ppLineOf', 'ppLineSet', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'pickAtLine', 'ppPoolAtLines', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'ppLineTags', 'ppLineStepHtml', 'nbaPpLeg', 'pickLineSetTag', 'ppMovedTag'];
 let P;
 try {
   P = new Function(...Object.keys(penv), names.map(lift).join('\n') + `\nreturn { ${names.filter((n) => !/^[A-Z]/.test(n)).join(', ')} };`)(...Object.values(penv));
@@ -204,6 +204,8 @@ ok(/case 'pp-line': ppLineSet\(target\.dataset\.key, Math\.max\(0\.5, Number\(ta
 
 const seasoned = withDisp({ ...sharpe, sharp_under: 61, sharp_src: 'pinnacle', l10_n: 5, l10_under: 5 });
 const clean = P.nbaLegAtLine(seasoned);
+// With no sharp books' lines kept on the leg (bookUnders), the sharp chance can't be carried to
+// the new number and goes; with them it is worked out again (tests/sharpcard.mjs).
 ok(clean.sharp_under == null && clean.l10_n === 0, "the sharp chance and his season against the line were at the old number, and go");
 const bookLegX = withDisp(CARD.legs.find((l) => l.market === 'reb' && l.book_line != null));
 P.ppLineSet(`nbapp:${bookLegX.game_id}:${bookLegX.player}:reb`, bookLegX.point + 0.5, bookLegX.point, bookLegX.commence);

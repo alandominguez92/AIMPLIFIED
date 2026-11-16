@@ -62,9 +62,9 @@ const KLAY_INJ = PR.players.find((p) => p.name === 'Klay Thompson').inj;
 const ui = { nbaPp: null, slip: {} };
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
-  'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'injOut', 'outLast', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
-  'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'ppLineTags', 'ppLineStepHtml',
-  'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'].filter(have);
+  'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'injOut', 'outLast', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
+  'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'ppLineTags', 'ppLineStepHtml',
+  'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'].filter(have);
 let C;
 try {
   C = new Function('state', 'esc', CARD.map(lift).join('\n') + '\nreturn { nbaPpCardHtml, ppMoreTop };')(ui, esc);
@@ -81,17 +81,28 @@ ok(KLAY_INJ.out === true && KLAY_INJ.status === 'OUT' && KLAY_INJ.what === 'ankl
 const tyson = rot.find((l) => l.player === 'Jaylon Tyson');
 ok(tyson && tyson.inj.status === 'GTD' && tyson.inj.out === false, 'Jaylon Tyson listed questionable (ankle), not out');
 
+// The card is in the sharp books' order since 2026-11-16 (tests/sharpcard.mjs), out players still
+// last: Klay, with no sharp line, is off the five either way, so the one listed out here is the
+// sharp list's leader.
 console.log('\n-- the unders card --');
+// Fred VanVleet, fourth by the sharp chance (53.9), was listed out on Nov 16 (knee) and is last.
+const isOut = (l) => !!(l.inj && l.inj.out);
+const sharpRot = rot.filter((l) => typeof l.sharp_under === 'number').sort((a, b) => isOut(a) - isOut(b) || b.sharp_under - a.sharp_under);
+ok(sharpRot[sharpRot.length - 1].player === 'Fred VanVleet' && rot.filter(isOut).length === 1, 'Fred VanVleet, listed out, is the one out among them');
 const before = cardNames(PP);
-ok(JSON.stringify(before) === JSON.stringify(rot.slice(0, 5).map((l) => l.player)), `no one out: the top five by chance (${before.join(', ')})`);
-const after = cardNames(withOut(['Klay Thompson']));
-ok(!after.includes('Klay Thompson'), `Klay listed out: off the five (${after.join(', ')})`);
-ok(JSON.stringify(after) === JSON.stringify(rot.slice(1, 6).map((l) => l.player)), 'the next five move up, in their order');
-ok(after.includes('Jaylon Tyson') && after.indexOf('Jaylon Tyson') === before.indexOf('Jaylon Tyson') - 1, 'Tyson, questionable, keeps their place among them');
-const many = withOut(rot.slice(0, 8).map((l) => l.player).filter((n) => n !== 'Jaylon Tyson'));
-const outN = new Set(rot.slice(0, 8).map((l) => l.player).filter((n) => n !== 'Jaylon Tyson'));
-const legs6 = cardNames(many);
-ok(legs6.every((n) => !outN.has(n)) || legs6.findIndex((n) => outN.has(n)) > legs6.findLastIndex((n) => !outN.has(n)), `with seven of the top eight out, none ahead of a player who isn't (${legs6.join(', ')})`);
+ok(JSON.stringify(before) === JSON.stringify(sharpRot.slice(0, 5).map((l) => l.player)) && !before.includes('Fred VanVleet'), `the top five by the sharp chance, VanVleet off it (${before.join(', ')})`);
+const lead = sharpRot[0].player;
+const after = cardNames(withOut([lead]));
+ok(!after.includes(lead), `${lead} listed out: off the five (${after.join(', ')})`);
+ok(JSON.stringify(after) === JSON.stringify(sharpRot.slice(1, 6).map((l) => l.player)), 'the next five move up, in their order');
+const third = sharpRot[2].player;
+const gtd = cardNames({ ...PP, legs: PP.legs.map((l) => (l.player === third ? { ...l, inj: tyson.inj } : l)) });
+ok(JSON.stringify(gtd) === JSON.stringify(before), `${third} given Tyson's questionable report keeps their place`);
+const top8 = sharpRot.slice(0, 8).map((l) => l.player).filter((n) => n !== third);
+const outN = new Set(top8);
+const legs6 = cardNames(withOut(top8));
+ok(legs6.length === 5 && (legs6.every((n) => !outN.has(n)) || legs6.findIndex((n) => outN.has(n)) > legs6.findLastIndex((n) => !outN.has(n))), `with seven of the top eight out, none ahead of a player who isn't (${legs6.join(', ')})`);
+ok(!cardNames(withOut(['Klay Thompson'])).includes('Klay Thompson') && !before.includes('Klay Thompson'), 'Klay, with no sharp line, is off the five, out or not');
 
 console.log('\n-- blocks Mores --');
 const blk = (d) => C.ppMoreTop(d.legs.filter((l) => l.min_proj >= 20), (x) => x.market === 'blk', 3).map((x) => x.player);

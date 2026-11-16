@@ -51,9 +51,9 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 const ui = { nbaPp: b, slip: {} };
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
-  'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
-  'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml',
-  'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'];
+  'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
+  'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml',
+  'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'];
 let C;
 try {
   C = new Function('state', 'esc', CARD.map(lift).join('\n') + '\nreturn { NBA_BANDS, nbaBandLandedHtml, nbaPpCardHtml, nbaLegAtLine };')(ui, esc);
@@ -86,39 +86,46 @@ ok(C.nbaBandLandedHtml(thin, 75) === '', 'a range of 29 legs');
 ok(text(C.nbaBandLandedHtml(thin, 66)) === "65-70% legs landed 63% (19 of 30)", 'a range of 30 does');
 ok(C.nbaBandLandedHtml({ byBand: { '70+': { n: 0, hit: 0, hitRate: null } } }, 75) === '', 'an empty range');
 
-console.log('\n-- on the card --');
-const before = (html, name) => html.split(`<b>${name}</b>`)[1] || '';
+// Since 2026-11-16 the card leads with the sharp books' chance (tests/sharpcard.mjs): the line
+// under the big number is the sharp range's, and the model's range rides with its chance on the
+// third line ("model 81% (its 70%+ landed 54%)").
+console.log('\n-- on the card, beside the model\'s chance --');
+const before = (html, name) => (html.split(`<b>${name}</b>`)[1] || '').split('<li>')[0];
 const card = C.nbaPpCardHtml();
 const unders = card.split('<span class="tc-title">Blocks: More</span>')[0];
-const top = b.legs.slice(0, 5);
-ok(top[0].player === 'Ajay Mitchell' && (unders.match(/class="tc-landed"/g) || []).length === top.length, `each of the ${top.length} legs carries one`);
+const shown = [...unders.matchAll(/<span class="tc-l1"><b>([^<]+)<\/b>/g)].map((m) => m[1]);
+const top = shown.map((n) => b.legs.find((x) => x.player === n));
+const modelBit = (html) => (html.match(/<span class="tc-model"[^>]*>[^<]*<\/span>/) || [''])[0];
+const rangeOf = (p) => (landed(p).match(/^(.*?) legs landed (\d+)% \((\d+ of \d+)\)$/) || []).slice(1);
+ok(top.length === 5 && top.every(Boolean) && (unders.match(/class="tc-model"/g) || []).length === top.length, `each of the ${top.length} legs carries one: ${shown.join(', ')}`);
 for (const x of top) {
-  const after = before(unders, x.player);
-  const line = text((after.match(/<span class="tc-landed"[^>]*>.*?<\/span>/) || [''])[0]);
-  ok(line === landed(x.model_under), `${x.player} at ${x.model_under}: "${line}"`);
-  ok(after.indexOf('class="tc-p"') < after.indexOf('class="tc-landed"') && after.indexOf('class="tc-landed"') < after.indexOf('class="tc-l2"'),
-    'right under the percentage, above the bet');
+  const bit = modelBit(before(unders, x.player));
+  const [what, rate, count] = rangeOf(x.model_under);
+  ok(text(bit) === `model ${Math.round(x.model_under)}% (its ${what === '<55%' ? 'under 55%' : what} landed ${rate}%)` && bit.includes(count),
+    `${x.player} at ${x.model_under}: "${text(bit)}", ${count} on hover`);
 }
-ok(/class="tc-landed" title="[^"]+"/.test(unders), 'and says on hover what was counted');
+ok(before(unders, 'Ajay Mitchell').indexOf('class="tc-l2"') < before(unders, 'Ajay Mitchell').indexOf('class="tc-model"'), 'on the third line, under the bet');
 
 console.log('\n-- a tapped line moves the range --');
-const reed = top.find((x) => x.player === 'Paul Reed Jr');
+const reed = b.legs.find((x) => x.player === 'Paul Reed Jr');
+ok(shown.includes(reed.player), 'Paul Reed Jr is on the card');
 const key = `nbapp:${reed.game_id}:${reed.player}:${reed.market}`;
 const line2 = reed.point - 3;
 ui.ppLines = { [key]: { line: line2, at: NOW + 1000, commence: reed.commence } };
 const moved = C.nbaLegAtLine(reed);
 ok(moved.point === line2 && moved.model_under < 70, `Reed's rebounds set at ${line2}: the model says ${moved.model_under}`);
 const tapped = C.nbaPpCardHtml().split('<span class="tc-title">Blocks: More</span>')[0];
-const tappedLine = text((before(tapped, reed.player).match(/<span class="tc-landed"[^>]*>.*?<\/span>/) || [''])[0]);
-ok(tappedLine === landed(moved.model_under) && !/42 of 78/.test(tappedLine), `the line follows: "${tappedLine}"`);
+const tappedBit = text(modelBit(before(tapped, reed.player)));
+const [w2, rate2] = rangeOf(moved.model_under);
+ok(tappedBit === `model ${Math.round(moved.model_under)}% (its ${w2 === '<55%' ? 'under 55%' : w2} landed ${rate2}%)` && !/70%\+/.test(tappedBit), `the range follows: "${tappedBit}"`);
 ui.ppLines = {};
 
 console.log('\n-- the rest of the card --');
 const more = card.split('<span class="tc-title">Blocks: More</span>')[1] || '';
-ok(more.length > 0 && !/tc-landed/.test(more), 'Blocks More keeps its own record and no range line');
+ok(more.length > 0 && !/tc-landed/.test(more) && !/tc-model/.test(more), 'Blocks More keeps its own record and no range line');
 ui.nbaPp = { ...b, record: null };
 const noRecord = C.nbaPpCardHtml();
-ok(/<b>Ajay Mitchell<\/b>/.test(noRecord) && !/tc-landed/.test(noRecord), 'with no record the legs still show, without the line');
+ok(/<b>Ajay Mitchell<\/b>/.test(noRecord) && !/tc-landed/.test(noRecord) && /class="tc-model"[^>]*>model 81%<\/span>/.test(noRecord), 'with no record the legs still show, the model\'s chance without its range');
 ui.nbaPp = b;
 
 console.log('\n-- the style --');

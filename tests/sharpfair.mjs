@@ -144,14 +144,19 @@ const liftApp = (name) => {
   throw new Error('could not lift ' + name);
 };
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const P = new Function('esc', ['AM', 'sharpTag', 'ppBookLine'].map(liftApp).join('\n') + '\nreturn { sharpTag, ppBookLine };')(esc);
+const P = new Function('esc', ['AM', 'sharpBooksText', 'sharpTag', 'ppBookLine'].map(liftApp).join('\n') + '\nreturn { sharpTag, ppBookLine };')(esc);
 const text = (h) => h.replace(/<[^>]+>/g, '').trim();
 const line = P.ppBookLine({ book_line: 6.5, book_under: -115, sharp_under: 59.4, sharp_src: 'pinnacle,novig', l10_n: 4, l10_under: 2 });
 ok(text(line) === 'book u6.5 -115 · sharp 59% · season: under 2 of 4' && /class="tc-sharp up"/.test(line) && /Pinnacle, Novig/.test(line),
   `the card: "${text(line)}", the sharp chance coloured at a 2-pick power's 57.7% and naming its books`);
 ok(/tc-sharp down/.test(P.sharpTag(48)) && !/ up| down/.test(P.sharpTag(55)) && P.sharpTag(null) === '' && P.ppBookLine({}) === '',
   'under 50% cautionary, in between plain, none: nothing');
-ok(/\$\{ppBookLine\(x\)\}<\/span>`/.test(liftApp('nbaPpCardHtml')) && /tags\.push\(sharpTag\(x\.sharp, null, true\)\)/.test(app), 'on every NBA card leg, and as a tag on Picks of the day');
+// Since 2026-11-16 the NBA card leads with the sharp chance (tests/sharpcard.mjs) and its third
+// line carries the model's chance in the sharp one's place.
+const midLine = P.ppBookLine({ book_line: 6.5, book_under: -115, sharp_under: 59.4, sharp_src: 'pinnacle,novig', l10_n: 4, l10_under: 2 }, '<span>model 64%</span>');
+ok(text(midLine) === 'book u6.5 -115 · model 64% · season: under 2 of 4' && !/sharp/.test(midLine), `given the model's bit, it goes where the sharp chance was: "${text(midLine)}"`);
+ok(/FanDuel, Novig/.test(P.sharpTag(55, 'fanduel,novig')), 'FanDuel named, one of the books the chance is taken from');
+ok(/\$\{ppBookLine\(x, nbaModelBit\(r, x\)\)\}<\/span>`/.test(liftApp('nbaPpCardHtml')) && /tags\.push\(sharpTag\(x\.sharp, null, true\)\)/.test(app), 'on every NBA card leg, and as a tag on Picks of the day');
 
 console.log('\n-- the record by the sharp chance --');
 const g = sq.prepare(`INSERT INTO nbapp (date, game_id, player, market, point, model_under, min_proj, sharp_under, result)

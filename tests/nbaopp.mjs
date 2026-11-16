@@ -50,9 +50,9 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 const ui = { nbaPp: b, slip: {} };
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'NHL_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
-  'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
-  'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml',
-  'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'];
+  'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
+  'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml',
+  'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'];
 let C;
 try {
   C = new Function('state', 'esc', CARD.map(lift).join('\n') + '\nreturn { NBA_CODE_NICK, legOppText, nbaPpCardHtml, ppMoreListHtml };')(ui, esc);
@@ -90,7 +90,9 @@ const card = C.nbaPpCardHtml();
 const [unders, mores] = card.split('<span class="tc-title">Blocks: More</span>');
 const rowOf = (html, name) => text((html.split(`<b>${name}</b>`)[1] || '').split('</li>')[0]);
 const legs = (b.legs || []).filter((x) => x.min_proj >= 18);
-const top = legs.slice(0, 5);
+// The legs the card shows, in its own order (the sharp books' since 2026-11-16, tests/sharpcard.mjs).
+const top = [...unders.matchAll(/<span class="tc-l1"><b>([^<]+)<\/b>/g)].map((m) => legs.find((x) => x.player === m[1]));
+ok(top.length === 5 && top.every(Boolean), `five legs on the card: ${top.map((x) => x && x.player).join(', ')}`);
 for (const x of top) {
   const row = rowOf(unders, x.player);
   ok(row.includes(`${x.team} · ${C.legOppText(x)} · Under ${x.point}`), `${x.player}: "${row.slice(row.indexOf(x.team), row.indexOf(x.team) + 44)}"`);

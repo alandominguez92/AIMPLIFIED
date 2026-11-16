@@ -6593,9 +6593,38 @@
     const line = ppLineOf(`nbapp:${x.game_id}:${x.player}:${x.market}`, x.close_at || x.first_at);
     if (line == null || line === x.point || !(x.proj > 0) || !(x.disp > 0)) return x;
     const c = ppChanceAt(line, x.proj, x.disp);
-    // The sharp chance and his season against the line were at the old number.
+    // His season against the line was at the old number. The sharp chance is worked out again
+    // at the new one from the sharp books' own lines (sharpAtLine), where the read has them.
+    const sh = sharpAtLine(x.bookUnders, line, x.disp);
     return { ...x, point: line, model_under: r1(c.under), vsBook: x.book_line != null ? r1(line - x.book_line) : null,
-      sharp_under: null, sharp_src: null, l10_n: 0, l10_under: 0, lineSet: { read: x.point, under: c.under, over: c.over, tie: c.tie } };
+      sharp_under: sh ? sh.under : null, sharp_src: sh ? sh.src : null, sharpMoved: !!sh, l10_n: 0, l10_under: 0, lineSet: { read: x.point, under: c.under, over: c.over, tie: c.tie } };
+  }
+  // The sharp books' chance of the under at a line PrizePicks moved to (2026-11-16, with the card
+  // led by it): each sharp book's main line and no-vig chance there (book_unders), carried to the
+  // new number along his own distribution, and the median of them -- as the worker prices
+  // PrizePicks' line (nbaSharpUnder), from the lines the read kept. The worker's books, Pinnacle's
+  // and FanDuel's with the exchanges (NBA_PROP_SHARP).
+  const NBA_SHARP_BOOKS = ['fanduel', 'pinnacle', 'lowvig', 'betonlineag', 'novig', 'prophetx'];
+  function sharpAtLine(bookUnders, line, phi) {
+    let bu = bookUnders;
+    if (typeof bu === 'string') { try { bu = JSON.parse(bu); } catch (e) { return null; } }
+    if (!bu || typeof bu !== 'object' || typeof line !== 'number' || !(phi > 0)) return null;
+    const below = (mu, b) => nbCdf(Math.ceil(b) - 1, mu, phi);                       // P(X < b)
+    const under = (mu, b) => (Number.isInteger(b) ? below(mu, b) / (below(mu, b) + 1 - nbCdf(b, mu, phi)) : below(mu, b));
+    const at = [], src = [];
+    for (const bk of NBA_SHARP_BOOKS) {
+      const v = bu[bk];
+      if (!Array.isArray(v) || typeof v[0] !== 'number' || !(v[1] > 0 && v[1] < 100)) continue;
+      const p = v[0], fair = v[1] / 100;
+      let lo = 0.001, hi = Math.max(5, p * 4 + 5);                                     // under falls as the mean rises
+      for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (under(mid, p) > fair) lo = mid; else hi = mid; }
+      at.push(below((lo + hi) / 2, line));
+      src.push(bk);
+    }
+    if (!at.length) return null;
+    at.sort((a, b) => a - b);
+    const m = at.length % 2 ? at[(at.length - 1) / 2] : (at[at.length / 2 - 1] + at[at.length / 2]) / 2;
+    return { under: r1(m * 100), src: src.join(',') };
   }
   // On Picks a rebounds Less stands on its line sitting above the sharp books'
   // (PICK_KINDS.nba_reb_gap), so its chance stays the backtest's while that
@@ -6929,18 +6958,20 @@
   // (2026-10-25), coloured against the break-evens: at or above a 2-pick
   // power's 57.7% it reads as an edge, under 50% as a leg the market rates
   // the other way.
+  const sharpBooksText = (src) => (src ? String(src).split(',').map((b) => ({ fanduel: 'FanDuel', pinnacle: 'Pinnacle', lowvig: 'LowVig', betonlineag: 'BetOnline', novig: 'Novig', prophetx: 'ProphetX' })[b] || b).join(', ') : 'the sharp books');
   function sharpTag(p, src, chip) {
     if (typeof p !== 'number') return '';
     const tone = p >= 57.7 ? ' up' : p < 50 ? ' down' : '';
-    const books = src ? String(src).split(',').map((b) => ({ pinnacle: 'Pinnacle', lowvig: 'LowVig', betonlineag: 'BetOnline', novig: 'Novig', prophetx: 'ProphetX' })[b] || b).join(', ') : 'the sharp books';
-    return `<span class="${chip ? 'tc-sharp-chip' : 'tc-sharp'}${tone}" title="${esc(books)}: their price at PrizePicks' line, de-vigged">sharp ${Math.round(p)}%</span>`;
+    return `<span class="${chip ? 'tc-sharp-chip' : 'tc-sharp'}${tone}" title="${esc(sharpBooksText(src))}: their price at PrizePicks' line, de-vigged">sharp ${Math.round(p)}%</span>`;
   }
   // The card's third line: the book's line, the sharp chance, and his games
-  // this season against today's number (context: recent form regresses).
-  function ppBookLine(x) {
+  // this season against today's number (context: recent form regresses). Given
+  // `mid`, that goes in the sharp chance's place: the NBA card leads with the
+  // sharp chance since 2026-11-16 and puts the model's here (nbaModelBit).
+  function ppBookLine(x, mid) {
     const parts = [];
     if (x.book_line != null) parts.push(`book u${esc(String(x.book_line))}${x.book_under != null ? ' ' + esc(AM(x.book_under)) : ''}`);
-    const sh = sharpTag(x.sharp_under, x.sharp_src);
+    const sh = mid !== undefined ? mid : sharpTag(x.sharp_under, x.sharp_src);
     if (sh) parts.push(sh);
     if (x.l10_n > 0) parts.push(`<span title="His games this season against this line">season: under ${x.l10_under} of ${x.l10_n}</span>`);
     return parts.length ? `<span class="tc-book">${parts.join(' · ')}</span>` : '';
@@ -7031,30 +7062,59 @@
     const what = band[0] === '<55' ? '<55%' : band[0] === '70+' ? '70%+' : `${band[0]}%`;
     return `<span class="tc-landed" title="Every graded leg the model put in this range: rotation players, at PrizePicks' line">${esc(what)} legs landed <b>${Math.round(c.hitRate)}%</b> (${c.hit} of ${c.n})</span>`;
   }
+  // The card leads with the sharp books' chance (2026-11-16, the owner's "yes build it"): a
+  // replay of 783 graded legs had the model's percentage at 61.7 shown and 51.5 landed, every
+  // range landing about the same, while the sharp chance's ranges climbed with it (54-58%
+  // landed 57.7%). So the sharp number is the big one and sets the order; under it, what legs
+  // in its range have landed -- the record's own ranges (ppSharpRecord in worker.js), at
+  // PrizePicks' first line.
+  function nbaSharpLandedHtml(r, p) {
+    const band = typeof p === 'number' ? [['<50', 0, 50], ['50-54', 50, 54], ['54-58', 54, 58], ['58+', 58, 101]].find(([, lo, hi]) => p >= lo && p < hi) : null;
+    const c = band && r && r.sharp && r.sharp.byBand && r.sharp.byBand[band[0]];
+    if (!c || !(c.n >= NBA_BAND_MIN)) return '';
+    const what = band[0] === '<50' ? 'Below 50%' : band[0] === '58+' ? '58%+' : `${band[0]}%`;
+    return `<span class="tc-landed" title="Every graded leg the sharp books put in this range: rotation players, at PrizePicks' first line">${esc(what)} legs landed <b>${Math.round(c.hitRate)}%</b> (${c.hit} of ${c.n})</span>`;
+  }
+  // The model's own chance, small on the third line, with what its range has landed.
+  function nbaModelBit(r, x) {
+    if (typeof x.model_under !== 'number') return '';
+    const band = NBA_BANDS.find(([, lo, hi]) => x.model_under >= lo && x.model_under < hi);
+    const c = band && r && r.byBand && r.byBand[band[0]];
+    const has = !!(c && c.n >= NBA_BAND_MIN);
+    const what = band && (band[0] === '<55' ? 'under 55%' : band[0] === '70+' ? '70%+' : `${band[0]}%`);
+    return `<span class="tc-model" title="The model's chance: last ten games blended with last season${has ? `. Its graded legs at ${esc(what)} landed ${c.hit} of ${c.n}` : ''}">model ${Math.round(x.model_under)}%${has ? ` (its ${esc(what)} landed ${Math.round(c.hitRate)}%)` : ''}</span>`;
+  }
   function nbaPpCardHtml() {
     const d = state.nbaPp;
     if (!d) return '';
     const now = Date.now();
     const all = (d.legs || []).filter((x) => Date.parse(x.commence) > now);
     const rot = outLast(all.filter((x) => x.min_proj != null && x.min_proj >= NBA_ROTATION_MIN));
-    const top = rot.slice(0, 5);
+    // Best sharp chance first, at the line on the leg (one set moves it); a leg the sharp books
+    // haven't priced goes below them in the model's order, and a player ESPN lists out last.
+    const shOf = (e) => (typeof e.x.sharp_under === 'number' ? e.x.sharp_under : null);
+    const top = rot.map((x0, i) => {
+      const x = nbaLegAtLine(x0);
+      return { x0, x, i };
+    }).sort((a, b) => injOut(a.x) - injOut(b.x) || (shOf(a) == null) - (shOf(b) == null) || (shOf(b) || 0) - (shOf(a) || 0) || a.i - b.i).slice(0, 5);
     const perGame = {};
-    for (const x of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
-    const rec = d.record && d.record.top3 && d.record.top3.n
-      ? `<span class="tc-rec">Top 3 a day: <b>${d.record.top3.hit} of ${d.record.top3.n}</b></span>` : '';
+    for (const { x } of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
     // The two numbers that say whether to trust the card: the model's high
     // bands at PrizePicks' own lines (in MLB only 65%+ held up), and legs where
     // PrizePicks' number sat above the books' line.
     const r = d.record || {};
-    const hiBand = ['65-70', '70+'].map((k) => (r.byBand && r.byBand[k]) || { n: 0, hit: 0 })
-      .reduce((a, c) => ({ n: a.n + c.n, hit: a.hit + c.hit }), { n: 0, hit: 0 });
+    const sum = (o, ks) => ks.map((k) => (o && o[k]) || { n: 0, hit: 0 }).reduce((a, c) => ({ n: a.n + c.n, hit: a.hit + c.hit }), { n: 0, hit: 0 });
+    const shHi = sum(r.sharp && r.sharp.byBand, ['54-58', '58+']);
+    const rec = shHi.n
+      ? `<span class="tc-rec" title="Graded legs the sharp books put at 54% or better, at PrizePicks' first line; a 6-Flex needs 54.2% a leg">Sharp 54%+: <b>${shHi.hit} of ${shHi.n}</b></span>` : '';
+    const hiBand = sum(r.byBand, ['65-70', '70+']);
     const ppHi = (r.byLineGap && r.byLineGap.ppHigher) || { n: 0, hit: 0 };
     const recLine = [
-      hiBand.n ? `65%+ legs <b>${hiBand.hit} of ${hiBand.n}</b>` : null,
+      hiBand.n ? `the model's 65%+ <b>${hiBand.hit} of ${hiBand.n}</b>` : null,
       ppHi.n ? `PP line above book <b>${ppHi.hit} of ${ppHi.n}</b>` : null,
     ].filter(Boolean).join(' · ');
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span>${rec}</div>`
-      + `<div class="tc-sub">The model's chance the under lands at PrizePicks' line: last ten games blended with last season. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. A player on ESPN's injury report is flagged. Logged, not posted.</div>`
+      + `<div class="tc-sub">The sharp books' chance the under lands at PrizePicks' line: FanDuel, Pinnacle and the exchanges, de-vigged, the middle of them. Best first; a leg they haven't priced yet goes below. The model's own chance is the small number further down: its high ranges have landed no more often than its low ones. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. A player on ESPN's injury report is flagged. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
       + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame);
     if (!top.length) {
@@ -7062,8 +7122,7 @@
         ? 'No rotation players among the logged lines yet.'
         : 'PrizePicks has not posted lines for the next games yet: they are read as soon as it does.'}</div></div>`;
     }
-    return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map((x0) => {
-      const x = nbaLegAtLine(x0);
+    return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map(({ x0, x }) => {
       const leg = nbaPpLeg(x);
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.player)} under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
@@ -7073,14 +7132,20 @@
       const gap = typeof x.vsBook === 'number' && x.vsBook !== 0
         ? ` <span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}" title="PrizePicks' line ${x.vsBook > 0 ? 'above' : 'below'} the book's: the under is ${x.vsBook > 0 ? 'easier' : 'harder'} here">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>` : '';
       const face = avatarHtml({ sport: 'nba', playerId: x.player_id, team: x.team, name: x.player });
+      // Coloured as the props cards' number is, by the 6-Flex break-even: 54%+ green, under 50%
+      // (the books lean over) cautionary. A player listed out stays plain.
+      const sh = typeof x.sharp_under === 'number' ? x.sharp_under : null;
+      const tone = sh == null || injOut(x) ? ' tc-band-none' : sh >= 54 ? ' tc-band-good' : sh < 50 ? ' tc-band-weak' : ' tc-band-none';
+      const shTitle = `${sharpBooksText(x.sharp_src)}: ${x.sharpMoved ? 'carried from their own lines to the one you set' : "their price at PrizePicks' line"}, de-vigged, the middle of them`;
+      const noSharp = sh == null ? ' <span class="tc-wait" title="None of the sharp books had this line at the last read">no sharp line yet</span>' : '';
       return `<li>${star}<div class="tc-leg has-hs">${face}`
         // The team code leads line two: beside the face on line one it cut
         // "Jalen Brunson" to "Jalen Bru…".
-        + `<span class="tc-l1"><b>${esc(x.player)}</b><span class="tc-p">${Math.round(x.model_under)}%</span></span>`
-        + nbaBandLandedHtml(r, x.model_under)
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${legOppText(x) ? `${esc(legOppText(x))} · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
+        + `<span class="tc-l1"><b>${esc(x.player)}</b>${sh != null ? `<span class="tc-p${tone}" title="${esc(shTitle)}">${Math.round(sh)}%</span>` : ''}</span>`
+        + nbaSharpLandedHtml(r, sh)
+        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${legOppText(x) ? `${esc(legOppText(x))} · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${noSharp}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
         // His projection against PrizePicks' line, as the MLB board draws it.
-        + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x)}</span>`
+        + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x, nbaModelBit(r, x))}</span>`
         + (PP_LINE_MARKETS.has(x.market) ? ppLineStepHtml(leg.id, x.point, x0.point, x.lineSet, x.commence) : '')
         + `</div></li>`;
     }).join('')}</ol>${nbaBlkMoreHtml(d, rot)}</div>`;

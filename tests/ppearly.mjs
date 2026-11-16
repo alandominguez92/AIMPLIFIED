@@ -252,7 +252,7 @@ const ui = { nbaPp: b, slip: {} };
 let C;
 try {
   C = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
-    'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'NHL_MK', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'ppMoreListHtml', 'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaPpCardHtml']
+    'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'NHL_MK', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'ppMoreListHtml', 'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaPpCardHtml']
     .map(lift).join('\n') + '\nreturn { ppMovedTag, ppCloseLineHtml, nbaPpCardHtml };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, '').trim();
@@ -264,7 +264,7 @@ const card = C.nbaPpCardHtml();
 ok(/<span class="tc-title">PrizePicks unders<\/span>/.test(card) && !/Tonight/.test(card), 'the card is "PrizePicks unders": its legs can be tomorrow\'s');
 // The NHL card lists Mores since 2026-10-27 (tests/morelegs.mjs): the moved tag
 // and the pre-tip record are the unders', so they stay on the NBA card alone.
-ok(/\$\{gap\}\$\{ppMovedTag\(x\)\}/.test(lift('nbaPpCardHtml')) && /ppCloseLineHtml\(r\)/.test(lift('nbaPpCardHtml')),
+ok(/\$\{gap\}(\$\{noSharp\})?\$\{ppMovedTag\(x\)\}/.test(lift('nbaPpCardHtml')) && /ppCloseLineHtml\(r\)/.test(lift('nbaPpCardHtml')),
   'the NBA card draws the tag on each leg and the pre-tip record under the head');
 ui.nbaPp = { ...b, legs: [] };
 ok(/read as soon as it does/.test(C.nbaPpCardHtml()), 'with nothing posted yet, the card says the lines come as soon as PrizePicks posts them');
