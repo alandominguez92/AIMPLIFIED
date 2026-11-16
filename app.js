@@ -380,6 +380,8 @@
     winProbPct: document.getElementById('winProbPct'),
     heroEyebrow: document.getElementById('heroEyebrow'),
     heroTitle: document.getElementById('heroTitle'),
+    heroSub: document.getElementById('heroSub'),
+    heroLegend: document.getElementById('heroLegend'),
     heroDuel: document.getElementById('heroDuel'),
     injuryAlerts: document.getElementById('injuryAlerts'),
     injuryBar: document.getElementById('injuryBar'),
@@ -4025,10 +4027,23 @@
     el.heroDuel.innerHTML = `<div class="hero-empty"><p>${body}</p></div>`;
   }
 
+  // The MLB hero's standing line, under its title. index.html served it until
+  // 2026-11-16; it ships the hero empty now, so the served page doesn't read as
+  // an MLB site, and this fills it on load.
+  const HERO_SUB = 'The public bets overs. We fade them. Batter props are the one market where casual money is reliably wrong — books shade the over up, and the <b>under is the value</b>. Every play below is priced against that.';
+  // Its legend, the same way: what Edge / Play-Pass / CLV mean, for newcomers.
+  const HERO_LEGEND = [
+    ['hl-edge', 'Edge', 'Our fair price vs. the market. Positive means there\'s value on the board.'],
+    ['hl-tier', 'Play / Pass', 'Whether the price beats what our model thinks the outcome is worth. We post the plays and skip the rest — and we don\'t rank them, because our graded record doesn\'t show one play is stronger than another.'],
+    ['hl-clv', 'CLV', 'Did the line move our way after we posted? Season-long proof we\'re early.'],
+  ].map(([cls, k, d]) => `<div class="hl-card"><div class="hl-k ${cls}">${k}</div><div class="hl-d">${d}</div></div>`).join('');
   // HERO — tonight's sharpest batter-under fade. Auto-selects the highest-edge
   // priced UNDER from the live batter feed and renders the market-vs-line scale.
   function renderHero() {
-    if (!LIVE_MODE) return; // offline demo keeps the static sample fade hero
+    if (el.heroSub) el.heroSub.innerHTML = HERO_SUB;
+    if (el.heroLegend && !el.heroLegend.firstChild) el.heroLegend.innerHTML = HERO_LEGEND;
+    // Offline demo: the loading hero, as index.html used to ship it.
+    if (!LIVE_MODE) { renderHeroPlaceholder('loading'); return; }
     const batters = state.liveBatters;
     if (batters === null) { renderHeroPlaceholder('loading'); return; }
     // Empty array = nothing was priced at all (no two-way lines), which is a

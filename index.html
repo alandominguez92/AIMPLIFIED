@@ -33,7 +33,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=ec657b8bca">
+<link rel="stylesheet" href="style.css?v=ed8b49e994">
 </head>
 <body>
 
@@ -75,38 +75,26 @@
        lands on. setSport() owns these flags from then on. -->
   <!-- HERO -->
   <div class="hero" hidden>
-    <!-- Ships neutral. The markup used to carry a worked example -- a named real
-         player, a tier chip, an edge figure and a stake -- which renderHero()
-         replaces on load. But the SERVED html is what a crawler, a social
-         scraper or a reader on a slow connection sees, and there it read as a
-         confident pick that was never made. Matches renderHeroPlaceholder("loading")
-         exactly so there is no jump when the real fade arrives. -->
-    <div class="eyebrow" id="heroEyebrow">Loading tonight’s fades…</div>
-    <h1 id="heroTitle">Tonight’s Slate</h1>
-    <p class="sub">The public bets overs. We fade them. Batter props are the one market where casual money is reliably wrong — books shade the over up, and the <b>under is the value</b>. Every play below is priced against that.</p>
+    <!-- Ships empty. The markup used to carry a worked example -- a named real
+         player, a tier chip, an edge figure and a stake -- and later the MLB
+         tab's own pitch ("Tonight's Slate", batter-under fades). But the SERVED
+         html is what a crawler, a social scraper or a text reader sees, and the
+         MLB hero sat first in it on a site that opens on Picks of the day
+         (2026-11-16, the page brief's step 1). The MLB tab's words are app.js's
+         now: renderAll() runs renderHero() on load, which fills all three
+         (HERO_PLACEHOLDER, HERO_SUB), and the hero stays hidden until that tab. -->
+    <div class="eyebrow" id="heroEyebrow"></div>
+    <h1 id="heroTitle"></h1>
+    <p class="sub" id="heroSub"></p>
 
 <!-- Credibility receipt — live-bound to the real graded record; hidden until enough picks grade -->
     <div class="proof-strip" id="proofStrip" hidden></div>
 
-    <!-- Plain-language on-ramp: what Edge / Tier / CLV mean, for newcomers -->
-    <div class="hero-legend">
-      <div class="hl-card">
-        <div class="hl-k hl-edge">Edge</div>
-        <div class="hl-d">Our fair price vs. the market. Positive means there's value on the board.</div>
-      </div>
-      <div class="hl-card">
-        <div class="hl-k hl-tier">Play / Pass</div>
-        <div class="hl-d">Whether the price beats what our model thinks the outcome is worth. We post the plays and skip the rest — and we don't rank them, because our graded record doesn't show one play is stronger than another.</div>
-      </div>
-      <div class="hl-card">
-        <div class="hl-k hl-clv">CLV</div>
-        <div class="hl-d">Did the line move our way after we posted? Season-long proof we're early.</div>
-      </div>
-    </div>
+    <!-- Plain-language on-ramp: what Edge / Tier / CLV mean, for newcomers.
+         Filled by app.js (HERO_LEGEND) with the rest of the MLB hero. -->
+    <div class="hero-legend" id="heroLegend"></div>
 
-    <div class="duel" id="heroDuel">
-      <div class="hero-empty"><p>Pulling tonight’s batter props, model projections, and DK/FD lines…</p></div>
-    </div>
+    <div class="duel" id="heroDuel"></div>
   </div>
 
   <!-- LIVE NOW -->
@@ -407,8 +395,8 @@
 
   <footer>
     Aimplified is a sports analytics and entertainment product. Nothing here is gambling advice. Projections are model outputs with stated uncertainty — respect the intervals. 21+ where applicable. If you or someone you know has a gambling problem, call 1-800-GAMBLER.
-    <br><br>Aimplified is independent and is not affiliated with, endorsed by, or licensed by MLB, the NFL, or any team. League and team names, abbreviations and colors are used only to identify games.
-    <br><br>© 2026 Aimplified · Data: MLB StatsAPI · The Odds API (DraftKings + FanDuel) · Board refreshes every 5 minutes
+    <br><br>Aimplified is independent and is not affiliated with, endorsed by, or licensed by the NBA, the NHL, the NFL, MLB, any soccer league or federation, any team, PrizePicks or any sportsbook. League and team names, abbreviations and colors are used only to identify games.
+    <br><br>© 2026 Aimplified · Data: The Odds API (sportsbook and PrizePicks lines) · ESPN · the NHL's stats API · MLB StatsAPI · Board refreshes every 5 minutes
     <nav class="foot-links">
       <a href="/methodology.html">Methodology</a>
       <a href="/legal.html">Terms &amp; Disclaimer</a>
@@ -426,6 +414,6 @@
   //   full URL      -> a separately-hosted proxy Worker
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="app.js?v=ec657b8bca"></script>
+<script src="app.js?v=ed8b49e994"></script>
 </body>
 </html>
