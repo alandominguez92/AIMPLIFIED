@@ -257,8 +257,10 @@ const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
 const sect = app.slice(app.indexOf('  // ---- Hot players'), app.indexOf('  function renderNba('));
 const state = { hot: { nhl: payload }, hotAll: {} };
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', `${sect}\nreturn hotCardHtml;`)(
-  state, esc, (n) => n, () => '', (o) => `<span class="hs" data-sport="${o.sport}" data-id="${o.playerId}"></span>`, () => '5:10 PM', () => '');
+// The out-players-last helpers (2026-11-16), the page's own.
+const OUT_FNS = new Function(app.match(/const injOut = .*\n/)[0] + app.match(/const outLast = .*\n/)[0] + 'return [injOut, outLast];')();
+const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', 'injOut', 'outLast', `${sect}\nreturn hotCardHtml;`)(
+  state, esc, (n) => n, () => '', (o) => `<span class="hs" data-sport="${o.sport}" data-id="${o.playerId}"></span>`, () => '5:10 PM', () => '', ...OUT_FNS);
 let html = card('nhl');
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 const softAny = payload.players.filter((p) => p.markets.some((m) => m.third === 'soft'));

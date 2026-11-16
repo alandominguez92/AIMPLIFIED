@@ -6139,19 +6139,22 @@
         const be = PP_BREAK_EVEN[n];
         if (!be) continue;
         // Three columns that never break mid-phrase: the entry, the chance, the
-        // bar. A 2-pick power pays only if both land, so its chance is both
-        // landing; a flex is read by its average leg.
+        // bar. Every row is read a leg at a time (2026-11-16, the owner's "do 6"):
+        // the 2-pick power's "39% both · needs 33%" sat above the flex rows'
+        // "60% a leg · needs 59.1%". A power pays only if both land, so its leg is
+        // the pair's geometric mean, which clears 57.7% exactly when both landing
+        // clears a third; the both-land chance is in the title.
         const kind = be[0].replace(/^\d-pick /, '');
         if (n === 2) {
-          const all = top.reduce((a, x) => a * x.p / 100, 1) * 100;
-          rows.push(`<li><span>Top 2 ${esc(kind)}</span><span class="pk-v"><b>${pct0(all)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span>${evOf(2)}</li>`);
+          const powerRow = (pair, cls, label, ev) => {
+            const both = pair.reduce((a, x) => a * x.p / 100, 1) * 100;
+            return `<li${cls ? ` class="${cls}"` : ''}><span>${esc(label)}</span><span class="pk-v" title="Both land: ${esc(pct0(both))}; it needs ${esc(pct0(be[1] * be[1] / 100))}"><b>${pct0(Math.sqrt(both / 100) * 100)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span>${ev}</li>`;
+          };
+          rows.push(powerRow(top, '', `Top 2 ${kind}`, evOf(2)));
           // The two best legs at 75%+ (2026-10-25): legs that strong landed 28
           // of 31 from Oct 10 to 24, those at 65-75% 20 of 29.
           const hi = entLegs.filter((x) => x.p >= 75).slice(0, 2);
-          if (hi.length === 2) {
-            const both = hi.reduce((a, x) => a * x.p / 100, 1) * 100;
-            rows.push(`<li class="pk-e75"><span>Top 2 ${esc(kind)}, 75%+</span><span class="pk-v"><b>${pct0(both)}</b> both</span><span class="pk-be">needs ${pct0(be[1] * be[1] / 100)}</span><span class="pk-ev"></span></li>`);
-          }
+          if (hi.length === 2) rows.push(powerRow(hi, 'pk-e75', `Top 2 ${kind}, 75%+`, '<span class="pk-ev"></span>'));
         } else {
           const avg = top.reduce((a, x) => a + x.p, 0) / n;
           rows.push(`<li><span>Top ${n} ${esc(kind)}</span><span class="pk-v"><b>${pct0(avg)}</b> a leg</span><span class="pk-be">needs ${be[1]}%</span>${evOf(n)}</li>`);
@@ -6957,6 +6960,11 @@
   // minus the under's. Listed at a More chance of PP_MORE_MIN or better, the
   // worker's bar for the same record.
   const PP_MORE_MIN = 55;
+  // A player ESPN lists out goes last on the NBA tab's lists (2026-11-16, the owner's "do 3"): Klay
+  // Thompson, out with ankle soreness on Nov 13, led the unders card at 76%. He stays, flagged, as
+  // the tab is the whole log; Picks leaves him off. A stable sort, so the rest keep their order.
+  const injOut = (x) => !!(x && x.inj && x.inj.out);
+  const outLast = (xs) => [...xs].sort((a, b) => injOut(a) - injOut(b));
   const ppMoreP = (x) => 100 - x.model_under;
   const ppMoreMk = (x, sport) => (sport === 'nhl' ? NHL_MK : NBA_MK)[x.market] || x.market;
   function ppMoreLeg(x, sport) {
@@ -6971,7 +6979,7 @@
   function ppMoreTop(legs, ok, n) {
     const now = Date.now(), seen = new Set();
     return (legs || []).filter((x) => Date.parse(x.commence) > now && x.model_under != null && ppMoreP(x) >= PP_MORE_MIN && ok(x))
-      .sort((a, b) => a.model_under - b.model_under)
+      .sort((a, b) => injOut(a) - injOut(b) || a.model_under - b.model_under)
       .filter((x) => !seen.has(x.player) && seen.add(x.player)).slice(0, n);
   }
   function ppMoreListHtml(legs, sport) {
@@ -7028,7 +7036,7 @@
     if (!d) return '';
     const now = Date.now();
     const all = (d.legs || []).filter((x) => Date.parse(x.commence) > now);
-    const rot = all.filter((x) => x.min_proj != null && x.min_proj >= NBA_ROTATION_MIN);
+    const rot = outLast(all.filter((x) => x.min_proj != null && x.min_proj >= NBA_ROTATION_MIN));
     const top = rot.slice(0, 5);
     const perGame = {};
     for (const x of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
@@ -7144,7 +7152,8 @@
   // NBA's, whose rule has been tested and whose report and numbers are on it.
   function hotBodyHtml(h, head, all, tapAttrs, sport, oppLine, rowHtml, labelOf) {
     if (!h.players.length) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">No one is on a run of 5 or more in the next games.</div></div>`;
-    const isSoft = (m) => m.third === 'soft', soft = h.players.filter((p) => p.markets.some(isSoft));
+    const players = outLast(h.players);
+    const isSoft = (m) => m.third === 'soft', soft = players.filter((p) => p.markets.some(isSoft));
     // One run a player until the tap (2026-11-03): every soft run took five players to 3,020px on
     // a phone. His top run, or the first with a PrizePicks number; the others named in a line.
     const runsHtml = (p) => {
@@ -7152,7 +7161,7 @@
       const runs = p.markets.filter(isSoft), top = runs.find((m) => m.line != null) || runs[0], rest = runs.filter((m) => m !== top);
       return rowHtml(p, top) + hotBoxesHtml(top) + (rest.length ? `<span class="hot-line hot-also">Also on a run: ${rest.map((m) => esc(labelOf(m))).join(', ')}</span>` : '');
     };
-    const shown = all ? h.players : soft.slice(0, NBA_HOT_TOP);
+    const shown = all ? players : soft.slice(0, NBA_HOT_TOP);
     const list = shown.length ? `<ol class="tc-legs">${shown.map((p) => `<li><div class="tc-leg has-hs">${avatarHtml({ sport, playerId: p.id, team: p.team, name: p.name })}`
       + `<span class="tc-l1"><b>${esc(p.name)}</b></span>`
       + `<span class="tc-l2"><span><b class="tc-team">${esc(p.team)}</b> · ${p.isHome ? 'v' : '@'} ${oppLine(p)}</span></span>`
@@ -7990,7 +7999,7 @@
         rows = ps.map((p) => ({ p, s: view, v: propView(sport, d, g, p, view) })).filter((x) => x.v.real || x.v.proj != null);
       }
       if (!rows.length) return '';
-      rows.sort((a, b) => dist(b) - dist(a) || (b.v.proj || 0) - (a.v.proj || 0));
+      rows.sort((a, b) => injOut(a.p) - injOut(b.p) || dist(b) - dist(a) || (b.v.proj || 0) - (a.v.proj || 0));
       found += rows.length;
       const strong = rows.filter((x) => strongAt(x.p, x.v)).length;
       const mOpen = !!q || games.length === 1 || !!(state.prMatch && state.prMatch[g.id]);

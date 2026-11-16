@@ -52,8 +52,10 @@ ok(soccerKick('2026-10-23T02:00:00Z') === 'Thu 7:00 PM', 'a past game as before:
 
 const sect = app.slice(app.indexOf('  // ---- Hot players'), app.indexOf('  function renderNba('));
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', `${sect}\nreturn hotCardHtml;`)(
-  { hot: { nfl: NFL }, hotAll: { nfl: true } }, esc, (n) => n, () => '', () => '', soccerKick, () => '');
+// The out-players-last helpers (2026-11-16), the page's own.
+const OUT_FNS = new Function(app.match(/const injOut = .*\n/)[0] + app.match(/const outLast = .*\n/)[0] + 'return [injOut, outLast];')();
+const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', 'injOut', 'outLast', `${sect}\nreturn hotCardHtml;`)(
+  { hot: { nfl: NFL }, hotAll: { nfl: true } }, esc, (n) => n, () => '', () => '', soccerKick, () => '', ...OUT_FNS);
 const nflCard = text(card('nfl'));
 ok(/Luther Burden III CHI · v Saints · Sun, Nov 22, 10:00 AM/.test(nflCard) && /Devaughn Vele NO · v Panthers · Sun 10:00 AM/.test(nflCard),
   'on the card: "v Saints · Sun, Nov 22, 10:00 AM" and "v Panthers · Sun 10:00 AM"');

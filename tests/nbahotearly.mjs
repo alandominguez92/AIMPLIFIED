@@ -268,8 +268,10 @@ const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 const nbaNick = (name) => String(name || '').trim().split(/\s+/).pop();
 const sharpTag = (p) => (typeof p === 'number' ? `<span class="tc-sharp">sharp ${Math.round(p)}%</span>` : '');
 const miniBar = new Function(`${app.match(/  function miniBar\(fill, tick, axisPct\) \{[\s\S]*?\n  \}\n/)[0]} return miniBar;`)();
-const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'miniBar', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', `${sect}\nreturn nbaHotCardHtml;`)(
-  state, esc, nbaNick, sharpTag, miniBar, (o) => `<span class="hs" data-id="${o.playerId}"></span>`, () => '5:10 PM', (x) => (x.inj ? ' FLAG' : ''));
+// The out-players-last helpers (2026-11-16), the page's own.
+const OUT_FNS = new Function(app.match(/const injOut = .*\n/)[0] + app.match(/const outLast = .*\n/)[0] + 'return [injOut, outLast];')();
+const card = new Function('state', 'esc', 'nbaNick', 'sharpTag', 'miniBar', 'avatarHtml', 'soccerKick', 'nbaCardInjTag', 'injOut', 'outLast', `${sect}\nreturn nbaHotCardHtml;`)(
+  state, esc, nbaNick, sharpTag, miniBar, (o) => `<span class="hs" data-id="${o.playerId}"></span>`, () => '5:10 PM', (x) => (x.inj ? ' FLAG' : ''), ...OUT_FNS);
 let html = card();
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 const liOf = (h, name) => h.split('<li>').find((x) => x.includes(name)) || '';
