@@ -3348,3 +3348,54 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   #picksGrid:has(.pks-bar) { padding-bottom:88px; }
   body:has(#picksBoard:not([hidden]) .pks-bar) .toast { bottom:96px; }
 }
+
+/* Today's best leg (2026-11-16, the page brief's step 6): the leg card at full size, a gold border,
+   always open, its game across the top, four tiles, and a full-width button for the slip. */
+.lc-best { margin-top:16px; padding:18px; background:var(--card); border:1px solid var(--accentFill); border-radius:10px; }
+.lc-bh { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 12px; margin-bottom:12px; }
+.lc-kick { margin:0; font-family:var(--sans); font-size:13px; font-weight:800; letter-spacing:.4px; text-transform:uppercase; color:var(--accent); }
+.lc-meta { font-family:var(--mono); font-size:12px; line-height:1.45; color:var(--textDim); }
+.lc-best .lc-top { grid-template-columns:auto minmax(0, 1fr) auto; column-gap:14px; }
+.lc-bn { font-size:26px; font-weight:800; line-height:1.15; letter-spacing:-.3px; color:var(--text); overflow-wrap:break-word; }
+.lc-bp { font-size:17px; line-height:1.3; color:var(--textDim); }
+.lc-best .lc-pct { font-size:56px; }
+.lc-best .lc-tiles { grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); margin-top:14px; }
+.lc-best .lc-tv { font-size:15px; }
+.lc-add { display:block; width:100%; min-height:48px; margin-top:14px; border:1px solid var(--accentFill); border-radius:8px;
+  background:var(--accentFill); color:var(--onAccent); font-family:var(--sans); font-size:15px; font-weight:800; cursor:pointer; }
+.lc-add.on { background:transparent; color:var(--accent); }
+.lc-add:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.lc-bestml { display:inline-block; padding:1px 7px; border-radius:5px; background:var(--tintAccent); color:var(--accent); font-weight:600; }
+@media (max-width: 640px) {
+  .lc-best { padding:14px; }
+  .lc-bn { font-size:22px; }
+  .lc-bp { font-size:15px; }
+  .lc-best .lc-pct { font-size:44px; }
+}
+
+/* "Picks of the day" (2026-11-16, the page brief's step 6): last night's entries side by side, each
+   leg a chip, the units under them, the edge bets' line and a link to the full record. */
+.pk-pod { margin:0 0 28px; padding:18px; background:var(--card); border:1px solid var(--border); border-radius:10px; }
+.pod-h { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 12px; }
+.pod-h h2 { margin:0; font-family:var(--sans); font-size:26px; font-weight:800; line-height:1.1; letter-spacing:-.65px; text-transform:uppercase; color:var(--text); }
+.pod-meta { font-family:var(--mono); font-size:12px; color:var(--textDim); }
+.pod-cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap:16px 28px; margin-top:14px; }
+.pod-cols .rc-ent { margin-top:0; }
+.pk-pod .rc-cw { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:2px 12px; font-size:14px; font-weight:400;
+  text-transform:none; letter-spacing:0; color:var(--text); }
+.pk-pod .rc-cw b { font-weight:700; }
+.pk-pod .rc-cw .rc-n { font-size:14px; font-weight:500; }
+.pk-pod .rc-chips { margin-top:8px; }
+.pk-pod .rc-chip { font-family:var(--mono); font-size:12px; padding:4px 8px; border-radius:6px; border:0; background:var(--board3); }
+.pk-pod .rc-chip.rc-hit { color:var(--positive); background:var(--board3); }
+.pk-pod .rc-chip.rc-miss { color:var(--danger); background:var(--board3); }
+.pod-lines { margin-top:14px; }
+.pod-none { margin:12px 0 0; font-size:14px; color:var(--textDim); }
+.pod-edge { margin:12px 0 0; padding-top:12px; border-top:1px solid var(--border); font-family:var(--mono); font-size:12px; line-height:1.5; color:var(--textDim); }
+.pod-edge a { color:var(--accent); text-decoration:none; }
+.pod-edge a:hover { text-decoration:underline; }
+.pk-pod .pk-recap { margin:14px 0 0; background:transparent; }
+@media (max-width: 640px) {
+  .pk-pod { padding:14px; }
+  .pod-h h2 { font-size:22px; }
+}

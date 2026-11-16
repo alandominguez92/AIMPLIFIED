@@ -48,21 +48,21 @@ function lift(name) {
 }
 // legRow lives inside renderPicks.
 const rp = lift('renderPicks');
-const lrAt = rp.indexOf('const legRow = (x, compact, foot) =>');
+const lrAt = rp.indexOf('const legRow = (x, compact, foot, best) =>');
 const legRowSrc = lrAt < 0 ? null : closeFrom(rp, lrAt, true);
 const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
   'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
   'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
-  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName'];
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const state = { slip: {} };
 let F;
 try {
-  if (!legRowSrc) throw new Error('renderPicks has no legRow(x, compact, foot)');
+  if (!legRowSrc) throw new Error('renderPicks has no legRow(x, compact, foot, best)');
   F = new Function('state', 'esc', names.filter((n) => src.includes(`function ${n}(`) || src.includes(`const ${n} =`)).map(lift).join('\n')
-    + `\n${legRowSrc}\nreturn { legRow, pickLeg, offerLeg, pct0, mlChanceLineHtml, trendBarsHtml, PICK_SAME, pickGameKey, pickShortName };`)(state, esc);
+    + `\n${legRowSrc}\nreturn { legRow, pickLeg, offerLeg, pct0, mlChanceLineHtml, trendBarsHtml, PICK_SAME, pickGameKey, pickShortName, PICK_TOP };`)(state, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); console.log('\n1 FAILED'); process.exit(1); }
 
 const all = [...D.legs, ...D.ppPool, ...D.mlPool];
@@ -172,7 +172,7 @@ ok(/case 'leg-view': \{\n\s+state\.legView = target\.dataset\.view === 'simple' 
   && /const v = localStorage\.getItem\('aimplified_leg_view'\);\n\s+if \(v === 'simple' \|\| v === 'detailed'\) state\.legView = v;/.test(src), 'the reader\'s choice of view is kept for the next visit');
 ok(/const pickLegView = \(\) => state\.legView \|\| \(window\.matchMedia && window\.matchMedia\('\(max-width: 640px\)'\)\.matches \? 'simple' : 'detailed'\);/.test(src),
   'until they choose: Simple on a phone, Detailed on a wide screen');
-ok(/const simple = pickLegView\(\) === 'simple';\n\s+const itemHtml = \(x\) => legRow\(x, simple\);/.test(rpSrc) && /\(best \? heroLegHtml\(best, \{ size: 52 \}\)/.test(rpSrc),
+ok(/const simple = pickLegView\(\) === 'simple';\n\s+const itemHtml = \(x\) => legRow\(x, simple\);/.test(rpSrc) && /\(best \? legRow\(best, false, '', true\)/.test(rpSrc),
   'every list card follows it; the best leg stays in full');
 ok(/data-action="leg-view" data-view="\$\{v\}" aria-pressed="\$\{v === view\}"/.test(rpSrc), 'two buttons, the one in force pressed');
 ok(/const sports = \['nba', 'nhl', 'nfl', 'soccer', 'mlb'\]\.filter\(\(s\) => \[\.\.\.allProps, \.\.\.allMls\]\.some\(\(x\) => x\.sport === s\)\);/.test(rpSrc)
@@ -198,6 +198,42 @@ ok(/\.lc-tiles \{[^}]*grid-template-columns:repeat\(auto-fit, ?minmax\(140px, ?1
 ok(/\.lc-pct \{[^}]*font-family:var\(--display\)/.test(css) && /@media \(max-width:520px\) \{[^@]*\.lc-pct \{ font-size:28px; \}/.test(css), 'the chance in the display face, a size down on a phone');
 ok(/\[data-theme="light"\] \.pk-card \.tc-legs li\.lc \{ box-shadow:var\(--lift\); \}/.test(css), 'lifted off the page in light');
 ok(!/#[0-9a-fA-F]{3,8}\b/.test((css.slice(css.indexOf('li.lc')) || '')), 'colours from the theme tokens only');
+
+console.log('\n-- 9. step 6: today\'s best leg, the card at full size --');
+// The mock's big card: gold border, always open, the game across the top, four tiles (projection,
+// legs like this, break-even, market), the last games, and a full-width button for the slip.
+state.entrySize = 2;
+const B = F.legRow(jabari, true, '', true);
+ok(/^<article class="lc lc-best" aria-labelledby="lcBestH"><div class="lc-bh"><h3 class="lc-kick" id="lcBestH">Today’s best leg<\/h3>/.test(B) && B.endsWith('</article>'),
+  'an article of its own, "Today’s best leg": Jabari plays at 4:40 PM PT on Nov 16, read at 1:10 AM that day');
+ok(/<span class="lc-meta"><b class="tc-team">HOU<\/b> · <span class="pk-sport">NBA<\/span> · Rockets @ Heat · <span class="pk-when">/.test(B), 'the game across the top');
+ok(!/class="lc-star/.test(B) && /<button type="button" class="lc-add" data-action="leg-add" data-leg="[^"]+" aria-pressed="false">Add to slip<\/button><\/article>$/.test(B),
+  'no star: a full-width "Add to slip"');
+ok(/<b class="lc-bn">Jabari Smith Jr<\/b><span class="lc-bp">Over 0\.5 BLK<\/span>/.test(B) && /<b class="lc-pct">62%<\/b><span class="lc-pk">chance<\/span>/.test(B), 'his name large, the pick under it, the chance');
+ok(/class="lc-tiles"/.test(B) && /class="lc-more"/.test(B), 'always open: Simple does not fold it');
+const bt = tilesOf(B);
+ok(bt.map((t) => t.key).join(' | ') === 'Projection | Legs like this | 2-pick Power needs 57.7% | Market', `four tiles in the mock's order: ${bt.map((t) => t.key).join(' | ')}`);
+ok(tile(B, /^Projection/).value === '1 vs line 0.5' && tile(B, /^Projection/).sub === '0.5 cushion', 'projection 1 against a 0.5 line: 0.5 of cushion');
+ok(tile(B, /^Market/).value === 'PrizePicks 0.5' && tile(B, /^Market/).sub === 'no sharp price at this line', 'no sharp book on his blocks: the market tile says so');
+const QB = F.legRow(queen, false, '', true);
+ok(tile(QB, /^Projection/).value === '5.7 vs line 6' && tile(QB, /^Projection/).sub === '0.3 cushion', 'an Under: 5.7 projected under a 6 line is 0.3 of cushion');
+ok(tile(QB, /^Market/).value === 'PrizePicks 6' && tile(QB, /^Market/).sub === 'sharp books 45% · model 51%' && /last season's rate for rebounds Less/.test(tile(QB, /^Market/).title),
+  'the sharp books on the market tile, with the note on what the chance is');
+ok(!tilesOf(QB).some((t) => t.key === 'Sharp books'), 'and not twice');
+ok(/data-action="pp-line"/.test(QB), 'a rebounds Less keeps its line stepper');
+const wrong = F.legRow({ ...jabari, proj: 0.3 }, false, '', true);
+ok(tile(wrong, /^Projection/).sub === '0.2 under the line' && tile(wrong, /^Projection/).cls === 'o', 'a projection on the wrong side says by how much, in amber');
+state.slip[F.offerLeg(F.pickLeg(jabari))] = true;
+ok(/class="lc-add on" data-action="leg-add" data-leg="[^"]+" aria-pressed="true">On your slip · tap to remove<\/button>/.test(F.legRow(jabari, false, '', true)), 'on the slip: "On your slip · tap to remove"');
+delete state.slip[F.offerLeg(F.pickLeg(jabari))];
+const L = F.legRow(jabari, false);
+ok(/^<li class="lc">/.test(L) && !tilesOf(L).some((t) => /^Projection|^Market/.test(t.key)), 'the list cards stay as they were: no projection or market tile');
+F.PICK_TOP.ml = F.pickLeg(nuggets).id;
+ok(/<span class="lc-tags"><span class="lc-bestml">Today’s best moneyline<\/span>/.test(F.legRow(nuggets, false)), 'the best moneyline is tagged first');
+ok(!/lc-bestml/.test(F.legRow(jabari, false)), 'and only it');
+F.PICK_TOP.ml = null;
+ok(/PICK_TOP\.ml = mls\.length \? pickLeg\(\[\.\.\.mls\]\.sort\(byChance\)\[0\]\)\.id : null;/.test(rp), 'by chance, whatever the sort');
+ok(/\.lc-best \{[^}]*border:1px solid var\(--accentFill\);/.test(css) && /\.lc-add \{[^}]*min-height:48px;/.test(css), 'gold border; a 48px button');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

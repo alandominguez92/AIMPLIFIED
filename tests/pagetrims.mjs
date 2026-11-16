@@ -94,7 +94,7 @@ const rp = lift('renderPicks');
 ok(/const group = \(title, xs\) => \(xs\.length \? `<h3 class="pk-gh">\$\{title\}<\/h3><ol class="tc-legs pk-pool">\$\{xs\.map\(itemHtml\)\.join\(''\)\}<\/ol>` : ''\);/.test(rp)
   && /group\('Props', rest\)/.test(rp) && /group\('Moneylines', mls\)/.test(rp), 'the list draws them all through the same card, props then moneylines');
 ok(/\+ `\$\{foot \|\| ''\}<\/li>`;/.test(rp), 'the card still takes a foot');
-ok(/\(best \? heroLegHtml\(best, \{ size: 52 \}\)/.test(rp) && /const best = props\[0\] \|\| null;/.test(rp), 'the leading prop is the large card above both, as the entry\'s was');
+ok(/\(best \? legRow\(best, false, '', true\)/.test(rp) && /const best = props\[0\] \|\| null;/.test(rp), 'the leading prop is the large card above both, as the entry\'s was');
 ok(!/likelyRowHtml|likely-toggle|likelyOpen/.test(src) && !/\.pk-lk-row/.test(css), 'the short rows are gone, code and styles: Simple shows each card\'s top row');
 
 console.log('\n-- 3. How the list did: five days, the rest behind a button --');

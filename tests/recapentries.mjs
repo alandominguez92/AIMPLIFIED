@@ -54,14 +54,15 @@ const top = R.recapHtml(h, P.edgeRecord);
 console.log('  ' + text(top));
 ok(!/Today so far/.test(top), "Friday's legs not started: no box for today yet");
 // Its pool had nine legs; an entry is the top six at most (see "past the top six" below).
-ok(faceOf(top) === 'Last night Nov 12 PrizePicks entry 1 of 6 ✗✓✗✗✗✗ Moneyline entry 6 of 6 ✓✓✓✓✓✓',
-  `its face names both entries, each with its count and its dots ("${faceOf(top)}")`);
-ok(/<span class="rc-es"><span class="rc-g"><span class="rc-w">PrizePicks entry<\/span><b class="rc-n">1 of 6<\/b><span class="rc-x"><span class="rc-dots">✗✓✗✗✗✗<\/span><\/span><\/span><span class="rc-g"><span class="rc-w">Moneyline entry<\/span><b class="rc-n">6 of 6<\/b>/.test(top),
-  'a row an entry: its name, its count, its dots');
-const body = text(top.slice(top.indexOf('</summary>')));
-ok(/^PrizePicks entry ✗ Daniels U1\.5 Pass TDs ✓ Jones O0\.5 PTS ✗ Makar O0\.5 AST ✗ Roslovic O0\.5 PTS ✗ Pastrnak O0\.5 AST ✗ Strome O0\.5 PTS Top 2 Power −1\.00u Top 3 Flex −1\.00u Top 6 Flex −1\.00u Past the top 6, in no entry: ✗ Hughes O0\.5 AST · ✗ Reed Jr U7 REB · ✓ Gobert U11 REB Moneyline entry ✓ Spain ✓ Pistons ✓ England ✓ Montenegro ✓ Hurricanes ✓ 76ers Top 2 Power \+2\.00u Top 3 Flex \+1\.25u Top 6 Flex \+24\.00u Edge bets 1 of 4 · −1\.52u · beat the close 4 of 4 The list 6 of 6 /.test(body),
-  "opened: the PrizePicks entry's six legs and units, the three past them, then the moneyline entry's, then the edge bets and the list");
-ok(/<div class="rc-ent"><div class="rc-cw">Moneyline entry<\/div>[^]*?<li><span>Top 2 Power<\/span><b class="u">\+2\.00u<\/b><\/li><li><span>Top 3 Flex<\/span><b class="u">\+1\.25u<\/b><\/li><li><span>Top 6 Flex<\/span><b class="u">\+24\.00u<\/b><\/li><\/ul><\/div>/.test(top),
+// Since 2026-11-16 (the page brief's step 6) last night is the open "Picks of the day" card, each
+// entry a column headed by its name and its count (tests/podcard.mjs); the folded face is gone.
+ok(!/<summary>[^]*Last night/.test(top) && /Last night · Nov 12 · logged as shown/.test(top), 'last night is the card, not a fold');
+ok(/<div class="pod-cols"><div class="rc-ent"><div class="rc-cw"><b>PrizePicks entry<\/b><span class="rc-n">1 of 6<\/span><\/div>[^]*<div class="rc-ent"><div class="rc-cw"><b>Moneyline entry<\/b><span class="rc-n">6 of 6<\/span><\/div>/.test(top),
+  'a column an entry: its name and its count, the PrizePicks entry first');
+const body = text(top.slice(top.indexOf('<div class="pod-cols">')));
+ok(/^PrizePicks entry 1 of 6 ✗ Daniels U1\.5 Pass TDs ✓ Jones O0\.5 PTS ✗ Makar O0\.5 AST ✗ Roslovic O0\.5 PTS ✗ Pastrnak O0\.5 AST ✗ Strome O0\.5 PTS Top 2 Power −1\.00u Top 3 Flex −1\.00u Top 6 Flex −1\.00u Past the top 6, in no entry: ✗ Hughes O0\.5 AST · ✗ Reed Jr U7 REB · ✓ Gobert U11 REB Moneyline entry 6 of 6 ✓ Spain ✓ Pistons ✓ England ✓ Montenegro ✓ Hurricanes ✓ 76ers Top 2 Power \+2\.00u Top 3 Flex \+1\.25u Top 6 Flex \+24\.00u Edge bets 1 of 4 · −1\.52u · beat the close 4 of 4 The list 6 of 6 /.test(body),
+  "the PrizePicks entry's six legs and units, the three past them, then the moneyline entry's, then the edge bets and the list");
+ok(/<div class="rc-ent"><div class="rc-cw"><b>Moneyline entry<\/b><span class="rc-n">6 of 6<\/span><\/div>[^]*?<li><span>Top 2 Power<\/span><b class="u">\+2\.00u<\/b><\/li><li><span>Top 3 Flex<\/span><b class="u">\+1\.25u<\/b><\/li><li><span>Top 6 Flex<\/span><b class="u">\+24\.00u<\/b><\/li><\/ul><\/div>/.test(top),
   "the moneyline entry's units in its own block, in the up colour");
 ok(/Off before the start: Suns, would have landed · Bedard O0\.5 PTS, would have landed · Tkachuk O0\.5 AST, would have landed<\/div>/.test(top)
   && dayOf('2026-11-12').dropped.some((x) => x.label === 'Jayden Daniels Under 1.5 Pass TDs') && !/Daniels U1\.5 Pass TDs, would have/.test(top),

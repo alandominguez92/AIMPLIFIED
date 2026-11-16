@@ -68,13 +68,15 @@ console.log('-- Last night, Oct 28 for Oct 27 --');
 const h = F.history;
 const r1 = P.recapHtml(h, null);
 console.log('  ' + text(r1));
-ok(/<details class="pk-recap" open>/.test(r1) && store.aimplified_recap_seen === '2026-10-27', 'open the first time the day shows, and remembered');
-ok(text(r1).startsWith('Last night Oct 27 The list 2 of 3 ✓✓✗') && /✓ Celtics ✓ AS Roma ✗ Ducks/.test(text(r1)),
+// Since 2026-11-16 (the page brief's step 6) last night is the "Picks of the day" card, always
+// open, rather than a fold that opened the first time a day showed (tests/podcard.mjs).
+ok(/^<section class="pk-pod"/.test(r1) && !/<details class="pk-recap"/.test(r1), 'last night is the "Picks of the day" card, open, not a fold');
+ok(text(r1).startsWith('Picks of the day Last night · Oct 27 · logged as shown The list 2 of 3') && /✓ Celtics ✓ AS Roma ✗ Ducks/.test(text(r1)),
   "Tuesday's list: the Celtics and Roma landed, the Ducks lost");
 ok(/Top 2 Power \+2\.00u/.test(text(r1)) && /Top 3 Flex \+0\.25u/.test(text(r1)) && /Off before the start: Harper U1\.5 3PM, would have landed/.test(text(r1)),
   "its units, and Dylan Harper's pulled under, which would have landed");
 P = build();                                                  // a later page load on the same device
-ok(/<details class="pk-recap">/.test(P.recapHtml(h, null)) && !/ open>/.test(P.recapHtml(h, null)), 'folded on the next load');
+ok(P.recapHtml(h, null) === r1, 'the same on the next load');
 const eb = { byDay: { '2026-10-27': { n: 4, hit: 3, units: 7.5, clvN: 4, beat: 4 } } };
 ok(/Edge bets 3 of 4 · \+7\.50u · beat the close 4 of 4/.test(text(P.recapHtml(h, eb))), "and the edge bets' day, where it has one (the worker's byDay: tests/edgebets.mjs)");
 // Which bets (2026-10-30): the worker's byDay carries each one now.
@@ -85,7 +87,7 @@ const hc = { ...h, days: h.days.map((d) => (d.date !== '2026-10-27' ? d : { ...d
 ok(/Top 3 Flex as a 2-pick \+2\.00u/.test(text(P.recapHtml(hc, null))), 'a Flex cut to two by a push: "Top 3 Flex as a 2-pick +2.00u"');
 ok(P.shortLeg('Wendell Carter Jr Under 2.5 AST') === 'Carter Jr U2.5 AST' && P.shortLeg('Kyshawn George Over 0.5 BLK') === 'George O0.5 BLK' && P.shortLeg('Celtics ML') === 'Celtics',
   'legs by short names: "Carter Jr U2.5 AST", "George O0.5 BLK", "Celtics"');
-ok(P.recapHtml({ days: h.days.filter((d) => d.date !== '2026-10-27') }, null) === '', 'nothing when yesterday has no day');
+ok(/Last night’s legs show here once they are graded/.test(P.recapHtml({ days: h.days.filter((d) => d.date !== '2026-10-27') }, null)), 'when yesterday has no day, the card says when it will');
 
 // Today's legs as their games finish (2026-11-04), folded above last night's.
 console.log('\n-- Today so far, Oct 28 --');
@@ -103,9 +105,10 @@ ok(!/Top 2 Power/.test(t1), 'no entry yet: a later game can still put a leg abov
 const t2 = P.recapDay(withToday(todayPool(['hit', 'miss', 'hit'])), null, '2026-10-28', true);
 ok(/Top 2 Power −1\.00u/.test(text(t2)) && !/to go/.test(text(t2)), 'with every leg decided, the entry shows');
 const bothDays = P.recapHtml(withToday(todayPool(['hit', 'miss', null])), null);
-ok(text(bothDays).startsWith('Today so far') && /Last night Oct 27/.test(text(bothDays)) && /<details class="pk-recap" open>[^]*Last night/.test(bothDays), 'above last night, which still opens the first time it shows');
+ok(text(bothDays).startsWith('Picks of the day Last night · Oct 27') && /<\/p><details class="pk-recap"><summary><span class="rc-h">Today so far<\/span>/.test(bothDays),
+  'folded under last night’s card (since 2026-11-16; it sat above the fold before)');
 const none = P.recapHtml(withToday(todayPool([null, null, null])), null);
-ok(!/Today so far/.test(none) && /Last night/.test(none), 'nothing decided today: last night alone');
+ok(!/Today so far/.test(none) && /Last night · Oct 27/.test(none), 'nothing decided today: last night alone');
 P = build();
 
 // The first night of the entry, at 12:15 AM on Oct 29: its NHL legs not yet
@@ -119,7 +122,7 @@ console.log('  ' + text(r2));
 const d28 = G.history.days.find((d) => d.date === '2026-10-28');
 // The entry is the top six (2026-11-13): Roslovic, seventh, was in no entry, and shows under it apart.
 const pend = d28.pool.slice(0, 6).filter((x) => x.result == null).length;
-ok(d28.pool.length === 7 && text(r2).startsWith(`Last night Oct 28 PrizePicks entry 2 of 3 ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2))
+ok(d28.pool.length === 7 && text(r2).startsWith(`Picks of the day Last night · Oct 28 · logged as shown PrizePicks entry 2 of 3 · ${pend} still to grade`) && /✓ George O0\.5 BLK · Lehkonen O0\.5 PTS ✗ VanVleet U2\.5 3PM/.test(text(r2))
   && /Past the top 6, in no entry: · Roslovic O0\.5 PTS/.test(text(r2)),
   `the entry's legs, and the ${pend} NHL legs of its six still to grade said so; the seventh apart`);
 ok(/<li><span>Edge bets<\/span><b>1 of 5 · <i class="o">−2\.25u<\/i> · beat the close 4 of 5<\/b><\/li>/.test(r2) && /The list 9 of 9/.test(text(r2)),

@@ -5749,7 +5749,10 @@
   const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL', nfl: 'NFL', soccer: 'Soccer' };
   // Placeholder legs while the list loads (2026-10-12): the section was a
   // blank area for the seconds /api/picks takes on first open.
-  const PICKS_SKELETON = `<div class="nba-pp pk-card pk-skel" aria-busy="true" aria-label="Loading picks of the day">`
+  // The heading is the recap card's since step 6, so it waits here too.
+  const PICKS_HEAD = '<section class="pk-pod"><div class="pod-h"><h2>Picks of the day</h2></div></section>';
+  const PICKS_SKELETON = PICKS_HEAD
+    + `<div class="nba-pp pk-card pk-skel" aria-busy="true" aria-label="Loading picks of the day">`
     + '<div class="pk-skel-row"><span></span><span></span></div>'.repeat(3) + '</div>';
   async function refreshPicks() {
     if (!LIVE_MODE) return;
@@ -6081,6 +6084,14 @@
   const PICK_SAME = new Map();
   const pickGameKey = (x) => `${x.sport}:${(x.spec && x.spec.gamePk) || `${x.sub}|${x.commence}`}`;
   const pickShortName = (x) => String(x.title || '').replace(/ (Under|Over) .*$/, '').replace(/ ML$/, '');
+  // The moneyline with the best chance on show, by leg id (step 6's "Today's best moneyline").
+  const PICK_TOP = { ml: null };
+  // "Today's" or "Tomorrow's" by the leg's own Pacific day, as the big card has said since
+  // 2026-10-21; further out, nothing.
+  const pickDayWord = (iso) => {
+    const day = ptDayOf(Date.parse(iso));
+    return day === ptDayOf(Date.now()) ? 'Today’s' : day === ptDayOf(Date.now() + 864e5) ? 'Tomorrow’s' : '';
+  };
   // Simple or Detailed: the reader's choice once they make one, else Simple on a phone (the brief).
   const pickLegView = () => state.legView || (window.matchMedia && window.matchMedia('(max-width: 640px)').matches ? 'simple' : 'detailed');
   function renderPicks() {
@@ -6093,7 +6104,7 @@
     // and not on the list until it has a record at PrizePicks' lines. Then how
     // the list did, once a day has graded.
     const after = socBestStripHtml() + pickHistoryHtml(d.record && d.record.history, !!state.daysAll);
-    if (d.error) { grid.innerHTML = `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + after; return; }
+    if (d.error) { grid.innerHTML = PICKS_HEAD + `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + after; return; }
     const legs = (d.legs || []).map(pickAtLine).filter((x) => Date.parse(x.commence) > Date.now());
     if (count) count.textContent = legs.length ? `${legs.length} leg${legs.length === 1 ? '' : 's'}` : '';
     const kinds = d.kinds || {};
@@ -6110,6 +6121,7 @@
     if (!legs.length) {
       grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord) + mlbUnreadHtml(d) + `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
+      syncSlipSection();
       return;
     }
     // One leg's card (2026-11-16, the page brief's step 2) in today's legs: the star, the face, the
@@ -6117,8 +6129,11 @@
     // the sharp books' chance (on a moneyline, what its price needs), how legs like it have
     // landed, and that record against the entry's break-even -- each left out when it has nothing
     // to say; then a player's bar and last games, the price, the books. compact is the Simple
-    // view (step 4): the top row alone.
-    const legRow = (x, compact, foot) => {
+    // view (step 4): the top row alone. best is the large card above the list (step 6): always
+    // open, its game across the top, a projection tile and the market's, and a full-width button
+    // for the slip in place of the star.
+    const legRow = (x, compact, foot, best) => {
+      if (best) compact = false;
       const lg = pickLeg(x);
       const team = pickIsTeam(x);
       const on = !!state.slip[offerLeg(lg)];
@@ -6145,6 +6160,8 @@
       // A second leg from a game already on the list (the page brief, 2026-11-16).
       const sg = PICK_SAME.get(lg.id);
       if (sg) tags.push(`<span class="tc-wait" title="Legs from one game tend to land or miss together">Same game as ${esc(sg)}</span>`);
+      // The moneyline with the best chance shown (step 6), as the mock tags it.
+      if (PICK_TOP.ml === lg.id) tags.unshift(`<span class="lc-bestml">${esc(pickDayWord(x.commence) ? `${pickDayWord(x.commence)} best moneyline` : 'Best moneyline')}</span>`);
       const r = x.record || {};
       // The pick split from the name, as the big card has it: "Jabari Smith Jr" and "Over 0.5 BLK",
       // "Nuggets" and "to win".
@@ -6153,6 +6170,9 @@
       const pick = m ? `${m[2]} ${m[3]}` : / ML$/.test(String(x.title || '')) ? 'to win' : '';
       const tile = (label, value, sub, cls) => `<div class="lc-tile"><span class="lc-tk">${label}</span><b class="lc-tv${cls ? ' ' + cls : ''}">${value}</b>${sub ? `<span class="lc-ts">${sub}</span>` : ''}</div>`;
       const tiles = [];
+      // The best card's market tile: PrizePicks' line, and what the sharp books make it, if any.
+      let market = '';
+      if (best && !team && x.spec && x.spec.pp && typeof x.sharp !== 'number') market = tile('Market', `PrizePicks ${esc(String(x.spec.pp.line))}`, 'no sharp price at this line');
       if (team && typeof x.odds === 'number') {
         // What its price needs, and where its chance sits against that (mlChanceLineHtml's gap).
         const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
@@ -6167,7 +6187,15 @@
         const blend = typeof x.modelP === 'number' && x.modelP !== x.p;
         const note = x.kind === 'nba_reb_gap' ? "The chance shown is last season's rate for rebounds Less above the sharp books' line. This is the sharp books' own chance at PrizePicks' line, de-vigged"
           : blend ? "The chance shown is a quarter the model's and three quarters the sharp books'" : "The sharp books' chance at the line shown, de-vigged";
-        tiles.push(`<div class="lc-tile" title="${note}"><span class="lc-tk">Sharp books</span><b class="lc-tv">${esc(pct0(x.sharp))}</b><span class="lc-ts">${blend ? `model ${esc(pct0(x.modelP))}` : 'at this line'}</span></div>`);
+        if (best && x.spec && x.spec.pp) market = `<div class="lc-tile" title="${note}"><span class="lc-tk">Market</span><b class="lc-tv">PrizePicks ${esc(String(x.spec.pp.line))}</b><span class="lc-ts">sharp books ${esc(pct0(x.sharp))}${blend ? ` · model ${esc(pct0(x.modelP))}` : ''}</span></div>`;
+        else tiles.push(`<div class="lc-tile" title="${note}"><span class="lc-tk">Sharp books</span><b class="lc-tv">${esc(pct0(x.sharp))}</b><span class="lc-ts">${blend ? `model ${esc(pct0(x.modelP))}` : 'at this line'}</span></div>`);
+      }
+      // His projection against the line, and how far it clears it (the best card's first tile).
+      if (best && !team && typeof x.proj === 'number' && x.spec && x.spec.pp) {
+        const line = x.spec.pp.line, over = x.spec.side === 'Over';
+        const cush = r1(over ? x.proj - line : line - x.proj);
+        tiles.push(tile('Projection', `${esc(String(r1(x.proj)))} vs line ${esc(String(line))}`,
+          cush >= 0 ? `${cush} cushion` : `${Math.abs(cush)} ${over ? 'under' : 'over'} the line`, cush >= 0 ? '' : 'o'));
       }
       if (!r.n) tiles.push(tile('Legs like this', 'none graded yet', '', 'thin'));
       else {
@@ -6179,6 +6207,7 @@
         tiles.push(tile(`${esc(be[0].replace(/(power|flex)$/, (w) => w[0].toUpperCase() + w.slice(1)))} needs ${be[1]}%`,
           d >= 0 ? `clears by ${d}` : `record ${Math.abs(d)} short`, 'on its record', d >= 0 ? 'u' : 'o'));
       }
+      if (market) tiles.push(market);
       const more = compact ? '' : [
         // A player leg's projection against its line and his last games, as the boards draw them.
         team ? '' : pickBarHtml(x, x.spec),
@@ -6188,18 +6217,35 @@
         team ? '' : betLinkHtml(legLink(x)),
         booksHtml(x.books, team),
       ].join('');
+      const stepper = !compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '';
+      const sportName = esc(x.league || PICK_SPORT[x.sport] || x.sport);
+      if (best) {
+        const kicker = `${pickDayWord(x.commence) ? `${pickDayWord(x.commence)} best` : 'Best'} leg`;
+        return `<article class="lc lc-best" aria-labelledby="lcBestH">`
+          + `<div class="lc-bh"><h3 class="lc-kick" id="lcBestH">${esc(kicker)}</h3><span class="lc-meta">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span></div>`
+          // The face at the size the big card has had (the owner, 2026-11-16: "keep photos at today's size").
+          + `<div class="lc-top">${pickFace(x, 52)}`
+          + `<div class="lc-what"><b class="lc-bn">${esc(name)}</b>${pick ? `<span class="lc-bp">${esc(pick)}</span>` : ''}`
+          + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
+          + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span></div></div>`
+          + (tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
+          + (more ? `<div class="lc-more">${more}</div>` : '')
+          + stepper
+          + `<button type="button" class="lc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? 'On your slip · tap to remove' : 'Add to slip'}</button>`
+          + '</article>';
+      }
       // The sport rides on the game line, not beside the title: on a phone the
       // chip pushed "Inter Miami CF ML" onto two lines.
       return `<li class="lc">`
         + `<div class="lc-top">${star}${pickFace(x)}`
         + `<div class="lc-what"><span class="lc-name"><b>${esc(name)}</b>${pick ? ` <span class="lc-pick">${esc(pick)}</span>` : ''}</span>`
         // A soccer leg's league says the sport; the others name it.
-        + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${esc(x.league || PICK_SPORT[x.sport] || x.sport)}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
+        + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
         + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
         + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span></div></div>`
         + (!compact && tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
         + (more ? `<div class="lc-more">${more}</div>` : '')
-        + (!compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '')
+        + stepper
         + `${foot || ''}</li>`;
     };
     // Simple (the top row) or Detailed (step 4): the reader's choice, else by the screen.
@@ -6287,6 +6333,7 @@
     const best = props[0] || null;
     const rest = props.slice(1).sort(bySort);
     const mls = allMls.filter(shown).sort(bySort);
+    PICK_TOP.ml = mls.length ? pickLeg([...mls].sort(byChance)[0]).id : null;
     const nAll = allProps.length + allMls.length;
     if (count) count.textContent = nAll ? `${nAll} leg${nAll === 1 ? '' : 's'} today` : '';
     // A second leg from one game is tagged with the first leg's name, in the order they show.
@@ -6316,7 +6363,7 @@
       + (Object.keys(state.slip).length ? '' : '<p class="pks-hint">Tap the star on any leg to start your slip.</p>') + '</div>'
       + `${viewBtns}</div>`
       + tools
-      + (best ? heroLegHtml(best, { size: 52 })
+      + (best ? legRow(best, false, '', true)
         : sport === 'all' ? '<div class="tc-wait-note">No leg PrizePicks takes clears its bar for the next games yet. NBA and NHL lines come in once PrizePicks posts them, often the night before.</div>' : '')
       + group('Props', rest)
       + ppMovedHtml(d.ppMoved, ppOff)
@@ -6381,10 +6428,22 @@
     const sur = w.length > 2 && /^(Jr\.?|Sr\.?|II|III|IV)$/.test(w[w.length - 1]) ? w.slice(-2).join(' ') : w[w.length - 1];
     return `${sur} ${m[2] === 'Under' ? 'U' : 'O'}${m[3]} ${m[4]}`;
   }
+  // "Picks of the day" (2026-11-16, the page brief's step 6), the card the page opens on: last
+  // night's entries side by side, each leg hit or missed, the units, the edge bets' night and their
+  // run against the close since they were first logged, and the full track record a tap away.
+  // Today's legs as their games finish (2026-11-04) fold under it.
   function recapHtml(h, edge) {
-    if (!h || !Array.isArray(h.days)) return '';
-    // Today's legs as their games finish (2026-11-04), folded above last night's.
-    return recapDay(h, edge, ptDayOf(Date.now()), true) + recapDay(h, edge, ptDayOf(Date.now() - 864e5), false);
+    const days = h && Array.isArray(h.days);
+    const last = ptDayOf(Date.now() - 864e5);
+    const night = days ? recapDay(h, edge, last, false, true) : '';
+    const clv = edge && edge.clv && edge.clv.n && edge.since
+      ? `Since ${shortDay(edge.since)} the edge bets have beaten the close ${edge.clv.beat} of ${edge.clv.n}` : '';
+    return '<section class="pk-pod" aria-labelledby="pkPodH">'
+      + `<div class="pod-h"><h2 id="pkPodH">Picks of the day</h2><span class="pod-meta">${night ? `Last night · ${esc(shortDay(last))} · ` : ''}logged as shown</span></div>`
+      + (night || '<p class="pod-none">Last night’s legs show here once they are graded, after midnight PT.</p>')
+      + `<p class="pod-edge">${clv ? `${esc(clv)} · ` : ''}<a href="/track-record">Full track record</a></p>`
+      + (days ? recapDay(h, edge, ptDayOf(Date.now()), true) : '')
+      + '</section>';
   }
   // Each entry is one day's games (2026-11-14, the owner's "do all three"): under one short of six,
   // when the next day's takes over.
@@ -6396,7 +6455,8 @@
     return `<div class="tc-sub pk-next">${esc(propDayTitle(day, now))}’s games only. ${esc(propDayTitle(next, now))}’s entry shows here once ${esc(propDayName(day, now))}’s last leg starts, at ${esc(t)}.</div>`;
   }
   const RECAP_ENTRY_MAX = 6;
-  function recapDay(h, edge, date, today) {
+  // card: last night as the body of "Picks of the day" (step 6), open, each entry with its count.
+  function recapDay(h, edge, date, today, card) {
     const d = h.days.find((x) => x.date === date);
     if (!d) return '';
     const units = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
@@ -6435,7 +6495,9 @@
         else if (k === 'f6' && g.entry && g.all.length < 6 && !g.allGo) rows.push(`<li class="rc-short"><span>${label}</span><i>${g.all.length} legs logged</i></li>`);
       }
       const past = g.past.length ? `<div class="rc-past">Past the top ${RECAP_ENTRY_MAX}, in no entry: ${g.past.map((x) => `${esc(glyph[x.result] || '·')} ${esc(shortLeg(x.label))}`).join(' · ')}</div>` : '';
-      return `<div class="rc-ent"><div class="rc-cw">${g.who}</div><div class="rc-chips">${chips}</div>${rows.length ? `<ul class="rc-lines">${rows.join('')}</ul>` : ''}${past}</div>`;
+      const head = card ? `<div class="rc-cw"><b>${g.who}</b><span class="rc-n">${g.dec.length ? `${g.hit} of ${g.dec.length}` : ''}${g.toGo ? `${g.dec.length ? ' · ' : ''}${g.toGo} still to grade` : ''}</span></div>`
+        : `<div class="rc-cw">${g.who}</div>`;
+      return `<div class="rc-ent">${head}<div class="rc-chips">${chips}</div>${rows.length ? `<ul class="rc-lines">${rows.join('')}</ul>` : ''}${past}</div>`;
     };
     const lines = [];
     const eb = edge && edge.byDay && edge.byDay[date];
@@ -6453,6 +6515,12 @@
     // entry's first leg, and showed twice, a ✗ in the entry and "off before the start".
     const kept = new Set(ents.flatMap((g) => g.all.map((x) => x.label)));
     const off = (d.dropped || []).filter((x) => !kept.has(x.label)).map((x) => `${esc(shortLeg(x.label))}${went[x.result] || ''}`).join(' · ');
+    if (card) {
+      return `<div class="pod-cols">${ents.map(block).join('')}</div>`
+        + (lines.length ? `<ul class="rc-lines pod-lines">${lines.join('')}</ul>` : '')
+        + (ebs ? `<div class="rc-off rc-ebets">Edge bets: ${ebs}</div>` : '')
+        + (off ? `<div class="rc-off">Off before the start: ${off}</div>` : '');
+    }
     const open = !today && recapSeenAtLoad !== date;
     if (!today) { try { localStorage.setItem('aimplified_recap_seen', date); } catch (e) { /* private mode */ } }
     return `<details class="pk-recap"${open ? ' open' : ''}><summary><span class="rc-h">${today ? 'Today so far' : 'Last night'}</span>`
