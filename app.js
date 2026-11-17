@@ -8514,6 +8514,24 @@
     const who = late.length > 2 ? `${late.slice(0, 2).join(', ')} +${late.length - 2}` : late.join(' and ');
     return ` <span class="tc-wait" title="This price was read ${esc(soccerKick(v.ln.at))}, before ESPN listed ${esc(late.join(', '))} out. The books have most likely moved since: check the line before you use this number.">read before ${esc(who)} ${late.length > 1 ? 'were' : 'was'} ruled out</span>`;
   }
+  // Books that disagree with themselves (2026-11-17, the owner's call): every NHL assist and goal is
+  // a point too, so a points Under can't land more often than his assists or goals Under at the same
+  // number. On Nov 17 Jackson LaCombe's points Under 0.5 read 71% against his assists Under 0.5 at 56%:
+  // one quote was off, and it can't be told which book's. The points row says so and keeps its
+  // number. A point of slack, for the de-vigging's rounding.
+  const PROP_PARTS = { nhl: { pts: ['ast', 'goals'] } };
+  const propFairAt = (ln, line) => (!ln ? null : ln.l === line && ln.u != null ? ln.u : ((ln.fairs || []).find((f) => f[0] === line) || [])[1] ?? null);
+  function propDisagreeTag(sport, p, s, v) {
+    if (v.fair == null) return '';
+    for (const part of (PROP_PARTS[sport] || {})[s] || []) {
+      const u = propFairAt(p.lines && p.lines[part], v.line);
+      if (u != null && v.fair > u + 1) {
+        const name = PROP_STATS[sport][part][1];
+        return ` <span class="tc-wait" title="The sharp books put his points Under ${esc(String(v.line))} at ${esc(pct0(v.fair))} and his ${esc(name)} Under ${esc(String(v.line))} at ${esc(pct0(u))}. Every ${name === 'goals' ? 'goal' : 'assist'} is a point too, so the points Under can't be the likelier one: one of the two prices is off.">books disagree</span>`;
+      }
+    }
+    return '';
+  }
   function propRow(sport, d, g, p, s) {
     const v = propView(sport, d, g, p, s), key = v.key, label = PROP_STATS[sport][s];
     const leg = propLeg(sport, g, p, s, v);
@@ -8537,7 +8555,7 @@
     return `<li class="sp-row${open ? ' open' : ''}">${star}<div class="tc-leg">`
       + `<button type="button" class="sp-tap" data-action="pr-row" data-key="${esc(key)}" aria-expanded="${open}">`
       + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span>${v.p != null ? `<span class="tc-p${v.p >= PROP_STRONG && !(p.inj && p.inj.out) ? ' sp-strong' : ''}">${pct0(v.p)}</span>` : ''}</span>`
-      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propLateTag(v)}${propAgainstTag(sport, v)}${propStartTag(sport, p)}${propMinTag(sport, p)}${nbaCardInjTag(p)}</span>`
+      + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${v.src === 'none' ? esc(label[1]) : `${v.side} ${esc(String(v.line))} ${esc(label[1])}`}${noPct}${propLateTag(v)}${propDisagreeTag(sport, p, s, v)}${propAgainstTag(sport, v)}${propStartTag(sport, p)}${propMinTag(sport, p)}${nbaCardInjTag(p)}</span>`
       + (v.src === 'none' ? (v.proj != null ? `<span class="pr-clear dots"><span class="dots-in"><span>proj <b>${esc(String(v.proj))}</b></span>${v.vals.length ? ` <span><span class="dot">·</span> avg ${esc(String(r1(v.vals.reduce((a, x) => a + x, 0) / v.vals.length)))} in last ${v.vals.length}</span>` : ''}</span></span>` : '')
         : `${projLineHtml(v.proj, v.line, v.side)}${v.vals.length ? `<span class="pr-clear">over ${esc(String(v.line))} in ${v.over} of last ${v.vals.length}</span>` : ''}`) + `</span>`
       + `</button>`
