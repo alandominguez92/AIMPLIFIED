@@ -6173,6 +6173,32 @@
   };
   // Simple or Detailed: the reader's choice once they make one, else Simple on a phone (the brief).
   const pickLegView = () => state.legView || (window.matchMedia && window.matchMedia('(max-width: 640px)').matches ? 'simple' : 'detailed');
+  // His minutes (2026-11-17, the owner's ask: "how many minutes a player plays to consider the
+  // stats"): an NBA player's a game over his last five beside his usual (his last ten and last
+  // season's, as the worker blends them), an NHL skater's time on ice over his last five. They are
+  // the props card's own numbers (the worker's ppPropPlayers); Picks carries them for its own legs
+  // (picks.minutes), the tabs have the card's. Context only: the NBA projection already uses the
+  // last five's minutes, and nothing here moves a chance.
+  function legMinutes(sport, pid) {
+    if ((sport !== 'nba' && sport !== 'nhl') || pid == null) return null;
+    const m = state.picks && state.picks.minutes && state.picks.minutes[`${sport}:${pid}`];
+    if (Array.isArray(m) && typeof m[0] === 'number') return { min: m[0], mw: typeof m[1] === 'number' ? m[1] : null };
+    const d = state.props && state.props[sport];
+    const p = d && Array.isArray(d.players) ? d.players.find((q) => String(q.id) === String(pid)) : null;
+    return p && !p.goalie && !(p.proj && p.proj.saves != null) && typeof p.min === 'number' ? { min: p.min, mw: typeof p.mw === 'number' ? p.mw : null } : null;
+  }
+  const toiText = (m) => { const s = Math.round(m * 60); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  // Minutes 4 or more off his usual keep the props card's "playing more" tag (2026-11-07).
+  function minutesTagHtml(sport, min, mw) {
+    if (typeof min !== 'number') return '';
+    if (sport === 'nhl') return `<span class="pk-asof" title="His average time on ice over his last five games">${esc(toiText(min))} on ice last 5</span>`;
+    if (sport !== 'nba') return '';
+    if (typeof mw === 'number' && Math.abs(min - mw) >= PROP_MIN_MOVE) {
+      const more = min > mw;
+      return `<span class="tc-wait" title="${more ? 'More' : 'Fewer'} minutes over his last five games (${esc(String(min))}) than usual (${esc(String(mw))}). The projection uses the last five.">playing ${more ? 'more' : 'less'}: ${esc(String(min))} min, usually ${esc(String(mw))}</span>`;
+    }
+    return `<span class="pk-asof" title="His minutes a game over his last five games${typeof mw === 'number' ? ', and his usual: his last ten and last season’s' : ''}">${esc(String(min))} min last 5${typeof mw === 'number' ? `, usually ${esc(String(mw))}` : ''}</span>`;
+  }
   // One leg's card (2026-11-16, the page brief's step 2) in today's legs: the star, the face, the
   // pick and its game with its tags, and the chance large on the right; then up to three tiles --
   // the sharp books' chance (on a moneyline, what its price needs), how legs like it have
@@ -6205,6 +6231,9 @@
     // His run against the line is a tag only where his last games aren't drawn below.
     const tt = trendShown ? null : trendTag(x.trend);
     if (tt) tags.push(`<span class="${tt.good ? 'tc-gap' : 'tc-wait'}" title="His last games against this line. A run is context: the chance shown is the price's">${esc(tt.text)}</span>`);
+    // His minutes beside his run (2026-11-17): the NBA's and the NHL's, for players only.
+    const mins = team || !x.spec ? null : legMinutes(x.spec.sport || x.sport, x.spec.playerId);
+    if (mins) tags.push(minutesTagHtml(x.spec.sport || x.sport, mins.min, mins.mw));
     const ra = x.lineSet ? null : readAgeTag(x);
     if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
     if (x.lineSet) tags.push(pickLineSetTag(x));
@@ -8542,11 +8571,12 @@
   // Minutes moving (2026-11-07, the owner's ask): his minutes over the last five against his usual
   // (his last ten and last season's, as the worker blends them), 4 or more apart. The projection
   // already uses the last five's minutes; this says why it moved.
+  // On every row since 2026-11-17 (the owner's yes), with an NHL skater's time on ice: minutesTagHtml.
+  // A goalie's time on ice is the whole game: the card's rows don't flag him, his saves do.
   const PROP_MIN_MOVE = 4;
   function propMinTag(sport, p) {
-    if (sport !== 'nba' || typeof p.min !== 'number' || typeof p.mw !== 'number' || Math.abs(p.min - p.mw) < PROP_MIN_MOVE) return '';
-    const more = p.min > p.mw;
-    return ` <span class="tc-wait" title="${more ? 'More' : 'Fewer'} minutes over his last five games (${esc(String(p.min))}) than usual (${esc(String(p.mw))}). The projection uses the last five.">playing ${more ? 'more' : 'less'}: ${esc(String(p.min))} min, usually ${esc(String(p.mw))}</span>`;
+    const t = p.goalie || (p.proj && p.proj.saves != null) ? '' : minutesTagHtml(sport, p.min, p.mw);
+    return t ? ` ${t}` : '';
   }
   // Read before a teammate was ruled out (2026-11-06, the owner's yes): the worker names the rotation
   // players ESPN first listed out after this row's sharp price was read (ppPropMarkLate). Their

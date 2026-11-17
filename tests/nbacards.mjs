@@ -52,7 +52,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
 const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
   'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
-  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'PROP_MIN_MOVE', 'legMinutes', 'toiText', 'minutesTagHtml', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
   'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
   'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
   'NBA_MK', 'NHL_MK', 'MARKET_SHORT', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'injOut', 'outLast', 'ppMoreLineHtml', 'propData', 'propVals', 'propTrend', 'sameGameMap', 'pickLegView',
@@ -112,7 +112,8 @@ const pgc = cardOf(ul, 'Paul George');
 console.log('        ' + tilesOf(pgc).join(' | ') + ' || ' + tagsOf(pgc));
 ok(bigOf(pgc).join(',') === ' tc-band-good,57' && /title="FanDuel[^"]*: their price at PrizePicks' line, de-vigged, the middle of them"/.test(pgc), "George: the sharp 57% large, green at a 6-Flex's 54%+, whose number on hover");
 ok(tilesOf(pgc)[0] === 'Sharp books: 57% (model 49% (its under 55% landed 51%))' && tilesOf(pgc)[1] === 'Legs like this: 58% · 64 of 111', "the model's beside it with its range, then the sharp range's record");
-ok(tagsOf(pgc) === 'book u1.5 -118 · season: under 3 of 10' && /under 1\.5 in 2 of last 8/.test(text(pgc)), 'the book\'s line and his season, as the old row had them; his last games drawn');
+// His minutes first since 2026-11-17 (tests/minutes.mjs), off the props card the tab has loaded.
+ok(tagsOf(pgc) === '30.6 min last 5, usually 30.5 book u1.5 -118 · season: under 3 of 10' && /under 1\.5 in 2 of last 8/.test(text(pgc)), 'his minutes, the book\'s line and his season, as the old row had them; his last games drawn');
 ok(bigOf(cardOf(ul, 'Aaron Gordon')).join(',') === ',54' && bigOf(cardOf(ul, 'Jabari Smith Jr')).join(',') === ',53', 'under 54%: plain');
 const gc = cardOf(ul, 'Aaron Gordon');
 ok(/PP line read 4h ago: check the app/.test(tagsOf(gc)) && /<span class="sp-lbl">PP shows<\/span>/.test(gc) && !/PP shows/.test(pgc), 'assists: how old the read is, and the line to set; steals neither');

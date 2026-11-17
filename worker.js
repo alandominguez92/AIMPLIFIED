@@ -10637,6 +10637,29 @@ async function refreshEdgePrices(env, scan, now) {
 
 // What the list says it carries on a day: a kind that came off is not among them.
 const pickKindsOn = (now) => Object.entries(PICK_KINDS).filter(([, v]) => !v.off || ptDateOf(now) < v.off);
+// The minutes of the NBA and NHL players on Picks' card: "nba:<id>" -> [last five's, usual] (the
+// NBA) or [time on ice over the last five] (the NHL), from the props form row the trigger keeps
+// (ppPropPlayers). One read for both rows, none when no such leg is on the card. Goalies left out.
+async function picksMinutes(db, legs) {
+  const want = new Map();
+  for (const l of legs) {
+    const s = l.spec || {};
+    if ((s.sport !== 'nba' && s.sport !== 'nhl') || !s.playerId) continue;
+    if (!want.has(s.sport)) want.set(s.sport, new Set());
+    want.get(s.sport).add(String(s.playerId));
+  }
+  const out = {};
+  if (!want.size) return out;
+  const rows = await loadFeedCaches(db, [...want.keys()].map((s) => PP_PROP_FORM + s));
+  for (const [sport, ids] of want) {
+    const d = rows.get(PP_PROP_FORM + sport);
+    for (const p of (d && d.players) || []) {
+      if (p.goalie || typeof p.min !== 'number' || !ids.has(String(p.id))) continue;
+      out[`${sport}:${p.id}`] = typeof p.mw === 'number' ? [p.min, p.mw] : [p.min];
+    }
+  }
+  return out;
+}
 async function picksBoard(env) {
   const out = {
     note: 'LOGGED as shown. The legs most likely to land, across sports, one per game: for PrizePicks, which pays the same on every leg. '
@@ -10687,6 +10710,9 @@ async function picksBoard(env) {
     for (const f of [nbaTrends, nhlTrends, ptdTrends]) {
       try { for (const [k, v] of await f(legDb, onCard)) trends.set(k, v); } catch (e) { /* the list stands without them */ }
     }
+    // The NBA and NHL players' minutes (2026-11-17, the owner's ask), off the props card's own rows,
+    // for the page to show on their legs. Read after the log is written; nothing reads them back.
+    try { out.minutes = await picksMinutes(part('minutes').DB, onCard); } catch (e) { /* the legs stand without them */ }
     const withHk = onCard.filter((l) => l.hk);
     (await priceHists(legDb, withHk.map((l) => l.hk))).forEach((h, i) => { if (h.length > 1) hists.set(withHk[i].legId, h); });
     const shown = (l, i) => ({
