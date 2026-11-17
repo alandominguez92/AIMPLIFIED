@@ -132,8 +132,9 @@ const esc = (s) => String(s == null ? '' : s);
 // The table goes one day at a time from 2026-11-11 (tests/nflday.mjs); its day helpers come along.
 const liftConst = (name) => { const m = app.match(new RegExp(`const ${name} = [^\\n]*(?:\\n    [^\\n]*)*;\\n`)); if (!m) throw new Error('could not lift ' + name); return m[0]; };
 const DAY = ['ptDayOf', 'propDayName', 'propDayTitle', 'mlLaterOpen', 'mlTableGames', 'mlCountText'].map(liftConst).join('') + lift('mlDaySplit') + '\n' + lift('mlLaterHtml');
-const draw = new Function('document', 'el', 'esc', 'soccerKick', 'nflTable', 'hotCardHtml', 'propsCardHtml', 'state', DAY + '\n' + lift('gmRecordHtml') + '\n' + lift('renderNflMoneyline') + '\nreturn renderNflMoneyline;')(
-  document, el, esc, (iso) => iso, (games) => { tabled = games; return '<table>'; }, () => '', () => '', {});
+// The tab's legs since 2026-11-17 (the page brief's step 7): tests/nflcards.mjs.
+const draw = new Function('document', 'el', 'esc', 'soccerKick', 'nflTable', 'hotCardHtml', 'propsCardHtml', 'state', 'nflTodayParts', DAY + '\n' + lift('gmRecordHtml') + '\n' + lift('renderNflMoneyline') + '\nreturn renderNflMoneyline;')(
+  document, el, esc, (iso) => iso, (games) => { tabled = games; return '<table>'; }, () => '', () => '', {}, () => ({ top: '', ml: (t) => t }));
 draw({ ...REC.board, record: b.record }, false);
 ok(tabled && tabled.map((x) => `${x.away}@${x.home}`).join() === 'KC@SEA',
   `at 3:18 PM the table is tonight's game alone; the ten under way or over, Panthers +3000 among them, are left out (${tabled && tabled.length})`);

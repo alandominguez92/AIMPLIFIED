@@ -4961,7 +4961,7 @@
       // Every leg's break-even tile follows it; no leg leaves the list (the page brief's step 3).
       case 'entry-size': {
         const n = Number(target.dataset.n);
-        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); if (state.sport === 'nhl') renderNhl(); if (state.sport === 'nba') renderNba(); }
+        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); if (state.sport === 'nhl') renderNhl(); if (state.sport === 'nba') renderNba(); if (state.sport === 'nfl') renderNfl(); }
         break;
       }
       case 'ticket-save': saveTicketImage(); break;
@@ -4986,6 +4986,7 @@
         renderPicks();
         if (state.sport === 'nhl') renderNhl();
         if (state.sport === 'nba') renderNba();
+        if (state.sport === 'nfl') renderNfl();
         break;
       }
       // In Simple, a tap on a leg opens that one card in full; a second tap folds it again.
@@ -4996,9 +4997,10 @@
         renderPicks();
         if (state.sport === 'nhl') renderNhl();
         if (state.sport === 'nba') renderNba();
+        if (state.sport === 'nfl') renderNfl();
         // The name on the tab in view: the same leg can be on Picks too, out of sight.
         const sel = `.lc-nb[data-leg="${window.CSS && CSS.escape ? CSS.escape(id) : id}"]`;
-        const host = document.getElementById(state.sport === 'nhl' ? 'nhlGrid' : state.sport === 'nba' ? 'nbaGrid' : 'picksGrid');
+        const host = document.getElementById(state.sport === 'nhl' ? 'nhlGrid' : state.sport === 'nba' ? 'nbaGrid' : state.sport === 'nfl' ? 'nflMlGrid' : 'picksGrid');
         const again = fromName && host && host.querySelector(sel);
         if (again) again.focus({ preventScroll: true });
         break;
@@ -5462,6 +5464,39 @@
   const num = (v) => (v == null ? '—' : String(v));
   const signed = (v) => (v == null ? '—' : (v > 0 ? '+' + v : String(v)));
 
+  // ---- The NFL tab's legs (2026-11-17, the page brief's step 7) ----------------------------------
+  // Picks' NFL props still to come (its list and its PrizePicks pool: the passing TDs Under 1.5 the
+  // sharp books put at 60%+), best first, a player ESPN lists out last; null before Picks has loaded.
+  function nflPicksProps(now = Date.now()) {
+    const pk = state.picks;
+    if (!pk || pk.error) return null;
+    const seen = new Set();
+    return [...(pk.legs || []), ...(pk.ppPool || [])]
+      .filter((x) => x.kind === 'nfl_ptd' && Date.parse(x.commence) > now && !seen.has(x.legId) && seen.add(x.legId))
+      .map(pickAtLine).sort((a, b) => injOut(a) - injOut(b) || (b.p || 0) - (a.p || 0));
+  }
+  // The tab's legs, in the NHL and NBA tabs' order: today's legs, the best NFL prop Picks lists large
+  // and its others under it; then (after the props card) the moneylines, every game's prices under
+  // them. The NFL keeps no PrizePicks log of its own to fill the list from: Picks is all of it, and
+  // Picks lists games starting within the next day, so between game days the tab says so.
+  function nflTodayParts() {
+    const picks = nflPicksProps();
+    const best = (picks || []).find((x) => !injOut(x)) || null;
+    const rest = (picks || []).filter((x) => !best || x.legId !== best.legId);
+    const mls = tabMlCardLegs('nfl_ml');
+    const ctx = { sport: 'nfl', same: sameGameMap([...(best ? [best] : []), ...rest, ...mls]), topMl: mls.length ? pickLeg(mls[0]).id : null, hasBest: !!best, best };
+    const simple = pickLegView() === 'simple';
+    const body = (best ? legCardHtml(best, false, '', true, ctx) : '')
+      + (rest.length ? '<div class="pk-grp nfl-ptd"><h3 class="pk-gh">PrizePicks: passing TDs Under 1.5</h3>'
+        + '<div class="tc-sub">The sharp books’ chance he throws fewer than two touchdowns, de-vigged: Picks lists those at 60%+. Check PrizePicks has 1.5.</div>'
+        + `<ol class="tc-legs pk-pool">${rest.map((x) => legCardHtml(x, simple, '', false, ctx)).join('')}</ol></div>` : '')
+      + (best ? '' : `<div class="tc-wait-note">${picks ? 'No NFL prop on Picks yet: it lists the games starting within a day.' : 'The NFL legs show once Picks has loaded.'}</div>`);
+    return {
+      top: tabTodayHtml('nfl', 'The NFL props and moneylines Picks lists, for your PrizePicks entry. The call is yours.', body),
+      ml: tabMlHtml('nfl', mls, ctx, 'No NFL favourite at 75%+ in the games starting within a day.'),
+    };
+  }
+
   // The board in the NBA and NHL tabs' shape (2026-10-25): the moneyline table
   // and its record. The yardage projections that folded underneath came off on
   // 2026-11-08; the props card above carries the NFL player lines.
@@ -5491,8 +5526,13 @@
       + (pre ? ' · preseason: starters sit' : '');
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
     const rec = gmRecordHtml(d.record, 'Record: logged from Week 1, graded from ESPN’s finals each morning.');
-    grid.innerHTML = rec + propsCardHtml('nfl') + hotCardHtml('nfl') + (games.length ? nflTable(games) + mlLaterHtml('nfl', sp)
-      : `<div class="nfl-empty">No NFL games left on this slate${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`);
+    // The page brief's step 7 (2026-11-17), in the NHL and NBA tabs' order: today's legs as leg cards,
+    // the best one Picks lists large; the props card with its stat buttons; the moneylines as cards
+    // with every game's prices under them; Hot players. Hot players had sat above the table.
+    const parts = nflTodayParts();
+    const table = games.length ? nflTable(games) + mlLaterHtml('nfl', sp)
+      : `<div class="nfl-empty">No NFL games left on this slate${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
+    grid.innerHTML = rec + parts.top + propsCardHtml('nfl') + parts.ml(table) + hotCardHtml('nfl');
   }
 
   function kickoff(iso) {
@@ -5802,9 +5842,10 @@
     state.picksAt = Date.now();
     renderPicks();
     renderTopCard();
-    // The NHL and NBA tabs' best leg, moneyline cards and goalies are Picks' (step 7).
+    // The NHL, NBA and NFL tabs' best leg, moneyline cards and goalies are Picks' (step 7).
     if (state.sport === 'nhl') renderNhl();
     if (state.sport === 'nba') renderNba();
+    if (state.sport === 'nfl') renderNfl();
     const pp = soc && await soc;
     if (pp && Array.isArray(pp.matches)) {
       state.socProps = socKeepExpected(pp, state.socProps);
@@ -5994,7 +6035,7 @@
   }
   // The tabs that draw their own legs as leg cards, the best one large (the page brief's step 7):
   // the old card stays off them.
-  const LEG_CARD_TABS = new Set(['nhl', 'nba']);
+  const LEG_CARD_TABS = new Set(['nhl', 'nba', 'nfl']);
   function renderTopCard() {
     const box = document.getElementById('topCard');
     if (!box) return;
@@ -6196,7 +6237,9 @@
     const tiles = [];
     // The best card's market tile: PrizePicks' line, and what the sharp books make it, if any.
     let market = '';
-    if (best && !team && x.spec && x.spec.pp && typeof x.sharp !== 'number') market = tile('Market', `PrizePicks ${esc(String(x.spec.pp.line))}`, 'no sharp price at this line');
+    // An NFL passing-TDs Under's chance is the sharp books' own (the worker's nfl_ptd): it says so
+    // rather than "no sharp price".
+    if (best && !team && x.spec && x.spec.pp && typeof x.sharp !== 'number') market = tile('Market', `PrizePicks ${esc(String(x.spec.pp.line))}`, x.kind === 'nfl_ptd' ? `sharp books ${esc(pct0(x.p))}` : 'no sharp price at this line');
     if (team && typeof x.odds === 'number') {
       // What its price needs, and where its chance sits against that (mlChanceLineHtml's gap).
       const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;

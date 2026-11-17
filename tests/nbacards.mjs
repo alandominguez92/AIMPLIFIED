@@ -176,8 +176,8 @@ console.log('\n-- 7. on the page --');
 const rn = lift('renderNba');
 ok(/grid\.innerHTML = parts\.top \+ propsCardHtml\('nba'\) \+ parts\.ml\(table\) \+ nbaHotCardHtml\(\);/.test(rn),
   "the NHL tab's order: today's legs, the props card and its stat buttons, the moneylines and the table, Hot players");
-ok(/const LEG_CARD_TABS = new Set\(\['nhl', 'nba'\]\);/.test(src), 'the old top card stays off the tab: its own best card replaces it');
-ok(/\/\/ The NHL and NBA tabs' best leg, moneyline cards and goalies are Picks' \(step 7\)\.\n\s+if \(state\.sport === 'nhl'\) renderNhl\(\);\n\s+if \(state\.sport === 'nba'\) renderNba\(\);/.test(src), 'Picks arriving redraws the tab');
+ok(/const LEG_CARD_TABS = new Set\(\['nhl', 'nba', 'nfl'\]\);/.test(src), 'the old top card stays off the tab: its own best card replaces it');
+ok(/\/\/ The NHL, NBA and NFL tabs' best leg, moneyline cards and goalies are Picks' \(step 7\)\.\n\s+if \(state\.sport === 'nhl'\) renderNhl\(\);\n\s+if \(state\.sport === 'nba'\) renderNba\(\);/.test(src), 'Picks arriving redraws the tab');
 for (const c of ['leg-view', 'entry-size', 'leg-open']) {
   const body = (new RegExp(`case '${c}': \\{[\\s\\S]*?break;\\n\\s+\\}`).exec(src) || [''])[0];
   ok(/if \(state\.sport === 'nba'\) renderNba\(\);/.test(body), `${c} redraws the NBA tab too`);

@@ -46,7 +46,7 @@ const elOf = (id) => (els[id] ||= { id, innerHTML: '', textContent: '' });
 const el = { nflBoardTitle: elOf('nflBoardTitle'), nflCount: elOf('nflCount') };
 const state = { nfl: NFL };
 const noop = () => '';
-const ARGS = { state, el, document: { getElementById: elOf }, gmRecordHtml: noop, propsCardHtml: noop, hotCardHtml: noop,
+const ARGS = { state, el, document: { getElementById: elOf }, gmRecordHtml: noop, propsCardHtml: noop, hotCardHtml: noop, nflTodayParts: () => ({ top: '', ml: (t) => t }),
   miniBar: noop, offerStar: noop, avatarHtml: noop, nflMlLeg: () => ({}), nflDetail: noop };
 const NAMES = ['esc', 'AM', 'BOOK_LABEL', 'bkLabel', 'signed', 'soccerKick', 'kickWhole', 'nbaNick', 'nflNick', 'ptDayOf', 'propDayName', 'propDayTitle',
   'mlDaySplit', 'mlLaterOpen', 'mlLaterHtml', 'mlTableGames', 'mlCountText', 'NFL_ML_COLS', 'nflTable', 'nflMlBar', 'nflRow',

@@ -159,13 +159,13 @@ console.log('\n-- 8. on the page --');
 const rn = lift('renderNhl');
 ok(/grid\.innerHTML = nhlRecordHtml\(d\.record\) \+ parts\.top \+ propsCardHtml\('nhl'\) \+ parts\.ml\(table\) \+ hotCardHtml\('nhl'\);/.test(rn),
   'the mock\'s order: today\'s legs and the Mores, the props card and its stat buttons, the moneylines and the table, Hot players');
-ok(/const LEG_CARD_TABS = new Set\(\['nhl', 'nba'\]\);/.test(src) && /const leg = LEG_CARD_TABS\.has\(state\.sport\) \? null : topLegFor/.test(lift('renderTopCard')), 'the old top card stays off the tab: its own best card replaces it');
-ok(/renderTopCard\(\);\n\s+\/\/ The NHL and NBA tabs' best leg, moneyline cards and goalies are Picks' \(step 7\)\.\n\s+if \(state\.sport === 'nhl'\) renderNhl\(\);/.test(src), 'Picks arriving redraws the tab: its moneylines are Picks\'');
+ok(/const LEG_CARD_TABS = new Set\(\['nhl', 'nba', 'nfl'\]\);/.test(src) && /const leg = LEG_CARD_TABS\.has\(state\.sport\) \? null : topLegFor/.test(lift('renderTopCard')), 'the old top card stays off the tab: its own best card replaces it');
+ok(/renderTopCard\(\);\n\s+\/\/ The NHL, NBA and NFL tabs' best leg, moneyline cards and goalies are Picks' \(step 7\)\.\n\s+if \(state\.sport === 'nhl'\) renderNhl\(\);/.test(src), 'Picks arriving redraws the tab: its moneylines are Picks\'');
 for (const c of ['leg-view', 'entry-size', 'leg-open']) {
   const body = (new RegExp(`case '${c}': \\{[\\s\\S]*?break;\\n\\s+\\}`).exec(src) || [''])[0];
   ok(/if \(state\.sport === 'nhl'\) renderNhl\(\);/.test(body), `${c} redraws the NHL tab too`);
 }
-ok(/const host = document\.getElementById\(state\.sport === 'nhl' \? 'nhlGrid' : state\.sport === 'nba' \? 'nbaGrid' : 'picksGrid'\);/.test(src), 'the focus goes back to the name on the tab in view');
+ok(/const host = document\.getElementById\(state\.sport === 'nhl' \? 'nhlGrid' : state\.sport === 'nba' \? 'nbaGrid' : state\.sport === 'nfl' \? 'nflMlGrid' : 'picksGrid'\);/.test(src), 'the focus goes back to the name on the tab in view');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

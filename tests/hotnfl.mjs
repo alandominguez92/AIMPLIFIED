@@ -333,7 +333,8 @@ state.hot.nfl = { ...payload, ready: false, teamsReady: 12, teamsNeeded: 22, gam
 ok(/opponents are ranked once 22 teams have played 5, and 12 have so far/.test(card('nfl')), 'too early: how far off');
 state.hot.nfl = null;
 ok(card('nfl') === '', 'no list: no section');
-ok(/grid\.innerHTML = rec \+ propsCardHtml\('nfl'\) \+ hotCardHtml\('nfl'\) \+ \(games\.length/.test(app), 'on the tab, above the games');
+// Under the moneylines since 2026-11-17 (the page brief's step 7), as on the NHL and NBA tabs.
+ok(/grid\.innerHTML = rec \+ parts\.top \+ propsCardHtml\('nfl'\) \+ parts\.ml\(table\) \+ hotCardHtml\('nfl'\);/.test(app), 'on the tab, under the moneylines and the games');
 ok(/fetchJson\('\/api\/hot-players\?sport=nfl'\)/.test(app), 'and fetched with it');
 ok(/case 'hot-all': \{[\s\S]{0,260}renderNfl\(\)/.test(app), 'the tap redraws the tab');
 
