@@ -284,9 +284,10 @@ state.hot.nhl = { ...payload, players: [] };
 ok(/No one is on a run of 5 or more/.test(card('nhl')), 'no one on a run: it says so');
 state.hot.nhl = null;
 ok(card('nhl') === '', 'no list: no section');
-const render = app.slice(app.indexOf('  function renderNhl('), app.indexOf('  function renderNhl(') + 1200);
+const render = app.slice(app.indexOf('  function renderNhl('), app.indexOf('  function renderNhl(') + 3000);
 // The props card moved up under the best leg (2026-11-05, the owner's pick); the list stays under the PrizePicks cards.
-ok(/propsCardHtml\('nhl'\) \+ nhlPpCardHtml\(\) \+ hotCardHtml\('nhl'\)/.test(render), 'on the tab, under the PrizePicks cards');
+// Since the page brief's step 7 (2026-11-17) under the moneylines, the last of the tab's legs.
+ok(/parts\.ml\(table\) \+ hotCardHtml\('nhl'\)/.test(render), 'on the tab, under the moneylines');
 ok(/fetchJson\('\/api\/hot-players\?sport=nhl'\)/.test(app), 'and fetched with it');
 ok(/case 'hot-all': \{[\s\S]{0,200}renderNhl\(\)/.test(app), 'the tap redraws the tab');
 

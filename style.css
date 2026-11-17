@@ -3292,6 +3292,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-vw:hover { color:var(--text); border-color:var(--borderFaint); }
 .pk-vw.on { border-color:var(--accentFill); background:var(--tintAccent); color:var(--accent); }
 .pk-vw:focus-visible { outline:2px solid var(--accentFill); outline-offset:2px; }
+/* The sport tabs' own legs (step 7, 2026-11-17): room above each section, and the size buttons at
+   Picks' width rather than the page's, since they sit alone on the row here. */
+.tab-legs { margin-top:24px; }
+.tab-legs .pk-tool.pk-size { flex:0 1 420px; }
 .pk-sel { width:100%; height:44px; padding:0 10px; border-radius:8px; border:1px solid var(--borderFaint); background:var(--card);
   color:var(--text); font-family:var(--sans); font-size:14px; cursor:pointer; }
 .pk-sel:focus-visible { outline:2px solid var(--accentFill); outline-offset:2px; }

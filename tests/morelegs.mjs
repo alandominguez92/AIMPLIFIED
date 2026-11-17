@@ -96,14 +96,21 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const ui = { nbaPp: b, nhlPp: null, slip: {} };
+const ui = { nbaPp: b, nhlPp: null, slip: {}, legView: 'detailed' };
+// The More card's rows are leg cards since 2026-11-17 (the page brief's step 7): the card's helpers.
+const LEG_CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
+  'nhlNick', 'NHL_PROVEN_N', 'nhlMoreRecord', 'propData', 'propVals', 'nhlTrend', 'nhlGoaliesOf', 'nhlMoreCardLeg', 'nhlPicksMoreIds', 'nhlMoreLegs', 'sameGameMap', 'pickLegView'];
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'NHL_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
   'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'ppMoreListHtml',
   'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaPpCardHtml', 'nhlPpCardHtml'];
 let C;
 try {
-  C = new Function('state', 'esc', CARD.map(lift).join('\n') + '\nreturn { nbaPpCardHtml, nhlPpCardHtml, LEG_OFFERS, liveVs: null };')(ui, esc);
+  C = new Function('state', 'esc', CARD.concat(LEG_CARD).filter((n, i, a) => a.indexOf(n) === i).map(lift).join('\n') + '\nreturn { nbaPpCardHtml, nhlPpCardHtml, LEG_OFFERS, liveVs: null };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the cards lift out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const card = C.nbaPpCardHtml();
@@ -140,8 +147,9 @@ ui.nhlPp = h;
 const nc = C.nhlPpCardHtml();
 const nMore = F.nhlLegs.filter((l) => 100 - l.model_under >= 55).sort((a, x) => a.model_under - x.model_under);
 console.log('  ' + text(nc).slice(0, 420));
-ok(/<span class="tc-title">PrizePicks: More<\/span>/.test(nc) && (nc.match(/<li>/g) || []).length === nMore.length
-  && nMore.every((l) => nc.includes(`<b>${l.player}</b><span class="tc-p">${Math.round(100 - l.model_under)}%</span>`)),
+const cardOf = (name) => nc.split('<li class="lc').find((r) => r.includes(`<b>${name}</b>`)) || '';
+ok(/<h3 class="pk-gh">PrizePicks: More<\/h3>/.test(nc) && (nc.match(/<li class="lc/g) || []).length === nMore.length
+  && nMore.every((l) => cardOf(l.player).includes(`<b class="lc-pct">${Math.round(100 - l.model_under)}%</b>`)),
   `the NHL card lists Mores at 55%+: ${nMore.map((l) => `${l.player} ${Math.round(100 - l.model_under)}%`).join(', ')}`);
 ok(!/Easton Cowan/.test(nc) && !/Under 0\.5/.test(nc), 'Cowan at 54.6% and every under are left off');
 ok(/Over 1\.5 points/.test(nc) && C.LEG_OFFERS.get(`nhlpp:${nMore[1].game_id}:Leon Draisaitl:pts:over`).spec.side === 'Over', "Draisaitl's Over 1.5 points, a star that takes the Over");

@@ -300,7 +300,7 @@ const rp = lift('renderPicks');
 ok(/= ppEntryLegs\(d\);/.test(rp) && /const legs = ppPoolAtLines\(all\)\.filter\(up\);/.test(lift('ppEntryLegs'))
   && /const whole = legs\.length === all\.length && legs\.every\(\(x, i\) => x\.legId === all\[i\]\.legId\);/.test(lift('ppEntryLegs')), "and the worker's edge is no longer quoted: it priced the pool as it stood");
 ok(/: ppEntryLegs\(d\);/.test(lift('saveTicketImage')), 'the saved ticket the same');
-ok(/\(d\.legs \|\| \[\]\)\.map\(pickAtLine\)\.filter/.test(rp) && /!compact && x\.kind === 'nba_reb_gap' && x\.spec && x\.spec\.pp \? ppLineStepHtml\(/.test(rp), 'the rows carry the number and the steps');
+ok(/\(d\.legs \|\| \[\]\)\.map\(pickAtLine\)\.filter/.test(rp) && /!compact && x\.kind === 'nba_reb_gap' && x\.spec && x\.spec\.pp \? ppLineStepHtml\(/.test(lift('legCardHtml')), 'the rows carry the number and the steps');
 const hero = lift('heroLegHtml');
 ok(/const x = pickAtLine\(x0\);/.test(hero) && /x\.kind === 'nba_reb_gap' && s\.pp \? ppLineStepHtml\(/.test(hero), 'and so does the best leg at the top');
 penv.state.ppLines = { nhlx: { line: 1.5, at: NOW, commence: dan.commence } };

@@ -201,13 +201,20 @@ function liftApp(name) {
   }
   throw new Error(`could not close ${name}`);
 }
-const ui = { nhlPp: await hit('/api/nhl-pp'), slip: {} };
+const ui = { nhlPp: await hit('/api/nhl-pp'), slip: {}, legView: 'detailed' };
+// The More card's rows are leg cards since 2026-11-17 (the page brief's step 7): the card's helpers.
+const LEG_CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
+  'nhlNick', 'NHL_PROVEN_N', 'nhlMoreRecord', 'propData', 'propVals', 'nhlTrend', 'nhlGoaliesOf', 'nhlMoreCardLeg', 'nhlPicksMoreIds', 'nhlMoreLegs', 'sameGameMap', 'pickLegView'];
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 let card;
 try {
   card = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
     'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'NBA_MK', 'NHL_MK', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'ppMoreLeg', 'ppMoreTop', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppMoreListHtml',
-    'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nhlPpCardHtml'].map(liftApp).join('\n')
+    'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nhlPpCardHtml'].concat(LEG_CARD).filter((n, i, a) => a.indexOf(n) === i).map(liftApp).join('\n')
     + '\nreturn nhlPpCardHtml;')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 // Since 2026-10-27 the card lists the More side at 55%+ (tests/morelegs.mjs).
@@ -217,18 +224,20 @@ ui.nhlPp = { ...ui.nhlPp, legs: ui.nhlPp.legs.map((x) => ({ ...x, model_under: x
 let html = card();
 const shown = ui.nhlPp.legs.filter((x) => 100 - x.model_under >= 55).sort((a, b) => a.model_under - b.model_under);
 const order = [...new Set(shown.map((x) => x.player))].slice(0, 5);
-ok((html.match(/<li>/g) || []).length === 5 && order.every((p) => html.includes(`/${shown.find((x) => x.player === p).player_id}.png`)),
+ok((html.match(/<li class="lc/g) || []).length === 5 && order.every((p) => html.includes(`/${shown.find((x) => x.player === p).player_id}.png`)),
   "the best five, each with the NHL's own photo of the skater");
-ok(!/same game/.test(html), 'one game\'s legs on a quiet night carry no "same game" tag on every row');
-// Legs from three games: the warning comes back for the games with two or more.
+ok(!/Same game as/.test(html), 'one game\'s legs on a quiet night carry no "Same game as" tag on every row');
+// Legs from three games: the warning comes back, on the second leg of a game, naming the first
+// (the leg card's "Same game as …", since 2026-11-17).
 // The five shown, best first, spread as ga, ga, gb, gc, gc.
 const gid = Object.fromEntries(order.map((p, i) => [p, ['ga', 'ga', 'gb', 'gc', 'gc'][i]]));
 ui.nhlPp = { ...ui.nhlPp, legs: ui.nhlPp.legs.map((x) => ({ ...x, game_id: gid[x.player] || 'gz' })) };
 html = card();
-ok(order.length === 5 && (html.match(/same game/g) || []).length === 4, 'with three games on the card, the legs that share one are marked');
-// The props card sits between them since 2026-11-05 (the owner's pick).
-ok(/const rec = nhlRecordHtml\(d\.record\) \+ propsCardHtml\('nhl'\) \+ nhlPpCardHtml\(\)/.test(app) && /fetchJson\('\/api\/nhl-pp'\)/.test(app),
-  'the NHL tab reads /api/nhl-pp and draws the card under the moneyline record and the props card');
+ok(order.length === 5 && (html.match(/Same game as/g) || []).length === 2 && html.includes(`Same game as ${order[0]}`) && html.includes(`Same game as ${order[3]}`),
+  'with three games on the card, the second leg of each shared game names the first');
+// Since the page brief's step 7 (2026-11-17), in the mock's order: today's best leg and the Mores, then the props card.
+ok(/grid\.innerHTML = nhlRecordHtml\(d\.record\) \+ parts\.top \+ propsCardHtml\('nhl'\)/.test(app) && /\+ nhlPpCardHtml\(rest, ctx\)/.test(app) && /fetchJson\('\/api\/nhl-pp'\)/.test(app),
+  'the NHL tab reads /api/nhl-pp and draws the Mores under today\'s best leg, above the props card');
 ok(/id: `\$\{sport\}pp:\$\{x\.game_id\}:\$\{x\.player\}:\$\{x\.market\}:over`/.test(app) && /market: x\.market, side: 'Over'/.test(app),
   'each leg stars into the slip as a PrizePicks Over, under its own id');
 

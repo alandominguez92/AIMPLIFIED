@@ -4961,7 +4961,7 @@
       // Every leg's break-even tile follows it; no leg leaves the list (the page brief's step 3).
       case 'entry-size': {
         const n = Number(target.dataset.n);
-        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); }
+        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); if (state.sport === 'nhl') renderNhl(); }
         break;
       }
       case 'ticket-save': saveTicketImage(); break;
@@ -4984,6 +4984,7 @@
         state.legView = target.dataset.view === 'simple' ? 'simple' : 'detailed';
         try { localStorage.setItem('aimplified_leg_view', state.legView); } catch (err) { /* private mode */ }
         renderPicks();
+        if (state.sport === 'nhl') renderNhl();
         break;
       }
       // In Simple, a tap on a leg opens that one card in full; a second tap folds it again.
@@ -4992,8 +4993,11 @@
         if (PICK_OPEN.has(id)) PICK_OPEN.delete(id); else PICK_OPEN.add(id);
         const fromName = target.classList.contains('lc-nb');
         renderPicks();
+        if (state.sport === 'nhl') renderNhl();
+        // The name on the tab in view: the same leg can be on Picks too, out of sight.
         const sel = `.lc-nb[data-leg="${window.CSS && CSS.escape ? CSS.escape(id) : id}"]`;
-        const again = fromName && document.querySelector(sel);
+        const host = document.getElementById(state.sport === 'nhl' ? 'nhlGrid' : 'picksGrid');
+        const again = fromName && host && host.querySelector(sel);
         if (again) again.focus({ preventScroll: true });
         break;
       }
@@ -5796,6 +5800,8 @@
     state.picksAt = Date.now();
     renderPicks();
     renderTopCard();
+    // The NHL tab's moneyline cards and goalies are Picks' (step 7).
+    if (state.sport === 'nhl') renderNhl();
     const pp = soc && await soc;
     if (pp && Array.isArray(pp.matches)) {
       state.socProps = socKeepExpected(pp, state.socProps);
@@ -5983,11 +5989,14 @@
     const note = head.nextElementSibling && head.nextElementSibling.classList.contains('soc-note') ? head.nextElementSibling : head;
     if (note.nextElementSibling !== top) note.after(top);
   }
+  // The tabs that draw their own legs as leg cards, the best one large (the page brief's step 7):
+  // the old card stays off them.
+  const LEG_CARD_TABS = new Set(['nhl']);
   function renderTopCard() {
     const box = document.getElementById('topCard');
     if (!box) return;
     placeTopCard(state.sport);
-    const leg = topLegFor(state.picks, state.sport, Date.now());
+    const leg = LEG_CARD_TABS.has(state.sport) ? null : topLegFor(state.picks, state.sport, Date.now());
     if (!leg) { box.hidden = true; box.innerHTML = ''; return; }
     box.innerHTML = heroLegHtml(leg, { link: true, sport: state.sport });
     box.hidden = false;
@@ -6120,6 +6129,147 @@
   };
   // Simple or Detailed: the reader's choice once they make one, else Simple on a phone (the brief).
   const pickLegView = () => state.legView || (window.matchMedia && window.matchMedia('(max-width: 640px)').matches ? 'simple' : 'detailed');
+  // One leg's card (2026-11-16, the page brief's step 2) in today's legs: the star, the face, the
+  // pick and its game with its tags, and the chance large on the right; then up to three tiles --
+  // the sharp books' chance (on a moneyline, what its price needs), how legs like it have
+  // landed, and that record against the entry's break-even -- each left out when it has nothing
+  // to say; then a player's bar and last games, the price, the books. compact is the Simple
+  // view (step 4): the top row alone. best is the large card above the list (step 6): always
+  // open, its game across the top, a projection tile and the market's, and a full-width button
+  // for the slip in place of the star.
+  // On a sport tab (2026-11-17, the brief's step 7) ctx names the sport, its same-game tags and its
+  // best moneyline; on Picks they are Picks' own.
+  function legCardHtml(x, compact, foot, best, ctx) {
+    if (best) compact = false;
+    const cx = ctx || { same: PICK_SAME, topMl: PICK_TOP.ml, sport: null };
+    const lg = pickLeg(x);
+    // In Simple, the top row opens this card in full and folds it again (the owner, 2026-11-16:
+    // a tap on the player "rather than having to go all the way back up" to Detailed).
+    const tap = !!compact;
+    const opened = tap && PICK_OPEN.has(lg.id);
+    if (opened) compact = false;
+    const team = pickIsTeam(x);
+    const on = !!state.slip[offerLeg(lg)];
+    const star = `<button type="button" class="lc-star${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
+    const trendShown = !compact && !!trendBarsHtml(x.trend);
+    const tags = [];
+    if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
+    if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
+    // Underdog or Pick6 above PrizePicks on the same under (2026-10-25).
+    if (x.dfs && x.spec && x.spec.pp) { const t = dfsLinesHtml(x.spec.pp.line, x.dfs.ud, x.dfs.p6).trim(); if (t) tags.push(t); }
+    // The sharp books' chance and the model's (2026-10-25, 2026-10-27) are a tile now.
+    // His run against the line is a tag only where his last games aren't drawn below.
+    const tt = trendShown ? null : trendTag(x.trend);
+    if (tt) tags.push(`<span class="${tt.good ? 'tc-gap' : 'tc-wait'}" title="His last games against this line. A run is context: the chance shown is the price's">${esc(tt.text)}</span>`);
+    const ra = x.lineSet ? null : readAgeTag(x);
+    if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
+    if (x.lineSet) tags.push(pickLineSetTag(x));
+    const it = injuryTag(x);
+    if (it) for (const t of it.parts || [it.text]) tags.push(`<span class="${it.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(it.title)}">${esc(t)}</span>`);
+    const gn = goalieNote(x);
+    if (gn) tags.push(`<span class="${gn.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(gn.title)}">${esc(gn.text)}</span>`);
+    const mv = pickMoved(x);
+    if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
+    // A second leg from a game already on the list (the page brief, 2026-11-16).
+    const sg = cx.same && cx.same.get(lg.id);
+    if (sg) tags.push(`<span class="tc-wait" title="Legs from one game tend to land or miss together">Same game as ${esc(sg)}</span>`);
+    // An NHL points More Picks holds off (2026-11-14, the owner's call), with the record it went by.
+    const op = x.offPicks;
+    if (op) tags.push(`<span class="tc-wait" title="NHL points Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>`);
+    // The moneyline with the best chance shown (step 6), as the mock tags it; on a sport tab, its own.
+    const mlWord = `best ${cx.sport ? `${PICK_SPORT[cx.sport] || cx.sport} ` : ''}moneyline`;
+    if (cx.topMl && cx.topMl === lg.id) tags.unshift(`<span class="lc-bestml">${esc(pickDayWord(x.commence) ? `${pickDayWord(x.commence)} ${mlWord}` : mlWord[0].toUpperCase() + mlWord.slice(1))}</span>`);
+    const r = x.record || {};
+    // The pick split from the name, as the big card has it: "Jabari Smith Jr" and "Over 0.5 BLK",
+    // "Nuggets" and "to win".
+    const m = team ? null : String(x.title || '').match(/^(.*?) (Under|Over) (.+)$/);
+    const name = m ? m[1] : String(x.title || '').replace(/ ML$/, '');
+    const pick = m ? `${m[2]} ${m[3]}` : / ML$/.test(String(x.title || '')) ? 'to win' : '';
+    const tile = (label, value, sub, cls) => `<div class="lc-tile"><span class="lc-tk">${label}</span><b class="lc-tv${cls ? ' ' + cls : ''}">${value}</b>${sub ? `<span class="lc-ts">${sub}</span>` : ''}</div>`;
+    const tiles = [];
+    // The best card's market tile: PrizePicks' line, and what the sharp books make it, if any.
+    let market = '';
+    if (best && !team && x.spec && x.spec.pp && typeof x.sharp !== 'number') market = tile('Market', `PrizePicks ${esc(String(x.spec.pp.line))}`, 'no sharp price at this line');
+    if (team && typeof x.odds === 'number') {
+      // What its price needs, and where its chance sits against that (mlChanceLineHtml's gap).
+      const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
+      const kp = typeof x.kellyP === 'number' ? x.kellyP : x.p;
+      const g = typeof kp === 'number' ? Math.round((kp - need) * 10) / 10 : null;
+      tiles.push(tile(`Book at ${esc(AM(x.odds))} needs`, `${Math.round(need * 10) / 10}%`,
+        g == null ? '' : g > 0 ? `<span class="u">${g} of edge</span>` : g < 0 ? `<span class="o">${Math.abs(g)} short</span>` : 'on the price'));
+    } else if (typeof x.sharp === 'number') {
+      // The chance shown blends the model's with the sharp books' (2026-10-27) where they differ,
+      // save a rebounds Less above the sharp line: its chance is last season's rate for the kind
+      // (the worker's REB_GAP_P), so the note says that instead.
+      const blend = typeof x.modelP === 'number' && x.modelP !== x.p;
+      const note = x.kind === 'nba_reb_gap' ? "The chance shown is last season's rate for rebounds Less above the sharp books' line. This is the sharp books' own chance at PrizePicks' line, de-vigged"
+        : blend ? "The chance shown is a quarter the model's and three quarters the sharp books'" : "The sharp books' chance at the line shown, de-vigged";
+      if (best && x.spec && x.spec.pp) market = `<div class="lc-tile" title="${note}"><span class="lc-tk">Market</span><b class="lc-tv">PrizePicks ${esc(String(x.spec.pp.line))}</b><span class="lc-ts">sharp books ${esc(pct0(x.sharp))}${blend ? ` · model ${esc(pct0(x.modelP))}` : ''}</span></div>`;
+      else tiles.push(`<div class="lc-tile" title="${note}"><span class="lc-tk">Sharp books</span><b class="lc-tv">${esc(pct0(x.sharp))}</b><span class="lc-ts">${blend ? `model ${esc(pct0(x.modelP))}` : 'at this line'}</span></div>`);
+    }
+    // His projection against the line, and how far it clears it (the best card's first tile).
+    if (best && !team && typeof x.proj === 'number' && x.spec && x.spec.pp) {
+      const line = x.spec.pp.line, over = x.spec.side === 'Over';
+      const cush = r1(over ? x.proj - line : line - x.proj);
+      tiles.push(tile('Projection', `${esc(String(r1(x.proj)))} vs line ${esc(String(line))}`,
+        cush >= 0 ? `${cush} cushion` : `${Math.abs(cush)} ${over ? 'under' : 'over'} the line`, cush >= 0 ? '' : 'o'));
+    }
+    if (!r.n) tiles.push(tile('Legs like this', 'none graded yet', '', 'thin'));
+    else {
+      tiles.push(tile('Legs like this', `${esc(pct0(r.hitRate))} · ${r.hit} of ${r.n}`,
+        esc(`${recSinceText(r).replace(/^ · /, '')}${r.proven ? '' : `${recSinceText(r) ? ' · ' : ''}new`}`), r.proven ? '' : 'thin'));
+      // That record against the entry's break-even a leg (PP_BREAK_EVEN).
+      const be = PP_BREAK_EVEN[state.entrySize] || PP_BREAK_EVEN[2];
+      const d = Math.round((r.hitRate - be[1]) * 10) / 10;
+      tiles.push(tile(`${esc(be[0].replace(/(power|flex)$/, (w) => w[0].toUpperCase() + w.slice(1)))} needs ${be[1]}%`,
+        d >= 0 ? `clears by ${d}` : `record ${Math.abs(d)} short`, 'on its record', d >= 0 ? 'u' : 'o'));
+    }
+    if (market) tiles.push(market);
+    const more = compact ? '' : [
+      // A player leg's projection against its line and his last games, as the boards draw them.
+      team ? '' : pickBarHtml(x, x.spec),
+      trendBarsHtml(x.trend),
+      !team && typeof x.odds === 'number' ? `<div class="lc-line">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '',
+      priceSparkHtml(x.hist),
+      team ? '' : betLinkHtml(legLink(x)),
+      booksHtml(x.books, team),
+    ].join('');
+    const stepper = !compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '';
+    const sportName = esc(x.league || PICK_SPORT[x.sport] || x.sport);
+    if (best) {
+      // On a sport tab, the mock's "Best NHL leg still open": the best whose game has not started.
+      const kicker = cx.sport ? `Best ${PICK_SPORT[cx.sport] || cx.sport} leg still open`
+        : `${pickDayWord(x.commence) ? `${pickDayWord(x.commence)} best` : 'Best'} leg`;
+      const hid = cx.sport ? `lcBestH-${cx.sport}` : 'lcBestH';
+      return `<article class="lc lc-best" aria-labelledby="${hid}">`
+        + `<div class="lc-bh"><h3 class="lc-kick" id="${hid}">${esc(kicker)}</h3><span class="lc-meta">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span></div>`
+        // The face at the size the big card has had (the owner, 2026-11-16: "keep photos at today's size").
+        + `<div class="lc-top">${pickFace(x, 52)}`
+        + `<div class="lc-what"><b class="lc-bn">${esc(name)}</b>${pick ? `<span class="lc-bp">${esc(pick)}</span>` : ''}`
+        + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
+        + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span></div></div>`
+        + (tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
+        + (more ? `<div class="lc-more">${more}</div>` : '')
+        + stepper
+        + `<button type="button" class="lc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? 'On your slip · tap to remove' : 'Add to slip'}</button>`
+        + '</article>';
+    }
+    // The sport rides on the game line, not beside the title: on a phone the
+    // chip pushed "Inter Miami CF ML" onto two lines.
+    const who = `<b>${esc(name)}</b>${pick ? ` <span class="lc-pick">${esc(pick)}</span>` : ''}`;
+    return `<li class="lc${opened ? ' lc-opened' : ''}">`
+      + `<div class="lc-top"${tap ? ` data-action="leg-open" data-leg="${esc(lg.id)}"` : ''}>${star}${pickFace(x)}`
+      + `<div class="lc-what"><span class="lc-name">${tap
+        ? `<button type="button" class="lc-nb" data-action="leg-open" data-leg="${esc(lg.id)}" aria-expanded="${opened}">${who}</button>` : who}</span>`
+      // A soccer leg's league says the sport; the others name it.
+      + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
+      + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
+      + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span>${tap ? `<span class="lc-chev" aria-hidden="true">${opened ? 'less ▴' : 'more ▾'}</span>` : ''}</div></div>`
+      + (!compact && tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
+      + (more ? `<div class="lc-more">${more}</div>` : '')
+      + stepper
+      + `${foot || ''}</li>`;
+  }
   function renderPicks() {
     const grid = document.getElementById('picksGrid');
     if (!grid) return;
@@ -6150,137 +6300,7 @@
       syncSlipSection();
       return;
     }
-    // One leg's card (2026-11-16, the page brief's step 2) in today's legs: the star, the face, the
-    // pick and its game with its tags, and the chance large on the right; then up to three tiles --
-    // the sharp books' chance (on a moneyline, what its price needs), how legs like it have
-    // landed, and that record against the entry's break-even -- each left out when it has nothing
-    // to say; then a player's bar and last games, the price, the books. compact is the Simple
-    // view (step 4): the top row alone. best is the large card above the list (step 6): always
-    // open, its game across the top, a projection tile and the market's, and a full-width button
-    // for the slip in place of the star.
-    const legRow = (x, compact, foot, best) => {
-      if (best) compact = false;
-      const lg = pickLeg(x);
-      // In Simple, the top row opens this card in full and folds it again (the owner, 2026-11-16:
-      // a tap on the player "rather than having to go all the way back up" to Detailed).
-      const tap = !!compact;
-      const opened = tap && PICK_OPEN.has(lg.id);
-      if (opened) compact = false;
-      const team = pickIsTeam(x);
-      const on = !!state.slip[offerLeg(lg)];
-      const star = `<button type="button" class="lc-star${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
-      const trendShown = !compact && !!trendBarsHtml(x.trend);
-      const tags = [];
-      if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
-      if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
-      // Underdog or Pick6 above PrizePicks on the same under (2026-10-25).
-      if (x.dfs && x.spec && x.spec.pp) { const t = dfsLinesHtml(x.spec.pp.line, x.dfs.ud, x.dfs.p6).trim(); if (t) tags.push(t); }
-      // The sharp books' chance and the model's (2026-10-25, 2026-10-27) are a tile now.
-      // His run against the line is a tag only where his last games aren't drawn below.
-      const tt = trendShown ? null : trendTag(x.trend);
-      if (tt) tags.push(`<span class="${tt.good ? 'tc-gap' : 'tc-wait'}" title="His last games against this line. A run is context: the chance shown is the price's">${esc(tt.text)}</span>`);
-      const ra = x.lineSet ? null : readAgeTag(x);
-      if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
-      if (x.lineSet) tags.push(pickLineSetTag(x));
-      const it = injuryTag(x);
-      if (it) for (const t of it.parts || [it.text]) tags.push(`<span class="${it.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(it.title)}">${esc(t)}</span>`);
-      const gn = goalieNote(x);
-      if (gn) tags.push(`<span class="${gn.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(gn.title)}">${esc(gn.text)}</span>`);
-      const mv = pickMoved(x);
-      if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
-      // A second leg from a game already on the list (the page brief, 2026-11-16).
-      const sg = PICK_SAME.get(lg.id);
-      if (sg) tags.push(`<span class="tc-wait" title="Legs from one game tend to land or miss together">Same game as ${esc(sg)}</span>`);
-      // The moneyline with the best chance shown (step 6), as the mock tags it.
-      if (PICK_TOP.ml === lg.id) tags.unshift(`<span class="lc-bestml">${esc(pickDayWord(x.commence) ? `${pickDayWord(x.commence)} best moneyline` : 'Best moneyline')}</span>`);
-      const r = x.record || {};
-      // The pick split from the name, as the big card has it: "Jabari Smith Jr" and "Over 0.5 BLK",
-      // "Nuggets" and "to win".
-      const m = team ? null : String(x.title || '').match(/^(.*?) (Under|Over) (.+)$/);
-      const name = m ? m[1] : String(x.title || '').replace(/ ML$/, '');
-      const pick = m ? `${m[2]} ${m[3]}` : / ML$/.test(String(x.title || '')) ? 'to win' : '';
-      const tile = (label, value, sub, cls) => `<div class="lc-tile"><span class="lc-tk">${label}</span><b class="lc-tv${cls ? ' ' + cls : ''}">${value}</b>${sub ? `<span class="lc-ts">${sub}</span>` : ''}</div>`;
-      const tiles = [];
-      // The best card's market tile: PrizePicks' line, and what the sharp books make it, if any.
-      let market = '';
-      if (best && !team && x.spec && x.spec.pp && typeof x.sharp !== 'number') market = tile('Market', `PrizePicks ${esc(String(x.spec.pp.line))}`, 'no sharp price at this line');
-      if (team && typeof x.odds === 'number') {
-        // What its price needs, and where its chance sits against that (mlChanceLineHtml's gap).
-        const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
-        const kp = typeof x.kellyP === 'number' ? x.kellyP : x.p;
-        const g = typeof kp === 'number' ? Math.round((kp - need) * 10) / 10 : null;
-        tiles.push(tile(`Book at ${esc(AM(x.odds))} needs`, `${Math.round(need * 10) / 10}%`,
-          g == null ? '' : g > 0 ? `<span class="u">${g} of edge</span>` : g < 0 ? `<span class="o">${Math.abs(g)} short</span>` : 'on the price'));
-      } else if (typeof x.sharp === 'number') {
-        // The chance shown blends the model's with the sharp books' (2026-10-27) where they differ,
-        // save a rebounds Less above the sharp line: its chance is last season's rate for the kind
-        // (the worker's REB_GAP_P), so the note says that instead.
-        const blend = typeof x.modelP === 'number' && x.modelP !== x.p;
-        const note = x.kind === 'nba_reb_gap' ? "The chance shown is last season's rate for rebounds Less above the sharp books' line. This is the sharp books' own chance at PrizePicks' line, de-vigged"
-          : blend ? "The chance shown is a quarter the model's and three quarters the sharp books'" : "The sharp books' chance at the line shown, de-vigged";
-        if (best && x.spec && x.spec.pp) market = `<div class="lc-tile" title="${note}"><span class="lc-tk">Market</span><b class="lc-tv">PrizePicks ${esc(String(x.spec.pp.line))}</b><span class="lc-ts">sharp books ${esc(pct0(x.sharp))}${blend ? ` · model ${esc(pct0(x.modelP))}` : ''}</span></div>`;
-        else tiles.push(`<div class="lc-tile" title="${note}"><span class="lc-tk">Sharp books</span><b class="lc-tv">${esc(pct0(x.sharp))}</b><span class="lc-ts">${blend ? `model ${esc(pct0(x.modelP))}` : 'at this line'}</span></div>`);
-      }
-      // His projection against the line, and how far it clears it (the best card's first tile).
-      if (best && !team && typeof x.proj === 'number' && x.spec && x.spec.pp) {
-        const line = x.spec.pp.line, over = x.spec.side === 'Over';
-        const cush = r1(over ? x.proj - line : line - x.proj);
-        tiles.push(tile('Projection', `${esc(String(r1(x.proj)))} vs line ${esc(String(line))}`,
-          cush >= 0 ? `${cush} cushion` : `${Math.abs(cush)} ${over ? 'under' : 'over'} the line`, cush >= 0 ? '' : 'o'));
-      }
-      if (!r.n) tiles.push(tile('Legs like this', 'none graded yet', '', 'thin'));
-      else {
-        tiles.push(tile('Legs like this', `${esc(pct0(r.hitRate))} · ${r.hit} of ${r.n}`,
-          esc(`${recSinceText(r).replace(/^ · /, '')}${r.proven ? '' : `${recSinceText(r) ? ' · ' : ''}new`}`), r.proven ? '' : 'thin'));
-        // That record against the entry's break-even a leg (PP_BREAK_EVEN).
-        const be = PP_BREAK_EVEN[state.entrySize] || PP_BREAK_EVEN[2];
-        const d = Math.round((r.hitRate - be[1]) * 10) / 10;
-        tiles.push(tile(`${esc(be[0].replace(/(power|flex)$/, (w) => w[0].toUpperCase() + w.slice(1)))} needs ${be[1]}%`,
-          d >= 0 ? `clears by ${d}` : `record ${Math.abs(d)} short`, 'on its record', d >= 0 ? 'u' : 'o'));
-      }
-      if (market) tiles.push(market);
-      const more = compact ? '' : [
-        // A player leg's projection against its line and his last games, as the boards draw them.
-        team ? '' : pickBarHtml(x, x.spec),
-        trendBarsHtml(x.trend),
-        !team && typeof x.odds === 'number' ? `<div class="lc-line">${esc(AM(x.odds))}${pickEdgeHtml(x)}</div>` : '',
-        priceSparkHtml(x.hist),
-        team ? '' : betLinkHtml(legLink(x)),
-        booksHtml(x.books, team),
-      ].join('');
-      const stepper = !compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '';
-      const sportName = esc(x.league || PICK_SPORT[x.sport] || x.sport);
-      if (best) {
-        const kicker = `${pickDayWord(x.commence) ? `${pickDayWord(x.commence)} best` : 'Best'} leg`;
-        return `<article class="lc lc-best" aria-labelledby="lcBestH">`
-          + `<div class="lc-bh"><h3 class="lc-kick" id="lcBestH">${esc(kicker)}</h3><span class="lc-meta">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span></div>`
-          // The face at the size the big card has had (the owner, 2026-11-16: "keep photos at today's size").
-          + `<div class="lc-top">${pickFace(x, 52)}`
-          + `<div class="lc-what"><b class="lc-bn">${esc(name)}</b>${pick ? `<span class="lc-bp">${esc(pick)}</span>` : ''}`
-          + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
-          + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span></div></div>`
-          + (tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
-          + (more ? `<div class="lc-more">${more}</div>` : '')
-          + stepper
-          + `<button type="button" class="lc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}">${on ? 'On your slip · tap to remove' : 'Add to slip'}</button>`
-          + '</article>';
-      }
-      // The sport rides on the game line, not beside the title: on a phone the
-      // chip pushed "Inter Miami CF ML" onto two lines.
-      const who = `<b>${esc(name)}</b>${pick ? ` <span class="lc-pick">${esc(pick)}</span>` : ''}`;
-      return `<li class="lc${opened ? ' lc-opened' : ''}">`
-        + `<div class="lc-top"${tap ? ` data-action="leg-open" data-leg="${esc(lg.id)}"` : ''}>${star}${pickFace(x)}`
-        + `<div class="lc-what"><span class="lc-name">${tap
-          ? `<button type="button" class="lc-nb" data-action="leg-open" data-leg="${esc(lg.id)}" aria-expanded="${opened}">${who}</button>` : who}</span>`
-        // A soccer leg's league says the sport; the others name it.
-        + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
-        + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
-        + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span>${tap ? `<span class="lc-chev" aria-hidden="true">${opened ? 'less ▴' : 'more ▾'}</span>` : ''}</div></div>`
-        + (!compact && tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
-        + (more ? `<div class="lc-more">${more}</div>` : '')
-        + stepper
-        + `${foot || ''}</li>`;
-    };
+    const legRow = (x, compact, foot, best) => legCardHtml(x, compact, foot, best);
     // Simple (the top row) or Detailed (step 4): the reader's choice, else by the screen.
     const simple = pickLegView() === 'simple';
     const itemHtml = (x) => legRow(x, simple);
@@ -7102,6 +7122,7 @@
   function goalieNote(x) {
     if ((x.sport || (x.spec || {}).sport) !== 'nhl') return null;
     const g = x.goalies;
+    if (!g && x.goaliesUnread) return null;
     if (!g) return { warn: true, text: 'check the goalie', title: 'ESPN has no starter listed for this game yet' };
     const last = (n) => String(n).split(' ').pop();
     return { warn: !g.confirmed, text: `${last(g.away)} @ ${last(g.home)}, ${g.confirmed ? 'confirmed' : 'expected'}`,
@@ -7805,21 +7826,150 @@
   // paused on Oct 25 (39 of 84 at PrizePicks' lines); from Oct 27 it lists the
   // More side, which had landed where the model leaned that way.
   const NHL_MK = { pts: 'points', ast: 'assists' };
-  function nhlPpCardHtml() {
+  // ---- The leg card on the NHL tab (2026-11-17, the page brief's step 7) --------------------------
+  // The tab's legs drawn as Picks draws them (legCardHtml): the best NHL leg still open, large; the
+  // PrizePicks Mores; the NHL moneylines Picks lists. The props card and its stat buttons, and Hot
+  // players, stay as they were. A More leg here is read from the tab's own log, not Picks': its
+  // chance the model's (no sharp book prices NHL points or assists), "legs like this" every More
+  // logged at the bar (the mock's "127 of 229"), his last games of the stat from the props card
+  // where he is on it, and the goalies from Picks' leg for that game. The worker's PICKS_PROVEN_N.
+  const NHL_PROVEN_N = 30;
+  function nhlMoreRecord(r) {
+    const a = r && r.more && r.more.atBar;
+    if (!a || !a.n) return null;
+    return { n: a.n, hit: a.hit, hitRate: typeof a.hitRate === 'number' ? a.hitRate : Math.round(a.hit / a.n * 1000) / 10, proven: a.n >= NHL_PROVEN_N };
+  }
+  function nhlTrend(x) {
+    const d = propData('nhl');
+    const p = d && x.player_id != null && (d.players || []).find((q) => String(q.id) === String(x.player_id));
+    if (!p || !(d.cols || []).includes(x.market)) return null;
+    const vals = propVals(d, p, x.market).slice(-10);
+    return vals.length ? { vals, line: x.point, side: 'over', hit: vals.filter((v) => v > x.point).length } : null;
+  }
+  function nhlGoaliesOf(gameId) {
+    const pk = state.picks;
+    if (!pk || pk.error || !gameId) return null;
+    const x = [...(pk.legs || []), ...(pk.mlPool || []), ...(pk.ppPool || [])].find((l) => l.goalies && l.spec && l.spec.sport === 'nhl' && l.spec.gamePk === gameId);
+    return x ? x.goalies : null;
+  }
+  function nhlMoreCardLeg(x, rec) {
+    const leg = ppMoreLeg(x, 'nhl');
+    const [away, home] = String(x.game || '').split(' @ ');
+    const p = Math.round(ppMoreP(x) * 10) / 10;
+    const goalies = nhlGoaliesOf(x.game_id);
+    return { kind: 'nhl_more', sport: 'nhl', legId: leg.id, title: leg.title,
+      sub: away && home ? `${nhlNick(away)} @ ${nhlNick(home)}` : String(x.game || ''), commence: x.commence,
+      p, modelP: p, proj: x.proj, spec: leg.spec, record: rec, readAt: x.close_at || x.first_at || null,
+      // Picks names the goalies only for the games it has a leg in; for the rest the tab hasn't read
+      // ESPN, so the card says nothing rather than "no starter listed".
+      goalies, goaliesUnread: !goalies, trend: nhlTrend(x), inj: x.inj || null, offPicks: x.offPicks || null };
+  }
+  // The NHL Mores Picks lists (its pool, the best PrizePicks takes in each game), by leg id.
+  function nhlPicksMoreIds(now = Date.now()) {
+    const pk = state.picks;
+    if (!pk || pk.error) return null;
+    return new Set([...(pk.legs || []), ...(pk.ppPool || [])].filter((x) => x.kind === 'nhl_more' && Date.parse(x.commence) > now).map((x) => x.legId));
+  }
+  // The best five Mores to come, one a player, as the card has listed them since Oct 27, and any
+  // other Picks lists (Nov 17: its three assists Mores at 58-60 sat under five points Mores it holds
+  // off), best first. Each knows whether Picks lists it: the large card is the best that does.
+  function nhlMoreLegs() {
+    const d = state.nhlPp;
+    if (!d) return [];
+    const rec = nhlMoreRecord(d.record), now = Date.now();
+    const top = ppMoreTop(d.legs, () => true, 5);
+    const onPicks = nhlPicksMoreIds(now);
+    const ids = new Set(top.map((x) => ppMoreLeg(x, 'nhl').id));
+    const extra = onPicks ? (d.legs || []).filter((x) => {
+      const id = ppMoreLeg(x, 'nhl').id;
+      return Date.parse(x.commence) > now && onPicks.has(id) && !ids.has(id) && ids.add(id);
+    }) : [];
+    return [...top, ...extra].sort((a, b) => injOut(a) - injOut(b) || a.model_under - b.model_under)
+      .map((x) => ({ ...nhlMoreCardLeg(x, rec), onPicks: onPicks ? onPicks.has(ppMoreLeg(x, 'nhl').id) : null }));
+  }
+  // The NHL moneylines Picks lists (its favourites at 65%+), best chance first.
+  function nhlMlCardLegs(now = Date.now()) {
+    const pk = state.picks;
+    if (!pk || pk.error) return [];
+    const seen = new Set();
+    return [...(pk.legs || []), ...(pk.mlPool || [])]
+      .filter((x) => x.kind === 'nhl_ml' && Date.parse(x.commence) > now && !seen.has(x.legId) && seen.add(x.legId))
+      .sort((a, b) => (b.p || 0) - (a.p || 0));
+  }
+  // A second leg from a game already shown, tagged with the first one's name. Only once the legs
+  // span three games or more: on a one- or two-game night every leg would carry it.
+  function sameGameMap(xs) {
+    const same = new Map(), first = new Map();
+    if (new Set(xs.map(pickGameKey)).size < 3) return same;
+    for (const x of xs) {
+      const k = pickGameKey(x);
+      if (first.has(k)) same.set(pickLeg(x).id, first.get(k));
+      else first.set(k, pickShortName(x));
+    }
+    return same;
+  }
+  // Simple / Detailed and the entry size, as on Picks: one choice for every tab.
+  function tabLegViewHtml() {
+    const view = pickLegView();
+    return `<div class="pk-view" role="group" aria-label="How much each leg shows">${[['simple', 'Simple'], ['detailed', 'Detailed']]
+      .map(([v, l]) => `<button type="button" class="pk-vw${v === view ? ' on' : ''}" data-action="leg-view" data-view="${v}" aria-pressed="${v === view}">${l}</button>`).join('')}</div>`;
+  }
+  function tabLegSizeHtml(sport) {
+    const size = PP_BREAK_EVEN[state.entrySize] ? state.entrySize : 2;
+    const be = PP_BREAK_EVEN[size];
+    const name = be[0].replace(/(power|flex)$/, (w) => w[0].toUpperCase() + w.slice(1));
+    const lbl = `${sport}SizeLbl`;
+    return `<div class="pk-tools"><div class="pk-tool pk-size"><span class="pk-tl" id="${lbl}">Entry size · ${esc(name)} needs ${be[1]}% a leg</span>`
+      + `<div class="pk-seg" role="group" aria-labelledby="${lbl}">${[2, 3, 4, 5, 6].map((n) => `<button type="button" class="pk-sz${n === size ? ' on' : ''}" data-action="entry-size" data-n="${n}" aria-pressed="${n === size}">${n}</button>`).join('')}</div></div></div>`
+      + '<p class="pk-tnote">Entry size only changes the break-even on each leg.</p>';
+  }
+  // The PrizePicks: More group under the best leg. `list` is what is left once the best leg has been
+  // drawn large; with none given, all five (the card as the tests read it).
+  function nhlPpCardHtml(list, ctx) {
     const d = state.nhlPp;
     if (!d) return '';
     const r = d.record || {};
-    const top = ppMoreTop(d.legs, () => true, 5);
+    const all = list || nhlMoreLegs();
+    const cx = ctx || { sport: 'nhl', same: sameGameMap(all), topMl: null };
     const unders = r.graded ? `<div class="tc-sub tc-rec-line">Unders, no longer listed: <b>${r.hit} of ${r.graded}</b> landed</div>` : '';
-    const head = `<div class="tc-head"><span class="tc-title">PrizePicks: More</span></div>`
+    const head = '<h3 class="pk-gh">PrizePicks: More</h3>'
       + `<div class="tc-sub">The chance the skater gets past PrizePicks' line, a point or an assist, from his scoring rate this season and last. Regulars (15+ minutes), at ${PP_MORE_MIN}%+. Read when PrizePicks posts and again before puck drop. On Picks of the day too, since Oct 28.</div>`
       + ppMoreLineHtml(r.more, 'More') + unders;
-    if (!top.length) {
+    if (!all.length) {
+      if (list && cx.hasBest) return `<div class="pk-grp nhl-more">${head}</div>`;
       const any = (d.legs || []).some((x) => Date.parse(x.commence) > Date.now());
-      return `<div class="nba-pp">${head}<div class="tc-wait-note">${any ? `No More at ${PP_MORE_MIN}%+ among the lines read so far.`
+      return `<div class="pk-grp nhl-more">${head}<div class="tc-wait-note">${any ? `No More at ${PP_MORE_MIN}%+ among the lines read so far.`
         : 'PrizePicks has not posted NHL lines for the next games yet: they are read as soon as it does, and again about 90 minutes before puck drop.'}</div></div>`;
     }
-    return `<div class="nba-pp">${head}${ppMoreListHtml(top, 'nhl')}</div>`;
+    const simple = pickLegView() === 'simple';
+    return `<div class="pk-grp nhl-more">${head}<ol class="tc-legs pk-pool">${all.map((x) => legCardHtml(x, simple, '', false, cx)).join('')}</ol></div>`;
+  }
+  // The tab's legs, in the mock's order: today's legs and the best one, the Mores; then (after the
+  // props card) the moneylines, with every game's prices under them.
+  function nhlTodayParts() {
+    const more = nhlMoreLegs();
+    // The best prop still open, as Picks' large card is: the best More Picks lists; before Picks has
+    // loaded, the best one it doesn't hold off.
+    const best = more.find((x) => (x.onPicks === null ? !x.offPicks : x.onPicks) && !injOut(x)) || null;
+    const rest = more.filter((x) => x !== best);
+    const mls = nhlMlCardLegs();
+    const ctx = { sport: 'nhl', same: sameGameMap([...(best ? [best] : []), ...rest, ...mls]), topMl: mls.length ? pickLeg(mls[0]).id : null, hasBest: !!best };
+    const simple = pickLegView() === 'simple';
+    const top = '<section class="nba-pp pk-card pk-today tab-legs" aria-labelledby="nhlTodayH">'
+      + '<div class="pk-th"><div class="pk-tt"><h2 class="pk-h2" id="nhlTodayH">Today’s legs</h2><p class="pk-tsub">The NHL props and moneylines that clear the bar, for your PrizePicks entry. The call is yours.</p>'
+      + (Object.keys(state.slip).length ? '' : '<p class="pks-hint">Tap the star on any leg to start your slip.</p>') + '</div>'
+      + `${tabLegViewHtml()}</div>`
+      + tabLegSizeHtml('nhl')
+      + (best ? legCardHtml(best, false, '', true, ctx) : '')
+      + nhlPpCardHtml(rest, ctx)
+      + '</section>';
+    const ml = (table) => '<section class="nba-pp pk-card pk-today tab-legs tab-ml" aria-labelledby="nhlMlH">'
+      + '<h3 class="pk-gh" id="nhlMlH">Moneylines</h3>'
+      + (mls.length ? `<ol class="tc-legs pk-pool">${mls.map((x) => legCardHtml(x, simple, '', false, ctx)).join('')}</ol>`
+        : `<div class="tc-wait-note">${state.picks && !state.picks.error ? 'No NHL favourite at 65%+ in the games to come.' : 'The moneylines that clear the bar show once Picks has loaded.'}</div>`)
+      + '<h3 class="pk-gh">Every game’s price</h3>' + table
+      + '</section>';
+    return { top, ml };
   }
   function nhlRecordHtml(r) { return gmRecordHtml(r, 'Record: logged from Oct 20, graded from the NHL’s finals each morning.'); }
   // A moneyline log's record and its favourites at the bar Picks of the day
@@ -7853,18 +8003,19 @@
     const sp = mlDaySplit(d.games), games = mlTableGames('nhl', sp);
     if (count) count.textContent = mlCountText(sp);
     if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '');
-    // The props card first, under the best leg (2026-11-05, the owner's pick): it sat below the More card.
-    const rec = nhlRecordHtml(d.record) + propsCardHtml('nhl') + nhlPpCardHtml() + hotCardHtml('nhl');
-    if (!games.length) {
-      grid.innerHTML = rec + `<div class="nfl-empty">No NHL games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
-      return;
-    }
+    // The page brief's step 7 (2026-11-17): today's legs as leg cards, the best one large, then the
+    // Mores; the props card with its stat buttons; the moneylines as cards with every game's prices
+    // under them; Hot players. The mock's order: the props card sat above the Mores from Nov 5.
+    const parts = nhlTodayParts();
     const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    grid.innerHTML = rec + `<div class="board view-moneyline"><div class="board-inner">`
-      + `<div class="board-head-row">${head}</div>`
-      + `<div>${games.map((g) => mlTabRow(g, 'nhl')).join('')}</div>`
-      + `</div></div>` + mlLaterHtml('nhl', sp);
+    const table = !games.length
+      ? `<div class="nfl-empty">No NHL games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`
+      : `<div class="board view-moneyline"><div class="board-inner">`
+        + `<div class="board-head-row">${head}</div>`
+        + `<div>${games.map((g) => mlTabRow(g, 'nhl')).join('')}</div>`
+        + `</div></div>` + mlLaterHtml('nhl', sp);
+    grid.innerHTML = nhlRecordHtml(d.record) + parts.top + propsCardHtml('nhl') + parts.ml(table) + hotCardHtml('nhl');
   }
 
   // -------------------------------------------------------------------------

@@ -99,17 +99,24 @@ function lift(name) {
 }
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const text = (x) => x.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-const ui = { nbaPp: null, nhlPp: h, slip: {} };
+const ui = { nbaPp: null, nhlPp: h, slip: {}, legView: 'detailed' };
+// The More card's rows are leg cards since 2026-11-17 (the page brief's step 7): the card's helpers.
+const LEG_CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
+  'nhlNick', 'NHL_PROVEN_N', 'nhlMoreRecord', 'propData', 'propVals', 'nhlTrend', 'nhlGoaliesOf', 'nhlMoreCardLeg', 'nhlPicksMoreIds', 'nhlMoreLegs', 'sameGameMap', 'pickLegView'];
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'NHL_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
   'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'ppMoreListHtml',
   'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaPpCardHtml', 'nhlPpCardHtml'];
-const C = new Function('state', 'esc', CARD.map(lift).join('\n') + '\nreturn { nhlPpCardHtml };')(ui, esc);
+const C = new Function('state', 'esc', CARD.concat(LEG_CARD).filter((n, i, a) => a.indexOf(n) === i).map(lift).join('\n') + '\nreturn { nhlPpCardHtml };')(ui, esc);
 const card = C.nhlPpCardHtml();
-const rowOf = (name) => (card.split('<li>').find((r) => r.includes(`<b>${name}</b>`)) || '');
+const rowOf = (name) => (card.split('<li class="lc').find((r) => r.includes(`<b>${name}</b>`)) || '');
 console.log('  ' + text(rowOf('Evgeni Malkin')).slice(0, 160));
 // The card's More list is its top five: Tkachuk, Malkin, LaCombe, Carlsson and one of the 59.5s.
-const ptsRows = card.split('<li>').filter((r) => /Over 0\.5 points/.test(text(r)));
+const ptsRows = card.split('<li class="lc').slice(1).filter((r) => /Over 0\.5 points/.test(text(r)));
 console.log('  points rows on the card: ' + ptsRows.map((r) => (r.match(/<b>([^<]+)<\/b>/) || [])[1]).join(', '));
 ok(/off Picks: at 60-65% these landed 20 of 38<\/span>/.test(rowOf('Evgeni Malkin')) && ptsRows.length === 2
   && /off Picks: at 55-60% these landed 44 of 84<\/span>/.test(ptsRows[1]),
