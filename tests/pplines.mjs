@@ -259,7 +259,11 @@ P.ppLineSet(key, null);
 // Half of them, as the tag says, Oct 20-31: 193 of 382 against 45 of 617.
 ok(/193 of 382/.test(lift('ppLineTags')) && /45 of 617/.test(lift('ppLineTags')), 'its reason on the tag');
 const cardSrc = lift('nbaPpCardHtml');
-ok(/const x = nbaLegAtLine\(x0\);/.test(cardSrc) && /PP_LINE_MARKETS\.has\(x\.market\) \? ppLineStepHtml\(leg\.id, x\.point, x0\.point, x\.lineSet, x\.commence\)/.test(cardSrc) && /\$\{ppLineTags\(x\)\}/.test(cardSrc), "on the NBA card's legs");
+// The card's rows are leg cards since 2026-11-17 (the page brief's step 7): the leg comes at its set
+// line, takes the steps on rebounds and assists, and carries the tags.
+const legSrc = lift('nbaUnderCardLeg');
+ok(/\(\{ x: nbaLegAtLine\(x0\), i \}\)/.test(lift('nbaUnderLegs')) && /lineStep: moves/.test(legSrc) && /const moves = PP_LINE_MARKETS\.has\(x\.market\);/.test(legSrc)
+  && /ppLineStepHtml\(x\.legId, x\.spec\.pp\.line, x\.lineSet \? x\.lineSet\.read : x\.spec\.pp\.line, x\.lineSet, x\.commence\)/.test(lift('legCardHtml')) && /ppLineTags\(x\)\.trim\(\),/.test(legSrc), "on the NBA card's legs");
 ok(/If PrizePicks shows another number on rebounds or assists, set it on the leg\./.test(cardSrc), 'and the card says how');
 
 // ---- Picks ------------------------------------------------------------------------------------
@@ -300,7 +304,7 @@ const rp = lift('renderPicks');
 ok(/= ppEntryLegs\(d\);/.test(rp) && /const legs = ppPoolAtLines\(all\)\.filter\(up\);/.test(lift('ppEntryLegs'))
   && /const whole = legs\.length === all\.length && legs\.every\(\(x, i\) => x\.legId === all\[i\]\.legId\);/.test(lift('ppEntryLegs')), "and the worker's edge is no longer quoted: it priced the pool as it stood");
 ok(/: ppEntryLegs\(d\);/.test(lift('saveTicketImage')), 'the saved ticket the same');
-ok(/\(d\.legs \|\| \[\]\)\.map\(pickAtLine\)\.filter/.test(rp) && /!compact && x\.kind === 'nba_reb_gap' && x\.spec && x\.spec\.pp \? ppLineStepHtml\(/.test(lift('legCardHtml')), 'the rows carry the number and the steps');
+ok(/\(d\.legs \|\| \[\]\)\.map\(pickAtLine\)\.filter/.test(rp) && /!compact && \(x\.kind === 'nba_reb_gap' \|\| x\.lineStep\) && x\.spec && x\.spec\.pp \? ppLineStepHtml\(/.test(lift('legCardHtml')), 'the rows carry the number and the steps');
 const hero = lift('heroLegHtml');
 ok(/const x = pickAtLine\(x0\);/.test(hero) && /x\.kind === 'nba_reb_gap' && s\.pp \? ppLineStepHtml\(/.test(hero), 'and so does the best leg at the top');
 penv.state.ppLines = { nhlx: { line: 1.5, at: NOW, commence: dan.commence } };

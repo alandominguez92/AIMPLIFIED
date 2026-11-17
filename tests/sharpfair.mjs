@@ -156,7 +156,10 @@ ok(/tc-sharp down/.test(P.sharpTag(48)) && !/ up| down/.test(P.sharpTag(55)) && 
 const midLine = P.ppBookLine({ book_line: 6.5, book_under: -115, sharp_under: 59.4, sharp_src: 'pinnacle,novig', l10_n: 4, l10_under: 2 }, '<span>model 64%</span>');
 ok(text(midLine) === 'book u6.5 -115 · model 64% · season: under 2 of 4' && !/sharp/.test(midLine), `given the model's bit, it goes where the sharp chance was: "${text(midLine)}"`);
 ok(/FanDuel, Novig/.test(P.sharpTag(55, 'fanduel,novig')), 'FanDuel named, one of the books the chance is taken from');
-ok(/\$\{ppBookLine\(x, nbaModelBit\(r, x\)\)\}<\/span>`/.test(liftApp('nbaPpCardHtml')) && /<span class="lc-tk">Sharp books<\/span><b class="lc-tv">\$\{esc\(pct0\(x\.sharp\)\)\}<\/b>/.test(app), 'on every NBA card leg, and as a tile on Picks of the day (since 2026-11-16)');
+// Since 2026-11-17 the NBA card's rows are leg cards (step 7): the sharp chance is the big number
+// and a tile, the model's bit in the tile, and the book's line a tag with nothing in the middle.
+ok(/p: sh, pIsSharp: true, sharp: sh, modelP: x\.model_under, modelBit: nbaModelBit\(r, x\)/.test(liftApp('nbaUnderCardLeg')) && /ppBookLine\(x, ''\),/.test(liftApp('nbaUnderCardLeg'))
+  && /<span class="lc-tk">Sharp books<\/span><b class="lc-tv">\$\{esc\(pct0\(x\.sharp\)\)\}<\/b>/.test(app), 'on every NBA card leg, and as a tile on Picks of the day (since 2026-11-16)');
 
 console.log('\n-- the record by the sharp chance --');
 const g = sq.prepare(`INSERT INTO nbapp (date, game_id, player, market, point, model_under, min_proj, sharp_under, result)

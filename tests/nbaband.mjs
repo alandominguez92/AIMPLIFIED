@@ -17,6 +17,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// The unders card's rows are leg cards since 2026-11-17 (the page brief's step 7): the card's helpers.
+const NBA7 = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
+  'propData', 'propVals', 'propTrend', 'sameGameMap', 'pickLegView', 'PP_LINE_MARKETS', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaModelBit', 'sharpBooksText', 'nbaNick',
+  'NBA_SHARP_BANDS', 'NBA_PROVEN_N', 'NBA_MORE_MODEL_W', 'nbaRot', 'nbaUnderRecord', 'nbaGameSub', 'nbaUnderCardLeg', 'nbaBlkCardLeg', 'nbaPicksProps', 'nbaUnderLegs', 'nbaBlkLegs', 'nbaBlkMoreHtml'];
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD = path.join(HERE, '..');
@@ -48,7 +56,7 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const ui = { nbaPp: b, slip: {} };
+const ui = { nbaPp: b, slip: {}, legView: 'detailed' };
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
   'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
@@ -56,7 +64,7 @@ const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', '
   'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'];
 let C;
 try {
-  C = new Function('state', 'esc', CARD.map(lift).join('\n') + '\nreturn { NBA_BANDS, nbaBandLandedHtml, nbaPpCardHtml, nbaLegAtLine };')(ui, esc);
+  C = new Function('state', 'esc', CARD.concat(NBA7).filter((n, i, a) => a.indexOf(n) === i).map(lift).join('\n') + '\nreturn { NBA_BANDS, nbaBandLandedHtml, nbaPpCardHtml, nbaLegAtLine };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').replace(/&lt;/g, '<').trim();
 const r = b.record;
@@ -88,12 +96,13 @@ ok(C.nbaBandLandedHtml({ byBand: { '70+': { n: 0, hit: 0, hitRate: null } } }, 7
 
 // Since 2026-11-16 the card leads with the sharp books' chance (tests/sharpcard.mjs): the line
 // under the big number is the sharp range's, and the model's range rides with its chance on the
-// third line ("model 81% (its 70%+ landed 54%)").
+// third line ("model 81% (its 70%+ landed 54%)"). Since 2026-11-17 the rows are leg cards (step 7):
+// the model's bit sits in the Sharp books tile, or among the tags where the books haven't priced it.
 console.log('\n-- on the card, beside the model\'s chance --');
-const before = (html, name) => (html.split(`<b>${name}</b>`)[1] || '').split('<li>')[0];
+const before = (html, name) => (html.split(`<b>${name}</b>`)[1] || '').split('<li class="lc')[0];
 const card = C.nbaPpCardHtml();
-const unders = card.split('<span class="tc-title">Blocks: More</span>')[0];
-const shown = [...unders.matchAll(/<span class="tc-l1"><b>([^<]+)<\/b>/g)].map((m) => m[1]);
+const unders = card.split('<h3 class="pk-gh">Blocks: More</h3>')[0];
+const shown = [...unders.matchAll(/<span class="lc-name"><b>([^<]+)<\/b>/g)].map((m) => m[1]);
 const top = shown.map((n) => b.legs.find((x) => x.player === n));
 const modelBit = (html) => (html.match(/<span class="tc-model"[^>]*>[^<]*<\/span>/) || [''])[0];
 const rangeOf = (p) => (landed(p).match(/^(.*?) legs landed (\d+)% \((\d+ of \d+)\)$/) || []).slice(1);
@@ -104,7 +113,9 @@ for (const x of top) {
   ok(text(bit) === `model ${Math.round(x.model_under)}% (its ${what === '<55%' ? 'under 55%' : what} landed ${rate}%)` && bit.includes(count),
     `${x.player} at ${x.model_under}: "${text(bit)}", ${count} on hover`);
 }
-ok(before(unders, 'Ajay Mitchell').indexOf('class="tc-l2"') < before(unders, 'Ajay Mitchell').indexOf('class="tc-model"'), 'on the third line, under the bet');
+const ajay = before(unders, 'Ajay Mitchell'), davion = before(unders, 'Davion Mitchell');
+ok(ajay.indexOf('no sharp line yet') >= 0 && ajay.indexOf('no sharp line yet') < ajay.indexOf('class="tc-model"') && ajay.indexOf('class="tc-model"') < ajay.indexOf('class="lc-p"'), 'not priced: among the tags, after "no sharp line yet"');
+ok(/<span class="lc-tk">Sharp books<\/span><b class="lc-tv">54%<\/b><span class="lc-ts"><span class="tc-model"/.test(davion), "priced: under the sharp books' chance, in their tile");
 
 console.log('\n-- a tapped line moves the range --');
 const reed = b.legs.find((x) => x.player === 'Paul Reed Jr');
@@ -114,14 +125,14 @@ const line2 = reed.point - 3;
 ui.ppLines = { [key]: { line: line2, at: NOW + 1000, commence: reed.commence } };
 const moved = C.nbaLegAtLine(reed);
 ok(moved.point === line2 && moved.model_under < 70, `Reed's rebounds set at ${line2}: the model says ${moved.model_under}`);
-const tapped = C.nbaPpCardHtml().split('<span class="tc-title">Blocks: More</span>')[0];
+const tapped = C.nbaPpCardHtml().split('<h3 class="pk-gh">Blocks: More</h3>')[0];
 const tappedBit = text(modelBit(before(tapped, reed.player)));
 const [w2, rate2] = rangeOf(moved.model_under);
 ok(tappedBit === `model ${Math.round(moved.model_under)}% (its ${w2 === '<55%' ? 'under 55%' : w2} landed ${rate2}%)` && !/70%\+/.test(tappedBit), `the range follows: "${tappedBit}"`);
 ui.ppLines = {};
 
 console.log('\n-- the rest of the card --');
-const more = card.split('<span class="tc-title">Blocks: More</span>')[1] || '';
+const more = card.split('<h3 class="pk-gh">Blocks: More</h3>')[1] || '';
 ok(more.length > 0 && !/tc-landed/.test(more) && !/tc-model/.test(more), 'Blocks More keeps its own record and no range line');
 ui.nbaPp = { ...b, record: null };
 const noRecord = C.nbaPpCardHtml();

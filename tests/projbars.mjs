@@ -50,8 +50,10 @@ ok(P.projLineHtml(null, 1.5, 'Under') === '' && P.projLineHtml(1, null, 'Over') 
 
 console.log('\n-- under every player leg --');
 const has = (fn, re) => re.test(lift(fn));
-ok(has('nbaPpCardHtml', /projLineHtml\(x\.proj, x\.point, 'Under'\)/), 'the NBA unders card');
-ok(has('ppMoreListHtml', /projLineHtml\(x\.proj, x\.point, 'Over'\)/), 'the NBA blocks Mores and the NHL Mores');
+// The NBA and NHL tabs' rows are leg cards since 2026-11-17 (the page brief's step 7): their legs
+// carry the projection and the line, and the leg card draws the bar (pickBarHtml, below).
+ok(has('nbaUnderCardLeg', /proj: x\.proj, spec: \{ \.\.\.leg\.spec, playerId: x\.player_id \|\| null \}/) && has('nbaPpLeg', /pp: \{ line: x\.point, under: x\.model_under \}/), 'the NBA unders card');
+ok(has('nbaBlkCardLeg', /proj: x\.proj, spec: leg\.spec/) && has('nhlMoreCardLeg', /proj: x\.proj, spec: leg\.spec/) && has('ppMoreLeg', /side: 'Over',/), 'the NBA blocks Mores and the NHL Mores');
 ok(has('socPropRow', /projLineHtml\(r\.proj, l\.line, l\.side\)/), 'the soccer props card');
 // Through pickBarHtml since 2026-10-28, which draws a moneyline's chance
 // against its price beside it (tests/mlbars.mjs).

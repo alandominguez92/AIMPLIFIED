@@ -24,6 +24,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+// The unders card's rows are leg cards since 2026-11-17 (the page brief's step 7): the card's helpers.
+const NBA7 = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
+  'propData', 'propVals', 'propTrend', 'sameGameMap', 'pickLegView', 'PP_LINE_MARKETS', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaModelBit', 'sharpBooksText', 'nbaNick',
+  'NBA_SHARP_BANDS', 'NBA_PROVEN_N', 'NBA_MORE_MODEL_W', 'nbaRot', 'nbaUnderRecord', 'nbaGameSub', 'nbaUnderCardLeg', 'nbaBlkCardLeg', 'nbaPicksProps', 'nbaUnderLegs', 'nbaBlkLegs', 'nbaBlkMoreHtml'];
 const BOARD = path.join(import.meta.dirname, '..');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
 const F = JSON.parse(fs.readFileSync(path.join(BOARD, 'tests', 'fixtures', 'more-20261027.json'), 'utf8'));
@@ -103,23 +111,26 @@ const LEG_CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl
   'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
   'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
   'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
-  'nhlNick', 'NHL_PROVEN_N', 'nhlMoreRecord', 'propData', 'propVals', 'nhlTrend', 'nhlGoaliesOf', 'nhlMoreCardLeg', 'nhlPicksMoreIds', 'nhlMoreLegs', 'sameGameMap', 'pickLegView'];
+  'nhlNick', 'NHL_PROVEN_N', 'nhlMoreRecord', 'propData', 'propVals', 'propTrend', 'nhlTrend', 'nhlGoaliesOf', 'nhlMoreCardLeg', 'nhlPicksMoreIds', 'nhlMoreLegs', 'sameGameMap', 'pickLegView'];
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'NHL_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
   'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'ppMoreListHtml',
   'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaPpCardHtml', 'nhlPpCardHtml'];
 let C;
 try {
-  C = new Function('state', 'esc', CARD.concat(LEG_CARD).filter((n, i, a) => a.indexOf(n) === i).map(lift).join('\n') + '\nreturn { nbaPpCardHtml, nhlPpCardHtml, LEG_OFFERS, liveVs: null };')(ui, esc);
+  C = new Function('state', 'esc', CARD.concat(LEG_CARD, NBA7).filter((n, i, a) => a.indexOf(n) === i).map(lift).join('\n') + '\nreturn { nbaPpCardHtml, nhlPpCardHtml, LEG_OFFERS, liveVs: null };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the cards lift out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const card = C.nbaPpCardHtml();
-const more = card.split('<span class="tc-title">Blocks: More</span>')[1] || '';
+// Leg cards since 2026-11-17 (the page brief's step 7): a row each, the chance the big number.
+const more = card.split('<h3 class="pk-gh">Blocks: More</h3>')[1] || '';
 const mon = bar(rot.filter((l) => l.day === '2026-10-26' && l.first.under < 50)).sort((a, x) => a.first.under - x.first.under);
 const want = [...new Map(mon.map((l) => [l.player, l])).values()].slice(0, 3);
 console.log('  ' + text(more).slice(0, 360));
-ok(want.length === 3 && want.every((l) => more.includes(`<b>${l.player}</b><span class="tc-p">${Math.round(100 - l.first.under)}%</span>`))
-  && (more.match(/<li>/g) || []).length === 3, `Monday's best three blocks Mores at 55%+: ${want.map((l) => `${l.player} ${Math.round(100 - l.first.under)}%`).join(', ')}`);
+const moreRows = more.split('<li class="lc').slice(1);
+const rowFor = (name) => moreRows.find((r) => r.includes(`<span class="lc-name"><b>${name}</b>`)) || '';
+ok(want.length === 3 && want.every((l) => new RegExp(`<b class="lc-pct[^"]*"[^>]*>${Math.round(100 - l.first.under)}%</b>`).test(rowFor(l.player)))
+  && moreRows.length === 3, `Monday's best three blocks Mores at 55%+: ${want.map((l) => `${l.player} ${Math.round(100 - l.first.under)}%`).join(', ')}`);
 ok(/Blocks: where the model leaned More <b>\d+ of \d+<\/b> · at 55%\+ <b>\d+ of \d+<\/b>/.test(more) && /On Picks of the day too, since Oct 28/.test(more), 'with its record (on Picks of the day since Oct 28)');
 ok(!/null|undefined/.test(text(more)), 'and no leg prints a projection it does not have (the day view carries none)');
 const top = want[0];

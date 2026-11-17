@@ -419,7 +419,9 @@ state.nbaPp = null;
 ok(card() === '', 'nothing loaded: no section');
 const render = app.slice(app.indexOf('  function renderNba('), app.indexOf('  // The NBA and NHL moneyline tabs draw one table'));
 // The props card moved up under the best leg (2026-11-05, the owner's pick); the list stays under the PrizePicks cards.
-ok((render.match(/propsCardHtml\('nba'\) \+ nbaPpCardHtml\(\) \+ nbaHotCardHtml\(\)/g) || []).length === 2, 'on the tab, under the PrizePicks cards, with games or without');
+// Since 2026-11-17 (the page brief's step 7) the tab is today's legs, the props card, the moneylines over
+// every game's prices, then the list; with no games, the table says so in its place.
+ok(/grid\.innerHTML = parts\.top \+ propsCardHtml\('nba'\) \+ parts\.ml\(table\) \+ nbaHotCardHtml\(\);/.test(render) && /const table = !games\.length\s+\?/.test(render), 'on the tab, under the PrizePicks cards, with games or without');
 ok(/case 'nba-hot-all': \{\n\s+state\.nbaHotAll = !state\.nbaHotAll;\n\s+renderNba\(\);/.test(app), 'the tap redraws the tab');
 const css = fs.readFileSync(BOARD + '/style.css', 'utf8');
 ok(/\.hot-mk \{/.test(css) && /\.hot-read\.up b \{/.test(css) && /\.hot-goes b \{/.test(css), 'styled');

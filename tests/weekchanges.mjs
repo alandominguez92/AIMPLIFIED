@@ -147,7 +147,8 @@ const dfs = new Function('esc', lift('dfsLinesHtml') + '\nreturn dfsLinesHtml;')
 const text = (x) => x.replace(/<[^>]+>/g, '').trim();
 ok(/class="tc-gap"/.test(dfs(5.5, 6.5, null)) && text(dfs(5.5, 6.5, null)) === 'UD 6.5', 'Underdog a point higher: tagged as the easier under');
 ok(/class="tc-dfs"/.test(dfs(5.5, 5.5, 5)) && text(dfs(5.5, 5.5, 5)).replace(/\s+/g, ' ') === 'UD 5.5 P6 5' && dfs(5.5, null, null) === '', 'level or lower: shown plain; none quoted: nothing');
-ok(/\$\{ppMovedTag\(x\)\}\$\{ppLineTags\(x\)\}\$\{dfsLinesHtml\(x\.point, x\.ud_line, x\.p6_line\)\}/.test(lift('nbaPpCardHtml'))
+// The NBA card's rows are leg cards since 2026-11-17 (step 7): its legs carry the lines for the leg card's tag.
+ok(/dfs: \{ ud: x\.ud_line, p6: x\.p6_line \}/.test(lift('nbaUnderCardLeg'))
   && /dfsLinesHtml\(x\.spec\.pp\.line, x\.dfs\.ud, x\.dfs\.p6\)/.test(app), 'on the NBA card beside each leg, and on Picks of the day');
 // Over the legs PrizePicks takes since 2026-10-27 (tests/evbets.mjs).
 // Read a leg at a time since 2026-11-16 (tests/outlast.mjs), the label escaped in powerRow.

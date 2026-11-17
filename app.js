@@ -4961,7 +4961,7 @@
       // Every leg's break-even tile follows it; no leg leaves the list (the page brief's step 3).
       case 'entry-size': {
         const n = Number(target.dataset.n);
-        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); if (state.sport === 'nhl') renderNhl(); }
+        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); if (state.sport === 'nhl') renderNhl(); if (state.sport === 'nba') renderNba(); }
         break;
       }
       case 'ticket-save': saveTicketImage(); break;
@@ -4985,6 +4985,7 @@
         try { localStorage.setItem('aimplified_leg_view', state.legView); } catch (err) { /* private mode */ }
         renderPicks();
         if (state.sport === 'nhl') renderNhl();
+        if (state.sport === 'nba') renderNba();
         break;
       }
       // In Simple, a tap on a leg opens that one card in full; a second tap folds it again.
@@ -4994,9 +4995,10 @@
         const fromName = target.classList.contains('lc-nb');
         renderPicks();
         if (state.sport === 'nhl') renderNhl();
+        if (state.sport === 'nba') renderNba();
         // The name on the tab in view: the same leg can be on Picks too, out of sight.
         const sel = `.lc-nb[data-leg="${window.CSS && CSS.escape ? CSS.escape(id) : id}"]`;
-        const host = document.getElementById(state.sport === 'nhl' ? 'nhlGrid' : 'picksGrid');
+        const host = document.getElementById(state.sport === 'nhl' ? 'nhlGrid' : state.sport === 'nba' ? 'nbaGrid' : 'picksGrid');
         const again = fromName && host && host.querySelector(sel);
         if (again) again.focus({ preventScroll: true });
         break;
@@ -5800,8 +5802,9 @@
     state.picksAt = Date.now();
     renderPicks();
     renderTopCard();
-    // The NHL tab's moneyline cards and goalies are Picks' (step 7).
+    // The NHL and NBA tabs' best leg, moneyline cards and goalies are Picks' (step 7).
     if (state.sport === 'nhl') renderNhl();
+    if (state.sport === 'nba') renderNba();
     const pp = soc && await soc;
     if (pp && Array.isArray(pp.matches)) {
       state.socProps = socKeepExpected(pp, state.socProps);
@@ -5991,7 +5994,7 @@
   }
   // The tabs that draw their own legs as leg cards, the best one large (the page brief's step 7):
   // the old card stays off them.
-  const LEG_CARD_TABS = new Set(['nhl']);
+  const LEG_CARD_TABS = new Set(['nhl', 'nba']);
   function renderTopCard() {
     const box = document.getElementById('topCard');
     if (!box) return;
@@ -6172,10 +6175,14 @@
     if (mv) tags.push(`<span class="${mv.d > 0 ? 'tc-gap' : 'tc-wait'}" title="Its chance when it joined the list: ${esc(pct0(x.firstP))}">${esc(mv.text)}</span>`);
     // A second leg from a game already on the list (the page brief, 2026-11-16).
     const sg = cx.same && cx.same.get(lg.id);
-    if (sg) tags.push(`<span class="tc-wait" title="Legs from one game tend to land or miss together">Same game as ${esc(sg)}</span>`);
+    // The NBA tab can list one player twice (Jabari Smith Jr's rebounds Less and blocks More): that
+    // says so rather than naming him on his own card.
+    if (sg) tags.push(`<span class="tc-wait" title="Legs from one game tend to land or miss together">${sg === pickShortName(x) ? 'Same player as another leg' : `Same game as ${esc(sg)}`}</span>`);
     // An NHL points More Picks holds off (2026-11-14, the owner's call), with the record it went by.
     const op = x.offPicks;
     if (op) tags.push(`<span class="tc-wait" title="NHL points Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>`);
+    // A sport tab's own (step 7): the NBA unders card's "no sharp line yet", "PP 5.5 → 6.5" and the like.
+    if (Array.isArray(x.tabTags)) for (const t of x.tabTags) if (t) tags.push(t);
     // The moneyline with the best chance shown (step 6), as the mock tags it; on a sport tab, its own.
     const mlWord = `best ${cx.sport ? `${PICK_SPORT[cx.sport] || cx.sport} ` : ''}moneyline`;
     if (cx.topMl && cx.topMl === lg.id) tags.unshift(`<span class="lc-bestml">${esc(pickDayWord(x.commence) ? `${pickDayWord(x.commence)} ${mlWord}` : mlWord[0].toUpperCase() + mlWord.slice(1))}</span>`);
@@ -6201,11 +6208,17 @@
       // The chance shown blends the model's with the sharp books' (2026-10-27) where they differ,
       // save a rebounds Less above the sharp line: its chance is last season's rate for the kind
       // (the worker's REB_GAP_P), so the note says that instead.
-      const blend = typeof x.modelP === 'number' && x.modelP !== x.p;
+      // The NBA tab's unders lead with the sharp chance itself (pIsSharp, 2026-11-16): the model's is
+      // beside it, not in it, with what its range has landed (modelBit).
+      const showModel = typeof x.modelP === 'number' && x.modelP !== x.p;
+      const blend = showModel && !x.pIsSharp;
       const note = x.kind === 'nba_reb_gap' ? "The chance shown is last season's rate for rebounds Less above the sharp books' line. This is the sharp books' own chance at PrizePicks' line, de-vigged"
-        : blend ? "The chance shown is a quarter the model's and three quarters the sharp books'" : "The sharp books' chance at the line shown, de-vigged";
-      if (best && x.spec && x.spec.pp) market = `<div class="lc-tile" title="${note}"><span class="lc-tk">Market</span><b class="lc-tv">PrizePicks ${esc(String(x.spec.pp.line))}</b><span class="lc-ts">sharp books ${esc(pct0(x.sharp))}${blend ? ` · model ${esc(pct0(x.modelP))}` : ''}</span></div>`;
-      else tiles.push(`<div class="lc-tile" title="${note}"><span class="lc-tk">Sharp books</span><b class="lc-tv">${esc(pct0(x.sharp))}</b><span class="lc-ts">${blend ? `model ${esc(pct0(x.modelP))}` : 'at this line'}</span></div>`);
+        : blend ? "The chance shown is a quarter the model's and three quarters the sharp books'"
+        : x.pIsSharp ? "The sharp books' chance at the line shown, de-vigged. The model's own is beside it: its high ranges have landed no more often than its low ones"
+        : "The sharp books' chance at the line shown, de-vigged";
+      const modelSub = x.pIsSharp && x.modelBit ? x.modelBit : `model ${esc(pct0(x.modelP))}`;
+      if (best && x.spec && x.spec.pp) market = `<div class="lc-tile" title="${note}"><span class="lc-tk">Market</span><b class="lc-tv">PrizePicks ${esc(String(x.spec.pp.line))}</b><span class="lc-ts">sharp books ${esc(pct0(x.sharp))}${showModel ? ` · ${modelSub}` : ''}</span></div>`;
+      else tiles.push(`<div class="lc-tile" title="${note}"><span class="lc-tk">Sharp books</span><b class="lc-tv">${esc(pct0(x.sharp))}</b><span class="lc-ts">${showModel ? modelSub : 'at this line'}</span></div>`);
     }
     // His projection against the line, and how far it clears it (the best card's first tile).
     if (best && !team && typeof x.proj === 'number' && x.spec && x.spec.pp) {
@@ -6234,8 +6247,12 @@
       team ? '' : betLinkHtml(legLink(x)),
       booksHtml(x.books, team),
     ].join('');
-    const stepper = !compact && x.kind === 'nba_reb_gap' && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '';
+    // The NBA tab's rebounds and assists unders take a line set on them too (lineStep).
+    const stepper = !compact && (x.kind === 'nba_reb_gap' || x.lineStep) && x.spec && x.spec.pp ? ppLineStepHtml(x.legId, x.spec.pp.line, x.lineSet ? x.lineSet.read : x.spec.pp.line, x.lineSet, x.commence) : '';
     const sportName = esc(x.league || PICK_SPORT[x.sport] || x.sport);
+    // The big number, coloured where a tab colours it (the NBA unders: green at the 6-Flex
+    // break-even), with whose number it is on hover.
+    const pctB = `<b class="lc-pct${x.pTone ? ` ${x.pTone}` : ''}"${x.pTitle ? ` title="${esc(x.pTitle)}"` : ''}>${pct0(x.p)}</b>`;
     if (best) {
       // On a sport tab, the mock's "Best NHL leg still open": the best whose game has not started.
       const kicker = cx.sport ? `Best ${PICK_SPORT[cx.sport] || cx.sport} leg still open`
@@ -6247,7 +6264,7 @@
         + `<div class="lc-top">${pickFace(x, 52)}`
         + `<div class="lc-what"><b class="lc-bn">${esc(name)}</b>${pick ? `<span class="lc-bp">${esc(pick)}</span>` : ''}`
         + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
-        + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span></div></div>`
+        + `</div><div class="lc-p">${pctB}<span class="lc-pk">chance</span></div></div>`
         + (tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
         + (more ? `<div class="lc-more">${more}</div>` : '')
         + stepper
@@ -6264,7 +6281,7 @@
       // A soccer leg's league says the sport; the others name it.
       + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
       + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
-      + `</div><div class="lc-p"><b class="lc-pct">${pct0(x.p)}</b><span class="lc-pk">chance</span>${tap ? `<span class="lc-chev" aria-hidden="true">${opened ? 'less ▴' : 'more ▾'}</span>` : ''}</div></div>`
+      + `</div><div class="lc-p">${pctB}<span class="lc-pk">chance</span>${tap ? `<span class="lc-chev" aria-hidden="true">${opened ? 'less ▴' : 'more ▾'}</span>` : ''}</div></div>`
       + (!compact && tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
       + (more ? `<div class="lc-more">${more}</div>` : '')
       + stepper
@@ -7142,6 +7159,8 @@
   function injuryTag(x) {
     if ((x.sport || (x.spec || {}).sport) !== 'nba') return null;
     const i = x.inj;
+    // A tab's leg whose game report hasn't come with it says nothing, rather than "check" on every row.
+    if (!i && x.injUnread) return null;
     if (!i) return { warn: true, text: 'check injuries', title: (x.spec || {}).playerId ? "ESPN's report for his game has not been read yet" : 'Who is out on either side' };
     const t = Date.parse(i.at || '');
     const ago = isFinite(t) ? Math.max(1, Math.round((Date.now() - t) / 60000)) : null;
@@ -7467,21 +7486,113 @@
     const what = band && (band[0] === '<55' ? 'under 55%' : band[0] === '70+' ? '70%+' : `${band[0]}%`);
     return `<span class="tc-model" title="The model's chance: last ten games blended with last season${has ? `. Its graded legs at ${esc(what)} landed ${c.hit} of ${c.n}` : ''}">model ${Math.round(x.model_under)}%${has ? ` (its ${esc(what)} landed ${Math.round(c.hitRate)}%)` : ''}</span>`;
   }
-  function nbaPpCardHtml() {
+  // The NBA tab's legs as Picks draws them (legCardHtml; the page brief's step 7, 2026-11-17). A
+  // leg Picks lists is Picks' own, so it reads the same on both pages. An under it doesn't list is
+  // read from the tab's log: its big number the sharp books' chance (the card has led with it since
+  // Nov 16), green from the 6-Flex break-even; "legs like this" what legs in its sharp range have
+  // landed, or with no sharp price in its model range; the model's own chance beside the sharp one.
+  const NBA_SHARP_BANDS = [['<50', 0, 50], ['50-54', 50, 54], ['54-58', 54, 58], ['58+', 58, 101]];
+  // The worker's PICKS_PROVEN_N, and its NBA_PICK_MODEL_W: a More's chance, as Picks states it.
+  const NBA_PROVEN_N = 30;
+  const NBA_MORE_MODEL_W = 0.25;
+  const nbaRot = (d, now) => outLast((d.legs || []).filter((x) => Date.parse(x.commence) > now && x.min_proj != null && x.min_proj >= NBA_ROTATION_MIN));
+  function nbaUnderRecord(r, x) {
+    const sh = typeof x.sharp_under === 'number';
+    const v = sh ? x.sharp_under : x.model_under;
+    if (typeof v !== 'number') return null;
+    const by = sh ? r && r.sharp && r.sharp.byBand : r && r.byBand;
+    const band = (sh ? NBA_SHARP_BANDS : NBA_BANDS).find(([, lo, hi]) => v >= lo && v < hi);
+    const c = band && by && by[band[0]];
+    return c && c.n ? { n: c.n, hit: c.hit, hitRate: typeof c.hitRate === 'number' ? c.hitRate : r1(c.hit / c.n * 100), proven: c.n >= NBA_PROVEN_N } : null;
+  }
+  const nbaGameSub = (x) => { const [away, home] = String(x.game || '').split(' @ '); return away && home ? `${nbaNick(away)} @ ${nbaNick(home)}` : String(x.game || ''); };
+  // An under from the log, at the line set on it if one is (nbaLegAtLine, done by the caller).
+  function nbaUnderCardLeg(x, r) {
+    const leg = nbaPpLeg(x);
+    const sh = typeof x.sharp_under === 'number' ? x.sharp_under : null;
+    const moves = PP_LINE_MARKETS.has(x.market);
+    const trend = propTrend('nba', x, 'under');
+    return { kind: 'nba_pp', sport: 'nba', legId: leg.id, title: leg.title, sub: nbaGameSub(x), commence: x.commence,
+      p: sh, pIsSharp: true, sharp: sh, modelP: x.model_under, modelBit: nbaModelBit(r, x),
+      pTone: sh == null || injOut(x) ? '' : sh >= 54 ? 'tc-band-good' : sh < 50 ? 'tc-band-weak' : '',
+      pTitle: sh == null ? '' : `${sharpBooksText(x.sharp_src)}: ${x.sharpMoved ? 'carried from their own lines to the one you set' : "their price at PrizePicks' line"}, de-vigged, the middle of them`,
+      // The slip takes it with the model's chance in its spec, as the entry log reads it.
+      proj: x.proj, spec: { ...leg.spec, playerId: x.player_id || null }, record: nbaUnderRecord(r, x),
+      // How old the read is comes with ppLineTags: only rebounds and assists lines move between reads.
+      readAt: null,
+      // A player ESPN lists, and only him: on a tab of a few rows "no injury listed" would be on them all.
+      vsBook: x.vsBook, dfs: { ud: x.ud_line, p6: x.p6_line }, inj: x.inj && x.inj.status ? x.inj : null, injUnread: true,
+      trend, lineSet: x.lineSet || null, lineStep: moves,
+      // The old row's tags: no sharp line yet (the model's chance with it), PrizePicks' move, no book
+      // yet and the read's age, then the book's own line and his season against this one.
+      tabTags: [
+        sh == null ? '<span class="tc-wait" title="None of the sharp books had this line at the last read">no sharp line yet</span>' : '',
+        sh == null ? nbaModelBit(r, x) : '',
+        // A line set on the leg isn't PrizePicks moving it: "you set 3.5, read 2.5" says that.
+        x.lineSet ? '' : ppMovedTag(x).trim(),
+        ppLineTags(x).trim(),
+        ppBookLine(x, ''),
+      ] };
+  }
+  // A blocks More from the log, at the chance Picks would state for it: the model's, blended with
+  // the sharp books' where they priced the line.
+  function nbaBlkCardLeg(x, r) {
+    const leg = ppMoreLeg(x, 'nba');
+    const model = r1(ppMoreP(x));
+    const sh = typeof x.sharp_under === 'number' ? r1(100 - x.sharp_under) : null;
+    const m = r && r.blkMore, a = m && m.atBar;
+    return { kind: 'nba_blk_more', sport: 'nba', legId: leg.id, title: leg.title, sub: nbaGameSub(x), commence: x.commence,
+      p: sh == null ? model : r1(NBA_MORE_MODEL_W * model + (1 - NBA_MORE_MODEL_W) * sh), modelP: model, sharp: sh, proj: x.proj, spec: leg.spec,
+      record: a && a.n ? { n: a.n, hit: a.hit, hitRate: typeof a.hitRate === 'number' ? a.hitRate : r1(a.hit / a.n * 100), proven: a.n >= NBA_PROVEN_N, ...(m.since && m.since.n ? { since: m.since } : {}) } : null,
+      readAt: null, inj: x.inj && x.inj.status ? x.inj : null, injUnread: true, trend: propTrend('nba', x, 'over') };
+  }
+  // Picks' NBA props still to come (its list and its PrizePicks pool), at the line set on them, best
+  // first; null before Picks has loaded.
+  function nbaPicksProps(now = Date.now()) {
+    const pk = state.picks;
+    if (!pk || pk.error) return null;
+    const seen = new Set();
+    return [...(pk.legs || []), ...(pk.ppPool || [])]
+      .filter((x) => /^nba_(pp|reb_gap|blk_more)$/.test(x.kind) && Date.parse(x.commence) > now && !seen.has(x.legId) && seen.add(x.legId))
+      .map(pickAtLine).sort((a, b) => injOut(a) - injOut(b) || (b.p || 0) - (a.p || 0));
+  }
+  // The card's five unders by the sharp chance, as since Nov 16 (an out player last), then the
+  // unders Picks lists that the five leave out (its rebounds Less).
+  function nbaUnderLegs(picks) {
     const d = state.nbaPp;
-    if (!d) return '';
-    const now = Date.now();
-    const all = (d.legs || []).filter((x) => Date.parse(x.commence) > now);
-    const rot = outLast(all.filter((x) => x.min_proj != null && x.min_proj >= NBA_ROTATION_MIN));
+    if (!d) return [];
+    const r = d.record || {};
     // Best sharp chance first, at the line on the leg (one set moves it); a leg the sharp books
     // haven't priced goes below them in the model's order, and a player ESPN lists out last.
-    const shOf = (e) => (typeof e.x.sharp_under === 'number' ? e.x.sharp_under : null);
-    const top = rot.map((x0, i) => {
-      const x = nbaLegAtLine(x0);
-      return { x0, x, i };
-    }).sort((a, b) => injOut(a.x) - injOut(b.x) || (shOf(a) == null) - (shOf(b) == null) || (shOf(b) || 0) - (shOf(a) || 0) || a.i - b.i).slice(0, 5);
-    const perGame = {};
-    for (const { x } of top) perGame[x.game_id] = (perGame[x.game_id] || 0) + 1;
+    const shOf = (x) => (typeof x.sharp_under === 'number' ? x.sharp_under : null);
+    const top = nbaRot(d, Date.now()).map((x0, i) => ({ x: nbaLegAtLine(x0), i }))
+      .sort((a, b) => injOut(a.x) - injOut(b.x) || (shOf(a.x) == null) - (shOf(b.x) == null) || (shOf(b.x) || 0) - (shOf(a.x) || 0) || a.i - b.i).slice(0, 5);
+    const byId = new Map((picks || []).map((x) => [x.legId, x])), ids = new Set();
+    const out = top.map(({ x }) => { const id = nbaPpLeg(x).id; ids.add(id); return byId.get(id) || nbaUnderCardLeg(x, r); });
+    for (const x of picks || []) if (x.kind !== 'nba_blk_more' && !ids.has(x.legId)) { ids.add(x.legId); out.push(x); }
+    return out;
+  }
+  // The best three blocks Mores to come, as since Oct 27, then any other Picks lists.
+  function nbaBlkLegs(picks) {
+    const d = state.nbaPp;
+    if (!d) return [];
+    const r = d.record || {};
+    const byId = new Map((picks || []).map((x) => [x.legId, x])), ids = new Set();
+    const out = ppMoreTop(nbaRot(d, Date.now()), (x) => x.market === 'blk', 3)
+      .map((x) => { const id = ppMoreLeg(x, 'nba').id; ids.add(id); return byId.get(id) || nbaBlkCardLeg(x, r); });
+    for (const x of picks || []) if (x.kind === 'nba_blk_more' && !ids.has(x.legId)) { ids.add(x.legId); out.push(x); }
+    return out;
+  }
+  // The PrizePicks unders group. `list` is what is left once the best leg has been drawn large; with
+  // none given, the five and Picks' others, with the blocks Mores under them (the card as the tests
+  // read it).
+  function nbaPpCardHtml(list, ctx) {
+    const d = state.nbaPp;
+    if (!d) return '';
+    const picks = list ? null : nbaPicksProps();
+    const all = list || nbaUnderLegs(picks);
+    const blk = list ? null : nbaBlkLegs(picks);
+    const cx = ctx || { sport: 'nba', same: sameGameMap([...all, ...(blk || [])]), topMl: null };
     // The two numbers that say whether to trust the card: the model's high
     // bands at PrizePicks' own lines (in MLB only 65%+ held up), and legs where
     // PrizePicks' number sat above the books' line.
@@ -7496,52 +7607,47 @@
       hiBand.n ? `the model's 65%+ <b>${hiBand.hit} of ${hiBand.n}</b>` : null,
       ppHi.n ? `PP line above book <b>${ppHi.hit} of ${ppHi.n}</b>` : null,
     ].filter(Boolean).join(' · ');
-    const head = `<div class="tc-head"><span class="tc-title">PrizePicks unders</span>${rec}</div>`
-      + `<div class="tc-sub">The sharp books' chance the under lands at PrizePicks' line: FanDuel, Pinnacle and the exchanges, de-vigged, the middle of them. Best first; a leg they haven't priced yet goes below. The model's own chance is the small number further down: its high ranges have landed no more often than its low ones. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. A player on ESPN's injury report is flagged. Logged, not posted.</div>`
+    const head = `<div class="tc-head"><h3 class="pk-gh">PrizePicks unders</h3>${rec}</div>`
+      + `<div class="tc-sub">The sharp books' chance the under lands at PrizePicks' line: FanDuel, Pinnacle and the exchanges, de-vigged, the middle of them. Best first; a leg they haven't priced yet goes below. The model's own chance is beside theirs: its high ranges have landed no more often than its low ones. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. A player on ESPN's injury report is flagged. A leg Picks lists shows Picks' own chance. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
       + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame);
-    if (!top.length) {
-      return `<div class="nba-pp">${head}<div class="tc-wait-note">${all.length
+    const simple = pickLegView() === 'simple';
+    let body = '';
+    if (all.length) body = `<ol class="tc-legs pk-pool">${all.map((x) => legCardHtml(x, simple, '', false, cx)).join('')}</ol>`;
+    else if (!(list && cx.best && cx.best.kind !== 'nba_blk_more')) {
+      body = `<div class="tc-wait-note">${(d.legs || []).some((x) => Date.parse(x.commence) > Date.now())
         ? 'No rotation players among the logged lines yet.'
-        : 'PrizePicks has not posted lines for the next games yet: they are read as soon as it does.'}</div></div>`;
+        : 'PrizePicks has not posted lines for the next games yet: they are read as soon as it does.'}</div>`;
     }
-    return `<div class="nba-pp">${head}<ol class="tc-legs">${top.map(({ x0, x }) => {
-      const leg = nbaPpLeg(x);
-      const on = !!state.slip[offerLeg(leg)];
-      const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.player)} under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
-      const same = perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
-      // PrizePicks' number against the book's: above it, the under is easier
-      // than the market's; below it, harder.
-      const gap = typeof x.vsBook === 'number' && x.vsBook !== 0
-        ? ` <span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}" title="PrizePicks' line ${x.vsBook > 0 ? 'above' : 'below'} the book's: the under is ${x.vsBook > 0 ? 'easier' : 'harder'} here">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>` : '';
-      const face = avatarHtml({ sport: 'nba', playerId: x.player_id, team: x.team, name: x.player });
-      // Coloured as the props cards' number is, by the 6-Flex break-even: 54%+ green, under 50%
-      // (the books lean over) cautionary. A player listed out stays plain.
-      const sh = typeof x.sharp_under === 'number' ? x.sharp_under : null;
-      const tone = sh == null || injOut(x) ? ' tc-band-none' : sh >= 54 ? ' tc-band-good' : sh < 50 ? ' tc-band-weak' : ' tc-band-none';
-      const shTitle = `${sharpBooksText(x.sharp_src)}: ${x.sharpMoved ? 'carried from their own lines to the one you set' : "their price at PrizePicks' line"}, de-vigged, the middle of them`;
-      const noSharp = sh == null ? ' <span class="tc-wait" title="None of the sharp books had this line at the last read">no sharp line yet</span>' : '';
-      return `<li>${star}<div class="tc-leg has-hs">${face}`
-        // The team code leads line two: beside the face on line one it cut
-        // "Jalen Brunson" to "Jalen Bru…".
-        + `<span class="tc-l1"><b>${esc(x.player)}</b>${sh != null ? `<span class="tc-p${tone}" title="${esc(shTitle)}">${Math.round(sh)}%</span>` : ''}</span>`
-        + nbaSharpLandedHtml(r, sh)
-        + `<span class="tc-l2"><span>${x.team ? `<b class="tc-team">${esc(x.team)}</b> · ` : ''}${legOppText(x) ? `${esc(legOppText(x))} · ` : ''}Under ${esc(String(x.point))} ${esc(NBA_MK[x.market] || x.market)} · ${esc(soccerKick(x.commence))}${nbaCardInjTag(x)}${same}${gap}${noSharp}${ppMovedTag(x)}${ppLineTags(x)}${dfsLinesHtml(x.point, x.ud_line, x.p6_line)}</span>`
-        // His projection against PrizePicks' line, as the MLB board draws it.
-        + `${projLineHtml(x.proj, x.point, 'Under')}${ppBookLine(x, nbaModelBit(r, x))}</span>`
-        + (PP_LINE_MARKETS.has(x.market) ? ppLineStepHtml(leg.id, x.point, x0.point, x.lineSet, x.commence) : '')
-        + `</div></li>`;
-    }).join('')}</ol>${nbaBlkMoreHtml(d, rot)}</div>`;
+    return `<div class="pk-grp nba-under">${head}${body}</div>` + (blk ? nbaBlkMoreHtml(blk, cx) : '');
   }
-  // Blocks More (2026-10-27), under the unders: the best three to come.
-  function nbaBlkMoreHtml(d, rot) {
-    const m = d.record && d.record.blkMore;
-    const top = ppMoreTop(rot, (x) => x.market === 'blk', 3);
-    if (!top.length && !(m && m.leaned && m.leaned.n)) return '';
-    return `<div class="tc-head pp-more-head"><span class="tc-title">Blocks: More</span></div>`
+  // Blocks More (2026-10-27), under the unders.
+  function nbaBlkMoreHtml(list, ctx) {
+    const m = state.nbaPp && state.nbaPp.record && state.nbaPp.record.blkMore;
+    const bestIsBlk = !!(ctx && ctx.best && ctx.best.kind === 'nba_blk_more');
+    if (!list.length && !bestIsBlk && !(m && m.leaned && m.leaned.n)) return '';
+    const simple = pickLegView() === 'simple';
+    return '<div class="pk-grp nba-blk"><h3 class="pk-gh">Blocks: More</h3>'
       + `<div class="tc-sub">The other side of the same blocks lines, at ${PP_MORE_MIN}%+: the one NBA market where the model's More has landed. On Picks of the day too, since Oct 28.</div>`
       + ppMoreLineHtml(m, 'Blocks')
-      + (top.length ? ppMoreListHtml(top, 'nba') : `<div class="tc-wait-note">No blocks More at ${PP_MORE_MIN}%+ in the next games yet.</div>`);
+      + (list.length ? `<ol class="tc-legs pk-pool">${list.map((x) => legCardHtml(x, simple, '', false, ctx)).join('')}</ol>`
+        : bestIsBlk ? '' : `<div class="tc-wait-note">No blocks More at ${PP_MORE_MIN}%+ in the next games yet.</div>`)
+      + '</div>';
+  }
+  // The tab's legs, in the NHL tab's order: today's legs, the best one Picks lists large, the unders
+  // and the blocks Mores; then (after the props card) the moneylines, every game's prices under them.
+  function nbaTodayParts() {
+    const picks = nbaPicksProps();
+    const best = (picks || []).find((x) => !injOut(x)) || null;
+    const drop = (xs) => xs.filter((x) => !best || x.legId !== best.legId);
+    const unders = drop(nbaUnderLegs(picks)), blks = drop(nbaBlkLegs(picks));
+    const mls = tabMlCardLegs('nba_ml');
+    const ctx = { sport: 'nba', same: sameGameMap([...(best ? [best] : []), ...unders, ...blks, ...mls]), topMl: mls.length ? pickLeg(mls[0]).id : null, hasBest: !!best, best };
+    return {
+      top: tabTodayHtml('nba', 'The NBA props and moneylines for your PrizePicks entry: the best leg Picks lists first, then the log’s unders and blocks Mores. The call is yours.',
+        (best ? legCardHtml(best, false, '', true, ctx) : '') + nbaPpCardHtml(unders, ctx) + nbaBlkMoreHtml(blks, ctx)),
+      ml: tabMlHtml('nba', mls, ctx, 'No NBA favourite at 65%+ in the games to come.'),
+    };
   }
   // ---- Hot players (2026-11-02, the owner's call) ------------------------------
   // Players on 5+ games in a row above their own average, the team they play ranked for
@@ -7673,17 +7779,20 @@
         + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '')
         + (pre ? ' · preseason: starters sit, and Pinnacle is the only sharp book' : '');
     }
-    // The props card first, under the best leg (2026-11-05, the owner's pick): it sat below the unders card.
-    if (!games.length) {
-      grid.innerHTML = propsCardHtml('nba') + nbaPpCardHtml() + nbaHotCardHtml() + `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`;
-      return;
-    }
+    // The page brief's step 7 (2026-11-17), in the NHL tab's order: today's legs as leg cards, the
+    // best one Picks lists large, then the unders and the blocks Mores; the props card with its stat
+    // buttons; the moneylines as cards with every game's prices under them; Hot players. The props
+    // card had sat first, above the unders, since Nov 5.
+    const parts = nbaTodayParts();
     const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    grid.innerHTML = propsCardHtml('nba') + nbaPpCardHtml() + nbaHotCardHtml() + `<div class="board view-moneyline"><div class="board-inner">`
-      + `<div class="board-head-row">${head}</div>`
-      + `<div>${games.map((g) => mlTabRow(g, 'nba')).join('')}</div>`
-      + `</div></div>` + mlLaterHtml('nba', sp);
+    const table = !games.length
+      ? `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`
+      : `<div class="board view-moneyline"><div class="board-inner">`
+        + `<div class="board-head-row">${head}</div>`
+        + `<div>${games.map((g) => mlTabRow(g, 'nba')).join('')}</div>`
+        + `</div></div>` + mlLaterHtml('nba', sp);
+    grid.innerHTML = parts.top + propsCardHtml('nba') + parts.ml(table) + nbaHotCardHtml();
   }
   // The NBA and NHL moneyline tabs draw one table. Per sport: the nickname
   // rule, the slip leg, the row toggle and the open-row key.
@@ -7839,13 +7948,16 @@
     if (!a || !a.n) return null;
     return { n: a.n, hit: a.hit, hitRate: typeof a.hitRate === 'number' ? a.hitRate : Math.round(a.hit / a.n * 1000) / 10, proven: a.n >= NHL_PROVEN_N };
   }
-  function nhlTrend(x) {
-    const d = propData('nhl');
+  // His last ten of the stat against the line, from the tab's props card where he is on it (the
+  // boxes Picks draws). The NBA unders' side is under, the Mores' over.
+  function propTrend(sport, x, side) {
+    const d = propData(sport);
     const p = d && x.player_id != null && (d.players || []).find((q) => String(q.id) === String(x.player_id));
     if (!p || !(d.cols || []).includes(x.market)) return null;
     const vals = propVals(d, p, x.market).slice(-10);
-    return vals.length ? { vals, line: x.point, side: 'over', hit: vals.filter((v) => v > x.point).length } : null;
+    return vals.length ? { vals, line: x.point, side, hit: vals.filter((v) => (side === 'under' ? v < x.point : v > x.point)).length } : null;
   }
+  const nhlTrend = (x) => propTrend('nhl', x, 'over');
   function nhlGoaliesOf(gameId) {
     const pk = state.picks;
     if (!pk || pk.error || !gameId) return null;
@@ -7887,15 +7999,16 @@
     return [...top, ...extra].sort((a, b) => injOut(a) - injOut(b) || a.model_under - b.model_under)
       .map((x) => ({ ...nhlMoreCardLeg(x, rec), onPicks: onPicks ? onPicks.has(ppMoreLeg(x, 'nhl').id) : null }));
   }
-  // The NHL moneylines Picks lists (its favourites at 65%+), best chance first.
-  function nhlMlCardLegs(now = Date.now()) {
+  // The moneylines Picks lists for a tab (its favourites at the bar), best chance first.
+  function tabMlCardLegs(kind, now = Date.now()) {
     const pk = state.picks;
     if (!pk || pk.error) return [];
     const seen = new Set();
     return [...(pk.legs || []), ...(pk.mlPool || [])]
-      .filter((x) => x.kind === 'nhl_ml' && Date.parse(x.commence) > now && !seen.has(x.legId) && seen.add(x.legId))
+      .filter((x) => x.kind === kind && Date.parse(x.commence) > now && !seen.has(x.legId) && seen.add(x.legId))
       .sort((a, b) => (b.p || 0) - (a.p || 0));
   }
+  const nhlMlCardLegs = (now) => tabMlCardLegs('nhl_ml', now);
   // A second leg from a game already shown, tagged with the first one's name. Only once the legs
   // span three games or more: on a one- or two-game night every leg would carry it.
   function sameGameMap(xs) {
@@ -7954,22 +8067,31 @@
     const rest = more.filter((x) => x !== best);
     const mls = nhlMlCardLegs();
     const ctx = { sport: 'nhl', same: sameGameMap([...(best ? [best] : []), ...rest, ...mls]), topMl: mls.length ? pickLeg(mls[0]).id : null, hasBest: !!best };
-    const simple = pickLegView() === 'simple';
-    const top = '<section class="nba-pp pk-card pk-today tab-legs" aria-labelledby="nhlTodayH">'
-      + '<div class="pk-th"><div class="pk-tt"><h2 class="pk-h2" id="nhlTodayH">Today’s legs</h2><p class="pk-tsub">The NHL props and moneylines that clear the bar, for your PrizePicks entry. The call is yours.</p>'
+    return {
+      top: tabTodayHtml('nhl', 'The NHL props and moneylines that clear the bar, for your PrizePicks entry. The call is yours.',
+        (best ? legCardHtml(best, false, '', true, ctx) : '') + nhlPpCardHtml(rest, ctx)),
+      ml: tabMlHtml('nhl', mls, ctx, 'No NHL favourite at 65%+ in the games to come.'),
+    };
+  }
+  // A tab's "Today's legs" section: the heading, Simple / Detailed, the entry size, then its legs.
+  function tabTodayHtml(sport, sub, body) {
+    return `<section class="nba-pp pk-card pk-today tab-legs" aria-labelledby="${sport}TodayH">`
+      + `<div class="pk-th"><div class="pk-tt"><h2 class="pk-h2" id="${sport}TodayH">Today’s legs</h2><p class="pk-tsub">${esc(sub)}</p>`
       + (Object.keys(state.slip).length ? '' : '<p class="pks-hint">Tap the star on any leg to start your slip.</p>') + '</div>'
       + `${tabLegViewHtml()}</div>`
-      + tabLegSizeHtml('nhl')
-      + (best ? legCardHtml(best, false, '', true, ctx) : '')
-      + nhlPpCardHtml(rest, ctx)
+      + tabLegSizeHtml(sport)
+      + body
       + '</section>';
-    const ml = (table) => '<section class="nba-pp pk-card pk-today tab-legs tab-ml" aria-labelledby="nhlMlH">'
-      + '<h3 class="pk-gh" id="nhlMlH">Moneylines</h3>'
+  }
+  // A tab's moneylines: Picks' favourites as leg cards, every game's prices under them.
+  function tabMlHtml(sport, mls, ctx, none) {
+    const simple = pickLegView() === 'simple';
+    return (table) => `<section class="nba-pp pk-card pk-today tab-legs tab-ml" aria-labelledby="${sport}MlH">`
+      + `<h3 class="pk-gh" id="${sport}MlH">Moneylines</h3>`
       + (mls.length ? `<ol class="tc-legs pk-pool">${mls.map((x) => legCardHtml(x, simple, '', false, ctx)).join('')}</ol>`
-        : `<div class="tc-wait-note">${state.picks && !state.picks.error ? 'No NHL favourite at 65%+ in the games to come.' : 'The moneylines that clear the bar show once Picks has loaded.'}</div>`)
+        : `<div class="tc-wait-note">${state.picks && !state.picks.error ? none : 'The moneylines that clear the bar show once Picks has loaded.'}</div>`)
       + '<h3 class="pk-gh">Every game’s price</h3>' + table
       + '</section>';
-    return { top, ml };
   }
   function nhlRecordHtml(r) { return gmRecordHtml(r, 'Record: logged from Oct 20, graded from the NHL’s finals each morning.'); }
   // A moneyline log's record and its favourites at the bar Picks of the day

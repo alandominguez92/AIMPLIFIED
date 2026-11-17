@@ -3223,6 +3223,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .lc-tags { display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; margin-top:3px; font-size:12px; line-height:1.4; color:var(--textDim); }
 .lc-p { text-align:right; padding-top:1px; }
 .lc-pct { display:block; font-family:var(--display); font-size:32px; line-height:.95; font-weight:700; color:var(--model); font-variant-numeric:tabular-nums; }
+/* The NBA tab's unders, by the 6-Flex break-even (step 7): green at 54%+, cautionary under 50. */
+.lc-pct.tc-band-good { color:var(--positive); }
+.lc-pct.tc-band-weak { color:var(--caution); }
 .lc-pk { display:block; margin-top:3px; font-family:var(--mono); font-size:11px; color:var(--textFaint); }
 .lc-tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; margin-top:12px; }
 .lc-tile { min-width:0; padding:8px 10px; background:var(--board3); border:1px solid var(--borderSubtle); border-radius:8px; }

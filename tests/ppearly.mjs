@@ -29,6 +29,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+// The unders card's rows are leg cards since 2026-11-17 (the page brief's step 7): the card's helpers.
+const NBA7 = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
+  'propData', 'propVals', 'propTrend', 'sameGameMap', 'pickLegView', 'PP_LINE_MARKETS', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaModelBit', 'sharpBooksText', 'nbaNick',
+  'NBA_SHARP_BANDS', 'NBA_PROVEN_N', 'NBA_MORE_MODEL_W', 'nbaRot', 'nbaUnderRecord', 'nbaGameSub', 'nbaUnderCardLeg', 'nbaBlkCardLeg', 'nbaPicksProps', 'nbaUnderLegs', 'nbaBlkLegs', 'nbaBlkMoreHtml'];
 const BOARD = path.join(import.meta.dirname, '..');
 const FIX = path.join(BOARD, 'tests', 'fixtures');
 globalThis.caches = { default: { match: async () => undefined, put: async () => {} } };
@@ -248,12 +256,12 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const ui = { nbaPp: b, slip: {} };
+const ui = { nbaPp: b, slip: {}, legView: 'detailed' };
 let C;
 try {
   C = new Function('state', 'esc', ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
     'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'NHL_MK', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'ppMoreListHtml', 'shortDay', 'recSinceText', 'ppMoreLineHtml', 'nbaBlkMoreHtml', 'nbCdf', 'r1', 'pct0', 'PP_LINE_MARKETS', 'ppLineOf', 'ppChanceAt', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'nbaCardInjTag', 'injOut', 'outLast', 'ppLineTags', 'ppLineStepHtml', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaPpCardHtml']
-    .map(lift).join('\n') + '\nreturn { ppMovedTag, ppCloseLineHtml, nbaPpCardHtml };')(ui, esc);
+    .concat(NBA7).filter((n, i, a) => a.indexOf(n) === i).map(lift).join('\n') + '\nreturn { ppMovedTag, ppCloseLineHtml, nbaPpCardHtml };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, '').trim();
 const tdu = C.ppMovedTag(bdu), tcc = C.ppMovedTag(bl('Cade Cunningham', 'ast'));
@@ -261,10 +269,11 @@ ok(text(tdu) === 'PP 10 → 11' && /class="tc-gap"/.test(tdu), `raised: "${text(
 ok(text(tcc) === 'PP 9 → 8' && /class="tc-gap lower"/.test(tcc), `lowered: "${text(tcc)}", in the caution colour`);
 ok(C.ppMovedTag(bl('Jalen Duren', 'ast')) === '' && C.ppMovedTag(bl('Payton Pritchard', 'threes')) === '', 'a line that did not move carries no tag');
 const card = C.nbaPpCardHtml();
-ok(/<span class="tc-title">PrizePicks unders<\/span>/.test(card) && !/Tonight/.test(card), 'the card is "PrizePicks unders": its legs can be tomorrow\'s');
+ok(/<h3 class="pk-gh">PrizePicks unders<\/h3>/.test(card) && !/Tonight/.test(card), 'the card is "PrizePicks unders": its legs can be tomorrow\'s');
 // The NHL card lists Mores since 2026-10-27 (tests/morelegs.mjs): the moved tag
-// and the pre-tip record are the unders', so they stay on the NBA card alone.
-ok(/\$\{gap\}(\$\{noSharp\})?\$\{ppMovedTag\(x\)\}/.test(lift('nbaPpCardHtml')) && /ppCloseLineHtml\(r\)/.test(lift('nbaPpCardHtml')),
+// and the pre-tip record are the unders', so they stay on the NBA card alone. Since 2026-11-17 the rows
+// are leg cards (step 7): the tag rides in the leg's own tags.
+ok(/ppMovedTag\(x\)\.trim\(\)/.test(lift('nbaUnderCardLeg')) && /x\.tabTags/.test(lift('legCardHtml')) && /ppCloseLineHtml\(r\)/.test(lift('nbaPpCardHtml')),
   'the NBA card draws the tag on each leg and the pre-tip record under the head');
 ui.nbaPp = { ...b, legs: [] };
 ok(/read as soon as it does/.test(C.nbaPpCardHtml()), 'with nothing posted yet, the card says the lines come as soon as PrizePicks posts them');

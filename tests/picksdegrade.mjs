@@ -82,8 +82,9 @@ let depth = 0, end = -1;
 for (let i = app.indexOf('{', at); i < app.length; i++) { if (app[i] === '{') depth++; else if (app[i] === '}' && --depth === 0) { end = i + 1; break; } }
 const state = { sport: 'nba', picks: null };
 let answer = null;
-const refresh = new Function('state', 'LIVE_MODE', 'fetchJson', 'renderPicks', 'renderTopCard', 'socSavedLoad',
-  app.slice(at, end) + '\nreturn refreshPicks;')(state, true, async () => { if (answer instanceof Error) throw answer; return answer; }, () => {}, () => {}, async () => {});
+// The NHL and NBA tabs redraw when Picks arrives (step 7, 2026-11-17): this one is on the NBA tab.
+const refresh = new Function('state', 'LIVE_MODE', 'fetchJson', 'renderPicks', 'renderTopCard', 'socSavedLoad', 'renderNhl', 'renderNba',
+  app.slice(at, end) + '\nreturn refreshPicks;')(state, true, async () => { if (answer instanceof Error) throw answer; return answer; }, () => {}, () => {}, async () => {}, () => {}, () => {});
 answer = { legs: [{ title: 'Lakers ML' }], record: {} };
 await refresh();
 const good = state.picks;

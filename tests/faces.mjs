@@ -103,7 +103,8 @@ ok(/document\.addEventListener\('load', \(e\) => \{[\s\S]*?hs-img[\s\S]*?classLi
 console.log('\n-- the legs that carry one --');
 ok(/class="tc-leg has-hs" data-action="today-jump"[^`]*\$\{face\}/.test(lift('renderTodayCard')), 'Today\'s card');
 ok(/<div class="lc-top"[^\n]*>\$\{star\}\$\{pickFace\(x\)\}/.test(lift('legCardHtml')) && /const legRow = \(x, compact, foot, best\) => legCardHtml\(x, compact, foot, best\);/.test(lift('renderPicks')), 'Picks of the day');
-ok(/avatarHtml\(\{ sport: 'nba', playerId: x\.player_id/.test(lift('nbaPpCardHtml')), 'the NBA PrizePicks card, by its ESPN id');
+// Leg cards since 2026-11-17 (step 7): pickFace reads the leg's spec.
+ok(/spec: \{ \.\.\.leg\.spec, playerId: x\.player_id \|\| null \}/.test(lift('nbaUnderCardLeg')) && /playerId: x\.player_id \|\| null/.test(lift('ppMoreLeg')), 'the NBA PrizePicks card, by its ESPN id');
 ok(/playerId: r\.player_id \|\| null, player: r\.player/.test(worker), 'and /api/picks passes an NBA leg\'s ESPN id along (it was null)');
 
 console.log('\n-- the night\'s best leg --');

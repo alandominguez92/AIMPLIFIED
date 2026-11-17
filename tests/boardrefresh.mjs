@@ -74,7 +74,7 @@ const HELPERS = ['esc', 'AM', 'BOOK_LABEL', 'bkLabel', 'signed', 'impliedPct', '
   'mlTabRow', 'renderNba', 'nflMlBar', 'nflRow', 'soccerRow'];
 const ARGS = { state, document: doc, LIVE_MODE: true, fetchJson,
   renderNhl: () => { drawn.nhl++; }, renderSoccer: () => { drawn.soccer++; }, renderNfl: () => { drawn.nfl++; }, renderSlip: noop,
-  propSavedLoad: noop, socSavedLoad: noop, propsCardHtml: noop, nbaPpCardHtml: noop, nbaHotCardHtml: noop,
+  propSavedLoad: noop, socSavedLoad: noop, propsCardHtml: noop, nbaPpCardHtml: noop, nbaHotCardHtml: noop, nbaTodayParts: () => ({ top: '', ml: (t) => t }),
   offerStar: noop, miniBar: noop, avatarHtml: noop, shortClub: (n) => n,
   nbaMlLeg: () => ({}), nhlMlLeg: () => ({}), nflMlLeg: () => ({}), soccerMlLeg: () => ({}), mlTabDetail: noop, nflDetail: noop, soccerDetail: noop };
 const build = (names, extra, ret) => new Function(...Object.keys(ARGS), [...names.map(lift), ...extra].join('\n') + `\nreturn { ${ret} };`)(...Object.values(ARGS));

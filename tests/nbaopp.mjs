@@ -15,6 +15,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// The unders card's rows are leg cards since 2026-11-17 (the page brief's step 7): the card's helpers.
+const NBA7 = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
+  'propData', 'propVals', 'propTrend', 'sameGameMap', 'pickLegView', 'PP_LINE_MARKETS', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaModelBit', 'sharpBooksText', 'nbaNick',
+  'NBA_SHARP_BANDS', 'NBA_PROVEN_N', 'NBA_MORE_MODEL_W', 'nbaRot', 'nbaUnderRecord', 'nbaGameSub', 'nbaUnderCardLeg', 'nbaBlkCardLeg', 'nbaPicksProps', 'nbaUnderLegs', 'nbaBlkLegs', 'nbaBlkMoreHtml'];
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD = path.join(HERE, '..');
@@ -47,7 +55,7 @@ function lift(name) {
   throw new Error(`could not close ${name}`);
 }
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const ui = { nbaPp: b, slip: {} };
+const ui = { nbaPp: b, slip: {}, legView: 'detailed' };
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'NHL_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
   'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
@@ -55,7 +63,7 @@ const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', '
   'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'];
 let C;
 try {
-  C = new Function('state', 'esc', CARD.map(lift).join('\n') + '\nreturn { NBA_CODE_NICK, legOppText, nbaPpCardHtml, ppMoreListHtml };')(ui, esc);
+  C = new Function('state', 'esc', CARD.concat(NBA7).filter((n, i, a) => a.indexOf(n) === i).map(lift).join('\n') + '\nreturn { NBA_CODE_NICK, legOppText, nbaNick, nbaPpCardHtml, ppMoreListHtml };')(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 
@@ -86,23 +94,29 @@ ok(say('BOS', 'Chicago Bulls @ New York Knicks') === 'Bulls @ Knicks', 'a code o
 ok(say('NY', '') === '' && say('NY', undefined) === '', 'no game: nothing');
 
 console.log('\n-- on the tab --');
+// Since 2026-11-17 the rows are leg cards (the page brief's step 7), as on Picks and the NHL tab: his
+// team's code, then both clubs, away @ home ("HOU · NBA · Rockets @ Heat"), so the one that isn't
+// his is the opponent.
 const card = C.nbaPpCardHtml();
-const [unders, mores] = card.split('<span class="tc-title">Blocks: More</span>');
-const rowOf = (html, name) => text((html.split(`<b>${name}</b>`)[1] || '').split('</li>')[0]);
+const [unders, mores] = card.split('<h3 class="pk-gh">Blocks: More</h3>');
+const rowOf = (html, name) => text((html.split(`<b>${name}</b>`)[1] || '').split('<li class="lc')[0]);
+const gameOf = (x) => String(x.game).split(' @ ').map(C.nbaNick).join(' @ ');
 const legs = (b.legs || []).filter((x) => x.min_proj >= 18);
 // The legs the card shows, in its own order (the sharp books' since 2026-11-16, tests/sharpcard.mjs).
-const top = [...unders.matchAll(/<span class="tc-l1"><b>([^<]+)<\/b>/g)].map((m) => legs.find((x) => x.player === m[1]));
+const top = [...unders.matchAll(/<span class="lc-name"><b>([^<]+)<\/b>/g)].map((m) => legs.find((x) => x.player === m[1]));
 ok(top.length === 5 && top.every(Boolean), `five legs on the card: ${top.map((x) => x && x.player).join(', ')}`);
 for (const x of top) {
   const row = rowOf(unders, x.player);
-  ok(row.includes(`${x.team} · ${C.legOppText(x)} · Under ${x.point}`), `${x.player}: "${row.slice(row.indexOf(x.team), row.indexOf(x.team) + 44)}"`);
+  const opp = C.legOppText(x).replace(/^(@|v) /, '');
+  ok(row.startsWith(`Under ${x.point}`) && row.includes(`${x.team} · NBA · ${gameOf(x)}`) && gameOf(x).includes(opp),
+    `${x.player}: "${row.slice(row.indexOf(x.team), row.indexOf(x.team) + 36)}", ${opp} the other club`);
 }
-const moreRows = (mores || '').split('<li>').slice(1);
+const moreRows = (mores || '').split('<li class="lc').slice(1);
 ok(moreRows.length > 0, `${moreRows.length} Blocks Mores on the card`);
 for (const r of moreRows) {
-  const name = (r.match(/<b>([^<]+)<\/b>/) || [])[1];
+  const name = (r.match(/<span class="lc-name"><b>([^<]+)<\/b>/) || [])[1];
   const x = b.legs.find((l) => l.player === name && l.market === 'blk');
-  ok(x && text(r).includes(`${x.team} · ${C.legOppText(x)} · Over ${x.point}`), `${name}: Over, with the opponent`);
+  ok(x && text(r).includes(`${name} Over ${x.point}`) && text(r).includes(`${x.team} · NBA · ${gameOf(x)}`), `${name}: Over, with both clubs`);
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

@@ -19,6 +19,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+// The unders card's rows are leg cards since 2026-11-17 (the page brief's step 7): the card's helpers.
+const NBA7 = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
+  'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
+  'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
+  'propData', 'propVals', 'propTrend', 'sameGameMap', 'pickLegView', 'PP_LINE_MARKETS', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine', 'NBA_BANDS', 'NBA_BAND_MIN', 'nbaModelBit', 'sharpBooksText', 'nbaNick',
+  'NBA_SHARP_BANDS', 'NBA_PROVEN_N', 'NBA_MORE_MODEL_W', 'nbaRot', 'nbaUnderRecord', 'nbaGameSub', 'nbaUnderCardLeg', 'nbaBlkCardLeg', 'nbaPicksProps', 'nbaUnderLegs', 'nbaBlkLegs', 'nbaBlkMoreHtml'];
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BOARD = path.join(HERE, '..');
@@ -55,7 +63,7 @@ const have = (n) => app.includes(`function ${n}(`) || app.includes(`const ${n} =
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').replace(/&lt;/g, '<').replace(/&amp;/g, '&').trim();
 
-const ui = { nbaPp: PP, slip: {}, ppLines: {} };
+const ui = { nbaPp: PP, slip: {}, ppLines: {}, legView: 'detailed' };
 const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml',
   'miniBar', 'projLineHtml', 'LEG_OFFERS', 'offerLeg', 'ptDayOf', 'soccerKick', 'AM', 'MARKET_SHORT', 'NBA_ROTATION_MIN', 'NBA_MK', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag',
   'ppCloseLineHtml', 'dfsLinesHtml', 'sharpBooksText', 'sharpTag', 'ppBookLine', 'ppGameLineHtml', 'PP_MORE_MIN', 'injOut', 'outLast', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'ppMoreListHtml',
@@ -63,15 +71,16 @@ const CARD = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', '
   'NBA_BANDS', 'NBA_BAND_MIN', 'nbaBandLandedHtml', 'nbaSharpLandedHtml', 'nbaModelBit', 'nbaNick', 'NBA_CODE_NICK', 'NHL_CODE_NICK', 'legOppText', 'nbaPpCardHtml'].filter(have);
 let C;
 try {
-  C = new Function('state', 'esc', CARD.map(lift).join('\n')
+  C = new Function('state', 'esc', CARD.concat(NBA7).filter((n, i, a) => a.indexOf(n) === i).map(lift).join('\n')
     + `\nreturn { nbaPpCardHtml, nbaLegAtLine, ${['sharpAtLine', 'nbaSharpLandedHtml', 'nbaModelBit', 'NBA_SHARP_BOOKS'].map((n) => (have(n) ? n : `${n}: null`)).join(', ')} };`)(ui, esc);
 } catch (e) { console.log(`  FAIL  the card lifts out of app.js (${e.message})`); process.exit(1); }
 
-// The card's rows, each as its own html.
-const rowsOf = (h) => { const ol = h.slice(h.indexOf('<ol class="tc-legs">'), h.indexOf('</ol>')); return ol.split('<li>').slice(1); };
-const nameOf = (li) => (li.match(/<span class="tc-l1"><b>([^<]+)<\/b>/) || [])[1];
-const bigOf = (li) => (li.match(/<span class="tc-l1"><b>[^<]+<\/b><span class="tc-p([^"]*)"(?: title="([^"]*)")?>(\d+)%<\/span>/) || []).slice(1);
-const landedOf = (li) => text((li.match(/<span class="tc-landed"[^>]*>.*?<\/span>/) || [''])[0]);
+// The card's rows, each as its own html: leg cards since 2026-11-17 (the page brief's step 7).
+const rowsOf = (h) => { const ol = h.slice(h.indexOf('<ol class="tc-legs pk-pool">'), h.indexOf('</ol>')); return ol.split('<li class="lc').slice(1); };
+const nameOf = (li) => (li.match(/<span class="lc-name">(?:<button[^>]*>)?<b>([^<]+)<\/b>/) || [])[1];
+const bigOf = (li) => (li.match(/<b class="lc-pct( [^"]*)?"(?: title="([^"]*)")?>(\d+)%<\/b>/) || []).slice(1);
+// What legs in its range have landed: the card's "Legs like this" tile.
+const landedOf = (li) => text((li.match(/<span class="lc-tk">Legs like this<\/span><b class="lc-tv[^"]*">[^<]*<\/b>/) || [''])[0]);
 const modelOf = (li) => text((li.match(/<span class="tc-model"[^>]*>[^<]*<\/span>/) || [''])[0]);
 const draw = (d) => { ui.nbaPp = d; const h = C.nbaPpCardHtml(); ui.nbaPp = PP; return h; };
 
@@ -85,7 +94,7 @@ ok(vv.sharp_under === 53.9 && vv.inj.out === true, 'Fred VanVleet Under threes, 
 
 console.log('\n-- the card, in the sharp order --');
 const card = draw(PP);
-const unders = card.split('<span class="tc-title">Blocks: More</span>')[0];
+const unders = card.split('<h3 class="pk-gh">Blocks: More</h3>')[0];
 const rows = rowsOf(unders);
 const want = ['Paul George', 'Payton Pritchard', 'Jayson Tatum', 'Aaron Gordon', 'Jabari Smith Jr'];
 ok(JSON.stringify(rows.map(nameOf)) === JSON.stringify(want), `top five by the sharp chance, VanVleet out and off: ${rows.map(nameOf).join(', ')}`);
@@ -95,13 +104,13 @@ const wantLegs = [['Paul George', 'stl'], ['Payton Pritchard', 'threes'], ['Jays
 ok(wantLegs.map((l) => l.sharp_under).join(',') === '57,54.7,54.2,53.5,53.4' && rows.every((li, i) => text(li).includes(`Under ${wantLegs[i].point} `)),
   `the legs: ${wantLegs.map((l) => `${l.player} ${l.market} ${l.sharp_under}`).join(', ')}`);
 ok(shown.every(([, , , p], i) => p != null && Number(p) === Math.round(wantLegs[i].sharp_under)), `the big number is the sharp chance: ${shown.map(([n, , , p]) => `${n} ${p}%`).join(', ')}`);
-ok(shown[0][1] === ' tc-band-good' && shown[1][1] === ' tc-band-good' && shown[3][1] === ' tc-band-none', 'green at 54% and up, the 6-Flex break-even; plain below it');
+ok(shown[0][1] === ' tc-band-good' && shown[1][1] === ' tc-band-good' && shown[3][1] === undefined, 'green at 54% and up, the 6-Flex break-even; plain below it');
 ok(/FanDuel, Novig, ProphetX: their price at PrizePicks' line, de-vigged/.test(shown[0][2] || ''), `and on hover, whose: "${shown[0][2]}"`);
-ok(landedOf(rows[0]) === '54-58% legs landed 58% (64 of 111)' && landedOf(rows[3]) === '50-54% legs landed 54% (375 of 695)',
-  `under it, what its sharp range has landed: "${landedOf(rows[0])}", "${landedOf(rows[3])}"`);
+ok(landedOf(rows[0]) === 'Legs like this 58% · 64 of 111' && landedOf(rows[3]) === 'Legs like this 54% · 375 of 695',
+  `beside it, what its sharp range has landed: "${landedOf(rows[0])}", "${landedOf(rows[3])}"`);
 const pp = rows[1];
-ok(modelOf(pp) === 'model 64% (its 60-65% landed 52%)' && /195 of 374/.test(pp), `the model's chance stays, small, on the third line: Pritchard "${modelOf(pp)}"`);
-ok(pp.indexOf('class="tc-l2"') < pp.indexOf('class="tc-model"') && !/class="tc-sharp/.test(pp), 'under the bet, where the sharp tag was');
+ok(modelOf(pp) === 'model 64% (its 60-65% landed 52%)' && /195 of 374/.test(pp), `the model's chance stays, small: Pritchard "${modelOf(pp)}"`);
+ok(/<span class="lc-tk">Sharp books<\/span><b class="lc-tv">55%<\/b><span class="lc-ts"><span class="tc-model"/.test(pp) && !/class="tc-sharp/.test(pp), 'under the sharp books\' number, in their tile');
 ok(modelOf(rows[0]) === 'model 49% (its under 55% landed 51%)', `Paul George: the model leaned the other way, "${modelOf(rows[0])}"`);
 
 console.log('\n-- its record lines --');
@@ -160,7 +169,10 @@ ui.ppLines = {};
 console.log('\n-- nothing else reads it --');
 ok((app.match(/nbaLegAtLine\(/g) || []).length === 2 && (app.match(/sharpAtLine\(/g) || []).length === 2,
   'the moved leg is the card\'s alone: nbaLegAtLine and sharpAtLine are called nowhere else, so Picks is as it was');
-ok(/\}\)\.join\(''\)\}<\/ol>\$\{nbaBlkMoreHtml\(d, rot\)\}<\/div>`;/.test(lift('nbaPpCardHtml')), 'the blocks Mores read the same rotation list as before, in its order');
+// The unders and the blocks Mores read one rotation list (nbaRot) since the leg cards (2026-11-17).
+ok(/nbaRot\(d, Date\.now\(\)\)\.map\(\(x0, i\) => \(\{ x: nbaLegAtLine\(x0\), i \}\)\)/.test(lift('nbaUnderLegs'))
+  && /ppMoreTop\(nbaRot\(d, Date\.now\(\)\), \(x\) => x\.market === 'blk', 3\)/.test(lift('nbaBlkLegs')), 'the blocks Mores read the same rotation list as before, in its order');
+ok(/spec: \{ \.\.\.leg\.spec, playerId: x\.player_id \|\| null \}/.test(lift('nbaUnderCardLeg')), 'the leg card stars it with that spec, his face added');
 ok(/spec: \{[\s\S]*?pp: \{ line: x\.point, under: x\.model_under \} \} \};/.test(lift('nbaPpLeg')), 'a starred leg still goes on the slip with the model\'s chance, as the entry log reads it');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

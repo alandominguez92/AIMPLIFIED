@@ -194,9 +194,13 @@ ok(waitCss && !/nowrap/.test(waitCss) && /max-width:100%/.test(waitCss), 'a tag 
 ok(/class="tc-wait"/.test(flagged) && />GTD: back soreness</.test(flagged) && /ESPN's injury report, read /.test(flagged), 'the NBA tab flags Toppin, with when it was read');
 ok(/>Out: rest</.test(CT(tSh)), 'and an out player reads Out');
 ok(CT(tNem) === '' && CT({ player: 'x' }) === '', 'not listed or not read: no tag, on a tab of a few rows that would all carry one');
-const cardFn = app.slice(app.indexOf('  function nbaPpCardHtml('), app.indexOf('  function nbaBlkMoreHtml('));
-const moreFn = app.slice(app.indexOf('  function ppMoreListHtml('), app.indexOf('  function ppMoreLineHtml('));
-ok(/soccerKick\(x\.commence\)\)\}\$\{nbaCardInjTag\(x\)\}\$\{same\}\$\{gap\}/.test(cardFn) && /soccerKick\(x\.commence\)\)\}\$\{nbaCardInjTag\(x\)\}\$\{same\}(\$\{held\})?<\/span>/.test(moreFn), 'on the under rows and the blocks Overs');
+// The rows are leg cards since 2026-11-17 (the page brief's step 7), which draw injuryTag: the tab's
+// legs carry a listed player's report and nothing else, so the rest say nothing, as before.
+const legOf = (name) => app.slice(app.indexOf(`  function ${name}(`), app.indexOf('\n  }\n', app.indexOf(`  function ${name}(`)));
+const passed = /inj: x\.inj && x\.inj\.status \? x\.inj : null, injUnread: true/;
+ok(passed.test(legOf('nbaUnderCardLeg')) && passed.test(legOf('nbaBlkCardLeg')) && /const it = injuryTag\(x\);/.test(legOf('legCardHtml')), 'on the under rows and the blocks Overs');
+const asTab = (x) => IT({ sport: 'nba', inj: x.inj && x.inj.status ? x.inj : null, injUnread: true });
+ok(asTab(tTop).text === 'GTD: back soreness' && asTab(tSh).text === 'Out: rest' && asTab(tNem) === null, 'there: Toppin GTD, Sharpe Out, Nembhard (not listed) nothing');
 // The hero (2026-11-10): a player's note on the game line as before; a moneyline's report, a line a side.
 ok(/const it = injuryTag\(x\);\n[\s\S]{0,400}?const injLines = it && Array\.isArray\(it\.parts\) && it\.parts\.length \? it\.parts : null;\n\s+if \(it && !injLines\) notes\.push\(it\.text\);/.test(app)
   && /\(injLines \? `<span class="hl-inj" title="\$\{esc\(it\.title\)\}">\$\{injLines\.map\(heroInjLine\)\.join\(''\)\}<\/span>` : ''\)/.test(app) && /const it = injuryTag\(x\);\n\s+if \(it\) for \(const t of it\.parts \|\| \[it\.text\]\) tags\.push/.test(app) && !/'check injuries'\)/.test(app),

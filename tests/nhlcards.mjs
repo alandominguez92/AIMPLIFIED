@@ -55,8 +55,8 @@ const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 
   'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
   'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml',
   'NBA_MK', 'NHL_MK', 'PP_MORE_MIN', 'ppMoreP', 'ppMoreMk', 'ppMoreLeg', 'ppMoreTop', 'injOut', 'ppMoreLineHtml', 'nhlNick',
-  'NHL_PROVEN_N', 'nhlMoreRecord', 'propData', 'propVals', 'nhlTrend', 'nhlGoaliesOf', 'nhlMoreCardLeg', 'nhlPicksMoreIds', 'nhlMoreLegs', 'nhlMlCardLegs', 'sameGameMap', 'pickLegView',
-  'tabLegViewHtml', 'tabLegSizeHtml', 'nhlPpCardHtml', 'nhlTodayParts'];
+  'NHL_PROVEN_N', 'nhlMoreRecord', 'propData', 'propVals', 'propTrend', 'nhlTrend', 'nhlGoaliesOf', 'nhlMoreCardLeg', 'nhlPicksMoreIds', 'nhlMoreLegs', 'tabMlCardLegs', 'nhlMlCardLegs', 'sameGameMap', 'pickLegView',
+  'tabLegViewHtml', 'tabLegSizeHtml', 'tabTodayHtml', 'tabMlHtml', 'nhlPpCardHtml', 'nhlTodayParts'];
 const state = { slip: {}, nhlPp: PP, picks: PK, props: null, legView: 'detailed', entrySize: 2 };
 let F;
 try {
@@ -159,13 +159,13 @@ console.log('\n-- 8. on the page --');
 const rn = lift('renderNhl');
 ok(/grid\.innerHTML = nhlRecordHtml\(d\.record\) \+ parts\.top \+ propsCardHtml\('nhl'\) \+ parts\.ml\(table\) \+ hotCardHtml\('nhl'\);/.test(rn),
   'the mock\'s order: today\'s legs and the Mores, the props card and its stat buttons, the moneylines and the table, Hot players');
-ok(/const LEG_CARD_TABS = new Set\(\['nhl'\]\);/.test(src) && /const leg = LEG_CARD_TABS\.has\(state\.sport\) \? null : topLegFor/.test(lift('renderTopCard')), 'the old top card stays off the tab: its own best card replaces it');
-ok(/renderTopCard\(\);\n\s+\/\/ The NHL tab's moneyline cards and goalies are Picks' \(step 7\)\.\n\s+if \(state\.sport === 'nhl'\) renderNhl\(\);/.test(src), 'Picks arriving redraws the tab: its moneylines are Picks\'');
+ok(/const LEG_CARD_TABS = new Set\(\['nhl', 'nba'\]\);/.test(src) && /const leg = LEG_CARD_TABS\.has\(state\.sport\) \? null : topLegFor/.test(lift('renderTopCard')), 'the old top card stays off the tab: its own best card replaces it');
+ok(/renderTopCard\(\);\n\s+\/\/ The NHL and NBA tabs' best leg, moneyline cards and goalies are Picks' \(step 7\)\.\n\s+if \(state\.sport === 'nhl'\) renderNhl\(\);/.test(src), 'Picks arriving redraws the tab: its moneylines are Picks\'');
 for (const c of ['leg-view', 'entry-size', 'leg-open']) {
   const body = (new RegExp(`case '${c}': \\{[\\s\\S]*?break;\\n\\s+\\}`).exec(src) || [''])[0];
   ok(/if \(state\.sport === 'nhl'\) renderNhl\(\);/.test(body), `${c} redraws the NHL tab too`);
 }
-ok(/const host = document\.getElementById\(state\.sport === 'nhl' \? 'nhlGrid' : 'picksGrid'\);/.test(src), 'the focus goes back to the name on the tab in view');
+ok(/const host = document\.getElementById\(state\.sport === 'nhl' \? 'nhlGrid' : state\.sport === 'nba' \? 'nbaGrid' : 'picksGrid'\);/.test(src), 'the focus goes back to the name on the tab in view');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
