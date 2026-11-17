@@ -39,8 +39,9 @@ ok(/^No fixtures in the next day and a half\. Next matchday is .+ — 12 fixture
   `a later matchday is named: "${text(html(ahead, 'all'))}"`);
 ok(text(html(empty, 'mls')) === 'No fixtures on the next matchday for this league.' && /for this league/.test(html(ahead, 'epl')),
   'a league chip with nothing on it still says so, with or without a day ahead');
-ok(/if \(!games\.length\) \{ el\.soccerGrid\.innerHTML = props \+ soccerEmptyHtml\(d, state\.soccerLeague\); return; \}/.test(src),
-  'and the board draws it');
+// Inside the moneylines section since 2026-11-17 (the page brief's step 7: tests/soccards.mjs).
+ok(/if \(!games\.length\) \{ el\.soccerGrid\.innerHTML = tab\(soccerEmptyHtml\(d, state\.soccerLeague\)\); return; \}/.test(src),
+  'and the board draws it, where the table goes');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

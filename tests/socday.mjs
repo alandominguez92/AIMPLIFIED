@@ -7,7 +7,7 @@
 //      day's last has kicked off, the next day's are the table, though the worker is still on the old day
 //   4. the league buttons come from the table as drawn, so a league playing only tomorrow gets one when
 //      tomorrow is shown, and loses it, back to All, when tomorrow is hidden again
-//   5. "Most likely to win" ranks the fixtures in the table
+//   5. "Most likely to win" ranked the fixtures in the table; since 2026-11-17 Picks' favourites take its place
 //
 // Real data: production's /api/soccer-board?all=1 at 5:06 AM Pacific on Nov 11
 // (tests/fixtures/soccer-board-all-20261111.json: Nations League on Thursday Nov 12 and Friday Nov 13,
@@ -55,7 +55,7 @@ const el = { soccerGrid: { innerHTML: '', querySelector: () => null }, soccerCou
 const state = { soccerLeague: 'all' };
 const noop = () => '';
 const ARGS = { state, el, document: { getElementById: (id) => (id === 'soccerLeagues' ? leagues : null) },
-  socPropsCardHtml: noop, hotCardHtml: noop, miniBar: noop, offerStar: noop, soccerMlLeg: () => ({}), soccerDetail: noop };
+  socPropsCardHtml: noop, hotCardHtml: noop, socTodayParts: () => ({ top: '', ml: (t) => t }), socRecordHtml: noop, miniBar: noop, offerStar: noop, soccerMlLeg: () => ({}), soccerDetail: noop };
 const NAMES = ['esc', 'AM', 'BOOK_LABEL', 'bkLabel', 'ptDayOf', 'propDayName', 'propDayTitle', 'soccerKick', 'kickWhole',
   'mlDaySplit', 'mlLaterOpen', 'mlLaterHtml', 'mlTableGames', 'mlCountText', 'CLUB_DROP', 'shortClub',
   'renderSoccerLeagues', 'soccerEmptyHtml', 'soccerFavCard', 'soccerRow', 'renderSoccerGrid', 'renderSoccer', 'dispatchAction'];
@@ -112,7 +112,8 @@ if (F) {
   r = rows();
   ok(r.length === 10 && r.includes('Germany at Serbia') && count() === '10 fixtures tomorrow', `Friday's ten are the table: "${count()}"`);
   ok(line() === null, 'no line: nothing later on the board');
-  ok(favs().length === 2 && favs().every((id) => onDay('2026-11-13').some((g) => g.id === id)), `"Most likely to win" ranks Friday's two priced fixtures (${favs().length})`);
+  // Off the tab since 2026-11-17 (the page brief's step 7): Picks' favourites are its cards (tests/soccards.mjs).
+  ok(favs().length === 0, `"Most likely to win" is off the tab: Picks' favourites take its place (${favs().length})`);
 
   console.log('\n-- 1:00 AM Friday Nov 20: one La Liga fixture today, three leagues tomorrow --');
   NOW = RealDate.parse('2026-11-20T09:00:00Z');

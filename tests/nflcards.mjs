@@ -131,13 +131,13 @@ const rn = lift('renderNflMoneyline');
 ok(/grid\.innerHTML = rec \+ parts\.top \+ propsCardHtml\('nfl'\) \+ parts\.ml\(table\) \+ hotCardHtml\('nfl'\);/.test(rn),
   "the NHL and NBA tabs' order: the record, today's legs, the props card and its stat buttons, the moneylines and the table, Hot players");
 ok(/const table = games\.length \? nflTable\(games\) \+ mlLaterHtml\('nfl', sp\)/.test(rn), 'the table keeps the next slate under it');
-ok(/const LEG_CARD_TABS = new Set\(\['nhl', 'nba', 'nfl'\]\);/.test(src), 'the old top card stays off the tab: its own best card replaces it');
-ok(/\/\/ The NHL, NBA and NFL tabs' best leg, moneyline cards and goalies are Picks' \(step 7\)\.\n\s+if \(state\.sport === 'nhl'\) renderNhl\(\);\n\s+if \(state\.sport === 'nba'\) renderNba\(\);\n\s+if \(state\.sport === 'nfl'\) renderNfl\(\);/.test(src), 'Picks arriving redraws the tab');
+ok(/const LEG_CARD_TABS = new Set\(\['nhl', 'nba', 'nfl', 'soccer'\]\);/.test(src), 'the old top card stays off the tab: its own best card replaces it');
+ok(/\/\/ The NHL, NBA, NFL and soccer tabs' best leg, moneyline cards and goalies are Picks' \(step 7\)\.\n\s+if \(state\.sport === 'nhl'\) renderNhl\(\);\n\s+if \(state\.sport === 'nba'\) renderNba\(\);\n\s+if \(state\.sport === 'nfl'\) renderNfl\(\);/.test(src), 'Picks arriving redraws the tab');
 for (const c of ['leg-view', 'entry-size', 'leg-open']) {
   const body = (new RegExp(`case '${c}': \\{[\\s\\S]*?break;\\n\\s+\\}`).exec(src) || [''])[0];
   ok(/if \(state\.sport === 'nfl'\) renderNfl\(\);/.test(body), `${c} redraws the NFL tab too`);
 }
-ok(/state\.sport === 'nfl' \? 'nflMlGrid' : 'picksGrid'/.test(src), 'the focus goes back to the name on the tab in view');
+ok(/nfl: 'nflMlGrid', soccer: 'soccerGrid' \}\[state\.sport\] \|\| 'picksGrid'/.test(src), 'the focus goes back to the name on the tab in view');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);

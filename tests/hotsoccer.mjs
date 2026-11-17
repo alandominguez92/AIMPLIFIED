@@ -468,7 +468,8 @@ state.hot.soccer = { ...payload, ready: false, teamsReady: 8, teamsNeeded: 14, g
 ok(/Not enough games read yet: opponents are ranked once 14 teams have played 5, and 8 have so far/.test(card('soccer')), 'too early: how far off, in games');
 state.hot.soccer = null;
 ok(card('soccer') === '', 'no list: no section');
-ok(/const props = socPropsCardHtml\(\) \+ hotCardHtml\('soccer'\);/.test(app), 'on the tab, under the props card');
+// Under the moneylines and the table since 2026-11-17 (the page brief's step 7), as on the other tabs.
+ok(/const tab = \(table\) => socRecordHtml\(\) \+ parts\.top \+ socPropsCardHtml\(\) \+ parts\.ml\(table\) \+ hotCardHtml\('soccer'\);/.test(app), 'on the tab, under the moneylines and the table');
 ok(/fetchJson\('\/api\/hot-players\?sport=soccer'\)/.test(app), 'and fetched with it');
 ok(/case 'hot-all': \{[\s\S]{0,260}renderSoccer\(\)/.test(app), 'the tap redraws the tab');
 

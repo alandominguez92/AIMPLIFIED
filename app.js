@@ -4961,7 +4961,7 @@
       // Every leg's break-even tile follows it; no leg leaves the list (the page brief's step 3).
       case 'entry-size': {
         const n = Number(target.dataset.n);
-        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); if (state.sport === 'nhl') renderNhl(); if (state.sport === 'nba') renderNba(); if (state.sport === 'nfl') renderNfl(); }
+        if (PP_BREAK_EVEN[n]) { state.entrySize = n; try { localStorage.setItem('aimplified_entry_size', String(n)); } catch (err) { /* private mode */ } renderPicks(); if (state.sport === 'nhl') renderNhl(); if (state.sport === 'nba') renderNba(); if (state.sport === 'nfl') renderNfl(); if (state.sport === 'soccer') renderSoccer(); }
         break;
       }
       case 'ticket-save': saveTicketImage(); break;
@@ -4987,6 +4987,7 @@
         if (state.sport === 'nhl') renderNhl();
         if (state.sport === 'nba') renderNba();
         if (state.sport === 'nfl') renderNfl();
+        if (state.sport === 'soccer') renderSoccer();
         break;
       }
       // In Simple, a tap on a leg opens that one card in full; a second tap folds it again.
@@ -4998,9 +4999,10 @@
         if (state.sport === 'nhl') renderNhl();
         if (state.sport === 'nba') renderNba();
         if (state.sport === 'nfl') renderNfl();
+        if (state.sport === 'soccer') renderSoccer();
         // The name on the tab in view: the same leg can be on Picks too, out of sight.
         const sel = `.lc-nb[data-leg="${window.CSS && CSS.escape ? CSS.escape(id) : id}"]`;
-        const host = document.getElementById(state.sport === 'nhl' ? 'nhlGrid' : state.sport === 'nba' ? 'nbaGrid' : state.sport === 'nfl' ? 'nflMlGrid' : 'picksGrid');
+        const host = document.getElementById({ nhl: 'nhlGrid', nba: 'nbaGrid', nfl: 'nflMlGrid', soccer: 'soccerGrid' }[state.sport] || 'picksGrid');
         const again = fromName && host && host.querySelector(sel);
         if (again) again.focus({ preventScroll: true });
         break;
@@ -5842,10 +5844,11 @@
     state.picksAt = Date.now();
     renderPicks();
     renderTopCard();
-    // The NHL, NBA and NFL tabs' best leg, moneyline cards and goalies are Picks' (step 7).
+    // The NHL, NBA, NFL and soccer tabs' best leg, moneyline cards and goalies are Picks' (step 7).
     if (state.sport === 'nhl') renderNhl();
     if (state.sport === 'nba') renderNba();
     if (state.sport === 'nfl') renderNfl();
+    if (state.sport === 'soccer') renderSoccer();
     const pp = soc && await soc;
     if (pp && Array.isArray(pp.matches)) {
       state.socProps = socKeepExpected(pp, state.socProps);
@@ -6035,7 +6038,7 @@
   }
   // The tabs that draw their own legs as leg cards, the best one large (the page brief's step 7):
   // the old card stays off them.
-  const LEG_CARD_TABS = new Set(['nhl', 'nba', 'nfl']);
+  const LEG_CARD_TABS = new Set(['nhl', 'nba', 'nfl', 'soccer']);
   function renderTopCard() {
     const box = document.getElementById('topCard');
     if (!box) return;
@@ -9087,14 +9090,17 @@
     const board = mlTableGames('soccer', sp);
     renderSoccerLeagues(board);
     if (!d) { el.soccerGrid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
-    // The player-props card leads the tab in every state: it has its own feed,
-    // and a day with no priced fixture can still have lineups posted.
-    const props = socPropsCardHtml() + hotCardHtml('soccer');
-    if (d.error) { el.soccerGrid.innerHTML = props + `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
+    // The NHL, NBA and NFL tabs' order (2026-11-17, the page brief's step 7): today's legs, the
+    // player-props card with its stat buttons, the moneylines over every fixture's prices, Hot
+    // players. The props card is there in every state: it has its own feed, and a day with no
+    // priced fixture can still have lineups posted. The league buttons above filter it and the table.
+    const parts = socTodayParts();
+    const tab = (table) => socRecordHtml() + parts.top + socPropsCardHtml() + parts.ml(table) + hotCardHtml('soccer');
+    if (d.error) { el.soccerGrid.innerHTML = tab(`<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`); return; }
     const lgOk = (g) => state.soccerLeague === 'all' || g.league === state.soccerLeague;
     const games = board.filter(lgOk);
     if (el.soccerCount) el.soccerCount.textContent = mlCountText({ ...sp, shown: sp.shown.filter(lgOk) }, now, 'fixture');
-    if (!games.length) { el.soccerGrid.innerHTML = props + soccerEmptyHtml(d, state.soccerLeague); return; }
+    if (!games.length) { el.soccerGrid.innerHTML = tab(soccerEmptyHtml(d, state.soccerLeague)); return; }
     // view-moneyline carries --bcols, and the soccer row has the same seven
     // cells as the NFL moneyline row. Without the wrapper .board-row has no
     // column template at all and every cell collapses to content width — the
@@ -9103,11 +9109,31 @@
     // carries the note; soccer was written without one.
     const head = ['Fixture', '1X2 lead', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
-    el.soccerGrid.innerHTML = props + soccerFavCard(games)
-      + `<div class="board view-moneyline"><div class="board-inner">`
+    el.soccerGrid.innerHTML = tab(`<div class="board view-moneyline"><div class="board-inner">`
       + `<div class="board-head-row">${head}</div>`
       + `<div>${games.map(soccerRow).join('')}</div>`
-      + `</div></div>` + mlLaterHtml('soccer', { ...sp, later: sp.later.filter(lgOk) }, now, 'fixture', 'kicks off');
+      + `</div></div>` + mlLaterHtml('soccer', { ...sp, later: sp.later.filter(lgOk) }, now, 'fixture', 'kicks off'));
+  }
+  // The soccer tab's legs (step 7). Soccer's props stay off Picks (the owner's call), so its legs
+  // are the favourites to win Picks lists: the best one large, the others as the moneylines' cards.
+  // They take the place of "Most likely to win" (soccerFavCard, left in place): its record is the
+  // tab's first line, and every fixture's favourite is in the table under them.
+  function socTodayParts() {
+    const mls = tabMlCardLegs('soccer_fav');
+    const best = mls[0] || null;
+    const ctx = { sport: 'soccer', same: sameGameMap(mls), topMl: null, hasBest: !!best, best };
+    const body = best ? legCardHtml(best, false, '', true, ctx)
+      : `<div class="tc-wait-note">${state.picks && !state.picks.error ? 'No soccer favourite on Picks yet: it lists the fixtures kicking off within a day, at 65%+.' : 'The soccer legs show once Picks has loaded.'}</div>`;
+    return {
+      top: tabTodayHtml('soccer', 'The soccer favourites Picks lists, for your PrizePicks entry. Soccer props stay off Picks: the props card is under this. The call is yours.', body),
+      ml: tabMlHtml('soccer', mls.slice(1), ctx, best ? 'No other favourite at 65%+ in the fixtures kicking off within a day.' : 'No favourite at 65%+ in the fixtures kicking off within a day.'),
+    };
+  }
+  // The favourites' record, as "Most likely to win" had it (tracked from Sep 26).
+  function socRecordHtml() {
+    const rec = state.trackRecord && state.trackRecord.soccerFav;
+    return rec && rec.n ? `<p class="soc-note">Favourites so far <b>${esc(rec.record)}</b> · ${rec.units >= 0 ? '+' : ''}${esc(String(rec.units))}u, tracked from Sep 26.</p>`
+      : '<p class="soc-note">Favourites tracked from Sep 26.</p>';
   }
 
   // "Brighton and Hove Albion" cannot sit three-to-a-row on a phone. Drop the
