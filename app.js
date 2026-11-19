@@ -6295,11 +6295,13 @@
       if (best && x.spec && x.spec.pp) market = `<div class="lc-tile" title="${note}"><span class="lc-tk">Market</span><b class="lc-tv">PrizePicks ${esc(String(x.spec.pp.line))}</b><span class="lc-ts">sharp books ${esc(pct0(x.sharp))}${showModel ? ` · ${modelSub}` : ''}</span></div>`;
       else tiles.push(`<div class="lc-tile" title="${note}"><span class="lc-tk">Sharp books</span><b class="lc-tv">${esc(pct0(x.sharp))}</b><span class="lc-ts">${showModel ? modelSub : 'at this line'}</span></div>`);
     }
-    // His projection against the line, and how far it clears it (the best card's first tile).
+    // His projection against the line, and how far it clears it (the best card's first tile). In
+    // the bar's own numbers (2026-11-19): "1.1 vs line 0.5, 0.6 cushion" sat over the bar's "proj
+    // 1.05 · line 0.5 · 0.55 cushion" on Bouchard's card.
     if (best && !team && typeof x.proj === 'number' && x.spec && x.spec.pp) {
       const line = x.spec.pp.line, over = x.spec.side === 'Over';
-      const cush = r1(over ? x.proj - line : line - x.proj);
-      tiles.push(tile('Projection', `${esc(String(r1(x.proj)))} vs line ${esc(String(line))}`,
+      const cush = Math.round((over ? x.proj - line : line - x.proj) * 100) / 100;
+      tiles.push(tile('Projection', `${esc(String(x.proj))} vs line ${esc(String(line))}`,
         cush >= 0 ? `${cush} cushion` : `${Math.abs(cush)} ${over ? 'under' : 'over'} the line`, cush >= 0 ? '' : 'o'));
     }
     if (!r.n) tiles.push(tile('Legs like this', 'none graded yet', '', 'thin'));
@@ -7796,15 +7798,22 @@
   }
   // Each league's list has one shape. What differs: the runs' lines, and whether it is the
   // NBA's, whose rule has been tested and whose report and numbers are on it.
-  function hotBodyHtml(h, head, all, tapAttrs, sport, oppLine, rowHtml, labelOf) {
+  function hotBodyHtml(h, head, all, tapAttrs, sport, oppLine, rowHtml, labelOf, replayed) {
     if (!h.players.length) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">No one is on a run of 5 or more in the next games.</div></div>`;
     const players = outLast(h.players);
-    const isSoft = (m) => m.third === 'soft', soft = players.filter((p) => p.markets.some(isSoft));
+    const isSoft = (m) => m.third === 'soft';
+    // Runs on a replayed stat first (2026-11-19): the list goes longest run first, and on Nov 19
+    // four of the NBA card's five were stats added Nov 18, with no side, ahead of Avdija's threes
+    // with one. `replayed` is the league's replayed stats; without it, the list's own order.
+    const hasReplayed = (p) => !replayed || p.markets.some((m) => isSoft(m) && replayed(m));
+    const soft = players.filter((p) => p.markets.some(isSoft)).sort((a, b) => injOut(a) - injOut(b) || hasReplayed(b) - hasReplayed(a));
     // One run a player until the tap (2026-11-03): every soft run took five players to 3,020px on
-    // a phone. His top run, or the first with a PrizePicks number; the others named in a line.
+    // a phone. His top run (a replayed one first), or the first with a PrizePicks number; the others
+    // named in a line.
     const runsHtml = (p) => {
       if (all) return p.markets.map((m) => rowHtml(p, m) + hotBoxesHtml(m)).join('');
-      const runs = p.markets.filter(isSoft), top = runs.find((m) => m.line != null) || runs[0], rest = runs.filter((m) => m !== top);
+      const runs = p.markets.filter(isSoft), lead = replayed ? runs.filter(replayed) : [];
+      const top = lead.find((m) => m.line != null) || lead[0] || runs.find((m) => m.line != null) || runs[0], rest = runs.filter((m) => m !== top);
       return rowHtml(p, top) + hotBoxesHtml(top) + (rest.length ? `<span class="hot-line hot-also">Also on a run: ${rest.map((m) => esc(labelOf(m))).join(', ')}</span>` : '');
     };
     const shown = all ? players : soft.slice(0, NBA_HOT_TOP);
@@ -7832,7 +7841,7 @@
     if (!h.ready) {
       return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games yet. A player needs ${h.gamesNeeded} games, and opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}: ${h.teamsReady} have so far.</div></div>`;
     }
-    return hotBodyHtml(h, head, !!state.nbaHotAll, 'data-action="nba-hot-all"', 'nba', (p) => `${esc(nbaNick(p.oppName))} · ${esc(soccerKick(p.commence))}${nbaCardInjTag(p)}`, (p, m) => nbaHotMarketHtml(p, m, h.flexBreakEven), (m) => NBA_HOT_MK[m.market]);
+    return hotBodyHtml(h, head, !!state.nbaHotAll, 'data-action="nba-hot-all"', 'nba', (p) => `${esc(nbaNick(p.oppName))} · ${esc(soccerKick(p.commence))}${nbaCardInjTag(p)}`, (p, m) => nbaHotMarketHtml(p, m, h.flexBreakEven), (m) => NBA_HOT_MK[m.market], (m) => m.tested !== false);
   }
   const SOC_HOT_REPLAYED = new Set(['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves']);
   const HOT_LEAGUE = {
@@ -7848,7 +7857,9 @@
     // Replayed through the site's own list, Nov 3, ESPN only. With 10+ starts 46.4% of 647 runs in 2024-25 and 45.9% of 704 in 2025-26.
     // With 5-9, measured against last season's average, 61.4% of 264 in 2025-26, 59-65 on teams held out. Nothing by stat, gap, length or opponent beat these across seasons.
     // The replay ran the first seven stats only: the three since have no "run goes on".
-    soccer: { name: 'soccer', games: 'starts', face: 'soccer', goesOn: (m) => (!SOC_HOT_REPLAYED.has(m.market) ? null : m.lastSeason != null ? { pct: 60, of: '264 runs like it last season' } : { pct: 46, of: '1,351 runs like it, the last two seasons' }),
+    // `replayed`: the stats that replay ran, listed first. The NHL's and NFL's have no percentage on
+    // any stat, so their lists keep their own order.
+    soccer: { name: 'soccer', games: 'starts', face: 'soccer', replayed: (m) => SOC_HOT_REPLAYED.has(m.market), goesOn: (m) => (!SOC_HOT_REPLAYED.has(m.market) ? null : m.lastSeason != null ? { pct: 60, of: '264 runs like it last season' } : { pct: 46, of: '1,351 runs like it, the last two seasons' }),
       rated: "“Run goes on” is his next start beating his average, not PrizePicks' number, which we have no history of in soccer. With 10+ starts the next start came back to about his average. Goals plus assists, fouls drawn and goals conceded joined on Nov 18, after that replay, so they have no percentage. ESPN stopped sending passes, tackles and clearances on Oct 12.",
       mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves', goal_ast: 'Goals + assists', fouls_drawn: 'Fouls drawn', conceded: 'Goals conceded' },
       allow: { fouls_drawn: (w) => `commit the ${w} fouls`, conceded: (w) => `score the ${w} goals` } },
@@ -7868,7 +7879,7 @@
     const head = `<div class="tc-head"><span class="tc-title">Hot players</span></div>`
       + `<div class="tc-sub">Five or more ${lg.games} in a row above his own average, or above last season's average with under 10 ${lg.games}, with the team he plays ranked for that stat${h.early ? ` on ${h.gamesNeeded}+ games${(h.players || []).some((p) => p.markets.some((m) => m.ranksOn)) ? ', or 3 where a row says so' : ''}` : ''}. Not tested in ${lg.name}, so it shows no side. ${lg.rated} A lead, not a pick: off Picks and out of the entries.</div>`;
     if (!h.ready) return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games read yet: opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}, and ${h.teamsReady} have so far.</div></div>`;
-    return hotBodyHtml(h, head, !!state.hotAll[sport], `data-action="hot-all" data-sport="${sport}"`, lg.face, (p) => `${esc(p.oppNick)} · ${esc(soccerKick(p.commence))}`, (p, m) => hotRowHtml(p, m, lg), (m) => lg.mk[m.market]);
+    return hotBodyHtml(h, head, !!state.hotAll[sport], `data-action="hot-all" data-sport="${sport}"`, lg.face, (p) => `${esc(p.oppNick)} · ${esc(soccerKick(p.commence))}`, (p, m) => hotRowHtml(p, m, lg), (m) => lg.mk[m.market], lg.replayed);
   }
   function renderNba() {
     const grid = document.getElementById('nbaGrid');

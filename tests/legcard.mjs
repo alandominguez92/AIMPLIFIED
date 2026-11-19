@@ -223,6 +223,13 @@ ok(!tilesOf(QB).some((t) => t.key === 'Sharp books'), 'and not twice');
 ok(/data-action="pp-line"/.test(QB), 'a rebounds Less keeps its line stepper');
 const wrong = F.legRow({ ...jabari, proj: 0.3 }, false, '', true);
 ok(tile(wrong, /^Projection/).sub === '0.2 under the line' && tile(wrong, /^Projection/).cls === 'o', 'a projection on the wrong side says by how much, in amber');
+// The tile in the bar's own numbers (2026-11-19): Bouchard's card read "1.1 vs line 0.5, 0.6
+// cushion" over the bar's "proj 1.05 · line 0.5 · 0.55 cushion". Matthew Tkachuk's assists More in
+// the pool recorded Nov 14 at 22:00 UTC, projected 1.09, is the same case.
+const tkc = D14.ppPool.find((x) => x.title === 'Matthew Tkachuk Over 0.5 AST');
+const TK = F.legRow(tkc, false, '', true);
+ok(tile(TK, /^Projection/).value === '1.09 vs line 0.5' && tile(TK, /^Projection/).sub === '0.59 cushion' && text(TK).includes('proj 1.09 · line 0.5 · 0.59 cushion'),
+  `Tkachuk's 1.09 against 0.5: the tile says what the bar under it says (tile "${tile(TK, /^Projection/).value}, ${tile(TK, /^Projection/).sub}")`);
 state.slip[F.offerLeg(F.pickLeg(jabari))] = true;
 ok(/class="lc-add on" data-action="leg-add" data-leg="[^"]+" aria-pressed="true">On your slip · tap to remove<\/button>/.test(F.legRow(jabari, false, '', true)), 'on the slip: "On your slip · tap to remove"');
 delete state.slip[F.offerLeg(F.pickLeg(jabari))];
