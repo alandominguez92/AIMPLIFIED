@@ -3358,8 +3358,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .pks-bt span { display:block; font-family:var(--mono); font-size:12px; color:var(--textDim); }
   .pks-open { flex:none; min-height:44px; padding:0 16px; border:0; border-radius:8px; background:var(--accentFill); color:var(--onAccent);
     font-family:var(--sans); font-size:14px; font-weight:800; cursor:pointer; }
-  /* Room under the last card for the bar, and the toast above it. */
-  #picksGrid:has(.pks-bar) { padding-bottom:88px; }
+  /* Room at the foot of the page for the bar, and the toast above it. Under the footer, not the last
+     card (2026-11-18): at the very bottom the bar sat on the footer's links. */
+  body:has(#picksBoard:not([hidden]) .pks-bar) { padding-bottom:calc(88px + env(safe-area-inset-bottom, 0px)); }
   body:has(#picksBoard:not([hidden]) .pks-bar) .toast { bottom:96px; }
 }
 

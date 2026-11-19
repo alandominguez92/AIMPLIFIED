@@ -142,7 +142,9 @@ ok(/@media \(max-width: 999\.98px\) \{\n\s+\.pks \{ display:none; \}/.test(css) 
   'below that, a bar fixed at the bottom that opens the panel as a sheet');
 for (const sel of ['.pks-rm', '.pks-x']) ok(new RegExp(`\\${sel} \\{[^}]*width:44px; height:44px;`).test(css), `${sel} is a 44px target`);
 ok(/\.pks-open \{[^}]*min-height:44px;/.test(css) && /\.pks-more button \{[^}]*min-height:44px;/.test(css) && /\.pks-save \{[^}]*min-height:48px;/.test(css), 'the buttons are 44px or more');
-ok(/#picksGrid:has\(\.pks-bar\) \{ padding-bottom:88px; \}/.test(css), 'room under the last card for the bar');
+// At the foot of the page since 2026-11-18: under the last card, the footer's links sat under the bar.
+ok(/body:has\(#picksBoard:not\(\[hidden\]\) \.pks-bar\) \{ padding-bottom:calc\(88px \+ env\(safe-area-inset-bottom, 0px\)\); \}/.test(css) && !/#picksGrid:has\(\.pks-bar\)/.test(css),
+  'room for the bar under the footer, not only the last card');
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
