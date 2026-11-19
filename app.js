@@ -7774,6 +7774,16 @@
     return `<span class="pp-projbar" title="${r.n} priced legs last season"><span class="hot-line hot-read${r.clears ? ' up' : ''}">${NBA_HOT_LAND}: ${said}</span>`
       + `${miniBar(r.rate, be, (v) => v)}<span class="bw-cush">tick: a flex needs <b>${be}%</b> · sharp books ${r.sharp.toFixed(1)}${why}</span></span>`;
   }
+  // The average a run is measured by, to one decimal like the NBA's (2026-11-19: the NHL and soccer
+  // lists sent 19.88 and 0.79). Two where one would round onto a game the run beat: a 1.97 shown as
+  // 2 over a filled 2.
+  function hotAvg(m) {
+    const ls = m.lastSeason != null, v = ls ? m.lastSeason : m.seasonAvg;
+    if (typeof v !== 'number') return String(v);
+    const r = Math.round(v * 10) / 10;
+    const beat = [m.last5].concat(ls && Array.isArray(m.last10) && Array.isArray(m.up) ? m.last10.filter((x, i) => m.up[i] === 1) : []);
+    return String(beat.some((x) => typeof x === 'number' && x <= r) ? Math.round(v * 100) / 100 : r);
+  }
   function nbaHotMarketHtml(p, m, be) {
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1;
     const allows = `${esc(nbaNick(p.oppName))} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(NBA_HOT_ALLOW[m.market] || NBA_HOT_MK[m.market].toLowerCase())}`;
@@ -7781,7 +7791,7 @@
     const num = m.line != null
       ? `PP ${esc(String(m.line))} · cleared it ${m.cleared} of his last ${m.seen}${sharp ? ` · ${sharp}` : ''}`
       : m.read && m.third === 'soft' ? "PrizePicks' number: read about an hour before tip" : 'No PrizePicks number yet';
-    const against = m.lastSeason != null ? `${esc(String(m.lastSeason))} last season` : `${esc(String(m.seasonAvg))} season`;
+    const against = `${esc(hotAvg(m))} ${m.lastSeason != null ? 'last season' : 'season'}`;
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(NBA_HOT_MK[m.market])}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
       + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${allows} <span class="tc-dfs">${m.third} team</span></span>`
       + (m.goesOn ? `<span class="hot-line hot-goes" title="${m.goesOn.n} runs like it last season">Run goes on: about <b>${m.goesOn.pct}%</b></span>` : '')
@@ -7791,7 +7801,7 @@
   // game beat what the run is measured by. Faint: too early in his season to count.
   function hotBoxesHtml(m) {
     if (!Array.isArray(m.last10) || !m.last10.length || !Array.isArray(m.up)) return '';
-    const by = m.lastSeason != null ? `last season's ${esc(String(m.lastSeason))}` : 'his average to that point';
+    const by = m.lastSeason != null ? `last season's ${esc(hotAvg(m))}` : 'his average to that point';
     const boxes = m.last10.map((v, i) => `<i class="${m.up[i] === 1 ? 'h' : m.up[i] === 0 ? 'm' : 'n'}">${esc(String(v))}</i>`).join('');
     return `<span class="pk-trend hot-boxes"><span class="tb-boxes" role="img" aria-label="${esc(`Last ${m.last10.length} games, oldest first: ${m.last10.join(', ')}`)}">${boxes}</span>`
       + `<span class="tb-cap">oldest → latest · filled: above ${by}</span></span>`;
@@ -7866,8 +7876,8 @@
   };
   function hotRowHtml(p, m, lg) {
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1, label = lg.mk[m.market], goes = lg.goesOn ? lg.goesOn(m) : null;
-    const against = m.lastSeason != null ? `${esc(String(m.lastSeason))} last season` : `${esc(String(m.seasonAvg))} season`;
-    const w = `${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'}`;
+    const against = `${esc(hotAvg(m))} ${m.lastSeason != null ? 'last season' : 'season'}`;
+    const w =`${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'}`;
     const allows = lg.allow && lg.allow[m.market] ? lg.allow[m.market](w) : `allow the ${w} ${label.toLowerCase()}`;
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(label)}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
       + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${esc(p.oppNick)} ${esc(allows)} <span class="tc-dfs">${m.third} team</span>${m.ranksOn ? ` · ranked on ${m.ranksOn} matches` : ''}</span>`

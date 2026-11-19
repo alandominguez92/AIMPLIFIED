@@ -74,5 +74,28 @@ console.log('\n-- NHL, Nov 19 --');
 const nFive = shown(card('nhl'));
 ok(nFive.map((x) => x.name).join('|') === softPlayers(NHL).slice(0, 5).map((p) => p.name).join('|'), `no percentage on any NHL stat: the list's own order (${nFive.map((x) => x.name).join(', ')})`);
 
+// The averages (Nov 19, the user's call): the NHL and soccer lists send two decimals ("19.88
+// season", "0.79 last season") where the NBA card shows one. One decimal, but two where one would
+// round onto a game the run beat: Robin Koch's fouls, 0.97 last season, beaten by starts of 1.
+console.log('\n-- the averages, every run --');
+state.hotAll = { soccer: true, nhl: true };
+const avgs = (h) => [...text(h).matchAll(/last five, ([\d.]+) (?:last )?season/g)].map((x) => x[1]);
+const nAll = card('nhl'), sAll = card('soccer');
+const n1988 = NHL.players.find((p) => p.markets.some((m) => m.seasonAvg === 19.88));
+const n1988li = shown(nAll).find((x) => x.name === (n1988 && n1988.name));
+ok(n1988li && /last five, 19\.9 season/.test(text(n1988li.li)) && !/19\.88/.test(n1988li.li), `${n1988 && n1988.name}'s 19.88 reads 19.9`);
+const long = [...avgs(nAll), ...avgs(sAll)].filter((v) => /\.\d\d/.test(v));
+console.log(`  ${avgs(nAll).length} NHL and ${avgs(sAll).length} soccer averages; two decimals on: ${long.join(', ') || 'none'}`);
+ok(avgs(nAll).length === NHL.players.reduce((s, p) => s + p.markets.length, 0) && avgs(sAll).length === SOC.players.reduce((s, p) => s + p.markets.length, 0) && long.join() === '0.97',
+  'every NHL and soccer average to one decimal but Koch\'s');
+const koch = shown(sAll).find((x) => x.name === 'Robin Koch'), kochM = SOC.players.find((p) => p.name === 'Robin Koch').markets.find((m) => m.market === 'fouls');
+ok(koch && kochM.lastSeason === 0.97 && kochM.last10.some((v, i) => v === 1 && kochM.up[i] === 1) && /Fouls · \d+ in a row · [\d.]+ last five, 0\.97 last season/.test(text(koch.li)) && /above last season's 0\.97/.test(koch.li),
+  'Koch\'s fouls keep 0.97, on the line and under the boxes, where "1" would sit over his filled 1s');
+state.hotAll = { soccer: false, nhl: false };
+state.nbaHotAll = true;
+const nbaWant = [...NBA.players].sort((a, b) => injOut(a) - injOut(b)).flatMap((p) => p.markets.map((m) => String(m.lastSeason != null ? m.lastSeason : m.seasonAvg)));
+ok(avgs(nbaCard()).join() === nbaWant.join(), `the NBA card's averages as sent (${nbaWant.slice(0, 4).join(', ')}…)`);
+state.nbaHotAll = false;
+
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);
