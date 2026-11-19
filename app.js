@@ -7741,7 +7741,14 @@
   // once one is read. A lead, so no star: off Picks and out of the entries. Under 10 games
   // it is the last five or more above last season's average. Replayed on last season that
   // leaned neither way (2026-11-03: 452 priced legs, Under 46.9 v sharp 50.5), so no side.
-  const NBA_HOT_MK = { pts: 'Points', pra: 'Pts+Reb+Ast', pts_reb: 'Pts+Reb', pts_ast: 'Pts+Ast', reb_ast: 'Reb+Ast', reb: 'Rebounds', threes: 'Threes' };
+  // Every other stat PrizePicks posts joined on 2026-11-18, in its names; the worker marks them
+  // `tested: false`, as last season's replay never ran them.
+  const NBA_HOT_MK = { pts: 'Points', pra: 'Pts+Reb+Ast', pts_reb: 'Pts+Reb', pts_ast: 'Pts+Ast', reb_ast: 'Reb+Ast', reb: 'Rebounds', threes: 'Threes',
+    ast: 'Assists', stl: 'Steals', blk: 'Blocked shots', blk_stl: 'Blks+Stls', fga: 'FG attempted', fgm: 'FG made', fg3a: '3-PT attempted', ftm: 'Free throws made',
+    tov: 'Turnovers', oreb: 'Offensive rebounds', dreb: 'Defensive rebounds', pf: 'Personal fouls' };
+  // How "they allow the most …" reads where the name lowercased doesn't.
+  const NBA_HOT_ALLOW = { blk_stl: 'blocks and steals', fga: 'field-goal attempts', fgm: 'made field goals', fg3a: 'three-point attempts', ftm: 'made free throws' };
+  const NBA_HOT_NEW_NOTE = "Assists, steals, blocks, shot attempts and the other stats joined on Nov 18 and weren't in last season's replay: no side and no “run goes on” on them.";
   const NBA_HOT_TOP = 5;
   const NBA_HOT_EARLY_READ = "Replayed on last season's games, that leaned neither way (the Under hit 46.9%, sharp books 50.5), so no side.";
   // His own average while teams are still ranked on 5 games wasn't replayed, so no chance on it.
@@ -7757,7 +7764,7 @@
   // The chance with a bar (2026-11-03, the owner's call), the way Picks shows one: the fill the
   // chance at PrizePicks' number, the tick what a flex needs.
   function nbaHotReadHtml(p, m, be) {
-    if (!m.read && m.lastSeason == null) return `<span class="hot-line hot-read">${NBA_HOT_UNTESTED}</span>`;
+    if (!m.read && (m.lastSeason == null || m.tested === false)) return `<span class="hot-line hot-read">${NBA_HOT_UNTESTED}</span>`;
     if (!m.read && NBA_HOT_EARLY_THIN.has(m.market)) return `<span class="hot-line hot-read">${NBA_HOT_LAND}: too few legs on this stat last season to say</span>`;
     const r = m.read || NBA_HOT_EARLY_LAND, chance = `about ${Math.round(r.rate)}%`;
     const said = r.even || !r.side ? `about even, the ${r.side || 'Under'} ${chance}` : r.clears ? `<b>${r.side} ${chance}</b>` : `${r.side} ${chance}`;
@@ -7767,7 +7774,7 @@
   }
   function nbaHotMarketHtml(p, m, be) {
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1;
-    const allows = `${esc(nbaNick(p.oppName))} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(NBA_HOT_MK[m.market].toLowerCase())}`;
+    const allows = `${esc(nbaNick(p.oppName))} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(NBA_HOT_ALLOW[m.market] || NBA_HOT_MK[m.market].toLowerCase())}`;
     const sharp = sharpTag(m.sharp);
     const num = m.line != null
       ? `PP ${esc(String(m.line))} · cleared it ${m.cleared} of his last ${m.seen}${sharp ? ` · ${sharp}` : ''}`
@@ -7776,7 +7783,7 @@
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(NBA_HOT_MK[m.market])}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
       + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${allows} <span class="tc-dfs">${m.third} team</span></span>`
       + (m.goesOn ? `<span class="hot-line hot-goes" title="${m.goesOn.n} runs like it last season">Run goes on: about <b>${m.goesOn.pct}%</b></span>` : '')
-      + (m.line == null && !m.read && m.lastSeason == null ? `<span class="hot-line">${num} · ${NBA_HOT_UNTESTED.toLowerCase()}</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
+      + (m.line == null && !m.read && (m.lastSeason == null || m.tested === false) ? `<span class="hot-line">${num} · ${NBA_HOT_UNTESTED.toLowerCase()}</span></span>` : `<span class="hot-line">${num}</span>${nbaHotReadHtml(p, m, be)}</span>`);
   }
   // A run's last games (2026-11-03, the owner's call): the boxes a pick has, filled where the
   // game beat what the run is measured by. Faint: too early in his season to count.
@@ -7820,24 +7827,39 @@
       : `<div class="tc-sub">Five or more games in a row above his own average, with the team he plays ranked for that stat. Last season the number had usually caught up with him by then: the Under beat the Over, most of all against the softest teams. A lead, not a pick: off Picks and out of the entries, read again in January.</div>`
       + (h.players.some((p) => p.markets.some((m) => m.lastSeason != null)) ? `<div class="tc-sub">Under 10 games: five or more in a row above last season's average. ${NBA_HOT_EARLY_READ}</div>` : ''))
       // A run going on isn't the bet (2026-11-03): the owner wants the odds of it landing.
-      + `<div class="tc-sub">Last season runs like these went on about ${h.early ? "77% of the time, but the Over at PrizePicks' number landed 53%" : "64% of the time, but the Over at PrizePicks' number landed 45%"}: the number has usually moved up by then.${h.early ? '' : " With 10+ games, last season's November and December landed about 4 points under the chance shown."}</div>`;
+      + `<div class="tc-sub">Last season runs like these went on about ${h.early ? "77% of the time, but the Over at PrizePicks' number landed 53%" : "64% of the time, but the Over at PrizePicks' number landed 45%"}: the number has usually moved up by then.${h.early ? '' : " With 10+ games, last season's November and December landed about 4 points under the chance shown."}</div>`
+      + ((h.players || []).some((p) => p.markets.some((m) => m.tested === false)) ? `<div class="tc-sub">${NBA_HOT_NEW_NOTE}</div>` : '');
     if (!h.ready) {
       return `<div class="nba-pp nba-hot">${head}<div class="tc-wait-note">Not enough games yet. A player needs ${h.gamesNeeded} games, and opponents are ranked once ${h.teamsNeeded} teams have played ${h.gamesNeeded}: ${h.teamsReady} have so far.</div></div>`;
     }
     return hotBodyHtml(h, head, !!state.nbaHotAll, 'data-action="nba-hot-all"', 'nba', (p) => `${esc(nbaNick(p.oppName))} · ${esc(soccerKick(p.commence))}${nbaCardInjTag(p)}`, (p, m) => nbaHotMarketHtml(p, m, h.flexBreakEven), (m) => NBA_HOT_MK[m.market]);
   }
+  const SOC_HOT_REPLAYED = new Set(['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves']);
   const HOT_LEAGUE = {
-    nhl: { name: 'the NHL', games: 'games', face: 'nhl', rated: 'Last season runs like these went on about 47% of the time, whatever their length, so there is no percentage for each player.', mk: { pts: 'Points', ast: 'Assists', goals: 'Goals', sog: 'Shots on goal' } },
-    nfl: { name: 'the NFL', games: 'games', face: 'nfl-espn', rated: 'Too few runs last season to put a percentage on them yet.', mk: { pass_yds: 'Passing yards', pass_td: 'Passing TDs', rush_yds: 'Rushing yards', rec: 'Receptions', rec_yds: 'Receiving yards' } },
+    // Blocked shots, hits and goalie saves, pass and rush attempts, rushing plus receiving yards, and
+    // soccer's goals plus assists, fouls drawn and goals conceded joined on 2026-11-18. `allow`: how
+    // "they allow the most …" reads where the name lowercased doesn't.
+    nhl: { name: 'the NHL', games: 'games', face: 'nhl', rated: 'Last season runs like these went on about 47% of the time, whatever their length, so there is no percentage for each player. Blocked shots, hits and goalie saves weren\'t in that replay.',
+      mk: { pts: 'Points', ast: 'Assists', goals: 'Goals', sog: 'Shots on goal', blocks: 'Blocked shots', hits: 'Hits', saves: 'Goalie saves' },
+      allow: { saves: (w) => `give goalies the ${w} saves` } },
+    nfl: { name: 'the NFL', games: 'games', face: 'nfl-espn', rated: 'Too few runs last season to put a percentage on them yet.',
+      mk: { pass_yds: 'Passing yards', pass_td: 'Passing TDs', rush_yds: 'Rushing yards', rec: 'Receptions', rec_yds: 'Receiving yards', pass_att: 'Pass attempts', car: 'Rush attempts', rush_rec_yds: 'Rush+Rec yards' },
+      allow: { rush_rec_yds: (w) => `allow the ${w} rushing and receiving yards` } },
     // Replayed through the site's own list, Nov 3, ESPN only. With 10+ starts 46.4% of 647 runs in 2024-25 and 45.9% of 704 in 2025-26.
     // With 5-9, measured against last season's average, 61.4% of 264 in 2025-26, 59-65 on teams held out. Nothing by stat, gap, length or opponent beat these across seasons.
-    soccer: { name: 'soccer', games: 'starts', face: 'soccer', goesOn: (m) => (m.lastSeason != null ? { pct: 60, of: '264 runs like it last season' } : { pct: 46, of: '1,351 runs like it, the last two seasons' }), rated: "“Run goes on” is his next start beating his average, not PrizePicks' number, which we have no history of in soccer. With 10+ starts the next start came back to about his average. Shots, shots on target, fouls and saves only: ESPN stopped sending the other stats on Oct 12.", mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves' } },
+    // The replay ran the first seven stats only: the three since have no "run goes on".
+    soccer: { name: 'soccer', games: 'starts', face: 'soccer', goesOn: (m) => (!SOC_HOT_REPLAYED.has(m.market) ? null : m.lastSeason != null ? { pct: 60, of: '264 runs like it last season' } : { pct: 46, of: '1,351 runs like it, the last two seasons' }),
+      rated: "“Run goes on” is his next start beating his average, not PrizePicks' number, which we have no history of in soccer. With 10+ starts the next start came back to about his average. Goals plus assists, fouls drawn and goals conceded joined on Nov 18, after that replay, so they have no percentage. ESPN stopped sending passes, tackles and clearances on Oct 12.",
+      mk: { shots: 'Shots', sot: 'Shots on target', passes: 'Passes', tackles: 'Tackles', clear: 'Clearances', fouls: 'Fouls', saves: 'Saves', goal_ast: 'Goals + assists', fouls_drawn: 'Fouls drawn', conceded: 'Goals conceded' },
+      allow: { fouls_drawn: (w) => `commit the ${w} fouls`, conceded: (w) => `score the ${w} goals` } },
   };
   function hotRowHtml(p, m, lg) {
     const most = m.pos <= m.of / 2, place = most ? m.pos : m.of - m.pos + 1, label = lg.mk[m.market], goes = lg.goesOn ? lg.goesOn(m) : null;
     const against = m.lastSeason != null ? `${esc(String(m.lastSeason))} last season` : `${esc(String(m.seasonAvg))} season`;
+    const w = `${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'}`;
+    const allows = lg.allow && lg.allow[m.market] ? lg.allow[m.market](w) : `allow the ${w} ${label.toLowerCase()}`;
     return `<span class="hot-mk"><span class="hot-line"><b>${esc(label)}</b> · ${m.run} in a row · ${esc(String(m.last5))} last five, ${against}</span>`
-      + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${esc(p.oppNick)} allow the ${place > 1 ? `${nbaHotOrd(place)} ` : ''}${most ? 'most' : 'fewest'} ${esc(label.toLowerCase())} <span class="tc-dfs">${m.third} team</span>${m.ranksOn ? ` · ranked on ${m.ranksOn} matches` : ''}</span>`
+      + `<span class="hot-line" title="Of ${m.of} teams ranked, for what they let opponents do in this stat">${esc(p.oppNick)} ${esc(allows)} <span class="tc-dfs">${m.third} team</span>${m.ranksOn ? ` · ranked on ${m.ranksOn} matches` : ''}</span>`
       + (goes ? `<span class="hot-line hot-goes" title="${goes.of}">Run goes on: about <b>${goes.pct}%</b></span>` : '') + '</span>';
   }
   function hotCardHtml(sport) {

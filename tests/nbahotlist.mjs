@@ -108,7 +108,7 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 
 // ---- The long way, from the box rows ------------------------------------------------------
-const STAT = { pts: (r) => r.pts, pra: (r) => r.pts + r.reb + r.ast, pts_reb: (r) => r.pts + r.reb, pts_ast: (r) => r.pts + r.ast, reb_ast: (r) => r.reb + r.ast, reb: (r) => r.reb, threes: (r) => r.threes };
+const STAT = { pts: (r) => r.pts, pra: (r) => r.pts + r.reb + r.ast, pts_reb: (r) => r.pts + r.reb, pts_ast: (r) => r.pts + r.ast, reb_ast: (r) => r.reb + r.ast, reb: (r) => r.reb, threes: (r) => r.threes, ast: (r) => r.ast };
 const played = HISTORY.filter((r) => r.min > 0);
 const gamesOf = (id, rows = played) => rows.filter((r) => r.player_id === id);
 function runOf(id, mk) {
@@ -146,7 +146,8 @@ function expectedFor(game, oppOf) {
 const flat = (hot) => hot.players.flatMap((p) => p.markets.map((m) => ({ ...m, id: p.id, name: p.name, team: p.team, player: p })));
 const of = (hot, name, mk) => flat(hot).find((x) => x.name === name && x.market === mk);
 const key = (x) => `${x.name}|${x.mk || x.market}|${x.run}|${x.pos}/${x.of}`;
-const LIST_SCAN = /SELECT game_id, date, player_id, player, team, min, pts, reb, ast, threes FROM nba_box/;
+// Every stat since 2026-11-18 (the card's own list, NBA_HOTLIST_MARKETS): the same rows.
+const LIST_SCAN = /SELECT game_id, date, player_id, player, team, min, pts, reb, ast, threes(, \w+)* FROM nba_box/;
 
 console.log('-- the morning of the game: from the box scores, no credits --');
 NOW = TIP[MAVS] - 8 * 3600e3;
@@ -288,7 +289,7 @@ const wantMagic = expectedFor(MAGIC, { ORL: 'MEM', MEM: 'ORL' });
 ok(JSON.stringify(flat(hot).map(key).sort()) === JSON.stringify(wantMagic.map(key).sort()), `Grizzlies @ Magic, the long way too: ${wantMagic.length} runs`);
 const caused = hot.players.filter((p) => p.outs && p.outs.includes('Ja Morant'));
 const passed = S.sq.prepare('SELECT DISTINCT player FROM nbacause').all().map((r) => r.player);
-console.log(`  cause: ${caused.map((p) => p.name).join(', ')} | streak log: ${passed.join(', ')} | ${flat(hot).filter((x) => x.player.outs).map((x) => `${x.name} ${x.market} ${x.cleared}: ${x.read.side}`).join(', ')}`);
+console.log(`  cause: ${caused.map((p) => p.name).join(', ')} | streak log: ${passed.join(', ')} | ${flat(hot).filter((x) => x.player.outs).map((x) => `${x.name} ${x.market} ${x.cleared}: ${(x.read || {}).side}`).join(', ')}`);
 ok(caused.every((p) => passed.includes(p.name)), 'whoever carries a cause here is one the streak log itself passed');
 ok(caused.some((p) => p.name === 'Jock Landale'), 'Landale, on a run with Morant out');
 ok(of(hot, 'Jock Landale', 'reb').line === null && of(hot, 'Jock Landale', 'reb').read.side === 'Under', 'no number on his rebounds: what the opponent says, the Under');
@@ -300,9 +301,9 @@ console.log(`  Landale reb ${lReb.line}: ${lReb.cleared} of 10, ${lReb.third}, $
 ok(lReb.cleared === clearedOf('Jock Landale', 'reb', ppRow.first.line) && lReb.cleared >= 6, `a number he has been clearing, ${lReb.cleared} of 10, counted the long way`);
 ok(lReb.read.side === 'Over' && lReb.read.rate === 56.5 && lReb.read.sharp === 49.8 && lReb.read.n === 168 && lReb.read.clears === true, 'with the cause behind him, the Over: 56.5% to 49.8');
 const overPayload = withLine;
-const noCause = flat(withLine).filter((x) => !x.player.outs && x.cleared != null);
+const noCause = flat(withLine).filter((x) => !x.player.outs && x.cleared != null && x.tested !== false);
 ok(noCause.length > 0 && noCause.every((x) => x.read.side !== 'Over'), 'no cause, no Over: Marshall at 7 of 10 above had the Under, Nurkic at 9 no side');
-const causeLow = flat(withLine).filter((x) => x.player.outs && x.cleared != null && x.cleared < 6);
+const causeLow = flat(withLine).filter((x) => x.player.outs && x.cleared != null && x.cleared < 6 && x.tested !== false);
 ok(causeLow.every((x) => x.read.side === 'Under'), 'the cause with 5 or fewer of 10 stays with the Under, where the numbers have it');
 
 console.log('\n-- too few games --');

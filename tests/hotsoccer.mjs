@@ -25,7 +25,9 @@ globalThis.caches = { default: { match: async () => undefined, put: async () => 
 const read = (f) => JSON.parse(fs.readFileSync(path.join(FIX, f), 'utf8'));
 const LEAGUE = read('soc-box-epl-to-20261102.json'), SLATES = read('espn-soc-slate-20261102.json'), REC = read('espn-soc-740870.json'), UCL = read('soc-box-ucl-to-20261102.json');
 const PRIORS = JSON.parse(fs.readFileSync(path.join(BOARD, 'soccer-priors.json'), 'utf8'));
-const ROWS = LEAGUE.rows.map((r) => ({ game_id: LEAGUE.games[r[0]][0], league: 'epl', date: LEAGUE.games[r[0]][1], player_id: LEAGUE.players[r[1]][0], player: LEAGUE.players[r[1]][1], team: r[2], opp: r[3], starter: r[4], min: r[5], gk: r[6], shots: r[7], sot: r[8], passes: r[9], tackles: r[10], clear: r[11], fouls: r[12], saves: r[13] }))
+// Goals + assists, fouls drawn and goals conceded for the same rows, from the real summaries (2026-11-18).
+const MORE = new Map(read('soc-box-epl-more-to-20261102.json').rows.map(([g, p, goal_ast, fouls_drawn, conceded]) => [`${g}|${p}`, { goal_ast, fouls_drawn, conceded }]));
+const ROWS = LEAGUE.rows.map((r) => ({ game_id: LEAGUE.games[r[0]][0], league: 'epl', date: LEAGUE.games[r[0]][1], player_id: LEAGUE.players[r[1]][0], player: LEAGUE.players[r[1]][1], team: r[2], opp: r[3], starter: r[4], min: r[5], gk: r[6], shots: r[7], sot: r[8], passes: r[9], tackles: r[10], clear: r[11], fouls: r[12], saves: r[13], ...MORE.get(`${r[0]}|${r[1]}`) }))
   .sort((a, b) => a.date.localeCompare(b.date) || a.game_id.localeCompare(b.game_id));
 
 const RealDate = Date;
@@ -69,9 +71,9 @@ const loadWorker = async () => { mod = await import('data:text/javascript;base64
 const get = async (u) => (await mod.default.fetch(new Request('https://x' + u), S.env, { waitUntil: () => {} })).json();
 const cron = async (c) => { const held = []; await mod.default.scheduled({ cron: c, scheduledTime: NOW }, S.env, { waitUntil: (p) => held.push(p) }); await Promise.all(held); };
 const tick = () => cron('1-59/2 * * * *');
-const COLS = ['game_id', 'league', 'date', 'player_id', 'player', 'team', 'opp', 'starter', 'min', 'gk', 'shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves'];
+const COLS = ['game_id', 'league', 'date', 'player_id', 'player', 'team', 'opp', 'starter', 'min', 'gk', 'shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves', 'goal_ast', 'fouls_drawn', 'conceded'];
 const insBox = (rows) => { const ins = S.sq.prepare(`INSERT INTO soc_box (${COLS.join(',')}) VALUES (${COLS.map(() => '?').join(',')})`);
-  for (const r of rows) ins.run(...COLS.map((c) => r[c])); };
+  for (const r of rows) ins.run(...COLS.map((c) => (r[c] === undefined ? null : r[c]))); };
 const hasList = () => !!S.sq.prepare("SELECT 1 AS x FROM feed_cache WHERE key = 'hot_list_v2:soccer'").get();
 const fill = async () => { let n = 0; do { await tick(); n++; } while (!hasList() && n < 20); return n; };
 // The table comes with the first list, which is empty; then the real rows, and the real one.
@@ -83,10 +85,11 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 
 // ---- The long way, from the box rows and last season's per-start numbers --------------------
-const MK = ['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves'];
+const MK = ['shots', 'sot', 'passes', 'tackles', 'clear', 'fouls', 'saves', 'goal_ast', 'fouls_drawn', 'conceded'];
+const KEEPER = ['saves', 'conceded'];
 const round2 = (v) => Math.round(v * 100) / 100;
 const mean = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
-const statOf = (r, m) => ((m === 'saves') === !!r.gk ? r[m] : null);
+const statOf = (r, m) => (KEEPER.includes(m) === !!r.gk ? (r[m] == null ? null : r[m]) : null);
 function allowedTable(rows, mk) {
   const t = new Map();
   for (const r of rows) { const g = t.get(r.opp) || new Map(); const v = statOf(r, mk); g.set(r.game_id, (g.get(r.game_id) || 0) + (v || 0)); t.set(r.opp, g); }
@@ -443,7 +446,14 @@ ok(!/or 3 where a row says so/.test(card('soccer')), 'and says nothing of it whe
 state.hot.soccer = payload;
 // The replay of Nov 3: the site's own list on 2024-25 and 2025-26, ESPN only.
 const goesLines = html.match(/Run goes on: about <b>\d+%<\/b>/g) || [];
-ok(goesLines.length === flat(payload).length, `a run's chance of going on, on every one: ${goesLines.length}`);
+// Goals + assists, fouls drawn and goals conceded joined on 2026-11-18, after that replay: no percentage.
+const NEW_SOC = ['goal_ast', 'fouls_drawn', 'conceded'], newSoc = flat(payload).filter((m) => NEW_SOC.includes(m.market));
+ok(goesLines.length === flat(payload).length - newSoc.length, `a run's chance of going on, on every one the replay covered: ${goesLines.length}`);
+ok(newSoc.length >= 1 && /Goals plus assists, fouls drawn and goals conceded joined on Nov 18, after that replay, so they have no percentage/.test(html), `and ${newSoc.length} on the stats added Nov 18, none, and the card says why`);
+// Fouls drawn are the other side's fouls: the team he plays commits them.
+const W = String.raw`(?:\d+(?:st|nd|rd|th) )?(?:most|fewest)`;
+const newText = newSoc.map((m) => { const p = payload.players.find((x) => x.id === m.id); return { m, p, want: new RegExp(`${p.oppNick} ${m.market === 'fouls_drawn' ? `commit the ${W} fouls` : m.market === 'conceded' ? `score the ${W} goals` : String.raw`allow the ${W} goals \+ assists`} (soft|middle|tough) team`) }; });
+ok(newText.every(({ m, p, want }) => text(html).includes(`${p.name}`) && text(html).includes(`${{ fouls_drawn: 'Fouls drawn', conceded: 'Goals conceded', goal_ast: 'Goals + assists' }[m.market]} · ${m.run} in a row`) && want.test(text(html))), "in the league's words: fouls drawn are the fouls the other side commits");
 ok(flat(payload).every((m) => m.lastSeason != null) && goesLines.every((x) => x.includes('60%')), 'under 10 starts, about 60%');
 state.hot.soccer = { ...payload, players: [{ ...payload.players[0], markets: [{ ...payload.players[0].markets[0], lastSeason: undefined, seasonAvg: 1.2 }] }] };
 ok(/Run goes on: about <b>46%<\/b>/.test(card('soccer')) && !/about <b>60%/.test(card('soccer')), 'with 10 or more, about 46%');

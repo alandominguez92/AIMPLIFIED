@@ -75,7 +75,9 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 
 // ---- The long way, from the box rows and last season's totals ------------------------------
-const MK = ['pass_yds', 'pass_td', 'rush_yds', 'rec', 'rec_yds'], VOL = { pass_yds: 'pass_att', pass_td: 'pass_att', rush_yds: 'car', rec: 'tgt', rec_yds: 'tgt' }, BAR = { pass_att: 15, car: 8, tgt: 4 };
+const MK = ['pass_yds', 'pass_td', 'rush_yds', 'rec', 'rec_yds', 'pass_att', 'car', 'rush_rec_yds'], VOL = { pass_yds: 'pass_att', pass_td: 'pass_att', rush_yds: 'car', rec: 'tgt', rec_yds: 'tgt', pass_att: 'pass_att', car: 'car' }, BAR = { pass_att: 15, car: 8, tgt: 4 };
+// Rushing plus receiving yards is the two added up, and a regular on carries or on targets.
+const STAT = (r, mk) => (mk === 'rush_rec_yds' ? (r.rush_yds == null || r.rec_yds == null ? null : r.rush_yds + r.rec_yds) : r[mk]);
 const round2 = (v) => Math.round(v * 100) / 100, round1 = (v) => Math.round(v * 10) / 10;
 const mean = (xs) => xs.reduce((a, x) => a + x, 0) / xs.length;
 const events = (sb) => sb.content.sbData.events;
@@ -83,7 +85,7 @@ const SLATE = [...events(WK8), ...events(WK9)].filter((e) => e.status.type.name 
 const sides = (e) => { const c = e.competitions[0].competitors, h = c.find((x) => x.homeAway === 'home').team, a = c.find((x) => x.homeAway === 'away').team; return [[h.abbreviation, a.abbreviation], [a.abbreviation, h.abbreviation]]; };
 function allowedTable(rows, mk) {
   const t = new Map();
-  for (const r of rows) { const g = t.get(r.opp) || new Map(); g.set(r.game_id, (g.get(r.game_id) || 0) + (r[mk] || 0)); t.set(r.opp, g); }
+  for (const r of rows) { const g = t.get(r.opp) || new Map(); g.set(r.game_id, (g.get(r.game_id) || 0) + (STAT(r, mk) || 0)); t.set(r.opp, g); }
   return t;
 }
 function posRange(rows, team, mk, min) {
@@ -104,11 +106,12 @@ function expected(rows, slate, min = 5) {
       const pr = PRIORS.players[id];
       let any = false;
       for (const mk of MK) {
-        const v = gs.map((r) => r[mk]).filter((x) => x != null), vol = gs.map((r) => r[VOL[mk]]).filter((x) => x != null).slice(-5);
-        if (v.length < 5 || mean(vol) < BAR[VOL[mk]] || !pr || pr.g < 6 || pr[mk] == null) continue;
-        let run = 0; for (let j = v.length - 1; j >= 0 && v[j] > pr[mk]; j--) run++;
+        const v = gs.map((r) => STAT(r, mk)).filter((x) => x != null), l5 = (k) => mean(gs.map((r) => r[k]).filter((x) => x != null).slice(-5));
+        const reg = mk === 'rush_rec_yds' ? l5('car') >= BAR.car || l5('tgt') >= BAR.tgt : l5(VOL[mk]) >= BAR[VOL[mk]], base = pr && STAT(pr, mk);
+        if (v.length < 5 || !reg || !pr || pr.g < 6 || base == null) continue;
+        let run = 0; for (let j = v.length - 1; j >= 0 && v[j] > base; j--) run++;
         const p = posRange(rows, opp, mk, min);
-        if (run >= 5 && p) { out.push({ id, mk, run, base: pr[mk], seen: v.length, last5: round2(mean(v.slice(-5))), ...p }); any = true; }
+        if (run >= 5 && p) { out.push({ id, mk, run, base, seen: v.length, last5: round2(mean(v.slice(-5))), ...p }); any = true; }
       }
       if (any) seen.add(id);
     }
@@ -137,11 +140,14 @@ ok(hot && hot.ready === true && hot.early === true && hot.gamesNeeded === 5 && h
 const want = expected(ROWS, SLATE);
 console.log(`  ${hot.players.length} players: ${hot.players.map((p) => `${p.name} (${p.team} v ${p.oppNick}${p.role ? `, role ${p.role.min} ${p.role.unit}` : ''}) ${p.markets.map((m) => `${m.market} ${m.run}x ${m.third}`).join(', ')}`).join(' | ')}`.slice(0, 1400));
 ok(want.length >= 5 && JSON.stringify(flat(hot).map(key).sort()) === JSON.stringify(want.map(key).sort()), `every run on the games to come, the long way: ${want.length}`);
+// Pass attempts, rush attempts and rushing plus receiving yards (2026-11-18): real runs on each.
+const added = ['pass_att', 'car', 'rush_rec_yds'].map((mk) => [mk, flat(hot).filter((x) => x.market === mk).length]);
+ok(added.every(([, n]) => n >= 1), `on the stats added Nov 18 too: ${added.map(([mk, n]) => `${mk} ${n}`).join(', ')}`);
 const wantOf = (x) => want.find((y) => y.id === x.id && y.mk === x.market);
 ok(flat(hot).every((x) => { const w = wantOf(x); return w && x.pos >= w.lo && x.pos <= w.hi && x.of === w.of; }), 'and where the team he plays ranks for that stat');
 ok(flat(hot).every((x) => { const w = wantOf(x); return x.lastSeason === round2(w.base) && x.seasonAvg === undefined && x.last5 === w.last5 && x.seen === w.seen; }), 'against last season\'s real average, with his last five and how many games');
 ok(flat(hot).every((x) => !('read' in x) && !('line' in x)), 'nothing claims a side, or a number it has not got');
-const boxesLong = (x) => { const v = ROWS.filter((r) => r.player_id === x.id).map((r) => r[x.market]).filter((y) => y != null).slice(-10); return { last10: v, up: v.map((y) => (y > wantOf(x).base ? 1 : 0)) }; };
+const boxesLong = (x) => { const v = ROWS.filter((r) => r.player_id === x.id).map((r) => STAT(r, x.market)).filter((y) => y != null).slice(-10); return { last10: v, up: v.map((y) => (y > wantOf(x).base ? 1 : 0)) }; };
 ok(flat(hot).every((x) => JSON.stringify({ last10: x.last10, up: x.up }) === JSON.stringify(boxesLong(x))), 'each run has its last games, and which beat last season, the long way');
 ok(flat(hot).every((x) => x.up.slice(-x.run).every((u) => u === 1) && (x.run >= x.up.length || x.up[x.up.length - x.run - 1] !== 1)), 'the last filled boxes are the run itself, and the one before it is not');
 const nicks = new Set(SLATE.flatMap((e) => e.competitions[0].competitors.map((c) => c.team.name)));

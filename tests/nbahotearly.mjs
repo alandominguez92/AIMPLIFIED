@@ -77,7 +77,9 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) fail++; };
 
 // ---- The long way, from the box rows and the priors ---------------------------------------
-const STAT = { pts: (r) => r.pts, pra: (r) => r.pts + r.reb + r.ast, pts_reb: (r) => r.pts + r.reb, pts_ast: (r) => r.pts + r.ast, reb_ast: (r) => r.reb + r.ast, reb: (r) => r.reb, threes: (r) => r.threes };
+// The log's seven, and assists on their own since the card took every stat (2026-11-18). These
+// box rows carry only points, rebounds, assists and threes, so the card's other stats have no run.
+const STAT = { pts: (r) => r.pts, pra: (r) => r.pts + r.reb + r.ast, pts_reb: (r) => r.pts + r.reb, pts_ast: (r) => r.pts + r.ast, reb_ast: (r) => r.reb + r.ast, reb: (r) => r.reb, threes: (r) => r.threes, ast: (r) => r.ast };
 const round1 = (v) => Math.round(v * 10) / 10;
 const lastYear = (pr, mk) => round1(STAT[mk](pr));
 const haveAll = (pr, mk) => Number.isFinite(STAT[mk](pr)) && !['pts', 'reb', 'ast', 'threes'].some((k) => pr[k] == null && String(STAT[mk]).includes(`r.${k}`));
@@ -147,7 +149,10 @@ ok(wig && wig.run === 7 && wig.lastSeason === PRIORS[wig.id].pts && wig.last5 ==
 ok(flat(hot).every((x) => x.read === null && x.seasonAvg == null), 'not one early row claims a side, or a season average it has not got');
 // A chance on each run (2026-11-03): the table typed out here.
 const earlyGoes = (x) => { const gap = (x.last5 - x.lastSeason) / x.lastSeason; return Math.floor(((gap < 0.5 ? 196 / 279 : 377 / 456) * 100 + (x.market === 'threes' ? -13 : 0)) / 5) * 5; };
-ok(flat(hot).length >= 2 && flat(hot).every((x) => x.goesOn && x.goesOn.pct === earlyGoes(x)), `every early run says how often runs like it went on: ${flat(hot).slice(0, 5).map((x) => `${x.name} ${x.market} ${x.last5} v ${x.lastSeason}: ${x.goesOn && x.goesOn.pct}`).join(' | ')}`);
+ok(flat(hot).length >= 2 && flat(hot).filter((x) => x.market !== 'ast').every((x) => x.tested === true && x.goesOn && x.goesOn.pct === earlyGoes(x)), `every early run on the replayed stats says how often runs like it went on: ${flat(hot).slice(0, 5).map((x) => `${x.name} ${x.market} ${x.last5} v ${x.lastSeason}: ${x.goesOn && x.goesOn.pct}`).join(' | ')}`);
+// Assists on their own came to the card on 2026-11-18; the replay never ran them, so no number.
+const astRuns = flat(hot).filter((x) => x.market === 'ast');
+ok(astRuns.length >= 1 && astRuns.every((x) => x.tested === false && x.goesOn === null && x.read === null), `assists runs say neither: ${astRuns.map((x) => x.name).join(', ')}`);
 ok(flat(hot).every((x) => x.seen >= 5 && x.seen < 10 && gamesOf(NOW_ROWS, x.id).length === x.seen), 'each says how many games it has');
 ok(!flat(hot).some((x) => gamesOf(NOW_ROWS, x.id).length >= 10), 'no one here has 10 games');
 ok(flat(hot).every((x) => { const v = gamesOf(NOW_ROWS, x.id).map(STAT[x.market]); return JSON.stringify(x.last10) === JSON.stringify(v) && JSON.stringify(x.up) === JSON.stringify(v.map((y) => (y > x.lastSeason ? 1 : 0))); }), 'each run has its games, and which beat last season, the long way');
@@ -224,9 +229,11 @@ S = scene({ rows: OLD_ROWS, sb: OLD_SB_ON, sbDay: '20270115' });
 NOW = TIP - 8 * 3600e3;
 await begin(NOW);
 hot = (await get('/api/nba-pp')).hot;
-const longRows = flat(hot).filter((x) => x.lastSeason == null), earlyRows = flat(hot).filter((x) => x.lastSeason != null);
+// Assists joined on Nov 18, outside last season's replay: no read on them at any length.
+const longRows = flat(hot).filter((x) => x.lastSeason == null && x.tested !== false), earlyRows = flat(hot).filter((x) => x.lastSeason != null), newRows = flat(hot).filter((x) => x.tested === false);
 ok(hot.ready === true && hot.early === false && hot.gamesNeeded === 10 && hot.teamsReady === 30, 'all 30 teams at 10 games: the full ranks');
 ok(longRows.length >= 8 && longRows.every((x) => x.read && typeof x.read.rate === 'number' && x.seen === 10 && x.seasonAvg != null), `${longRows.length} runs on the tested rule, each with what last season said`);
+ok(newRows.length >= 1 && newRows.every((x) => x.market === 'ast' && x.read === null && x.goesOn === null), `and ${newRows.length} on assists, with none`);
 ok(earlyRows.every((x) => { const n = gamesOf(OLD_ROWS, x.id).length; return n >= 5 && n < 10 && x.read === null; }), 'anyone with 5 to 9 games stays early, no side');
 // A real run, the same player as if back from injury: only his last seven games left.
 const back = longRows.find((x) => { const pr = PRIORS[x.id]; return pr && pr.gp >= 20 && gamesOf(OLD_ROWS, x.id).slice(-5).every((r) => STAT[x.market](r) > lastYear(pr, x.market)); });
@@ -324,9 +331,10 @@ const pts = flat(payload).find((x) => x.market === 'reb');
 state.nbaPp.hot = { ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map((m) => (m.market === 'reb' ? { ...m, line: 4.5, cleared: 3 } : m)) })) };
 ok(new RegExp(`PP 4\\.5 · cleared it 3 of his last ${pts.seen}`).test(card()) && /Chance at PrizePicks' number: too few legs on this stat last season to say/.test(card()), `the number, against the ${pts.seen} games he has, and still no side`);
 // Rebounds and threes (2026-11-03): last season's numbers on them start Dec 20, so 8 of the 452 legs.
-const thinRuns = flat(payload).filter((x) => ['reb', 'threes'].includes(x.market)).length;
+const thinRuns = flat(payload).filter((x) => ['reb', 'threes'].includes(x.market)).length, newRuns = flat(payload).filter((x) => x.tested === false).length;
 ok(thinRuns >= 1 && (card().match(/too few legs on this stat last season to say/g) || []).length === thinRuns, 'every rebounds or threes run under 10 games says too few legs');
-ok((card().match(/class="bmini"/g) || []).length === flat(payload).length - thinRuns && (card().match(/about even, the Over about 53%/g) || []).length === flat(payload).length - thinRuns, 'and has no bar and no 53%; the other stats keep theirs');
+ok((card().match(/class="bmini"/g) || []).length === flat(payload).length - thinRuns - newRuns && (card().match(/about even, the Over about 53%/g) || []).length === flat(payload).length - thinRuns - newRuns, 'and has no bar and no 53%; the other stats keep theirs');
+ok((card().match(/not tested, so no side/gi) || []).length === newRuns, `the ${newRuns} on stats added Nov 18: not tested, so no side`);
 const ownAverage = (line) => ({ ...payload, players: payload.players.map((p) => ({ ...p, markets: p.markets.map(({ lastSeason, ...m }) => ({ ...m, seasonAvg: 5, ...line })) })) });
 state.nbaPp.hot = ownAverage({});
 ok(/No PrizePicks number yet · not tested, so no side/.test(card()) && !/class="bmini"|Chance at PrizePicks/.test(card()), 'ten games while teams are ranked on five: not what the replay covered, so not what it found');

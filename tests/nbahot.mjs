@@ -281,7 +281,7 @@ const fnOf = (name) => { const a = src.indexOf(`function ${name}(`); return src.
 const consts = src.split('\n').filter((l) => /^const (NBA_CAUSE_(ROT_MIN|PRIOR)|NBA_HOT_\w+|NBA_BOX_STATS|NBA_COMBOS) = /.test(l)).join('\n');
 const marketsLine = src.slice(src.indexOf('const NBA_CAUSE_MARKETS = '), src.indexOf('const NBA_CAUSE_KEY_MIN'));
 const rankerLine = src.slice(src.indexOf('const nbaHotRanker = '), src.indexOf('// Who on this team is on a run tonight'));
-const lib = new Function(`const round1 = (v) => Math.round(v * 10) / 10; const nbaInjOut = (i) => i.s === 'Out' && (!i.f || i.f === 'OUT');\n${consts}\n${marketsLine}\n${fnOf('nbaStat')}\n${fnOf('nbaCauseState')}\n${fnOf('nbaHotRun')}\n${fnOf('nbaHotAllowed')}\n${fnOf('nbaHotRanks')}\n${rankerLine}\n${fnOf('nbaHotCandidates')}\nreturn { nbaCauseState, nbaHotRun, nbaHotAllowed, nbaHotRanks, nbaHotRanker, nbaHotCandidates };`)();
+const lib = new Function(`const round1 = (v) => Math.round(v * 10) / 10; const nbaInjOut = (i) => i.s === 'Out' && (!i.f || i.f === 'OUT');\n${marketsLine}\n${consts}\n${fnOf('nbaStat')}\n${fnOf('nbaCauseState')}\n${fnOf('nbaHotRun')}\n${fnOf('nbaHotAllowed')}\n${fnOf('nbaHotRanks')}\n${rankerLine}\n${fnOf('nbaHotCandidates')}\nreturn { nbaCauseState, nbaHotRun, nbaHotAllowed, nbaHotRanks, nbaHotRanker, nbaHotCandidates };`)();
 const DAY = '2027-01-15', MARSHALL = '4278594';
 const cands = (rs, team, opp, rep) => lib.nbaHotCandidates(lib.nbaCauseState(rs), lib.nbaHotRanker(lib.nbaHotAllowed(rs), DAY), team, opp, rep);
 const softOn = (rs, team, opp, rep) => cands(rs, team, opp, rep).filter((c) => c.soft).map((c) => c.name).sort();
