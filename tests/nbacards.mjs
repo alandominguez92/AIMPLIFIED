@@ -60,7 +60,7 @@ const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 
   'NBA_ROTATION_MIN', 'nbaPpLeg', 'nbaOversLineHtml', 'ppMovedTag', 'ppCloseLineHtml', 'sharpBooksText', 'ppGameLineHtml', 'PP_LINE_MARKETS', 'nbaLegAtLine', 'NBA_SHARP_BOOKS', 'sharpAtLine',
   'NBA_BANDS', 'NBA_BAND_MIN', 'nbaModelBit', 'nbaNick', 'sharpTag', 'ppBookLine', 'ppLineTags',
   'NBA_SHARP_BANDS', 'NBA_PROVEN_N', 'NBA_MORE_MODEL_W', 'nbaRot', 'nbaUnderRecord', 'nbaGameSub', 'nbaUnderCardLeg', 'nbaBlkCardLeg', 'nbaPicksProps', 'nbaUnderLegs', 'nbaBlkLegs',
-  'nbaPpCardHtml', 'nbaBlkMoreHtml', 'nbaTodayParts'];
+  'nbaRebHeldHtml', 'nbaPpCardHtml', 'nbaBlkMoreHtml', 'nbaTodayParts'];
 const state = { slip: {}, nbaPp: PP, picks: PK, props: { nba: PR }, legView: 'detailed', entrySize: 2, ppLines: {} };
 let F;
 try {

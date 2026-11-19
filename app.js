@@ -6378,7 +6378,9 @@
     const kinds = d.kinds || {};
     const rules = `<details class="pk-rules"><summary>What gets on the list</summary><ul>${Object.values(kinds).map((k) => {
       const r = k.record || {};
-      return `<li><b>${esc(k.label)}</b> at ${k.min}%+ · ${r.n ? `${r.hit} of ${r.n} landed (${pct0(r.hitRate)})` : 'no graded legs yet'}${r.n && !r.proven ? ' · <span class="pk-new">new</span>' : ''}</li>`;
+      // A kind held off the list while its record is under its bar (the rebounds Less, 2026-11-18).
+      const held = k.held ? ` · <span class="tc-wait">off Picks while under the ${esc(String(k.held.bar))}% a 6-Flex needs</span>` : '';
+      return `<li><b>${esc(k.label)}</b> at ${k.min}%+ · ${r.n ? `${r.hit} of ${r.n} landed (${pct0(r.hitRate)})` : 'no graded legs yet'}${r.n && !r.proven ? ' · <span class="pk-new">new</span>' : ''}${held}</li>`;
     }).join('')}</ul><p>Only the best leg of each game, because legs from one game tend to land or miss together. Strikeout unders, NBA threes and assists unders, passing-TD unders under 60% and MLB unders under 70% are left off: their numbers have not held up.</p></details>`;
     const rec = d.record || {};
     const recLine = rec.legs && rec.legs.n
@@ -7685,7 +7687,7 @@
     const head = `<div class="tc-head"><h3 class="pk-gh">PrizePicks unders</h3>${rec}</div>`
       + `<div class="tc-sub">The sharp books' chance the under lands at PrizePicks' line: FanDuel, Pinnacle and the exchanges, de-vigged, the middle of them. Best first; a leg they haven't priced yet goes below. The model's own chance is beside theirs: its high ranges have landed no more often than its low ones. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. A player on ESPN's injury report is flagged. A leg Picks lists shows Picks' own chance. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
-      + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame);
+      + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame) + nbaRebHeldHtml();
     const simple = pickLegView() === 'simple';
     let body = '';
     if (all.length) body = `<ol class="tc-legs pk-pool">${all.map((x) => legCardHtml(x, simple, '', false, cx)).join('')}</ol>`;
@@ -7695,6 +7697,14 @@
         : 'PrizePicks has not posted lines for the next games yet: they are read as soon as it does.'}</div>`;
     }
     return `<div class="pk-grp nba-under">${head}${body}</div>` + (blk ? nbaBlkMoreHtml(blk, cx) : '');
+  }
+  // Rebounds Less held off Picks while its record is under the 6-Flex bar (2026-11-18): the tab
+  // says so, as its legs no longer come to it from Picks.
+  function nbaRebHeldHtml() {
+    const k = state.picks && state.picks.kinds && state.picks.kinds.nba_reb_gap;
+    if (!k || !k.held) return '';
+    const r = k.record || {};
+    return `<div class="tc-sub tc-rec-line">Rebounds Less above the sharp line is off Picks while it lands under the ${esc(String(k.held.bar))}% a 6-Flex needs${r.n ? `: <b>${r.hit} of ${r.n}</b> so far` : ''}. Its rows stay on the props card.</div>`;
   }
   // Blocks More (2026-10-27), under the unders.
   function nbaBlkMoreHtml(list, ctx) {

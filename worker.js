@@ -10017,13 +10017,23 @@ async function picksCandidates(env, now) {
       sharp: r.sharp_under == null ? null : r.sharp_under });
   }
 
+  // The kinds' records, read once and only when a held leg is up for it: the rebounds Less
+  // (REB_GAP_HOLD_SINCE) and the NHL points Mores (NHL_PTS_HOLD_SINCE).
+  let kindRecsP;
+  const kindRecs = () => kindRecsP || (kindRecsP = pickKindRecords(env).catch(() => null).then((x) => x || {}));
   // Rebounds Less where PrizePicks' line sits above the sharp main line
   // (2026-10-30, PICK_KINDS.nba_reb_gap). Rotation players, as the unders.
   const rbs = nbaOpen.filter((r) => r.market === 'reb');
+  const rebHeld = ptDateOf(now) >= REB_GAP_HOLD_SINCE;
+  let rebRec;
   for (const row of ppStanding(rbs)) {
     const r = ppCurrent(row);
     const gap = rebGapOf(r);
     if (!soon(r.commence) || gap == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
+    if (rebHeld) {
+      if (rebRec === undefined) { rebRec = (await kindRecs()).nba_reb_gap || null; REB_GAP_GATE = rebRec; }
+      if (!rebGapOn(rebRec)) continue;
+    }
     legs.push({ kind: 'nba_reb_gap', gameKey: 'nba:' + r.game_id, p: REB_GAP_P, modelP: r.model_under, proj: r.proj, disp: NBA_DISP.reb, commence: r.commence, odds: null, readAt: r.close_at || r.captured_at || null,
       teams: { home: r.home, away: r.away },
       vsBook: gap, legId: `nbapp:${r.game_id}:${r.player}:${r.market}`,
@@ -10070,7 +10080,7 @@ async function picksCandidates(env, now) {
     if (100 - r.model_under < PICK_KINDS.nhl_more.min) continue;
     if (held && r.market === 'pts') {
       if (ptsBy === undefined) {
-        ptsBy = ((await pickKindRecords(env).catch(() => null)) || {}).nhl_more;
+        ptsBy = (await kindRecs()).nhl_more;
         ptsBy = (ptsBy && ptsBy.byStat) || null;
         NHL_PTS_GATE = ptsBy;
       }
@@ -10314,6 +10324,8 @@ function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   // A rebounds Less leaves when its line stops sitting above the sharp books'.
   if (kind === 'nba_reb_gap') {
     const cur = ppCurrent(m), main = sharpMainOf(cur.book_unders);
+    // Held (REB_GAP_HOLD_SINCE): no rebounds Less is on the list, whatever its line did.
+    if (m.date >= REB_GAP_HOLD_SINCE && REB_GAP_GATE && !rebGapOn(REB_GAP_GATE)) return `rebounds Lesses had landed ${REB_GAP_GATE.hit} of ${REB_GAP_GATE.n}, under the ${REB_GAP_HOLD_PCT}% bar`;
     if (cur.point !== m.point) return `PrizePicks moved the line from ${m.point} to ${cur.point}`;
     if (main != null && !(cur.point > main)) return `the sharp books' line moved to ${main}, ${main > cur.point ? 'above' : 'level with'} PrizePicks' ${cur.point}`;
     return other ? dropOutranked(other) : null;
@@ -10690,6 +10702,8 @@ async function picksBoard(env) {
     await Promise.race([logos, new Promise((r) => { timer = setTimeout(r, SOC_LOGO_WAIT_MS); })]);
     clearTimeout(timer);
     out.kinds = Object.fromEntries(pickKindsOn(now).map(([k, v]) => [k, { ...v, record: kinds[k] }]));
+    // The rebounds Less held off the list says so, with the bar it is under (2026-11-18).
+    if (out.kinds.nba_reb_gap && kinds.nba_reb_gap && ptDateOf(now) >= REB_GAP_HOLD_SINCE && !rebGapOn(kinds.nba_reb_gap)) out.kinds.nba_reb_gap.held = { bar: REB_GAP_HOLD_PCT };
     out.qualifyingGames = new Set(legs.map((l) => l.gameKey)).size;
     if (unavailable.size) out.unavailable = [...unavailable];
     // Each leg's first chance on the list, for how far it has moved since.
@@ -12742,6 +12756,17 @@ function sharpMainOf(json) {
   return rest.length ? median(rest) : null;
 }
 const REB_GAP_P = 56.1;
+// Rebounds Less on Picks only while its record holds up (2026-11-18, the owner's call after that
+// night's replay: "use the hold rule"). Picks' own rebounds legs had landed 29 of 60 (48%) since
+// Oct 10 against the 56.1% shown, and the kind 117 of 218 (53.7%), under the 54.2% a 5- or
+// 6-pick Flex needs a leg. While the kind's record (pickKindBuild) is under that, its legs stay
+// off the list and the entry; once it clears, they come back. Still logged, graded and on the
+// NBA card, so the record goes on counting.
+const REB_GAP_HOLD_SINCE = '2026-11-18';
+const REB_GAP_HOLD_PCT = 54.2;
+// The record the last candidates read went by, for why a rebounds leg left the list.
+let REB_GAP_GATE = null;
+const rebGapOn = (rec) => !!rec && rec.n > 0 && rec.hit / rec.n * 100 >= REB_GAP_HOLD_PCT;
 // A rebounds row's line above the sharp main line: its current one (ppCurrent),
 // against the lines as last read.
 const rebGapOf = (r) => { const main = sharpMainOf(r.book_unders); return main != null && r.point != null && r.point > main ? round1(r.point - main) : null; };
