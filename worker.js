@@ -17777,6 +17777,9 @@ async function nflGrade(env, url) {
       ['soccer core http', 'http://sports.core.api.espn.com/v2/sports/soccer/leagues/eng.1/events/401879288/competitions/401879288/competitors/373/roster'],
       ['soccer site', 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary?event=401879288'],
       ['soccer cdn', 'https://cdn.espn.com/core/soccer/lineups?xhr=1&gameId=401879288'],
+      // UFC (2026-11-19): the cdn host has no MMA, so the card and its results come from these.
+      ['ufc site', 'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard'],
+      ['ufc fightcenter', 'https://site.web.api.espn.com/apis/common/v3/sports/mma/ufc/fightcenter/600061400'],
     ];
     const res = {};
     for (const [name, u] of cands) {
