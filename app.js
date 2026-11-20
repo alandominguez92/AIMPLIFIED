@@ -4781,6 +4781,15 @@
       case 'set-sport': setSport(target.dataset.sport); break;
       case 'ufc-step': ufcStep(target.dataset.bout, Number(target.dataset.d)); break;
       case 'ufc-save': ufcLineSend(target.dataset.bout); break;
+      // Strikes and takedowns (2026-11-20).
+      case 'ufc-stat': state.ufcStat = target.dataset.stat; renderUfc(); break;
+      case 'ufc-pstep': {
+        const k = target.dataset.key, [bid, fid, stat] = k.split(':');
+        const b = ufcBout(bid), f = b && b.fighters.find((x) => x.id === fid);
+        if (f) ufcPropLineSet(k, ufcPropLineOf(b, f, stat) + Number(target.dataset.d));
+        break;
+      }
+      case 'ufc-psave': clearTimeout(ufcPropTimers[target.dataset.key]); ufcPropSend(target.dataset.key); break;
       case 'go-home': goHome(e); break;
       case 'soccer-league': setSoccerLeague(target.dataset.league); break;
       // A soccer prop's line, stepped to PrizePicks' number; whole numbers are
@@ -5188,6 +5197,11 @@
     if (t.dataset.prl) {
       const v = Number(t.value);
       if (isFinite(v) && v >= 0) { propLineSave(t.dataset.prl, Math.round(v * 2) / 2); propRedraw(t.dataset.prl.split(':')[0]); }
+    }
+    // A UFC fighter's strikes or takedowns line typed to PrizePicks' number (2026-11-20).
+    if (t.dataset.ufcp) {
+      const v = Number(t.value);
+      if (isFinite(v) && v > 0) ufcPropLineSet(t.dataset.ufcp, v);
     }
     // A stat picked from the bar that stays under the tabs (2026-11-06).
     if (t.dataset.spsel) {
@@ -8284,7 +8298,9 @@
   // any number from every UFC fight since January 2024 bent to meet it (the board's curve):
   // PrizePicks' line is typed here, saved by the entries key and graded at that number, off Picks
   // until its record clears the bar. How it ends is information only. All of it graded from
-  // ESPN's fight center.
+  // ESPN's fight center. Significant strikes and takedowns (2026-11-20) are each fighter's, from
+  // their UFC fights since January 2024 and the opponent's, over the same fight-time chances:
+  // PrizePicks' line typed on the fighter, logged and graded the same way, off Picks.
   async function refreshUfc() {
     if (!LIVE_MODE) return;
     boardReadStart('ufc');
@@ -8321,21 +8337,41 @@
       if (!s) segs.push(s = { name: b.segment, start: b.commence, bouts: [] });
       s.bouts.push(b);
     }
-    grid.innerHTML = ufcRecordHtml(d) + segs.map((s) => `<div class="ufc-seg"><h3 class="ufc-seg-h">${esc(s.name)}<span>${esc(soccerKick(s.start))}</span></h3>`
-      + s.bouts.map(ufcBoutHtml).join('') + '</div>').join('');
+    const view = ufcView();
+    const chips = `<div class="sp-chips ufc-chips">${Object.entries(UFC_VIEWS).map(([k, name]) => `<button type="button" class="sp-chip${k === view ? ' on' : ''}" data-action="ufc-stat" data-stat="${k}" aria-pressed="${k === view}">${esc(name)}</button>`).join('')}</div>`;
+    grid.innerHTML = chips + ufcRecordHtml(d, view) + segs.map((s) => `<div class="ufc-seg"><h3 class="ufc-seg-h">${esc(s.name)}<span>${esc(soccerKick(s.start))}</span></h3>`
+      + s.bouts.map((b) => ufcBoutHtml(b, view)).join('') + '</div>').join('');
   }
-  function ufcRecordHtml(d) {
+  // One stat at a time, as the props cards (2026-11-20): fight time and how it ends, or each
+  // fighter's significant strikes or takedowns.
+  const UFC_VIEWS = { time: 'Fight time', sig: 'Sig. strikes', td: 'Takedowns' };
+  const UFC_STAT_WORDS = { sig: 'significant strikes', td: 'takedowns' };
+  const ufcView = () => (UFC_VIEWS[state.ufcStat] ? state.ufcStat : 'time');
+  function ufcRecordHtml(d, view) {
     const r = d.record || {}, m = d.mlRecord || {}, b65 = m.byBand && m.byBand['65+'];
     const of = (x) => (x && x.n ? `${x.hit} of ${x.n}` : 'none graded yet');
-    return '<div class="ufc-rec">'
-      + `<span><b>Moneyline 65%+</b> ${b65 && b65.n ? esc(b65.record) : 'none graded yet'}</span>`
+    const ml = `<span><b>Moneyline 65%+</b> ${b65 && b65.n ? esc(b65.record) : 'none graded yet'}</span>`;
+    if (view === 'sig' || view === 'td') {
+      const s = (d.propsRecord && d.propsRecord[view]) || {}, pj = s.proj || {};
+      const own = view === 'sig' ? s.atMid : s.at05;
+      const h = d.history;
+      return '<div class="ufc-rec">' + ml
+        + `<span><b>At your PrizePicks lines</b> ${of(s.atPp)}</span>`
+        + (view === 'sig'
+          ? `<span><b>More at the model's 50/50 line</b> ${own && own.n ? `${own.over} of ${own.n}` : 'none graded yet'}</span>`
+          : `<span><b>A takedown (0.5)</b> ${own && own.n ? `shown ${esc(String(own.shown))}%, landed ${esc(String(Math.round(own.over / own.n * 1000) / 10))}%` : 'none graded yet'}</span>`)
+        + `<span><b>Projected v landed</b> ${pj.n ? `${esc(String(pj.shown))} v ${esc(String(pj.landed))} (${pj.n})` : 'none graded yet'}</span>`
+        + `<span class="ufc-rec-note">Each fighter's ${UFC_STAT_WORDS[view]} a minute in UFC fights since January 2024${h && h.fights ? ` (${esc(String(h.fights))} fights)` : ''} and what the opponent has given up, over each fight's fight-time chances. Type PrizePicks' line to price it: logged and graded, off Picks until its record clears the bar.</span>`
+        + '</div>';
+    }
+    return '<div class="ufc-rec">' + ml
       + `<span><b>Fight time at DraftKings' line</b> ${of(r.timeAtDk)}</span>`
       + `<span><b>At your PrizePicks lines</b> ${of(r.timeAtPp)}</span>`
       + `<span><b>Likeliest ending</b> ${of(r.ends)}</span>`
       + '<span class="ufc-rec-note">Favourites at 65%+ go on Picks. Fight time stays off Picks until its record clears the bar; how it ends is information only.</span>'
       + '</div>';
   }
-  function ufcBoutHtml(b) {
+  function ufcBoutHtml(b, view = 'time') {
     const ml = b.ml || {};
     const won = (f) => !!(b.result && b.result.winner === f.id);
     const fighter = (f) => {
@@ -8349,8 +8385,10 @@
         + '</div></div>';
     };
     const tags = [b.mainEvent ? 'Main event' : '', b.title ? 'Title fight' : '', b.weight, `${b.rounds} rounds`].filter(Boolean);
+    const now = '<div class="ufc-row"><span class="ufc-k">Now</span><span>In progress</span></div>';
     const body = b.result ? ufcResultHtml(b)
-      : ufcTimeHtml(b) + ufcEndsHtml(b) + (b.state === 'in' ? '<div class="ufc-row"><span class="ufc-k">Now</span><span>In progress</span></div>' : ufcPpHtml(b));
+      : view === 'sig' || view === 'td' ? ufcTimeHtml(b) + (b.state === 'in' ? now : ufcPropsHtml(b, view))
+        : ufcTimeHtml(b) + ufcEndsHtml(b) + (b.state === 'in' ? now : ufcPpHtml(b));
     return `<article class="ufc-bout"><div class="ufc-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>`
       + `<div class="ufc-pair">${fighter(b.fighters[0])}<span class="ufc-vs">v</span>${fighter(b.fighters[1])}</div>${body}</article>`;
   }
@@ -8388,8 +8426,78 @@
     const [a, c] = b.fighters.map((f) => f.stats || {});
     const stat = (k, lab) => (a[k] != null && c[k] != null ? `${lab} ${a[k]}–${c[k]}` : '');
     const stats = [stat('sig', 'Sig. strikes'), stat('td', 'Takedowns'), stat('sub', 'Sub attempts'), stat('kd', 'Knockdowns')].filter(Boolean);
+    // What the log projected before the start (2026-11-20), beside it.
+    const pj = b.projected || {}, [pa, pc] = b.fighters.map((f) => pj[f.id] || {});
+    const proj = [['sig', 'Sig. strikes'], ['td', 'Takedowns']].filter(([k]) => pa[k] != null && pc[k] != null).map(([k, lab]) => `${lab} ${pa[k]}–${pc[k]}`);
     return `<div class="ufc-row ufc-res"><span class="ufc-k">Result</span><span><b>${esc(what)}</b>${when ? ` · ${esc(when)}` : ''} · fight time ${esc(ufcClock(r.minutes))}</span></div>`
-      + (stats.length ? `<div class="ufc-row"><span class="ufc-k">Stats</span><span>${esc(stats.join(' · '))}</span></div>` : '');
+      + (stats.length ? `<div class="ufc-row"><span class="ufc-k">Stats</span><span>${esc(stats.join(' · '))}</span></div>` : '')
+      + (proj.length ? `<div class="ufc-row"><span class="ufc-k">Projected</span><span>${esc(proj.join(' · '))}</span></div>` : '');
+  }
+  // Each fighter's significant strikes or takedowns (2026-11-20): the projection, and PrizePicks'
+  // line typed in, priced from the fighter's curve (curve[i] is the chance of more than i + 0.5).
+  // A line shows the saved one, else the model's own 50/50 line for strikes and 0.5 for takedowns.
+  const ufcPropKey = (b, f, stat) => `${b.id}:${f.id}:${stat}`;
+  const ufcPropLineOf = (b, f, stat) => {
+    const k = ufcPropKey(b, f, stat), set = state.ufcPl && state.ufcPl[k], saved = state.ufcPs && state.ufcPs[k];
+    const m = b.props && b.props[f.id] && b.props[f.id][stat];
+    return set != null ? set : saved != null ? saved : stat === 'sig' && m && m.mid != null ? m.mid : 0.5;
+  };
+  const ufcPropOverAt = (m, line) => {
+    if (!m || !m.curve || !m.curve.length) return null;
+    const v = m.curve[Math.min(m.curve.length - 1, Math.floor(line))];
+    return typeof v === 'number' ? v : null;
+  };
+  function ufcPropsHtml(b, stat) {
+    if (!b.props) return '<div class="ufc-row"><span class="ufc-k">' + esc(UFC_VIEWS[stat]) + '</span><span class="tc-wait">Once the fight history is in: ESPN\'s UFC cards since January 2024 are being read</span></div>';
+    return b.fighters.map((f) => {
+      const x = b.props[f.id], m = x && x[stat];
+      if (!m) return '';
+      const k = ufcPropKey(b, f, stat), line = ufcPropLineOf(b, f, stat), p = ufcPropOverAt(m, line);
+      const last = String(f.name || '').split(' ').slice(-1)[0];
+      return `<div class="ufc-row ufc-pr"><span class="ufc-k">${esc(f.short || last || f.name)}</span><span class="ufc-pr-in">`
+        // The average runs above the middle where an early finish is likely (Stirling, Nov 21:
+        // 84 strikes on average, 50/50 at 57.5), so strikes show the 50/50 line beside it.
+        + `<span class="ufc-pr-proj">Projected <b>${esc(String(m.mean))}</b>`
+        + `<span class="ufc-fr">${stat === 'sig' && m.mid != null ? `50/50 at ${esc(String(m.mid))}` : m.curve && m.curve.length ? `${esc(String(Math.round(m.curve[0])))}% to land one` : ''}</span>`
+        + `${x.newcomer ? '<span class="tc-wait" title="No UFC fight since January 2024: a rougher number">first fight in the data</span>' : `<span class="ufc-fr">${esc(String(x.fights))} fight${x.fights === 1 ? '' : 's'} in</span>`}</span>`
+        + '<span class="sp-line">'
+        + `<button type="button" class="sp-step" data-action="ufc-pstep" data-key="${esc(k)}" data-d="-1" aria-label="Lower the line">−</button>`
+        + `<input class="sp-in" type="number" inputmode="decimal" step="1" min="0.5" value="${esc(String(line))}" data-ufcp="${esc(k)}" aria-label="PrizePicks line for ${esc(f.name)} ${esc(UFC_STAT_WORDS[stat])}">`
+        + `<button type="button" class="sp-step" data-action="ufc-pstep" data-key="${esc(k)}" data-d="1" aria-label="Raise the line">+</button>`
+        + `${ufcPropSaveHtml(k, line)}</span>`
+        + (p != null ? `<span class="ufc-pp-p" data-ufcpp="${esc(k)}">More ${esc(String(p))}% · Less ${esc(String(Math.round((100 - p) * 10) / 10))}%</span>` : '')
+        + '</span></div>';
+    }).join('');
+  }
+  function ufcPropSaveHtml(k, line) {
+    if (state.ufcPsaving && state.ufcPsaving[k]) return `<span class="sp-lbl" data-ufcps="${esc(k)}">Saving…</span>`;
+    if (state.ufcPs && state.ufcPs[k] === line) return `<span class="sp-lbl" data-ufcps="${esc(k)}" title="Saved as PrizePicks' line: graded at this number">PP line <span class="sp-ok">✓</span></span>`;
+    return `<button type="button" class="sp-save" data-ufcps="${esc(k)}" data-action="ufc-psave" data-key="${esc(k)}" aria-label="Save ${esc(String(line))} as PrizePicks' line">Save</button>`;
+  }
+  // A half line only (45.5; takedowns 0.5 to 14.5), saved a moment after the last change.
+  const ufcPropTimers = {};
+  function ufcPropLineSet(k, v, wait = 1200) {
+    const stat = k.split(':')[2], top = stat === 'td' ? 14.5 : 299.5;
+    if (!isFinite(v)) return;
+    const line = Math.min(top, Math.max(0.5, Math.floor(v) + 0.5));
+    state.ufcPl = { ...(state.ufcPl || {}), [k]: line };
+    clearTimeout(ufcPropTimers[k]);
+    if (wait != null) ufcPropTimers[k] = setTimeout(() => ufcPropSend(k), wait);
+    renderUfc();
+  }
+  async function ufcPropSend(k) {
+    const [boutId, fighterId, stat] = k.split(':');
+    const b = ufcBout(boutId), f = b && b.fighters.find((x) => x.id === fighterId);
+    if (!b || !f) return;
+    const line = ufcPropLineOf(b, f, stat);
+    state.ufcPsaving = { ...(state.ufcPsaving || {}), [k]: true };
+    renderUfc();
+    try {
+      const j = await entriesFetch('POST', { boutId, fighterId, stat, line }, '/api/ufc-lines');
+      state.ufcPs = { ...(state.ufcPs || {}), [k]: j.line };
+    } catch (e) { toast(`Line not saved: ${e.message}`); }
+    state.ufcPsaving = { ...(state.ufcPsaving || {}), [k]: false };
+    renderUfc();
   }
   function ufcStep(id, d) {
     const b = ufcBout(id);
@@ -8419,9 +8527,14 @@
     if (!k) return;
     try {
       const j = await entriesFetch('GET', null, '/api/ufc-lines');
-      const saved = {};
+      const saved = {}, props = {};
       for (const x of (j.lines || [])) saved[x.bout_id] = x.pp_line;
+      for (const x of (j.props || [])) {
+        if (x.sig_line != null) props[`${x.bout_id}:${x.fighter_id}:sig`] = x.sig_line;
+        if (x.td_line != null) props[`${x.bout_id}:${x.fighter_id}:td`] = x.td_line;
+      }
       state.ufcSaved = { ...saved, ...(state.ufcSaved || {}) };
+      state.ufcPs = { ...props, ...(state.ufcPs || {}) };
       if (state.sport === 'ufc') renderUfc();
     } catch (e) { /* the card works without them; a save says what is wrong */ }
   }

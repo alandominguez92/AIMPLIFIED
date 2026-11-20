@@ -402,7 +402,10 @@ const HANDLER = {
       // A running backtest has this invocation's to itself.
       ctx.waitUntil((async () => {
         if (await histPropsTick(d1Env(env, 'histPropsTick')).catch(() => null)) return;
-        for (const job of [nbaPropsFormTick, nhlPropsFormTick, nflPropsFormTick, nflPropsLogTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(d1Env(env, job.name || 'hist-job')).catch(() => null);
+        // ufcHistTick (2026-11-20): the UFC's fight history, two cards a tick until it is in. It
+        // feeds the logged strikes and takedowns chances, so it reads before soccer's expected
+        // starters, which go on no record.
+        for (const job of [nbaPropsFormTick, nhlPropsFormTick, nflPropsFormTick, nflPropsLogTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, ufcHistTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(d1Env(env, job.name || 'hist-job')).catch(() => null);
       })());
       return;
     }
@@ -12437,9 +12440,9 @@ function ufcStatsOf(c) {
   const get = (n) => { const s = ((c && c.stats) || []).find((x) => x.name === n); return s ? String(s.displayValue) : null; };
   const pair = (v) => { const m = /^(\d+)\s*\/\s*(\d+)$/.exec(v || ''); return m ? [Number(m[1]), Number(m[2])] : [null, null]; };
   const num = (v) => (v != null && /^\d+$/.test(v) ? Number(v) : null);
-  const [sig, sigAtt] = pair(get('sigStrikes')), [td, tdAtt] = pair(get('takedowns'));
+  const [sig, sigAtt] = pair(get('sigStrikes')), [td, tdAtt] = pair(get('takedowns')), [, totAtt] = pair(get('totalStrikes'));
   const ctrl = /^(\d+):(\d{2})$/.exec(get('timeInControl') || '');
-  return { sig, sigAtt, td, tdAtt, sub: num(get('submissions')), kd: num(get('knockDowns')), ctrl: ctrl ? Number(ctrl[1]) * 60 + Number(ctrl[2]) : null };
+  return { sig, sigAtt, td, tdAtt, totAtt, sub: num(get('submissions')), kd: num(get('knockDowns')), ctrl: ctrl ? Number(ctrl[1]) * 60 + Number(ctrl[2]) : null };
 }
 // DraftKings' total rounds and goes-the-distance prices, as ESPN carries them, each de-vigged.
 function ufcDkOf(bets) {
@@ -12471,31 +12474,49 @@ function ufcFinishSurv(rounds, m) {
   const lo = Math.floor(i);
   return t[lo] + (t[lo + 1] - t[lo]) * (i - lo);
 }
+// A bout with no goes-the-distance price: the share of the last 180 days' UFC fights of its
+// length that went the distance (b.distBase, put on by ufcCard from the fight history), else the
+// whole history's. The share fell from 51-57% a quarter to 34-44% from mid-2025 (the Nov 20
+// replay), so the old average runs high.
+const ufcDistBaseOf = (b) => (b && b.distBase != null ? b.distBase : UFC_DIST_BASE[b && b.rounds === 5 ? 5 : 3]);
 // The chance a bout is still going at m minutes: it goes the distance (DraftKings' price, or the
 // UFC's rate where there is none), or it ends early later than m. The early ends' timing is the
 // last two years' (ufcFinishSurv), bent (raised to the power k) to meet DraftKings' total rounds
 // where it has one: a bout it makes 60% to see 12.5 minutes is a slower one than its division's.
-function ufcTimeOver(b, m) {
-  const full = 5 * (b.rounds === 5 ? 5 : 3);
-  if (!(m >= 0)) return null;
-  if (m >= full) return 0;
-  const dk = b.dk || {};
-  const pd = (dk.dist ? dk.dist.pYes : UFC_DIST_BASE[b.rounds === 5 ? 5 : 3]) / 100;
+function ufcTimeShape(b) {
+  const R = b.rounds === 5 ? 5 : 3, full = 5 * R, dk = b.dk || {};
+  const pd = (dk.dist ? dk.dist.pYes : ufcDistBaseOf(b)) / 100;
   let k = 1;
   if (dk.rounds) {
-    const a = ufcRoundsMinutes(dk.rounds.line), sa = ufcFinishSurv(b.rounds, a), want = (dk.rounds.pOver / 100 - pd) / (1 - pd);
+    const a = ufcRoundsMinutes(dk.rounds.line), sa = ufcFinishSurv(R, a), want = (dk.rounds.pOver / 100 - pd) / (1 - pd);
     if (a < full && sa > 0 && sa < 1) k = want > 0 && want < 1 ? Math.min(4, Math.max(0.25, Math.log(want) / Math.log(sa))) : want <= 0 ? 4 : 0.25;
   }
-  return pd + (1 - pd) * Math.pow(ufcFinishSurv(b.rounds, m), k);
+  return { R, full, pd, k };
+}
+function ufcTimeOver(b, m) {
+  const s = ufcTimeShape(b);
+  if (!(m >= 0)) return null;
+  if (m >= s.full) return 0;
+  return s.pd + (1 - s.pd) * Math.pow(ufcFinishSurv(s.R, m), s.k);
+}
+// The same as a spread of fight lengths for the strikes and takedowns counts: each half minute's
+// share of early ends (at its middle), and going the distance at the full length.
+function ufcMinutesMix(b) {
+  const s = ufcTimeShape(b);
+  const S = (m) => (m >= s.full ? s.pd : s.pd + (1 - s.pd) * Math.pow(ufcFinishSurv(s.R, m), s.k));
+  const out = [];
+  for (let t = 0; t < s.full; t += 0.5) { const w = S(t) - S(t + 0.5); if (w > 1e-9) out.push({ t: t + 0.25, w }); }
+  out.push({ t: s.full, w: s.pd });
+  return out;
 }
 // How a bout ends: a decision as often as DraftKings has it going the distance, and the early
 // ends split between knockouts and submissions as its division's have been.
 function ufcEnds(b) {
   const dk = b.dk || {};
-  const dec = dk.dist ? dk.dist.pYes : UFC_DIST_BASE[b.rounds === 5 ? 5 : 3];
+  const dec = dk.dist ? dk.dist.pYes : ufcDistBaseOf(b);
   const share = UFC_KO_SHARE[String(b.weight || '').toLowerCase()] || UFC_KO_SHARE_ALL;
   const fin = 100 - dec;
-  return { ko: round1(fin * share / 100), sub: round1(fin * (100 - share) / 100), dec: round1(dec), src: dk.dist ? 'dk' : 'base' };
+  return { ko: round1(fin * share / 100), sub: round1(fin * (100 - share) / 100), dec: round1(dec), src: dk.dist ? 'dk' : b.distBase != null ? 'recent' : 'base' };
 }
 // One bout from the fight center (fc) and the scoreboard (sb): who, when, how long it is
 // scheduled for, DraftKings' prices, and, once it is over, how it went.
@@ -12570,6 +12591,9 @@ async function ufcCard(env, force = false) {
     // A refused fight center keeps the bouts the last read had, and says so.
     const out = { asOf: new Date(now).toISOString(), event: { id: String(ev.id), name: ev.name || '', date: ev.date || null },
       bouts: fc ? ufcBoutsFrom(fc, sb) : (d && d.event && d.event.id === String(ev.id) ? d.bouts || [] : []), fcStatus: fr.status };
+    // A bout DraftKings has no goes-the-distance price on takes the last 180 days' share.
+    const base = ((await ufcHistMetaRead(db).catch(() => null)) || {}).dist || {};
+    for (const b of out.bouts) { const v = base[b.rounds === 5 ? 5 : 3]; if (v != null) b.distBase = v; else delete b.distBase; }
     await saveFeedCache(db, UFC_CARD_KEY, out);
     return out;
   } catch (e) { return d; }
@@ -12620,6 +12644,13 @@ async function ensureUfcSchema(db) {
     p_ko REAL, p_sub REAL, p_dec REAL, sig TEXT, first_at TEXT, read_at TEXT,
     pp_line REAL, pp_p_over REAL, pp_at TEXT, pp_edits INTEGER,
     winner_id TEXT, method TEXT, end_round INTEGER, end_clock TEXT, minutes REAL, stats TEXT, graded_at TEXT)`).run();
+  // Each fighter's significant strikes and takedowns (2026-11-20): the projection and the chance
+  // at the model's own lines, PrizePicks' typed lines and the chance at them, then what landed.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS ufcprops (
+    bout_id TEXT, fighter_id TEXT, event_id TEXT, date TEXT, commence TEXT, name TEXT, weight TEXT, rounds INTEGER, fights INTEGER,
+    sig_mean REAL, sig_mid REAL, sig_p_mid REAL, td_mean REAL, td_p05 REAL,
+    sig_line REAL, sig_p_over REAL, td_line REAL, td_p_over REAL, pp_at TEXT, pp_edits INTEGER, vals TEXT, first_at TEXT, read_at TEXT,
+    method TEXT, minutes REAL, sig_landed INTEGER, td_landed INTEGER, graded_at TEXT, PRIMARY KEY (bout_id, fighter_id))`).run();
 }
 // Each read of the card: a bout not yet started is logged, or its prices and chances brought up to
 // date when they have moved (the last before its start is what it is graded on); one that is over
@@ -12655,6 +12686,11 @@ async function ufcLogCard(db, card, now = Date.now()) {
       stmts.push(db.prepare('UPDATE ufcbouts SET winner_id = ?, method = ?, end_round = ?, end_clock = ?, minutes = ?, stats = ?, graded_at = ? WHERE bout_id = ?')
         .bind(b.result.winner, b.result.method, b.result.round, b.result.clock, b.result.minutes,
           JSON.stringify(Object.fromEntries(b.fighters.map((f) => [f.id, f.stats || null]))), at, b.id));
+      // And each fighter's strikes and takedowns, at the same read.
+      for (const f of b.fighters) {
+        stmts.push(db.prepare('UPDATE ufcprops SET method = ?, minutes = ?, sig_landed = ?, td_landed = ?, graded_at = ? WHERE bout_id = ? AND fighter_id = ? AND graded_at IS NULL')
+          .bind(b.result.method, b.result.minutes, f.stats ? f.stats.sig : null, f.stats ? f.stats.td : null, at, b.id, f.id));
+      }
       graded++;
     }
   }
@@ -12677,7 +12713,9 @@ async function ufcGradeLate(db, card, now = Date.now()) {
     const there = new Set(bouts.filter((b) => b.state === 'post').map((b) => b.id));
     const gone = late.filter((r) => r.event_id === id && !there.has(r.bout_id) && Date.parse(r.commence) < now - 48 * 3600e3);
     if (gone.length) {
-      await db.batch(gone.map((r) => db.prepare("UPDATE ufcbouts SET method = 'off', graded_at = ? WHERE bout_id = ? AND graded_at IS NULL").bind(new Date(now).toISOString(), r.bout_id)));
+      const at = new Date(now).toISOString();
+      await db.batch(gone.flatMap((r) => [db.prepare("UPDATE ufcbouts SET method = 'off', graded_at = ? WHERE bout_id = ? AND graded_at IS NULL").bind(at, r.bout_id),
+        db.prepare("UPDATE ufcprops SET method = 'off', graded_at = ? WHERE bout_id = ? AND graded_at IS NULL").bind(at, r.bout_id)]));
       off += gone.length;
     }
   }
@@ -12688,7 +12726,272 @@ async function ufcTick(env) {
   if (!env || !env.DB) return null;
   const card = await ufcCard(env);
   const out = await ufcLogCard(env.DB, card);
-  return { ...out, late: await ufcGradeLate(env.DB, card).catch(() => null) };
+  // Strikes and takedowns logged on the same read (2026-11-20).
+  const props = await ufcLogProps(env.DB, card, await ufcPropsModel(env.DB, card).catch(() => null)).catch(() => null);
+  return { ...out, props, late: await ufcGradeLate(env.DB, card).catch(() => null) };
+}
+
+// ---- Significant strikes and takedowns (2026-11-20) -----------------------------------------
+// The owner's go-ahead once the replay held up ("yes, build punches and takedowns onto the UFC
+// tab"). The replay (Nov 20, 0 credits, every card from January 2024): fit on 1,378 fighter-fights
+// to June 2025 and scored walk-forward on the 1,714 since. With fight time from DraftKings'
+// prices, as here, the More at the model's own 50/50 strikes line landed 48.7%; a takedown at 0.5
+// was shown 41.3% and landed 40.8%; a fighter's own numbers beat the division's alone (Brier 0.226
+// v 0.234 strikes, 0.171 v 0.186 takedowns). PrizePicks' past UFC lines are in no feed, so whether
+// its lines leave an edge is for the typed lines' record: logged and graded, off Picks, as fight
+// time is.
+//
+// The count is a negative binomial (spread r) at a rate a minute times the fight's length, over
+// the bout's spread of fight lengths (ufcMinutesMix). The rate is the division's, moved toward the
+// fighter's own output and the opponent's leaks (what the opponent's opponents landed), each
+// shrunk by k minutes at the division's rate, to the powers a and b. A fighter with no fight in
+// the history starts at phi times the division's, fit on the fight-length spread over all 374
+// such fighters from 2025: 0.85 for strikes (each half of them alike), 1.05 for takedowns. Their
+// fights are shorter (37% went the distance, veterans' 47%) and the strikes More still landed
+// 45-47% at the 50/50 line held out, so the card marks them.
+const UFC_PROP = {
+  sig: { k: 25, a: 0.8, b: 0.8, r: 2.5, phi: 0.85, maxLine: 299.5 },
+  td: { k: 10, a: 0.6, b: 0.3, r: 0.9, phi: 1.05, maxLine: 14.5 },
+};
+const UFC_DIV_MIN = 300;                      // a division with fewer minutes takes the whole UFC's rate
+const UFC_DIST_DAYS = 180, UFC_DIST_MIN_BOUTS = 20;
+const UFC_HIST_KEY = 'ufc_hist', UFC_HIST_META_KEY = 'ufc_hist_meta';
+const UFC_HIST_FROM = 2024;                   // the replay's history: every card from January 2024
+const UFC_HIST_PER_TICK = 2;                  // fight centers a tick, on HIST_CRON's every other minute
+
+async function ensureUfcHistSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS ufcfights (
+    bout_id TEXT, fighter_id TEXT, event_id TEXT, commence TEXT, weight TEXT, rounds INTEGER, method TEXT, minutes REAL,
+    name TEXT, opp_id TEXT, won INTEGER, sig INTEGER, sig_att INTEGER, td INTEGER, td_att INTEGER, opp_sig INTEGER, opp_td INTEGER,
+    PRIMARY KEY (bout_id, fighter_id))`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS ufcfights_fighter ON ufcfights (fighter_id)').run();
+}
+// A division as the history keys it; a catchweight bout counts toward the whole UFC's only.
+const ufcDivKey = (w) => { const k = String(w || '').trim().toLowerCase(); return !k || /catch/.test(k) ? null : k; };
+// A card's finished fights as history rows, as the replay took them: a knockout, submission,
+// decision or draw (a no contest, disqualification and the rest left out), both fighters' strikes
+// and takedowns there, and not a page with no strike thrown past a minute and a half. A fight
+// that went past three rounds was a five-round one.
+function ufcHistRowsOf(eventId, bouts) {
+  const out = [];
+  for (const b of bouts || []) {
+    const r = b.result;
+    if (b.state !== 'post' || !r || !['ko', 'sub', 'dec', 'draw'].includes(r.method) || !(r.minutes > 0) || (b.fighters || []).length !== 2) continue;
+    const [f1, f2] = b.fighters, s1 = f1.stats || {}, s2 = f2.stats || {};
+    if ([s1.sig, s1.td, s2.sig, s2.td].some((v) => v == null)) continue;
+    if (r.minutes > 1.5 && !s1.sigAtt && !s2.sigAtt && !s1.totAtt && !s2.totAtt) continue;
+    const rounds = b.rounds === 5 || r.round > 3 ? 5 : 3;
+    for (const [f, s, o, so] of [[f1, s1, f2, s2], [f2, s2, f1, s1]]) {
+      out.push({ bout_id: b.id, fighter_id: f.id, event_id: String(eventId), commence: b.commence, weight: b.weight || '', rounds, method: r.method,
+        minutes: r.minutes, name: f.name, opp_id: o.id, won: r.winner === f.id ? 1 : 0, sig: s.sig, sig_att: s.sigAtt, td: s.td, td_att: s.tdAtt,
+        opp_sig: so.sig, opp_td: so.td });
+    }
+  }
+  return out;
+}
+const UFC_HIST_COLS = ['bout_id', 'fighter_id', 'event_id', 'commence', 'weight', 'rounds', 'method', 'minutes', 'name', 'opp_id', 'won',
+  'sig', 'sig_att', 'td', 'td_att', 'opp_sig', 'opp_td'];
+async function ufcHistInsert(db, rows) {
+  if (!rows.length) return 0;
+  const sql = `INSERT OR IGNORE INTO ufcfights (${UFC_HIST_COLS.join(', ')}) VALUES (${UFC_HIST_COLS.map(() => '?').join(',')})`;
+  let added = 0;
+  for (let i = 0; i < rows.length; i += 50) {
+    const res = await db.batch(rows.slice(i, i + 50).map((r) => db.prepare(sql).bind(...UFC_HIST_COLS.map((c) => (r[c] === undefined ? null : r[c])))));
+    for (const x of res || []) added += (x && x.meta && x.meta.changes) || 0;
+  }
+  return added;
+}
+// What every chance leans on, rebuilt when the history grows and daily (for the window): each
+// division's minutes, strikes and takedowns, the whole UFC's, and the share of the last 180 days'
+// fights of each length that went the distance (from 20 fights; none under).
+async function ufcHistMetaBuild(db, now = Date.now()) {
+  await ensureUfcHistSchema(db);
+  const rows = (await db.prepare('SELECT weight, SUM(minutes) AS min, SUM(sig) AS sig, SUM(td) AS td, COUNT(*) AS n FROM ufcfights GROUP BY weight').all()).results || [];
+  const div = {}, all = { min: 0, sig: 0, td: 0, n: 0 };
+  for (const r of rows) {
+    const k = ufcDivKey(r.weight);
+    for (const d of k ? [div[k] || (div[k] = { min: 0, sig: 0, td: 0, n: 0 }), all] : [all]) { d.min += r.min || 0; d.sig += r.sig || 0; d.td += r.td || 0; d.n += r.n || 0; }
+  }
+  const dr = (await db.prepare("SELECT rounds, COUNT(*) AS n, SUM(CASE WHEN method IN ('dec','draw') THEN 1 ELSE 0 END) AS went FROM ufcfights WHERE commence >= ? AND commence < ? GROUP BY rounds")
+    .bind(new Date(now - UFC_DIST_DAYS * 864e5).toISOString(), new Date(now).toISOString()).all()).results || [];
+  const dist = {}, distBouts = {};
+  for (const r of dr) {
+    const R = r.rounds === 5 ? 5 : 3;
+    distBouts[R] = r.n / 2;                  // two rows a fight
+    if (r.n / 2 >= UFC_DIST_MIN_BOUTS) dist[R] = round1(r.went / r.n * 100);
+  }
+  const meta = { at: new Date(now).toISOString(), fights: all.n / 2, div, all, dist, distBouts };
+  await saveFeedCache(db, UFC_HIST_META_KEY, meta);
+  return meta;
+}
+async function ufcHistMetaRead(db) {
+  const hit = await loadFeedCache(db, UFC_HIST_META_KEY);
+  return hit.present ? hit.data : null;
+}
+// The history: every card from January 2024, found on ESPN's season calendars (the scoreboard on
+// any day of a season lists its cards) and read from each card's fight center, newest first, two
+// cards a tick on HIST_CRON's every other minute (about 150 cards on Nov 20: two and a half
+// hours), free. Then the calendars every six hours, for a card since: the history keeps up by
+// itself, within a day of a card. A card is done once all its fights are over (or three days
+// on); one that will not read is asked again an hour later, then two, up to five times.
+async function ufcHistTick(env, now = Date.now(), perTick = UFC_HIST_PER_TICK) {
+  if (!env || !env.DB) return null;
+  const db = env.DB;
+  await ensureUfcHistSchema(db);
+  const hit = await loadFeedCache(db, UFC_HIST_KEY);
+  const st = hit.present && hit.data ? hit.data : {};
+  st.events = st.events || []; st.done = st.done || {}; st.tries = st.tries || {}; st.retryAt = st.retryAt || {};
+  const out = { calendars: 0, read: 0, added: 0 };
+  if (!st.calAt || now - Date.parse(st.calAt) > 6 * 3600e3) {
+    const y = new Date(now).getUTCFullYear(), have = new Set(st.events.map((e) => e.id));
+    for (let yr = st.calAt ? Math.max(UFC_HIST_FROM, y - 1) : UFC_HIST_FROM; yr <= y; yr++) {
+      let sb;
+      try { sb = await ufcEventsOn(`${yr}0615`); } catch (e) { continue; }
+      out.calendars++;
+      for (const c of ((sb.leagues || [])[0] || {}).calendar || []) {
+        const m = /\/events\/(\d+)/.exec(String((c.event && c.event.$ref) || '')), start = Date.parse(c.startDate);
+        if (m && isFinite(start) && !have.has(m[1])) { have.add(m[1]); st.events.push({ id: m[1], start: new Date(start).toISOString() }); }
+      }
+    }
+    if (out.calendars) st.calAt = new Date(now).toISOString();
+  }
+  const isDue = (e) => !st.done[e.id] && Date.parse(e.start) < now - 12 * 3600e3 && (st.tries[e.id] || 0) < 5 && !(Date.parse(st.retryAt[e.id]) > now);
+  const due = st.events.filter(isDue).sort((a, b) => Date.parse(b.start) - Date.parse(a.start)).slice(0, perTick);
+  for (const e of due) {
+    let bouts;
+    try { bouts = await ufcEventBouts(e.id, null); } catch (err) {
+      st.tries[e.id] = (st.tries[e.id] || 0) + 1;
+      st.retryAt[e.id] = new Date(now + st.tries[e.id] * 3600e3).toISOString();
+      continue;
+    }
+    out.read++;
+    out.added += await ufcHistInsert(db, ufcHistRowsOf(e.id, bouts));
+    if (bouts.every((b) => b.state === 'post') || Date.parse(e.start) < now - 3 * 864e5) { st.done[e.id] = 1; delete st.tries[e.id]; delete st.retryAt[e.id]; }
+  }
+  out.left = st.events.filter((e) => !st.done[e.id] && Date.parse(e.start) < now - 12 * 3600e3 && (st.tries[e.id] || 0) < 5).length;
+  const meta = await ufcHistMetaRead(db).catch(() => null);
+  if (out.added || !meta || now - Date.parse(meta.at) > 864e5) out.fights = (await ufcHistMetaBuild(db, now)).fights;
+  if (out.calendars || due.length) await saveFeedCache(db, UFC_HIST_KEY, st);
+  return out;
+}
+// The fighters' history for a card: their fights before it, not the card's own.
+async function ufcFighterHist(db, ids, eventId) {
+  if (!ids.length) return new Map();
+  await ensureUfcHistSchema(db);
+  const rows = (await db.prepare(`SELECT fighter_id, COUNT(*) AS n, SUM(minutes) AS min, SUM(sig) AS sig, SUM(opp_sig) AS sig_abs, SUM(td) AS td, SUM(opp_td) AS td_abs
+    FROM ufcfights WHERE fighter_id IN (${ids.map(() => '?').join(',')}) AND event_id != ? GROUP BY fighter_id`).bind(...ids, String(eventId || '')).all()).results || [];
+  return new Map(rows.map((r) => [String(r.fighter_id), r]));
+}
+// A fighter's rate a minute (see UFC_PROP): d is the division's, fa the fighter's history, oa
+// the opponent's.
+function ufcPropRate(stat, d, fa, oa) {
+  const p = UFC_PROP[stat], start = fa && fa.n ? d : d * p.phi;
+  const own = ((fa ? fa[stat] : 0) + p.k * start) / ((fa ? fa.min : 0) + p.k);
+  const leak = ((oa ? oa[stat + '_abs'] : 0) + p.k * d) / ((oa ? oa.min : 0) + p.k);
+  return d * Math.pow(own / d, p.a) * Math.pow(leak / d, p.b);
+}
+// The negative binomial's chance of more than each of a rising list of lines, in one pass.
+function ufcNbOver(Ls, mu, r) {
+  const q = mu / (r + mu);
+  let p = Math.pow(r / (r + mu), r), s = p, k = 0;
+  const out = [];
+  for (const L of Ls) {
+    const top = Math.floor(L);
+    while (k < top) { k++; p *= (k - 1 + r) / k * q; s += p; }
+    out.push(L < 0 ? 1 : Math.max(0, 1 - s));
+  }
+  return out;
+}
+// One fighter's count over the fight-length spread: the mean, and curve[i], the chance (%) of
+// more than i + 0.5, from 0.5 up to the first line under half a percent. For strikes, mid is the
+// first line the More is under 50% at (the model's own 50/50 line) and pMid the More there.
+function ufcPropCurve(rate, mix, stat) {
+  // Every line to the stat's top, then cut at half a percent: the spread is wide (a five-round
+  // fight's 40-strike projection is still 2.7% to see more than 150).
+  const p = UFC_PROP[stat], mean = rate * mix.reduce((s, q) => s + q.w * q.t, 0);
+  const Ls = [];
+  for (let L = 0.5; L <= p.maxLine; L += 1) Ls.push(L);
+  const acc = Ls.map(() => 0);
+  for (const q of mix) ufcNbOver(Ls, Math.max(1e-3, rate * q.t), p.r).forEach((v, i) => { acc[i] += q.w * v; });
+  const end = acc.findIndex((v) => v < 0.005);
+  const curve = acc.slice(0, end < 0 ? acc.length : end + 1).map((v) => round1(v * 100));
+  const out = { mean: stat === 'td' ? round2(mean) : round1(mean), curve };
+  if (stat === 'sig') { const i = acc.findIndex((v) => v < 0.5); out.mid = (i < 0 ? acc.length - 1 : i) + 0.5; out.pMid = round1(acc[i < 0 ? acc.length - 1 : i] * 100); }
+  return out;
+}
+// The chance (%) of more than a half line, from a curve: past its end, its last (under 0.5%).
+const ufcPropOver = (m, line) => (m && m.curve && m.curve.length ? m.curve[Math.min(m.curve.length - 1, Math.floor(line))] : null);
+// The strikes and takedowns for every fight still to come on a card, from the history:
+// { fights, bouts: { boutId: { fighterId: { fights, newcomer, sig: { mean, mid, pMid, curve }, td: { mean, curve } } } } }.
+// None until the history has its first fights.
+async function ufcPropsModel(db, card) {
+  const pre = ((card && card.bouts) || []).filter((b) => b.state === 'pre' && (b.fighters || []).length === 2);
+  if (!pre.length) return null;
+  const meta = await ufcHistMetaRead(db).catch(() => null);
+  if (!meta || !meta.all || !(meta.all.min > 0)) return null;
+  const fh = await ufcFighterHist(db, [...new Set(pre.flatMap((b) => b.fighters.map((f) => f.id)))], card.event && card.event.id);
+  const bouts = {};
+  for (const b of pre) {
+    const k = ufcDivKey(b.weight), dv = k && meta.div[k] && meta.div[k].min > UFC_DIV_MIN ? meta.div[k] : meta.all;
+    const mix = ufcMinutesMix(b), per = {};
+    b.fighters.forEach((f, i) => {
+      const fa = fh.get(f.id) || null, oa = fh.get(b.fighters[1 - i].id) || null;
+      per[f.id] = { fights: fa ? fa.n : 0, newcomer: !fa,
+        sig: ufcPropCurve(ufcPropRate('sig', dv.sig / dv.min, fa, oa), mix, 'sig'), td: ufcPropCurve(ufcPropRate('td', dv.td / dv.min, fa, oa), mix, 'td') };
+    });
+    bouts[b.id] = per;
+  }
+  return { fights: meta.fights, at: meta.at, bouts };
+}
+// Each read of the card: every fighter of a fight still to come logged, or brought up to date when
+// the projection or the chance at a typed line has moved (the last before the start is what is
+// graded). ufcLogCard grades them with their bout.
+async function ufcLogProps(db, card, model, now = Date.now()) {
+  if (!model || !card || !card.event) return { logged: 0 };
+  const pairs = [];
+  for (const b of card.bouts || []) if (model.bouts[b.id]) for (const f of b.fighters) if (model.bouts[b.id][f.id]) pairs.push([b, f]);
+  if (!pairs.length) return { logged: 0 };
+  await ensureUfcSchema(db);
+  const ids = [...new Set(pairs.map(([b]) => b.id))];
+  const have = new Map((((await db.prepare(`SELECT bout_id, fighter_id, sig_line, td_line FROM ufcprops WHERE bout_id IN (${ids.map(() => '?').join(',')})`)
+    .bind(...ids).all()).results) || []).map((r) => [r.bout_id + '|' + r.fighter_id, r]));
+  const at = new Date(now).toISOString(), stmts = [];
+  for (const [b, f] of pairs) {
+    const m = model.bouts[b.id][f.id], row = have.get(b.id + '|' + f.id);
+    const sigP = row && row.sig_line != null ? ufcPropOver(m.sig, row.sig_line) : null, tdP = row && row.td_line != null ? ufcPropOver(m.td, row.td_line) : null;
+    const vals = [b.commence, m.fights, m.sig.mean, m.sig.mid, m.sig.pMid, m.td.mean, m.td.curve[0], sigP, tdP];
+    stmts.push(db.prepare(`INSERT INTO ufcprops (bout_id, fighter_id, event_id, date, name, weight, rounds,
+        commence, fights, sig_mean, sig_mid, sig_p_mid, td_mean, td_p05, sig_p_over, td_p_over, vals, first_at, read_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(bout_id, fighter_id) DO UPDATE SET date = excluded.date, commence = excluded.commence, fights = excluded.fights,
+        sig_mean = excluded.sig_mean, sig_mid = excluded.sig_mid, sig_p_mid = excluded.sig_p_mid, td_mean = excluded.td_mean, td_p05 = excluded.td_p05,
+        sig_p_over = COALESCE(excluded.sig_p_over, ufcprops.sig_p_over), td_p_over = COALESCE(excluded.td_p_over, ufcprops.td_p_over),
+        vals = excluded.vals, read_at = excluded.read_at
+      WHERE ufcprops.graded_at IS NULL AND ufcprops.vals IS NOT excluded.vals`)
+      .bind(b.id, f.id, card.event.id, ptDateOf(Date.parse(b.commence)), f.name, b.weight, b.rounds, ...vals, JSON.stringify(vals), at, at));
+  }
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return { logged: stmts.length };
+}
+// What the strikes and takedowns log says: at PrizePicks' typed lines (the side the chance
+// favours, by band), the strikes More at the model's own 50/50 line, a takedown at 0.5, and the
+// projections against what landed.
+function ufcPropsRecordOf(rows) {
+  const graded = rows.filter((r) => r.graded_at && ['ko', 'sub', 'dec', 'draw', 'dq', 'other'].includes(r.method));
+  const side = (p, over) => ({ p: p >= 50 ? p : 100 - p, won: p >= 50 ? over : !over });
+  const avg = (l, f) => (l.length ? l.reduce((s, x) => s + f(x), 0) / l.length : null);
+  const out = { fighters: graded.length };
+  for (const stat of ['sig', 'td']) {
+    const landed = graded.filter((r) => r[stat + '_landed'] != null);
+    const atPp = landed.filter((r) => r[stat + '_line'] != null && r[stat + '_p_over'] != null).map((r) => side(r[stat + '_p_over'], r[stat + '_landed'] > r[stat + '_line']));
+    const proj = landed.filter((r) => r[stat + '_mean'] != null);
+    out[stat] = { atPp: ufcTally(atPp), proj: { n: proj.length, shown: proj.length ? round1(avg(proj, (r) => r[stat + '_mean'])) : null, landed: proj.length ? round1(avg(proj, (r) => r[stat + '_landed'])) : null } };
+  }
+  const mid = graded.filter((r) => r.sig_mid != null && r.sig_landed != null);
+  out.sig.atMid = { n: mid.length, over: mid.filter((r) => r.sig_landed > r.sig_mid).length, shown: mid.length ? round1(avg(mid, (r) => r.sig_p_mid)) : null };
+  const t05 = graded.filter((r) => r.td_p05 != null && r.td_landed != null);
+  out.td.at05 = { n: t05.length, over: t05.filter((r) => r.td_landed > 0.5).length, shown: t05.length ? round1(avg(t05, (r) => r.td_p05)) : null };
+  return out;
 }
 
 // The finished bouts on ESPN's cards of a Pacific day and the next (a card is dated by its own
@@ -12717,18 +13020,20 @@ async function ufcFinalsOn(date) {
 
 // What the log says so far: fight time at DraftKings' number and at PrizePicks' typed one (the
 // side the chance favours, by band), and how the likeliest ending did.
+// A list of sides taken ({ p: the chance shown for it, won }), counted and banded.
+function ufcTally(list) {
+  const n = list.length, hit = list.filter((x) => x.won).length;
+  const byBand = {};
+  for (const [k, lo, hi] of [['50-60', 50, 60], ['60-70', 60, 70], ['70+', 70, 101]]) {
+    const l = list.filter((x) => x.p >= lo && x.p < hi);
+    byBand[k] = { n: l.length, hit: l.filter((x) => x.won).length, stated: l.length ? round1(l.reduce((s, x) => s + x.p, 0) / l.length) : null };
+  }
+  return { n, hit, hitRate: n ? round1(hit / n * 100) : null, byBand };
+}
 function ufcRecordOf(rows) {
   const graded = rows.filter((r) => r.graded_at && ['ko', 'sub', 'dec', 'draw', 'dq', 'other'].includes(r.method) && r.minutes != null);
   const side = (p, over) => ({ p: p >= 50 ? p : 100 - p, won: p >= 50 ? over : !over });
-  const tally = (list) => {
-    const n = list.length, hit = list.filter((x) => x.won).length;
-    const byBand = {};
-    for (const [k, lo, hi] of [['50-60', 50, 60], ['60-70', 60, 70], ['70+', 70, 101]]) {
-      const l = list.filter((x) => x.p >= lo && x.p < hi);
-      byBand[k] = { n: l.length, hit: l.filter((x) => x.won).length, stated: l.length ? round1(l.reduce((s, x) => s + x.p, 0) / l.length) : null };
-    }
-    return { n, hit, hitRate: n ? round1(hit / n * 100) : null, byBand };
-  };
+  const tally = ufcTally;
   const atDk = graded.filter((r) => r.p_over != null && r.dk_line != null).map((r) => side(r.p_over, r.minutes > ufcRoundsMinutes(r.dk_line)));
   const atPp = graded.filter((r) => r.pp_p_over != null && r.pp_line != null && r.minutes !== r.pp_line).map((r) => side(r.pp_p_over, r.minutes > r.pp_line));
   const ended = graded.filter((r) => r.p_ko != null && ['ko', 'sub', 'dec', 'draw'].includes(r.method));
@@ -12746,17 +13051,32 @@ function ufcRecordOf(rows) {
 // ends, and PrizePicks' typed line where there is one; and the records. No Odds API call on a read,
 // not even the first (UFC_ML.cronOnly).
 async function ufcBoardData(env) {
-  const out = { note: 'UFC: the sharp books\' fair moneyline against the best DK/FD price; fight time and how it ends from DraftKings\' total rounds and goes-the-distance prices, shaped by every UFC fight since January 2024.',
-    event: null, bouts: [], asOf: null, mlAsOf: null, record: null, mlRecord: null };
+  const out = { note: 'UFC: the sharp books\' fair moneyline against the best DK/FD price; fight time and how it ends from DraftKings\' total rounds and goes-the-distance prices, shaped by every UFC fight since January 2024; significant strikes and takedowns from each fighter\'s fights since then and what the opponent has given up, over the same spread of fight lengths.',
+    event: null, bouts: [], asOf: null, mlAsOf: null, record: null, mlRecord: null, propsRecord: null, history: null };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
   const card = await ufcCard(env);
   if (!card) { out.error = 'the card could not be read'; return out; }
   out.event = card.event; out.asOf = card.asOf;
   if (card.fcStatus && card.fcStatus !== 200) out.fcStatus = card.fcStatus;
   await ufcLogCard(env.DB, card).catch(() => null);
+  // Strikes and takedowns (2026-11-20): each fighter's projection and curve, logged as the cron does.
+  const model = await ufcPropsModel(env.DB, card).catch(() => null);
+  await ufcLogProps(env.DB, card, model).catch(() => null);
+  const hm = model ? { fights: model.fights, at: model.at } : await ufcHistMetaRead(env.DB).catch(() => null);
+  out.history = hm ? { fights: hm.fights, at: hm.at } : null;
   const ml = await h2hBoardData(env, UFC_ML).catch(() => ({ games: [] }));
   out.mlAsOf = ml.asOf || null;
   await ensureUfcSchema(env.DB);
+  // A finished fight's projections, beside what landed.
+  const doneIds = card.bouts.filter((b) => b.state !== 'pre').map((b) => b.id);
+  const proj = new Map();
+  if (doneIds.length) {
+    for (const r of ((await env.DB.prepare(`SELECT bout_id, fighter_id, sig_mean, td_mean FROM ufcprops WHERE bout_id IN (${doneIds.map(() => '?').join(',')})`)
+      .bind(...doneIds).all()).results || [])) {
+      if (!proj.has(r.bout_id)) proj.set(r.bout_id, {});
+      proj.get(r.bout_id)[r.fighter_id] = { sig: r.sig_mean, td: r.td_mean };
+    }
+  }
   // The side the log holds for each fight still to come: the star. A typed PrizePicks line is not
   // shown here: it is the entries key's (/api/ufc-lines), and the page prices any number from the
   // bout's curve, the chance of an over at each half minute.
@@ -12778,9 +13098,13 @@ async function ufcBoardData(env) {
       time: r ? { line: r.line, minutes: ufcRoundsMinutes(r.line), pOver: round1(ufcTimeOver(b, ufcRoundsMinutes(r.line)) * 100) } : null,
       pDist: b.dk && b.dk.dist ? b.dk.dist.pYes : null, ends: ufcEnds(b),
       // curve[i]: the chance the bout is still going at (i + 1) / 2 minutes.
-      curve: b.state === 'pre' ? Array.from({ length: 2 * full - 1 }, (_, i) => round1(ufcTimeOver(b, (i + 1) / 2) * 100)) : null };
+      curve: b.state === 'pre' ? Array.from({ length: 2 * full - 1 }, (_, i) => round1(ufcTimeOver(b, (i + 1) / 2) * 100)) : null,
+      // Each fighter's strikes and takedowns: the projection, and curve[i], the chance of more than
+      // i + 0.5. A typed line is the key's, as fight time's is (/api/ufc-lines).
+      props: (model && model.bouts[b.id]) || null, projected: proj.get(b.id) || null };
   });
   try {
+    out.propsRecord = ufcPropsRecordOf((await env.DB.prepare('SELECT * FROM ufcprops WHERE graded_at IS NOT NULL').all()).results || []);
     out.record = ufcRecordOf((await env.DB.prepare('SELECT * FROM ufcbouts WHERE graded_at IS NOT NULL').all()).results || []);
     const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'ufc'").all()).results) || [], 'ufc');
     out.mlRecord = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand, bar: rec.bar };
@@ -12807,6 +13131,8 @@ async function ufcLinesApi(request, env) {
   if (request.method === 'POST') {
     let b;
     try { b = await request.json(); } catch (e) { return entryResponse({ error: 'Body must be JSON.' }, 400); }
+    // A fighter's significant strikes or takedowns (2026-11-20): { boutId, fighterId, stat, line }.
+    if (b && (b.stat === 'sig' || b.stat === 'td')) return ufcPropLineSave(env, auth, b);
     const id = String((b && b.boutId) || ''), line = Number(b && b.line);
     if (!(line > 0 && line < 25 && Number.isInteger(line * 2))) return entryResponse({ error: 'A fight-time line is minutes, a whole or half number under 25.' }, 400);
     const card = await ufcCard(env);
@@ -12821,7 +13147,33 @@ async function ufcLinesApi(request, env) {
     return entryResponse({ ok: true, boutId: id, line, pOver: p, claimed: !!auth.claimed });
   }
   const rows = (await db.prepare('SELECT bout_id, pp_line, pp_p_over, pp_at FROM ufcbouts WHERE pp_line IS NOT NULL AND graded_at IS NULL ORDER BY commence LIMIT 100').all()).results || [];
-  return entryResponse({ lines: rows });
+  const props = (await db.prepare(`SELECT bout_id, fighter_id, sig_line, sig_p_over, td_line, td_p_over, pp_at FROM ufcprops
+    WHERE (sig_line IS NOT NULL OR td_line IS NOT NULL) AND graded_at IS NULL ORDER BY commence LIMIT 200`).all()).results || [];
+  return entryResponse({ lines: rows, props });
+}
+// PrizePicks' strikes or takedowns line typed on a fighter: a half number (45.5; a takedowns line
+// 0.5 to 14.5), saved until the bout starts and priced from the fighter's curve, then on every
+// read of the card until the start, as fight time's is.
+async function ufcPropLineSave(env, auth, b) {
+  const db = env.DB;
+  const stat = b.stat, id = String(b.boutId || ''), fid = String(b.fighterId || ''), line = Number(b.line);
+  if (!(line > 0 && line <= UFC_PROP[stat].maxLine && line % 1 === 0.5)) {
+    return entryResponse({ error: stat === 'td' ? 'A takedowns line is a half number from 0.5 to 14.5.' : 'A strikes line is a half number, as 45.5.' }, 400);
+  }
+  const card = await ufcCard(env);
+  const bout = ((card && card.bouts) || []).find((x) => x.id === id);
+  if (!bout) return entryResponse({ error: 'That bout is not on the card.' }, 404);
+  if (!bout.fighters.some((f) => f.id === fid)) return entryResponse({ error: 'That fighter is not in that bout.' }, 404);
+  if (bout.state !== 'pre') return entryResponse({ error: 'That bout has started: its lines are locked.' }, 409);
+  await ufcLogCard(db, card);
+  const model = await ufcPropsModel(db, card);
+  const m = model && model.bouts[id] && model.bouts[id][fid];
+  if (!m) return entryResponse({ error: 'No strikes and takedowns chances yet: the fight history is still being read.' }, 503);
+  await ufcLogProps(db, card, model);
+  const p = ufcPropOver(m[stat], line), at = new Date().toISOString();
+  await db.prepare(`UPDATE ufcprops SET ${stat === 'td' ? 'td_line = ?, td_p_over = ?' : 'sig_line = ?, sig_p_over = ?'}, pp_at = ?, pp_edits = COALESCE(pp_edits, 0) + 1
+    WHERE bout_id = ? AND fighter_id = ? AND graded_at IS NULL`).bind(line, p, at, id, fid).run();
+  return entryResponse({ ok: true, boutId: id, fighterId: fid, stat, line, pOver: p, claimed: !!auth.claimed });
 }
 
 // The NHL's free score feed, one day at a time. ESPN serves no NHL scoreboard
