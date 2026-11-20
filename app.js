@@ -6251,9 +6251,9 @@
     // The NBA tab can list one player twice (Jabari Smith Jr's rebounds Less and blocks More): that
     // says so rather than naming him on his own card.
     if (sg) tags.push(`<span class="tc-wait" title="Legs from one game tend to land or miss together">${sg === pickShortName(x) ? 'Same player as another leg' : `Same game as ${esc(sg)}`}</span>`);
-    // An NHL points More Picks holds off (2026-11-14, the owner's call), with the record it went by.
+    // An NHL points or assists More Picks holds off (2026-11-14 and 11-19, the owner's calls), with the record it went by.
     const op = x.offPicks;
-    if (op) tags.push(`<span class="tc-wait" title="NHL points Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>`);
+    if (op) tags.push(`<span class="tc-wait" title="NHL points and assists Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>`);
     // A sport tab's own (step 7): the NBA unders card's "no sharp line yet", "PP 5.5 → 6.5" and the like.
     if (Array.isArray(x.tabTags)) for (const t of x.tabTags) if (t) tags.push(t);
     // The moneyline with the best chance shown (step 6), as the mock tags it; on a sport tab, its own.
@@ -7502,9 +7502,9 @@
     const spread = Object.keys(perGame).length >= 3;
     return `<ol class="tc-legs">${legs.map((x) => {
       const same = spread && perGame[x.game_id] >= 2 ? ' <span class="tc-wait">same game</span>' : '';
-      // A points More Picks holds off (2026-11-14, the owner's call), with the record it went by.
+      // A points or assists More Picks holds off (2026-11-14 and 11-19, the owner's calls), with the record it went by.
       const op = x.offPicks;
-      const held = op ? ` <span class="tc-wait" title="NHL points Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>` : '';
+      const held = op ? ` <span class="tc-wait" title="NHL points and assists Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>` : '';
       const leg = ppMoreLeg(x, sport);
       const on = !!state.slip[offerLeg(leg)];
       const star = `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;

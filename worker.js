@@ -10018,7 +10018,7 @@ async function picksCandidates(env, now) {
   }
 
   // The kinds' records, read once and only when a held leg is up for it: the rebounds Less
-  // (REB_GAP_HOLD_SINCE) and the NHL points Mores (NHL_PTS_HOLD_SINCE).
+  // (REB_GAP_HOLD_SINCE) and the NHL points and assists Mores (NHL_MORE_HOLD_SINCE).
   let kindRecsP;
   const kindRecs = () => kindRecsP || (kindRecsP = pickKindRecords(env).catch(() => null).then((x) => x || {}));
   // Rebounds Less where PrizePicks' line sits above the sharp main line
@@ -10070,21 +10070,20 @@ async function picksCandidates(env, now) {
   }
   await ensureNhlPpSchema(db);
   const nhl = (await db.prepare('SELECT * FROM nhlpp WHERE date IN (?, ?) AND result IS NULL').bind(...days).all()).results || [];
-  // Points Mores only where legs like them have landed (NHL_PTS_HOLD_SINCE): the record by band,
-  // read only when a points leg is up for it.
-  const held = ptDateOf(now) >= NHL_PTS_HOLD_SINCE;
-  let ptsBy;
+  // Points and assists Mores only where legs like them have landed (NHL_MORE_HOLD_SINCE): the
+  // record by stat and band, read only when a held leg is up for it.
+  let moreBy;
   for (const row of ppStanding(nhl)) {
     const r = ppCurrent(row);
     if (!soon(r.commence) || r.model_under == null) continue;
     if (100 - r.model_under < PICK_KINDS.nhl_more.min) continue;
-    if (held && r.market === 'pts') {
-      if (ptsBy === undefined) {
-        ptsBy = (await kindRecs()).nhl_more;
-        ptsBy = (ptsBy && ptsBy.byStat) || null;
-        NHL_PTS_GATE = ptsBy;
+    if (nhlMoreHeld(r.market, ptDateOf(now))) {
+      if (moreBy === undefined) {
+        moreBy = (await kindRecs()).nhl_more;
+        moreBy = (moreBy && moreBy.byStat) || null;
+        NHL_MORE_GATE = moreBy;
       }
-      if (!nhlPtsFavorable(ptsBy, ppMoreChance(r), row.close_point != null)) continue;
+      if (!nhlMoreFavorable(moreBy, r.market, ppMoreChance(r), row.close_point != null)) continue;
     }
     legs.push(moreLeg('nhl', r, ppMoreChance(r), PICKS_NHL_MK[r.market] || r.market));
   }
@@ -10337,11 +10336,11 @@ function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   if (!(p >= min)) why.push(p == null ? `no chance was read at ${cur.point}` : `the chance at ${cur.point} was ${round1(p)}%, under the ${min}% bar`);
   else if (more && ppMoreChance(cur) < min) why.push(`the sharp books had it at ${round1(100 - cur.sharp_under)}%, ${ppMoreChance(cur)}% with the model's, under the ${min}% bar`);
   else if (!more && ppBelowBook(cur)) why.push(`PrizePicks' ${cur.point} sat below the books' ${cur.book_line}`);
-  else if (kind === 'nhl_more' && cur.market === 'pts' && m.date >= NHL_PTS_HOLD_SINCE && NHL_PTS_GATE && !nhlPtsFavorable(NHL_PTS_GATE, ppMoreChance(cur), m.close_point != null)) {
-    const c = nhlPtsCell(NHL_PTS_GATE, ppMoreChance(cur), m.close_point != null);
+  else if (kind === 'nhl_more' && nhlMoreHeld(cur.market, m.date) && NHL_MORE_GATE && !nhlMoreFavorable(NHL_MORE_GATE, cur.market, ppMoreChance(cur), m.close_point != null)) {
+    const c = nhlMoreCell(NHL_MORE_GATE, cur.market, ppMoreChance(cur), m.close_point != null), what = cur.market === 'ast' ? 'assists' : 'points';
     // Said as the other reasons are (2026-11-14): the first wording took five lines on a phone.
-    why.push(c ? `points Mores at ${c.band ? `${c.band}%` : '55%+'} had landed ${c.hit} of ${c.n}, under the ${NHL_PTS_FAVOR_PCT}% bar`
-      : `too few points Mores graded for the ${NHL_PTS_FAVOR_PCT}% bar`);
+    why.push(c ? `${what} Mores at ${c.band ? `${c.band}%` : '55%+'} had landed ${c.hit} of ${c.n}, under the ${NHL_PTS_FAVOR_PCT}% bar`
+      : `too few ${what} Mores graded for the ${NHL_PTS_FAVOR_PCT}% bar`);
   } else if (other) why.push(dropOutranked(other));
   return why.length ? why.join('; ') : null;
 }
@@ -10459,7 +10458,7 @@ async function pickKindBuild(db) {
   for (const r of nhlGraded) {
     if (r.model_under != null && 100 - r.model_under >= PICK_KINDS.nhl_more.min) add('nhl_more', r.result === 'over');
   }
-  // By stat and band, for the points Mores' place on Picks (nhlPtsFavorable, 2026-11-14).
+  // By stat and band, for the points and assists Mores' place on Picks (nhlMoreFavorable).
   rec.nhl_more.byStat = nhlMoreByStat(nhlGraded);
   for (const v of Object.values(rec)) {
     v.hitRate = v.n ? round1(v.hit / v.n * 100) : null;
@@ -10467,6 +10466,16 @@ async function pickKindBuild(db) {
   }
   rec.nba_blk_more.since = { ...blkSince, hitRate: blkSince.n ? round1(blkSince.hit / blkSince.n * 100) : null };
   return rec;
+}
+// An NHL More's "Legs like this" is its own stat's record (2026-11-19, the owner's call): the
+// kind's put points (51%) and assists (58%) together, 54% on an assists leg. At the bar, at the
+// first read, as the kind's own count goes.
+function pickLegRecord(l, kinds) {
+  const k = kinds[l.kind], mk = l.kind === 'nhl_more' && l.spec ? l.spec.market : null;
+  const c = mk && k && k.byStat && k.byStat[mk] && k.byStat[mk].first && k.byStat[mk].first.atBar;
+  if (!c) return k;
+  const { byStat, ...rest } = k;
+  return { ...rest, n: c.n, hit: c.hit, hitRate: c.hitRate, proven: c.n >= PICKS_PROVEN_N, stat: mk };
 }
 
 // What the list would have paid (2026-10-22): one unit an entry at PrizePicks'
@@ -10734,7 +10743,7 @@ async function picksBoard(env) {
       p: round1(l.p), title: l.title, sub: l.sub, commence: l.commence, odds: l.odds == null ? null : l.odds,
       lineup: l.lineup || null, vsBook: l.vsBook == null ? null : l.vsBook, league: l.league || null,
       firstP: firsts.has(l.legId) ? round1(firsts.get(l.legId).first_p) : null, firstAt: firsts.has(l.legId) ? firsts.get(l.legId).first_at : null,
-      record: kinds[l.kind], legId: l.legId, spec: l.spec,
+      record: pickLegRecord(l, kinds), legId: l.legId, spec: l.spec,
       ...(l.dfs ? { dfs: l.dfs } : {}),
       ...(l.sharp != null ? { sharp: l.sharp } : {}),
       // Its edge at the best price, and the quarter-Kelly stake (legStake),
@@ -12604,22 +12613,29 @@ async function gradeNhlPp(env, tonight = false) {
 // 136), under the 57.7% a 2-pick Power needs, with no chance band past it. A points leg goes on
 // Picks and in the entry once its band (nhlMoreByStat's 55-60, 60-65, 65+), at the read it is on,
 // has landed 57.7% or better over 20 legs or more; a band with fewer goes by the points Mores at
-// the bar. Still logged, graded and on the NHL card; assists aren't held to it.
+// the bar. Still logged, graded and on the NHL card.
 const NHL_PTS_HOLD_SINCE = '2026-11-14';
+// The assists Mores the same way, by their own record (2026-11-19, the owner's call): at 55%+ they
+// had landed 58% (69 of 119), over the bar, but 56% (23 of 41) at 60-65%, where that morning's
+// top three Picks legs sat. Their 55-60 band, 59% (41 of 69), stays on.
+const NHL_AST_HOLD_SINCE = '2026-11-19';
+const NHL_MORE_HOLD_SINCE = { pts: NHL_PTS_HOLD_SINCE, ast: NHL_AST_HOLD_SINCE };
 const NHL_PTS_FAVOR_PCT = 57.7, NHL_PTS_FAVOR_N = 20;
-// The record the last candidates read went by, for why a points leg left the list.
-let NHL_PTS_GATE = null;
-function nhlPtsCell(byStat, p, preStart) {
-  const t = byStat && byStat.pts && byStat.pts[preStart ? 'close' : 'first'];
+// The record the last candidates read went by, for why a held leg left the list.
+let NHL_MORE_GATE = null;
+function nhlMoreCell(byStat, mk, p, preStart) {
+  const t = byStat && byStat[mk] && byStat[mk][preStart ? 'close' : 'first'];
   if (!t) return null;
   const band = NHL_MORE_BANDS.find(([, lo, hi]) => p >= lo && p < hi);
   const c = band && t.byBand[band[0]];
   return c && c.n >= NHL_PTS_FAVOR_N ? { band: band[0], ...c } : { band: null, ...t.atBar };
 }
-function nhlPtsFavorable(byStat, p, preStart) {
-  const c = nhlPtsCell(byStat, p, preStart);
+function nhlMoreFavorable(byStat, mk, p, preStart) {
+  const c = nhlMoreCell(byStat, mk, p, preStart);
   return !!c && c.n >= NHL_PTS_FAVOR_N && c.hit / c.n * 100 >= NHL_PTS_FAVOR_PCT;
 }
+// Held on this date: a points or assists More from its rule's first day.
+const nhlMoreHeld = (mk, date) => !!NHL_MORE_HOLD_SINCE[mk] && date >= NHL_MORE_HOLD_SINCE[mk];
 // The More by stat and chance (2026-11-14, the owner's "do both"): in the PrizePicks entry from
 // Oct 28 to Nov 13 the points Mores landed 5 of 15 at about 62% and the assists 17 of 29, so
 // whether points belong at the bar. At the first read, as every leg grades, and at the pre-start
@@ -12675,16 +12691,14 @@ async function nhlPpBoard(env, url) {
       overs: { graded: ov.n, hit: ov.hit, hitRate: ov.hitRate, byBand: ov.byBand, byLineGap: ov.byLineGap, byMarket: byMarket(lean, 'over') },
       more: { ...ppMoreRecord(lean), byStat: nhlMoreByStat(graded) },
       ...ppCloseRecord(graded) };
-    // A points More Picks holds off (nhlPtsFavorable, 2026-11-14) says so on the card, with the
-    // record it went by: listed still, not a pick.
-    if (ptDateOf(now) >= NHL_PTS_HOLD_SINCE) {
-      for (const l of out.legs) {
-        if (l.market !== 'pts' || l.model_under == null || 100 - l.model_under < PICK_KINDS.nhl_more.min) continue;
-        const p = ppMoreChance(l), pre = l.close_at != null, by = out.record.more.byStat;
-        if (nhlPtsFavorable(by, p, pre)) continue;
-        const c = nhlPtsCell(by, p, pre);
-        l.offPicks = c ? { band: c.band, hit: c.hit, n: c.n } : { band: null, hit: 0, n: 0 };
-      }
+    // A points or assists More Picks holds off (nhlMoreFavorable, 2026-11-14 and 11-19) says so on
+    // the card, with the record it went by: listed still, not a pick.
+    for (const l of out.legs) {
+      if (!nhlMoreHeld(l.market, ptDateOf(now)) || l.model_under == null || 100 - l.model_under < PICK_KINDS.nhl_more.min) continue;
+      const p = ppMoreChance(l), pre = l.close_at != null, by = out.record.more.byStat;
+      if (nhlMoreFavorable(by, l.market, p, pre)) continue;
+      const c = nhlMoreCell(by, l.market, p, pre);
+      l.offPicks = c ? { band: c.band, hit: c.hit, n: c.n } : { band: null, hit: 0, n: 0 };
     }
   } catch (e) { out.error = String((e && e.message) || e); }
   return out;
