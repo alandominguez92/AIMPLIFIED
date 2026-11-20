@@ -17780,6 +17780,8 @@ async function nflGrade(env, url) {
       // UFC (2026-11-19): the cdn host has no MMA, so the card and its results come from these.
       ['ufc site', 'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard'],
       ['ufc fightcenter', 'https://site.web.api.espn.com/apis/common/v3/sports/mma/ufc/fightcenter/600061400'],
+      // site.web.api refused both ways (Nov 19); the same path on site.api, which answers with no User-Agent.
+      ['ufc fightcenter site', 'https://site.api.espn.com/apis/common/v3/sports/mma/ufc/fightcenter/600061400'],
     ];
     const res = {};
     for (const [name, u] of cands) {
