@@ -324,8 +324,9 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .stab .mini { font-family:var(--sans); font-size:var(--fsXs); letter-spacing:0; font-weight:500; border:1px solid var(--border); border-radius:3px; padding:2px 6px; color:var(--textDim); text-transform:none; }
 .stab.active .mini { border-color:var(--accent); color:var(--accent); }
 /* The row needs 1248px with these, 1265 once the page's scrollbar is counted. Under
-   that it scrolled sideways, with a white bar, and Entries out of reach of a mouse. */
-@media (max-width:1279px) { .stab .mini { display:none; } }
+   that it scrolled sideways, with a white bar, and Entries out of reach of a mouse.
+   With the eighth tab (UFC, 2026-11-19) it needs 1320, 1335 with the scrollbar. */
+@media (max-width:1359px) { .stab .mini { display:none; } }
 /* Without them it needs 693px; the icons come off under that, the phone's rules at 640. */
 @media (max-width:720px) { .stab .sport-ico { display:none; } }
 
@@ -3431,4 +3432,53 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .pod-h h2 { font-size:22px; }
   .pod-tg { order:2; margin-left:auto; }
   .pod-meta { order:3; flex-basis:100%; margin-left:0; }
+}
+
+/* ---------- UFC (2026-11-19) ----------
+   One card a fight: the two fighters with their moneylines, the fight-time and how-it-ends rows,
+   PrizePicks' fight time to set. Its parts of the card under their own heads. */
+.ufc-rec { display:flex; flex-wrap:wrap; gap:6px 18px; margin:10px 0 4px; padding:12px 14px; border:1px solid var(--border); border-radius:12px;
+  background:var(--board3); font-family:var(--sans); font-size:13px; color:var(--textDim); }
+.ufc-rec b { color:var(--text); font-weight:600; margin-right:4px; }
+.ufc-rec-note { flex-basis:100%; font-size:12px; color:var(--textFaint); }
+.ufc-seg { margin-top:18px; }
+.ufc-seg-h { display:flex; align-items:baseline; gap:10px; margin:0 0 8px; font-family:var(--display); font-size:20px; font-weight:700;
+  letter-spacing:.02em; text-transform:uppercase; color:var(--text); }
+.ufc-seg-h span { font-family:var(--sans); font-size:13px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--textDim); }
+.ufc-bout { border:1px solid var(--border); border-radius:12px; background:var(--card); padding:12px 14px; margin-bottom:10px; }
+.ufc-tags { display:flex; flex-wrap:wrap; gap:4px 10px; font-family:var(--sans); font-size:12px; color:var(--textFaint); }
+.ufc-tags span:first-child { color:var(--textDim); }
+.ufc-pair { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; margin:10px 0 6px; }
+.ufc-vs { font-family:var(--display); font-size:15px; color:var(--textFaint); text-transform:uppercase; }
+.ufc-f { display:flex; align-items:center; gap:10px; min-width:0; }
+.ufc-pair .ufc-f:last-child { flex-direction:row-reverse; text-align:right; }
+.ufc-fn { display:flex; flex-direction:column; min-width:0; gap:2px; }
+.ufc-fn b { font-family:var(--sans); font-size:15px; font-weight:700; color:var(--text); overflow-wrap:anywhere; }
+.ufc-fr { font-family:var(--sans); font-size:12px; color:var(--textFaint); }
+.ufc-ml { font-family:var(--mono); font-size:13px; color:var(--textDim); }
+.ufc-f.is-pick .ufc-ml { color:var(--text); }
+.ufc-star { color:var(--accent); }
+.ufc-w { display:inline-block; padding:0 5px; border-radius:4px; background:var(--positive); color:var(--ink); font-size:11px; vertical-align:2px; }
+.ufc-bout:has(.is-won) .ufc-f:not(.is-won) { opacity:.6; }
+.ufc-row { display:flex; align-items:baseline; gap:10px; padding:7px 0 0; margin-top:7px; border-top:1px solid var(--borderSoft);
+  font-family:var(--sans); font-size:13.5px; color:var(--textDim); }
+.ufc-row b { color:var(--text); }
+.ufc-k { flex:none; width:118px; font-size:12px; color:var(--textFaint); }
+.ufc-ends { display:flex; flex-direction:column; gap:6px; flex:1; min-width:0; }
+.ufc-bar { display:flex; height:8px; border-radius:4px; overflow:hidden; background:var(--trackBg); }
+.ufc-bar-ko { background:var(--danger); }
+.ufc-bar-sub { background:var(--clv); }
+.ufc-bar-dec { background:var(--model); }
+.ufc-ends-l { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; font-size:12.5px; }
+.ufc-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+.ufc-pp { align-items:center; }
+.ufc-pp-in { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.ufc-pp-p { font-family:var(--mono); font-size:12.5px; color:var(--textDim); margin:0 4px; }
+@media (max-width: 640px) {
+  .ufc-bout { padding:12px; }
+  .ufc-pair { grid-template-columns:1fr; gap:8px; }
+  .ufc-vs { display:none; }
+  .ufc-pair .ufc-f:last-child { flex-direction:row; text-align:left; }
+  .ufc-row { flex-direction:column; gap:4px; }
+  .ufc-k { width:auto; }
 }

@@ -1986,6 +1986,8 @@
     if (!n) return null;
     if (sport === 'mlb') return `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_120,q_auto:best/v1/people/${n}/headshot/67/current`;
     if (sport === 'nba' || sport === 'soccer') return `https://a.espncdn.com/combiner/i?img=/i/headshots/${sport}/players/full/${n}.png&w=96&h=70`;
+    // A UFC fighter by ESPN's id, filed under mma (2026-11-19).
+    if (sport === 'ufc') return `https://a.espncdn.com/combiner/i?img=/i/headshots/mma/players/full/${n}.png&w=96&h=70`;
     // The Hot players list has the NFL player's ESPN id; everywhere else has the other one.
     if (sport === 'nfl-espn') return `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${n}.png&w=96&h=70`;
     // The NHL's own photos (2026-10-22), filed by season and club: the NHL id
@@ -4777,6 +4779,8 @@
       case 'set-filter': setFilter(target.dataset.filter); break;
       case 'set-view': setView(target.dataset.view); break;
       case 'set-sport': setSport(target.dataset.sport); break;
+      case 'ufc-step': ufcStep(target.dataset.bout, Number(target.dataset.d)); break;
+      case 'ufc-save': ufcLineSend(target.dataset.bout); break;
       case 'go-home': goHome(e); break;
       case 'soccer-league': setSoccerLeague(target.dataset.league); break;
       // A soccer prop's line, stepped to PrizePicks' number; whole numbers are
@@ -5385,6 +5389,9 @@
     if (nhlBoard) nhlBoard.hidden = s !== 'nhl';
     if (s === 'nhl' && boardStale('nhl')) refreshNhl();
     else if (s === 'nhl' && Date.now() - ((state.propsAt && state.propsAt.nhl) || 0) > 120e3) refreshProps('nhl');
+    const ufcBoard = document.getElementById('ufcBoard');
+    if (ufcBoard) ufcBoard.hidden = s !== 'ufc';
+    if (s === 'ufc') { if (boardStale('ufc')) refreshUfc(); else renderUfc(); }
     const pb = document.getElementById('picksBoard');
     if (pb) pb.hidden = s !== 'picks';
     // Read on every visit after two minutes: lineups post and legs move.
@@ -5418,8 +5425,8 @@
   // next day and a half" over a board of six. Every one of these reads is free: the last
   // capture's snapshot from the database, cached two minutes at the edge.
   const BOARD_STALE_MS = 300e3;
-  const BOARD_READ = { nba: () => refreshNba(), nhl: () => refreshNhl(), soccer: () => refreshSoccer(), nfl: () => refreshNfl() };
-  const BOARD_BOX = { nba: 'nbaBoard', nhl: 'nhlBoard', soccer: 'soccerBoard', nfl: 'nflBoard' };
+  const BOARD_READ = { nba: () => refreshNba(), nhl: () => refreshNhl(), soccer: () => refreshSoccer(), nfl: () => refreshNfl(), ufc: () => refreshUfc() };
+  const BOARD_BOX = { nba: 'nbaBoard', nhl: 'nhlBoard', soccer: 'soccerBoard', nfl: 'nflBoard', ufc: 'ufcBoard' };
   function boardStale(s, now = Date.now()) {
     return !state[s] || now - ((state.boardAt && state.boardAt[s]) || 0) > BOARD_STALE_MS;
   }
@@ -5806,7 +5813,7 @@
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
   // sport switch and never changed back.
-  const DOC_TITLE = { mlb: 'Aimplified — MLB Board', picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', nhl: 'Aimplified — NHL Board', soccer: 'Aimplified — Soccer Board', entries: 'Aimplified — Your entries' };
+  const DOC_TITLE = { mlb: 'Aimplified — MLB Board', picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', nhl: 'Aimplified — NHL Board', soccer: 'Aimplified — Soccer Board', ufc: 'Aimplified — UFC Board', entries: 'Aimplified — Your entries' };
 
   // -------------------------------------------------------------------------
   // Picks of the day (2026-10-09)
@@ -5816,8 +5823,8 @@
   // question. /api/picks builds the list from the logs, admits only kinds of leg
   // whose stated chance has held up, and logs what it shows so the list earns a
   // record of its own. Each star takes the leg under the id its own board uses.
-  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nba_blk_more: 'PrizePicks', nba_reb_gap: 'PrizePicks', nhl_ml: 'NHL ML', nhl_more: 'PrizePicks', nfl_ml: 'NFL ML', soccer_fav: 'Soccer' };
-  const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL', nfl: 'NFL', soccer: 'Soccer' };
+  const PICK_BOARD = { mlb_ml: 'ML', mlb_pp: 'PrizePicks', nba_ml: 'NBA ML', nba_pp: 'PrizePicks', nba_blk_more: 'PrizePicks', nba_reb_gap: 'PrizePicks', nhl_ml: 'NHL ML', nhl_more: 'PrizePicks', nfl_ml: 'NFL ML', soccer_fav: 'Soccer', ufc_ml: 'UFC ML' };
+  const PICK_SPORT = { mlb: 'MLB', nba: 'NBA', nhl: 'NHL', nfl: 'NFL', soccer: 'Soccer', ufc: 'UFC' };
   // Placeholder legs while the list loads (2026-10-12): the section was a
   // blank area for the seconds /api/picks takes on first open.
   // The heading is the recap card's since step 6, so it waits here too.
@@ -5901,7 +5908,8 @@
   const pickBarHtml = (x, s) => (s && s.pp ? projLineHtml(x.proj, s.pp.line, s.side) : pickIsTeam(x) ? mlChanceLineHtml(x) : '');
   function pickFace(x, size) {
     const s = x.spec || {};
-    const team = pickIsTeam(x);
+    // A UFC moneyline is a fighter's: the photo, not a mark.
+    const team = pickIsTeam(x) && (x.sport || s.sport) !== 'ufc';
     return avatarHtml({ sport: x.sport || s.sport, playerId: s.playerId, team: s.team, logo: s.logo,
       name: team ? (s.team || String(x.title || '').replace(/ ML$/, '')) : (s.player || x.title), isTeam: team, size });
   }
@@ -8266,6 +8274,156 @@
         + `<div>${games.map((g) => mlTabRow(g, 'nhl')).join('')}</div>`
         + `</div></div>` + mlLaterHtml('nhl', sp);
     grid.innerHTML = nhlRecordHtml(d.record) + parts.top + propsCardHtml('nhl') + parts.ml(table) + hotCardHtml('nhl');
+  }
+
+  // -------------------------------------------------------------------------
+  // UFC (2026-11-19): the card, each fight's moneyline, fight time and how it ends
+  // -------------------------------------------------------------------------
+  // The moneyline is the other sports' (the sharp books' fair chance against the best DK/FD price;
+  // a favourite at 65%+ goes on Picks). Fight time is DraftKings' total rounds, and the chance at
+  // any number from every UFC fight since January 2024 bent to meet it (the board's curve):
+  // PrizePicks' line is typed here, saved by the entries key and graded at that number, off Picks
+  // until its record clears the bar. How it ends is information only. All of it graded from
+  // ESPN's fight center.
+  async function refreshUfc() {
+    if (!LIVE_MODE) return;
+    boardReadStart('ufc');
+    const d = await fetchJson('/api/ufc-board').catch(() => null);
+    state.ufc = d && Array.isArray(d.bouts) ? d : { bouts: [], error: d ? d.error || 'no card' : 'unreachable' };
+    renderUfc();
+    ufcSavedLoad();
+  }
+  const UFC_HOW = { ko: 'KO/TKO', sub: 'submission', dec: 'decision', dq: 'disqualification' };
+  const ufcClock = (m) => { if (m == null) return '—'; const s = Math.round(m * 60); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const ufcBout = (id) => ((state.ufc && state.ufc.bouts) || []).find((b) => b.id === id) || null;
+  // The line on show: one being stepped, else the one saved, else DraftKings' number in minutes.
+  const ufcLineOf = (b) => {
+    const set = state.ufcLines && state.ufcLines[b.id], saved = state.ufcSaved && state.ufcSaved[b.id];
+    return set != null ? set : saved != null ? saved : b.time ? b.time.minutes : b.rounds * 2.5;
+  };
+  const ufcOverAt = (b, line) => { const v = (b.curve || [])[Math.round(line * 2) - 1]; return typeof v === 'number' ? v : null; };
+  function renderUfc() {
+    const grid = document.getElementById('ufcGrid');
+    if (!grid) return;
+    const d = state.ufc;
+    const count = document.getElementById('ufcCount'), note = document.getElementById('ufcNote');
+    if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
+    if (!d.bouts.length) { grid.innerHTML = `<div class="nfl-empty">${d.error ? `The card is unavailable (${esc(d.error)}).` : 'No UFC card posted yet.'}</div>`; return; }
+    const ev = d.event || {};
+    if (count) count.textContent = `${d.bouts.length} fights`;
+    if (note) {
+      note.textContent = `${ev.name || 'UFC'} · sharp-book fair line · best DK/FD price`
+        + (d.mlAsOf ? ` · prices as of ${soccerKick(d.mlAsOf)}` : ' · moneylines are read from 36 hours before the first fight');
+    }
+    const segs = [];
+    for (const b of d.bouts) {
+      let s = segs.find((x) => x.name === b.segment);
+      if (!s) segs.push(s = { name: b.segment, start: b.commence, bouts: [] });
+      s.bouts.push(b);
+    }
+    grid.innerHTML = ufcRecordHtml(d) + segs.map((s) => `<div class="ufc-seg"><h3 class="ufc-seg-h">${esc(s.name)}<span>${esc(soccerKick(s.start))}</span></h3>`
+      + s.bouts.map(ufcBoutHtml).join('') + '</div>').join('');
+  }
+  function ufcRecordHtml(d) {
+    const r = d.record || {}, m = d.mlRecord || {}, b65 = m.byBand && m.byBand['65+'];
+    const of = (x) => (x && x.n ? `${x.hit} of ${x.n}` : 'none graded yet');
+    return '<div class="ufc-rec">'
+      + `<span><b>Moneyline 65%+</b> ${b65 && b65.n ? esc(b65.record) : 'none graded yet'}</span>`
+      + `<span><b>Fight time at DraftKings' line</b> ${of(r.timeAtDk)}</span>`
+      + `<span><b>At your PrizePicks lines</b> ${of(r.timeAtPp)}</span>`
+      + `<span><b>Likeliest ending</b> ${of(r.ends)}</span>`
+      + '<span class="ufc-rec-note">Favourites at 65%+ go on Picks. Fight time stays off Picks until its record clears the bar; how it ends is information only.</span>'
+      + '</div>';
+  }
+  function ufcBoutHtml(b) {
+    const ml = b.ml || {};
+    const won = (f) => !!(b.result && b.result.winner === f.id);
+    const fighter = (f) => {
+      const m = ml[f.id], pick = ml.pick === f.id && !b.result;
+      return `<div class="ufc-f${pick ? ' is-pick' : ''}${won(f) ? ' is-won' : ''}">`
+        + avatarHtml({ sport: 'ufc', playerId: f.id, name: f.name, size: 44 })
+        + `<div class="ufc-fn"><b>${esc(f.name)}${won(f) ? ' <span class="ufc-w">W</span>' : ''}</b>`
+        + `<span class="ufc-fr">${esc([f.record, f.country].filter(Boolean).join(' · '))}</span>`
+        + (m && m.fair != null ? `<span class="ufc-ml">${pick ? '<span class="ufc-star" title="The side the sharp books favour: logged and graded">★</span> ' : ''}`
+          + `${esc(String(Math.round(m.fair)))}% · ${esc(AM(m.price))} ${esc(bkLabel(m.book))}</span>` : '')
+        + '</div></div>';
+    };
+    const tags = [b.mainEvent ? 'Main event' : '', b.title ? 'Title fight' : '', b.weight, `${b.rounds} rounds`].filter(Boolean);
+    const body = b.result ? ufcResultHtml(b)
+      : ufcTimeHtml(b) + ufcEndsHtml(b) + (b.state === 'in' ? '<div class="ufc-row"><span class="ufc-k">Now</span><span>In progress</span></div>' : ufcPpHtml(b));
+    return `<article class="ufc-bout"><div class="ufc-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>`
+      + `<div class="ufc-pair">${fighter(b.fighters[0])}<span class="ufc-vs">v</span>${fighter(b.fighters[1])}</div>${body}</article>`;
+  }
+  function ufcTimeHtml(b) {
+    const t = b.time;
+    if (!t) return `<div class="ufc-row"><span class="ufc-k">Fight time</span><span>No DraftKings rounds line yet${b.pDist != null ? ` · goes the distance ${esc(String(b.pDist))}%` : ''}</span></div>`;
+    return `<div class="ufc-row"><span class="ufc-k">Fight time</span><span>DraftKings ${esc(String(t.line))} rounds (${esc(ufcClock(t.minutes))}): <b>Over ${esc(String(t.pOver))}%</b>`
+      + `${b.pDist != null ? ` · goes the distance ${esc(String(b.pDist))}%` : ''}</span></div>`;
+  }
+  function ufcEndsHtml(b) {
+    const e = b.ends;
+    if (!e) return '';
+    const seg = (cls, v) => `<span class="ufc-bar-${cls}" style="width:${Math.max(0, Math.min(100, v))}%"></span>`;
+    return `<div class="ufc-row"><span class="ufc-k">How it ends</span><span class="ufc-ends">`
+      + `<span class="ufc-bar" aria-hidden="true">${seg('ko', e.ko)}${seg('sub', e.sub)}${seg('dec', e.dec)}</span>`
+      + `<span class="ufc-ends-l"><i class="ufc-dot ufc-bar-ko"></i>KO/TKO ${esc(String(e.ko))}% <i class="ufc-dot ufc-bar-sub"></i>Sub ${esc(String(e.sub))}% <i class="ufc-dot ufc-bar-dec"></i>Decision ${esc(String(e.dec))}%</span>`
+      + '</span></div>';
+  }
+  function ufcPpHtml(b) {
+    const line = ufcLineOf(b), p = ufcOverAt(b, line);
+    const saved = state.ufcSaved && state.ufcSaved[b.id];
+    const btn = (dd, sym, lab) => `<button type="button" class="sp-step" data-action="ufc-step" data-bout="${esc(b.id)}" data-d="${dd}" aria-label="${lab}">${sym}</button>`;
+    const lbl = state.ufcSaving && state.ufcSaving[b.id] ? '<span class="sp-lbl">Saving…</span>'
+      : saved === line ? '<span class="sp-lbl" title="Saved as PrizePicks\' line: graded at this number">PP line <span class="sp-ok">✓</span></span>'
+        : `<button type="button" class="sp-save" data-action="ufc-save" data-bout="${esc(b.id)}" aria-label="Save ${esc(String(line))} minutes as PrizePicks' line">Save line</button>`;
+    return `<div class="ufc-row ufc-pp"><span class="ufc-k">PrizePicks time</span><span class="ufc-pp-in">`
+      + `${btn(-0.5, '−', 'Half a minute lower')}<b class="pp-line-v">${esc(String(line))}</b>${btn(0.5, '+', 'Half a minute higher')}<span class="sp-lbl">min</span>`
+      + (p != null ? `<span class="ufc-pp-p">More ${esc(String(p))}% · Less ${esc(String(Math.round((100 - p) * 10) / 10))}%</span>` : '')
+      + lbl + '</span></div>';
+  }
+  function ufcResultHtml(b) {
+    const r = b.result, w = b.fighters.find((f) => f.id === r.winner);
+    const what = w ? `${w.name} by ${UFC_HOW[r.method] || 'result'}` : r.method === 'draw' ? 'A draw' : r.method === 'nc' ? 'No contest' : 'Over';
+    const when = r.method === 'dec' || r.method === 'draw' ? `${b.rounds} rounds` : r.round ? `round ${r.round}, ${r.clock}` : '';
+    const [a, c] = b.fighters.map((f) => f.stats || {});
+    const stat = (k, lab) => (a[k] != null && c[k] != null ? `${lab} ${a[k]}–${c[k]}` : '');
+    const stats = [stat('sig', 'Sig. strikes'), stat('td', 'Takedowns'), stat('sub', 'Sub attempts'), stat('kd', 'Knockdowns')].filter(Boolean);
+    return `<div class="ufc-row ufc-res"><span class="ufc-k">Result</span><span><b>${esc(what)}</b>${when ? ` · ${esc(when)}` : ''} · fight time ${esc(ufcClock(r.minutes))}</span></div>`
+      + (stats.length ? `<div class="ufc-row"><span class="ufc-k">Stats</span><span>${esc(stats.join(' · '))}</span></div>` : '');
+  }
+  function ufcStep(id, d) {
+    const b = ufcBout(id);
+    if (!b) return;
+    const next = Math.min(b.rounds * 5 - 0.5, Math.max(0.5, ufcLineOf(b) + d));
+    state.ufcLines = { ...(state.ufcLines || {}), [id]: next };
+    renderUfc();
+  }
+  async function ufcLineSend(id) {
+    const b = ufcBout(id);
+    if (!b) return;
+    const line = ufcLineOf(b);
+    state.ufcSaving = { ...(state.ufcSaving || {}), [id]: true };
+    renderUfc();
+    try {
+      const j = await entriesFetch('POST', { boutId: id, line }, '/api/ufc-lines');
+      state.ufcSaved = { ...(state.ufcSaved || {}), [id]: j.line };
+    } catch (e) { toast(`Line not saved: ${e.message}`); }
+    state.ufcSaving = { ...(state.ufcSaving || {}), [id]: false };
+    renderUfc();
+  }
+  // After a reload: the lines this key has saved for bouts not yet graded. Only a device that
+  // already holds a key asks, as on the soccer card.
+  async function ufcSavedLoad() {
+    let k = null;
+    try { k = localStorage.getItem(ENTRY_KEY_STORE); } catch (e) { /* no storage, nothing saved here */ }
+    if (!k) return;
+    try {
+      const j = await entriesFetch('GET', null, '/api/ufc-lines');
+      const saved = {};
+      for (const x of (j.lines || [])) saved[x.bout_id] = x.pp_line;
+      state.ufcSaved = { ...saved, ...(state.ufcSaved || {}) };
+      if (state.sport === 'ufc') renderUfc();
+    } catch (e) { /* the card works without them; a save says what is wrong */ }
   }
 
   // -------------------------------------------------------------------------

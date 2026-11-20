@@ -150,6 +150,7 @@ const API_ROUTES = new Set([
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health', '/api/d1-reads',
+  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -314,6 +315,8 @@ const HANDLER = {
     if (p === '/api/soc-lines') return socLinesApi(request, env);
     // And those typed on the NBA, NHL and NFL cards.
     if (p === '/api/prop-lines') return propLinesApi(request, env);
+    // And PrizePicks' UFC fight-time lines (2026-11-19).
+    if (p === '/api/ufc-lines') return ufcLinesApi(request, env);
     if (routeLocked(p, url) && !(env && env.ADMIN_KEY && request.headers.get('x-admin-key') === env.ADMIN_KEY)) {
       return cors(new Response(JSON.stringify({ error: 'This route needs the admin key.' }), { status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
     }
@@ -422,6 +425,9 @@ const HANDLER = {
     ctx.waitUntil(nbaMaybeIngest(d1Env(env, 'nbaMaybeIngest')).catch(() => null));
     // The NHL moneyline the same way, on its own counter (2026-10-20).
     ctx.waitUntil(nhlMaybeIngest(d1Env(env, 'nhlMaybeIngest')).catch(() => null));
+    // The UFC card from ESPN, logged and graded (free), then its moneyline on the card's own start
+    // times (2026-11-19): the card is read first so the capture keeps its fights.
+    ctx.waitUntil(ufcTick(d1Env(env, 'ufcTick')).catch(() => null).then(() => ufcMaybeIngest(d1Env(env, 'ufcMaybeIngest'))).catch(() => null));
     // NBA PrizePicks unders: the night's box scores in, each game's PrizePicks
     // lines read when posted and again before tip (ppReadDue), the log graded.
     ctx.waitUntil(nbaBoxIngest(d1Env(env, 'nbaBoxIngest')).catch(() => null));
@@ -719,6 +725,8 @@ async function handleApi(p, env, ctx, url) {
     return cors(json(url && url.searchParams.get('raw') === '1' ? await ppPropsRaw(env, sport) : await ppPropsBoard(env, sport), 120));
   }
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
+  if (p === '/api/ufc-board') return cors(json(await ufcBoardData(env), 120));
+  if (p === '/api/ufc-odds-raw') return cors(json(await ufcOddsRaw(env), 300));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
   if (p === '/api/nfl-grade') return nflGrade(env, url);
@@ -4327,7 +4335,7 @@ async function gradeGamePicks(env, tonight = false) {
   await ensureGamePickSchema(env.DB);
   const today = slateDate();
   const rows = (await (tonight
-    ? env.DB.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','soccer') AND result IS NULL AND date = ? AND commence < ?").bind(today, gameOverCut())
+    ? env.DB.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','soccer','ufc') AND result IS NULL AND date = ? AND commence < ?").bind(today, gameOverCut())
     : env.DB.prepare('SELECT * FROM gmpicks WHERE result IS NULL AND date < ?').bind(today)).all()).results || [];
   out.pending = rows.length;
   if (!rows.length) return out;
@@ -4341,7 +4349,7 @@ async function gradeGamePicks(env, tonight = false) {
   }
   const stmts = [];
   for (const job of need.values()) {
-    let events = [], finals = null;
+    let events = [], finals = null, ufcDay = null;
     if (job.sport === 'nfl') {
       // The NFL scoreboard is week-oriented and ignores any date parameter
       // entirely — ?dates= and ?date= both return whatever week is current, so
@@ -4372,6 +4380,10 @@ async function gradeGamePicks(env, tonight = false) {
     } else if (job.sport === 'nhl') {
       // The NHL's own feed, asked for the row's day only -- see nhlFinals.
       try { finals = await nhlScoreDay(job.date); } catch (e) { continue; }
+    } else if (job.sport === 'ufc') {
+      // ESPN's fight center for the cards of the row's day and the next (ufcFinalsOn): the
+      // winner, and how, so a draw pushes and a no contest voids (2026-11-19).
+      try { ufcDay = await ufcFinalsOn(job.date); finals = ufcDay.finals; } catch (e) { continue; }
     } else {
       // Passing touchdowns live in this table too and are graded from box
       // scores by gradePassTds. They used to fall through to the soccer branch
@@ -4410,7 +4422,7 @@ async function gradeGamePicks(env, tonight = false) {
     // NBA names differ the way club names do -- the feed's "Los Angeles
     // Clippers" is ESPN's "LA Clippers" -- but every NBA nickname is unique, so
     // matching on the last word settles all thirty without an alias table.
-    const same = job.sport === 'nba' ? nbaMatch : job.sport === 'nhl' ? nhlMatch : clubMatch;
+    const same = job.sport === 'nba' ? nbaMatch : job.sport === 'nhl' ? nhlMatch : job.sport === 'ufc' ? ufcSameFighter : clubMatch;
     for (const r of job.rows) {
       let f = finals.find((x) => (r.sport === 'nfl'
         ? (clubMatch(x.homeAb, r.home) || clubMatch(x.home, r.home)) && (clubMatch(x.awayAb, r.away) || clubMatch(x.away, r.away))
@@ -4420,7 +4432,8 @@ async function gradeGamePicks(env, tonight = false) {
       // into our orientation so r.side still means what it meant when logged.
       // NBA preseason plays neutral sites too (Knicks-76ers in Abu Dhabi), and
       // the NHL plays a few regular-season games in Europe.
-      if (!f && (r.sport === 'soccer' || r.sport === 'nba' || r.sport === 'nhl')) {
+      // A fight has no home side: the odds feed's order is its own.
+      if (!f && (r.sport === 'soccer' || r.sport === 'nba' || r.sport === 'nhl' || r.sport === 'ufc')) {
         const x = finals.find((y) => same(y.home, r.away) && same(y.away, r.home));
         if (x) f = { ...x, hs: x.as, as: x.hs };
       }
@@ -4429,6 +4442,17 @@ async function gradeGamePicks(env, tonight = false) {
           'UPDATE gmpicks SET result=?, home_score=NULL, away_score=NULL WHERE sport=? AND date=? AND game_id=? AND market=?'
         ).bind('void', r.sport, r.date, r.game_id, r.market || 'h2h'));
         out.voidedOff = (out.voidedOff || 0) + 1;
+        continue;
+      }
+      // A fight called off: once every bout on the day's cards is over and it is on none of them,
+      // the bet is void (a new opponent is a new bet). Left to the midnight run, so a card still
+      // being read is never taken for a finished one.
+      if (!f && r.sport === 'ufc' && !tonight && ufcDay && ufcDay.allDone) {
+        stmts.push(env.DB.prepare(
+          'UPDATE gmpicks SET result=?, home_score=NULL, away_score=NULL WHERE sport=? AND date=? AND game_id=? AND market=?'
+        ).bind('void', r.sport, r.date, r.game_id, r.market || 'h2h'));
+        out.voidedOff = (out.voidedOff || 0) + 1;
+        out.ufcOff = [...(out.ufcOff || []), `${r.date} ${r.away} v ${r.home}`];
         continue;
       }
       if (!f || !isFinite(f.hs) || !isFinite(f.as)) {
@@ -4451,9 +4475,12 @@ async function gradeGamePicks(env, tonight = false) {
         // side to be on. Soccer prices the draw, so there it grades like any other.
         // (An NBA final cannot be level; if one ever read that way it pushes.
         // Nor can an NHL final: overtime and the shootout are in the price.)
-        result = r.sport === 'nfl' || r.sport === 'nba' || r.sport === 'nhl'
-          ? (winner === 'draw' ? 'push' : (winner === r.side ? 'win' : 'loss'))
-          : (winner === r.side ? 'win' : 'loss');
+        // A UFC draw is the moneyline's push, a no contest its void: DraftKings and FanDuel refund
+        // both on a two-way fight price.
+        result = r.sport === 'ufc' && (f.method === 'nc' || f.method === 'off') ? 'void'
+          : r.sport === 'nfl' || r.sport === 'nba' || r.sport === 'nhl' || r.sport === 'ufc'
+            ? (winner === 'draw' ? 'push' : (winner === r.side ? 'win' : 'loss'))
+            : (winner === r.side ? 'win' : 'loss');
       }
       stmts.push(env.DB.prepare(
         'UPDATE gmpicks SET result=?, home_score=?, away_score=? WHERE sport=? AND date=? AND game_id=? AND market=?'
@@ -5181,7 +5208,7 @@ function buildGmRecord(rows, sport) {
     // The NFL board shows the same line since 2026-10-25, and from 2026-10-26
     // its own bar, 75%+, with the 65-75% favourites it left beside it. `bar`
     // is the sport's Picks floor, so the page leads with the band Picks uses.
-    ...(sport === 'nhl' || sport === 'nfl' ? { byBand: { '65+': gmBand(graded, 65, 101), '60-65': gmBand(graded, 60, 65),
+    ...(sport === 'nhl' || sport === 'nfl' || sport === 'ufc' ? { byBand: { '65+': gmBand(graded, 65, 101), '60-65': gmBand(graded, 60, 65),
       '55-60': gmBand(graded, 55, 60), 'under 55': gmBand(graded, 0, 55),
       ...(sport === 'nfl' ? { '75+': gmBand(graded, 75, 101), '65-75': gmBand(graded, 65, 75) } : {}) },
       bar: PICK_KINDS[sport + '_ml'].min } : {}),
@@ -5361,7 +5388,7 @@ function entryNflKey(gameId) {
 }
 async function gradeEntryLegsOther(db) {
   const open = ((await db.prepare(
-    "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer','nba','nhl') AND game_id IS NOT NULL"
+    "SELECT * FROM entry_legs WHERE result IS NULL AND sport IN ('nfl','soccer','nba','nhl','ufc') AND game_id IS NOT NULL"
   ).all()).results || []).filter((l) => l.market === 'ml' || (l.sport === 'nfl' && ENTRY_NFL_YDS[l.market])
     || (l.sport === 'nba' && nbaPropMarket(l.market))
     || (l.sport === 'nhl' && NHL_PROP_COLS.includes(l.market))
@@ -5383,9 +5410,10 @@ async function gradeEntryLegsOther(db) {
     } catch (e) { /* no soccer box tables yet */ }
   }
   const winnerOf = (hs, as) => (hs > as ? 'home' : as > hs ? 'away' : 'draw');
-  // Soccer, the NBA and the NHL keep the odds feed's event id on both sides:
-  // the log's game_id and the leg's.
-  const byIdLegs = open.filter((l) => (l.sport === 'soccer' || l.sport === 'nba' || l.sport === 'nhl') && l.market === 'ml');
+  // Soccer, the NBA, the NHL and the UFC keep the odds feed's event id on both
+  // sides: the log's game_id and the leg's.
+  const BY_ID = ['soccer', 'nba', 'nhl', 'ufc'];
+  const byIdLegs = open.filter((l) => BY_ID.includes(l.sport) && l.market === 'ml');
   const socIds = [...new Set(byIdLegs.map((l) => String(l.game_id).replace(/^g/, '')))];
   let soc = [];
   if (socIds.length) {
@@ -5395,7 +5423,7 @@ async function gradeEntryLegsOther(db) {
     // is the key's order, the one these rows came in before: a moved fixture
     // has a row on each date, and the first match below is the one used.
     soc = ((await db.prepare(
-      `SELECT sport, game_id, result, home_score, away_score FROM gmpicks WHERE +sport IN ('soccer','nba','nhl') AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})
+      `SELECT sport, game_id, result, home_score, away_score FROM gmpicks WHERE +sport IN ('soccer','nba','nhl','ufc') AND result IS NOT NULL AND game_id IN (${socIds.map(() => '?').join(',')})
         ORDER BY sport, date, game_id, market`
     ).bind(...socIds).all()).results || []);
   }
@@ -5485,17 +5513,18 @@ async function gradeEntryLegsOther(db) {
         }
       } else if (d.settled) result = 'void';
       else continue;
-    } else if (l.sport === 'soccer' || l.sport === 'nba' || l.sport === 'nhl') {
+    } else if (BY_ID.includes(l.sport)) {
       const g = soc.find((x) => x.sport === l.sport && x.game_id === String(l.game_id).replace(/^g/, ''));
       if (!g) continue;
-      // A fixture the log voided (listed, then moved) voids the leg with it.
+      // A fixture the log voided (listed, then moved; a fight called off or
+      // ruled a no contest) voids the leg with it.
       if (g.result === 'void') result = 'void';
       else if (g.home_score == null || g.away_score == null) continue;
       else {
         const w = winnerOf(g.home_score, g.away_score);
         // The draw is a side in soccer; an NBA or NHL final cannot be level, and
-        // if one ever read that way it pushes.
-        result = (l.sport === 'nba' || l.sport === 'nhl') && w === 'draw' ? 'push' : (w === l.side ? 'win' : 'loss');
+        // if one ever read that way it pushes. A UFC draw pushes.
+        result = l.sport !== 'soccer' && w === 'draw' ? 'push' : (w === l.side ? 'win' : 'loss');
       }
     } else {
       const k = entryNflKey(l.game_id);
@@ -9054,6 +9083,9 @@ const PICK_KINDS = {
   nhl_ml: { sport: 'nhl', label: 'NHL moneyline favourite', min: 65 },
   nhl_more: { sport: 'nhl', label: 'NHL points/assists More (PrizePicks)', min: 55 },
   soccer_fav: { sport: 'soccer', label: 'Soccer favourite to win', min: 65 },
+  // UFC from 2026-11-19, the owner's call ("Moneyline now"): the other moneylines' bar, the sharp
+  // books' favourite at 65%+. No record of its own yet; the UFC tab keeps it from the first card.
+  ufc_ml: { sport: 'ufc', label: 'UFC moneyline favourite', min: 65 },
 };
 // ---- Edge and stake (2026-10-27, the owner's call: quarter Kelly) -----------
 // Edge is where the chance and the price meet: EV = p x decimal - 1, so +110
@@ -9123,7 +9155,7 @@ function entryStake(ps, type) {              // ps: chances 0-1
 // stays led by its player picks, with one NFL team pick; the moneylines have an
 // entry of their own (ML_ENTRY_KINDS, mlPoolOf).
 const PP_ENTRY_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nba_reb_gap', 'nhl_more', 'nfl_ptd']);
-const ML_ENTRY_KINDS = new Set(['mlb_ml', 'nba_ml', 'nhl_ml', 'nfl_ml', 'soccer_fav']);
+const ML_ENTRY_KINDS = new Set(['mlb_ml', 'nba_ml', 'nhl_ml', 'nfl_ml', 'soccer_fav', 'ufc_ml']);
 
 // ---- Bets with an edge (2026-10-27) -------------------------------------------
 // The list ranks by how likely a leg is to land; sharp betting asks where a
@@ -9209,14 +9241,14 @@ async function evScan(env, now) {
     (o.price >= offAt ? off : out).push({ ...o, fair: round1(o.fair), ev: round1(ev * 100), ...capStake(round1(ev / (d - 1) * KELLY_FRACTION * (long ? EDGE_LONG_FACTOR : 1) * 100), o.prop ? PROP_STAKE_CAP : null),
       ...(long ? { longHalf: true } : {}), betAt: amOfChance(p) });
   };
-  // NBA and NHL: both sides of every game, as the last capture priced them.
-  for (const sport of ['nba', 'nhl']) {
+  // NBA, NHL and UFC: both sides of every game, as the last capture priced them.
+  for (const sport of ['nba', 'nhl', 'ufc']) {
     const hit = await loadFeedCache(env.DB, `${sport}_board:reg`).catch(() => null);
     const snap = hit && hit.present ? hit.data : null;
-    const nick = sport === 'nhl' ? nhlNick : lastWord;
+    const nick = sport === 'nhl' ? nhlNick : sport === 'ufc' ? String : lastWord;
     for (const g of (snap && snap.games) || []) {
       if (!g.fairSrc || g.fairSrc === 'MKT') continue;
-      const sub = `${nick(g.away)} @ ${nick(g.home)}`;
+      const sub = sport === 'ufc' ? `${g.away} v ${g.home}` : `${nick(g.away)} @ ${nick(g.home)}`;
       for (const [side, team, fair, price, book] of [['home', g.home, g.homeFair, g.homePrice, g.homeBook], ['away', g.away, g.awayFair, g.awayPrice, g.awayBook]]) {
         add({ key: `${sport}:${g.id}:${side}`, sport, market: 'ml', label: `${nick(team)} ML`, sub, commence: g.commence,
           fair, price, book, fairSrc: g.fairSrc, asOf: snap.asOf, league: 'reg', grade: { t: 'side', sport, game_id: g.id, side },
@@ -9475,7 +9507,8 @@ const gmPickKind = (r) => (r.sport === 'nba' && r.market === 'h2h' && r.league =
   : r.sport === 'nhl' && r.market === 'h2h' && r.league === 'reg' ? 'nhl_ml'
     : r.sport === 'nfl' && r.market === 'h2h' ? 'nfl_ml'
       : r.sport === 'nflptd' && r.market === 'pass_tds' ? 'nfl_ptd'
-        : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav' : null);
+        : r.sport === 'soccer' && r.market === 'fav' ? 'soccer_fav'
+          : r.sport === 'ufc' && r.market === 'h2h' ? 'ufc_ml' : null);
 // PrizePicks' passing-TD line for each quarterback with a game in the next
 // day, as the NFL props read last left it: `${event}|${player}` -> point.
 // Read only when a passing-TD leg could make the list.
@@ -9924,12 +9957,14 @@ async function picksCandidates(env, now) {
   // NBA, NHL, NFL and soccer game lines: the side the sharp books favour, from
   // the game-line log (each board refreshes its row's win chance and price).
   await ensureGamePickSchema(db);
-  const gm = (await db.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','nflptd','soccer') AND date IN (?, ?) AND result IS NULL").bind(...days).all()).results || [];
-  // Every book's link for an NBA or NHL side, from its board's snapshot
+  const gm = (await db.prepare("SELECT * FROM gmpicks WHERE sport IN ('nba','nhl','nfl','nflptd','soccer','ufc') AND date IN (?, ?) AND result IS NULL").bind(...days).all()).results || [];
+  // Every book's link for an NBA, NHL or UFC side, from its board's snapshot
   // (2026-10-29): a row keeps only its best price's, and with no state set
   // that can be a BetMGM link that will not open while DraftKings' would.
   const sideLinks = new Map();
-  for (const sp of ['nba', 'nhl']) {
+  // A UFC leg's fighter, for the photo and the division: the card as last read, no ESPN read.
+  const ufcNow = gm.some((r) => r.sport === 'ufc') ? await ufcCardCached(db) : null;
+  for (const sp of ['nba', 'nhl', 'ufc']) {
     if (!gm.some((r) => r.sport === sp)) continue;
     const hit = await loadFeedCache(db, `${sp}_board:reg`).catch(() => null);
     for (const g of (hit && hit.present && hit.data && hit.data.games) || []) {
@@ -9975,6 +10010,15 @@ async function picksCandidates(env, now) {
         title: `${player} Under ${r.point} Pass TDs`, sub: `${nflNick(r.away)} @ ${nflNick(r.home)}${pp == null ? ` · check PrizePicks has ${r.point}` : ''}`,
         spec: { sport: 'nfl', date: day, gamePk: `${away} @ ${home}|${day}`, player, team: null, market: 'pass_tds', side: 'Under', logo: null,
           book: { line: r.point, price, under: null }, pp: { line: r.point, under: round1(r.win_prob) } } });
+    } else if (kind === 'ufc_ml') {
+      // The fighter by ESPN id, which the photo is filed under; the row carries ESPN's spelling.
+      const bout = ufcBoutOf(ufcNow, r.home, r.away);
+      const f = bout && bout.fighters.find((x) => ufcSameFighter(x.name, r.pick));
+      const opp = r.pick === r.home ? r.away : r.home;
+      legs.push({ ...base, gameKey: 'ufc:' + r.game_id, legId: `ufc:ml:${r.game_id}:${r.side}`,
+        title: `${r.pick} ML`, sub: `v ${opp}${bout && bout.weight ? ` · ${bout.weight}` : ''}`,
+        spec: { sport: 'ufc', date: day, gamePk: r.game_id, player: r.pick, playerId: f ? f.id : null, team: null, market: 'ml', side: r.side,
+          logo: null, book, pp: null } });
     } else {
       legs.push({ ...base, gameKey: 'soc:' + r.game_id, legId: `soc:${r.game_id}:${r.side}`,
         title: `${r.pick} ML`, sub: `${r.away} @ ${r.home}`,
@@ -10244,7 +10288,7 @@ async function logDayPicks(db, list, unavailable, now, pool = [], mlPool = []) {
 }
 
 // A game-line kind's log (gmpicks) by sport.
-const PICK_GM_SPORT = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', nfl_ptd: 'nflptd', soccer_fav: 'soccer' };
+const PICK_GM_SPORT = { nba_ml: 'nba', nhl_ml: 'nhl', nfl_ml: 'nfl', nfl_ptd: 'nflptd', soccer_fav: 'soccer', ufc_ml: 'ufc' };
 // The side a listed under landed on: a leg the list showed at the pre-tip
 // line grades at that line, and the label carries the number it showed
 // ("... Under 6.5 REB").
@@ -10418,7 +10462,7 @@ async function pickKindBuild(db) {
     const p = r.close_model_under != null ? r.close_model_under : r.model_under;
     if (p != null && p >= PICK_KINDS.mlb_pp.min) add('mlb_pp', r.result === 'under');
   }
-  for (const r of ((await db.prepare("SELECT sport, market, league, win_prob, result FROM gmpicks WHERE sport IN ('nba','nhl','nfl','soccer') AND result IN ('win','loss')").all()).results || [])) {
+  for (const r of ((await db.prepare("SELECT sport, market, league, win_prob, result FROM gmpicks WHERE sport IN ('nba','nhl','nfl','soccer','ufc') AND result IN ('win','loss')").all()).results || [])) {
     const kind = gmPickKind(r);
     if (kind && r.win_prob != null && r.win_prob >= PICK_KINDS[kind].min) add(kind, r.result === 'win');
   }
@@ -12165,7 +12209,18 @@ async function h2hCapture(env, cfg, lg) {
   { headers: { accept: 'application/json' } });
   await recordOddsUsage(env, r, `${cfg.sport}:${lg}:odds`);
   if (!r.ok) return { league: lg, error: `HTTP ${r.status}` };
-  const evs = await r.json();
+  let evs = await r.json();
+  // A feed that lists more than the sport covers keeps its own (UFC_ML: the UFC's fights of every
+  // promotion's), as cfg.only names and times them; and, with keepRaw, the feed's own copy of
+  // those, for a test built on a real one.
+  if (cfg.only) {
+    const raw = Array.isArray(evs) ? evs : [];
+    evs = await cfg.only(env, raw);
+    if (cfg.keepRaw) {
+      const kept = new Set(evs.map((e) => e.id));
+      await saveFeedCache(env.DB, `${cfg.sport}_raw:${lg}`, { asOf: new Date().toISOString(), listed: raw.length, events: raw.filter((e) => kept.has(e.id)) }).catch(() => null);
+    }
+  }
   // Each row is dated by its own tip, Pacific, like every other date here.
   const byDay = new Map();
   for (const e of h2hEntries(cfg, evs, lg, Date.now())) {
@@ -12193,7 +12248,8 @@ async function h2hBoardData(env, cfg) {
   for (const lg of Object.keys(cfg.leagues)) {
     const key = `${cfg.sport}_board:${lg}`;
     let snap = await loadFeedCache(env.DB, key);
-    if (!snap.present && env.ODDS_API_KEY && await claimFeedRefresh(env.DB, key, 120000)) {
+    // cronOnly (the UFC's): a page read never buys one; the cron's first does, a fight inside 36h.
+    if (!snap.present && !cfg.cronOnly && env.ODDS_API_KEY && await claimFeedRefresh(env.DB, key, 120000)) {
       try { await h2hCapture(env, cfg, lg); snap = await loadFeedCache(env.DB, key); } catch (e) { /* next read */ }
     }
     const d = snap.present && snap.data ? snap.data : null;
@@ -12236,8 +12292,11 @@ async function h2hMaybeIngest(env, cfg) {
       const state = (hit.present && hit.data) || { n: 0, last: 0 };
       // Before each start: its tip-off times are in the board's own snapshot.
       const now = Date.now();
-      const snap = await loadFeedCache(env.DB, `${cfg.sport}_board:${lg}`);
-      const starts = upcomingStarts(snap.present && snap.data ? (snap.data.games || []).map((g) => g.commence) : [], now);
+      // A sport with its own start times (cfg.starts, the UFC's card) times every read by them,
+      // free, and never asks the feed's events list.
+      const own = cfg.starts ? await cfg.starts(env).catch(() => []) : null;
+      const snap = own ? null : await loadFeedCache(env.DB, `${cfg.sport}_board:${lg}`);
+      const starts = upcomingStarts(own || (snap.present && snap.data ? (snap.data.games || []).map((g) => g.commence) : []), now);
       if ((state.pre || 0) < PRESTART_MAX_PER_DAY && prestartDue(starts, state.last, now)) {
         const res = await h2hCapture(env, cfg, lg);
         await saveFeedCache(env.DB, cacheKey, { ...state, pre: (state.pre || 0) + 1, last: now });
@@ -12246,19 +12305,23 @@ async function h2hMaybeIngest(env, cfg) {
       }
       if (state.n >= cfg.maxPerDay) continue;
       if (state.last && Date.now() - state.last < cfg.minGap) continue;
-      if (state.checked && Date.now() - state.checked < EVENTS_RECHECK_MS) continue;
-      const evR = await fetch(`https://api.the-odds-api.com/v4/sports/${cfg.leagues[lg]}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`,
-        { headers: { accept: 'application/json' } });
-      await recordOddsUsage(env, evR, `${cfg.sport}:${lg}:events`);
-      if (!evR.ok) continue;
-      const evs = await evR.json();
+      let times = own;
+      if (!times) {
+        if (state.checked && Date.now() - state.checked < EVENTS_RECHECK_MS) continue;
+        const evR = await fetch(`https://api.the-odds-api.com/v4/sports/${cfg.leagues[lg]}/events?apiKey=${env.ODDS_API_KEY}&dateFormat=iso`,
+          { headers: { accept: 'application/json' } });
+        await recordOddsUsage(env, evR, `${cfg.sport}:${lg}:events`);
+        if (!evR.ok) continue;
+        const evs = await evR.json();
+        times = (Array.isArray(evs) ? evs : []).map((e) => e.commence_time);
+      }
       // The entry wants a game inside 36h; the close, one inside 3h of tip.
       const within = state.n === 0 ? cfg.horizon : cfg.close;
-      const soon = (Array.isArray(evs) ? evs : []).some((e) => {
-        const t = Date.parse(e.commence_time);
+      const soon = times.some((c) => {
+        const t = Date.parse(c);
         return isFinite(t) && t > Date.now() && t - Date.now() <= within;
       });
-      if (!soon) { await saveFeedCache(env.DB, cacheKey, { ...state, checked: Date.now() }); continue; }
+      if (!soon) { if (!own) await saveFeedCache(env.DB, cacheKey, { ...state, checked: Date.now() }); continue; }
       const res = await h2hCapture(env, cfg, lg);
       await saveFeedCache(env.DB, cacheKey, { n: state.n + 1, last: Date.now(), pre: state.pre || 0 });
       out.push(res);
@@ -12301,6 +12364,464 @@ async function nhlBoardData(env) {
     out.record = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand, bar: rec.bar, homeFav60: rec.homeFav60 };
   } catch (e) { /* no log yet */ }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// UFC (2026-11-19, the owner's call: "add UFC ... money line, Fight time, KO, punches, takedowns,
+// submissions"). What there is to read, checked that day:
+//   - The Odds API: the moneyline only (mma_mixed_martial_arts, every promotion in one list), no
+//     fighter props, no method of victory, no PrizePicks.
+//   - ESPN's fight center, free: each bout's fighters, start, weight class and DraftKings' total
+//     rounds and goes-the-distance prices, and once it is over the method, the round and clock,
+//     and each fighter's strikes, takedowns and submission tries. ESPN's scoreboard has the rounds
+//     scheduled, which the fight center leaves out. Both from site.api.espn.com, asked with no
+//     User-Agent: from the Worker on Nov 19 that host answered 200 without one and 403 with one,
+//     and site.web.api.espn.com, where ESPN's own pages read the fight center, 403 either way
+//     (/api/nfl-grade?probe=1). ESPN's cdn host, the one the other sports grade from, has no MMA.
+//   - PrizePicks' fight time, strikes and takedowns lines: nowhere, so they are typed on the card.
+// The owner's calls the same day: the moneyline goes on Picks at the other sports' bar; fight time
+// is priced at DraftKings' number and at PrizePicks' typed one, logged and graded, off Picks until
+// its record clears the bar; how it ends is shown, logged and graded, never a pick; strikes and
+// takedowns wait for a replay of the last two years' fights.
+const ESPN_UFC_SB = 'https://site.api.espn.com/apis/site/v2/sports/mma/ufc/scoreboard';
+const ESPN_UFC_FC = 'https://site.api.espn.com/apis/common/v3/sports/mma/ufc/fightcenter/';
+const UFC_FETCH = { headers: { accept: 'application/json' } };     // no User-Agent: see above
+const UFC_CARD_KEY = 'ufc_card';
+const UFC_CARD_FRESH_MS = 15 * 60e3;
+const UFC_CARD_LIVE_MS = 3 * 60e3;          // while a card is on
+const UFC_SEGMENT = { main: 'Main card', prelims1: 'Prelims', prelims2: 'Early prelims' };
+// Of the UFC fights that ended early, the share still going at each half minute from the opening
+// bell: 776 three-round finishes and 102 five-round ones, January 2024 to November 2026 (ESPN's
+// fight center, every card). A round is five minutes.
+const UFC_FINISH_SURV = {
+  3: [1, 0.972, 0.929, 0.87, 0.811, 0.758, 0.7, 0.635, 0.584, 0.517, 0.447, 0.434, 0.418, 0.392, 0.357, 0.326, 0.307, 0.277, 0.247, 0.198, 0.16,
+    0.147, 0.134, 0.116, 0.098, 0.081, 0.067, 0.044, 0.035, 0.022, 0],
+  5: [1, 0.971, 0.922, 0.863, 0.833, 0.814, 0.784, 0.765, 0.725, 0.676, 0.657, 0.627, 0.627, 0.598, 0.569, 0.539, 0.49, 0.461, 0.422, 0.402, 0.333,
+    0.324, 0.304, 0.294, 0.275, 0.235, 0.206, 0.196, 0.196, 0.186, 0.157, 0.147, 0.147, 0.137, 0.118, 0.118, 0.108, 0.108, 0.098, 0.098, 0.059,
+    0.059, 0.059, 0.059, 0.039, 0.029, 0, 0, 0, 0, 0],
+};
+// How often a fight went the distance, the same fights: for a bout DraftKings has no
+// goes-the-distance price on.
+const UFC_DIST_BASE = { 3: 48.2, 5: 42.7 };
+// Of each division's finishes, the share that were knockouts (the rest submissions), the same
+// fights: 81 of 100 at heavyweight, 43 at women's strawweight. A division not listed takes the
+// whole: 596 knockouts to 282 submissions.
+const UFC_KO_SHARE = {
+  'heavyweight': 81, 'light heavyweight': 77, 'middleweight': 69, 'welterweight': 79, 'lightweight': 69, 'featherweight': 72,
+  'bantamweight': 56, 'flyweight': 54, "women's featherweight": 45, "women's bantamweight": 43, "women's flyweight": 52, "women's strawweight": 43,
+};
+const UFC_KO_SHARE_ALL = 68;
+
+// Names as the two feeds spell them: the odds feed's "Jiri Prochazka" is ESPN's "Jiří Procházka".
+const ufcNameWords = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  .replace(/[^a-z ]+/g, ' ').replace(/\b(jr|sr|ii|iii|iv)\b/g, ' ').trim().split(/\s+/).filter(Boolean);
+function ufcSameFighter(a, b) {
+  const x = ufcNameWords(a), y = ufcNameWords(b);
+  if (!x.length || !y.length) return false;
+  if (x.join(' ') === y.join(' ')) return true;
+  const [s, l] = x.length <= y.length ? [x, y] : [y, x];
+  // Every name of the shorter in the longer (a middle name one feed leaves out), or the same
+  // surname and first initial.
+  if (s.length >= 2 && s.every((w) => l.includes(w))) return true;
+  return s.length >= 2 && s[s.length - 1] === l[l.length - 1] && s[0][0] === l[0][0];
+}
+// The method as ESPN words it ("KO/TKO", "Submission", "Decision - Unanimous").
+function ufcMethod(s) {
+  const t = String(s || '').toLowerCase();
+  if (!t) return null;
+  return /\bt?ko\b|knockout/.test(t) ? 'ko' : /submission/.test(t) ? 'sub' : /decision/.test(t) ? 'dec' : /draw/.test(t) ? 'draw'
+    : /no contest|overturned/.test(t) ? 'nc' : /disqualif|\bdq\b/.test(t) ? 'dq' : 'other';
+}
+// A fighter's numbers from the fight center: "146/283" is landed of attempted.
+function ufcStatsOf(c) {
+  const get = (n) => { const s = ((c && c.stats) || []).find((x) => x.name === n); return s ? String(s.displayValue) : null; };
+  const pair = (v) => { const m = /^(\d+)\s*\/\s*(\d+)$/.exec(v || ''); return m ? [Number(m[1]), Number(m[2])] : [null, null]; };
+  const num = (v) => (v != null && /^\d+$/.test(v) ? Number(v) : null);
+  const [sig, sigAtt] = pair(get('sigStrikes')), [td, tdAtt] = pair(get('takedowns'));
+  const ctrl = /^(\d+):(\d{2})$/.exec(get('timeInControl') || '');
+  return { sig, sigAtt, td, tdAtt, sub: num(get('submissions')), kd: num(get('knockDowns')), ctrl: ctrl ? Number(ctrl[1]) * 60 + Number(ctrl[2]) : null };
+}
+// DraftKings' total rounds and goes-the-distance prices, as ESPN carries them, each de-vigged.
+function ufcDkOf(bets) {
+  const odds = (bets && bets.odds) || [];
+  const am = (s) => { if (/^even$/i.test(String(s))) return 100; const n = Number(String(s).replace('+', '')); return isFinite(n) && Math.abs(n) >= 100 ? n : null; };
+  const val = (o, re) => ((o && o.values) || []).find((v) => re.test(String(v.line || '')));
+  const tr = odds.find((o) => o.displayName === 'Total Rounds'), gd = odds.find((o) => o.displayName === 'Fight Goes the Distance');
+  let rounds = null, dist = null;
+  const o = val(tr, /^o/i), u = val(tr, /^u/i);
+  if (o && u && Number(o.line.slice(1)) === Number(u.line.slice(1))) {
+    const over = am(o.odds), under = am(u.odds), p = over != null && under != null ? shinDevig(over, under) : null;
+    if (p != null && isFinite(p)) rounds = { line: Number(o.line.slice(1)), over, under, pOver: round1(p * 100) };
+  }
+  const y = val(gd, /^yes$/i), n = val(gd, /^no$/i);
+  if (y && n) {
+    const yes = am(y.odds), no = am(n.odds), p = yes != null && no != null ? shinDevig(yes, no) : null;
+    if (p != null && isFinite(p)) dist = { yes, no, pYes: round1(p * 100) };
+  }
+  return rounds || dist ? { rounds, dist } : null;
+}
+// "Over 2.5 rounds" is a fight still going two and a half minutes into the third: 12.5 minutes.
+const ufcRoundsMinutes = (line) => 5 * Math.floor(line) + 5 * (line - Math.floor(line));
+// Of the fights that end early, the share still going at m minutes (UFC_FINISH_SURV, between
+// half minutes in a straight line).
+function ufcFinishSurv(rounds, m) {
+  const t = UFC_FINISH_SURV[rounds === 5 ? 5 : 3], i = m * 2;
+  if (!(i > 0)) return 1;
+  if (i >= t.length - 1) return 0;
+  const lo = Math.floor(i);
+  return t[lo] + (t[lo + 1] - t[lo]) * (i - lo);
+}
+// The chance a bout is still going at m minutes: it goes the distance (DraftKings' price, or the
+// UFC's rate where there is none), or it ends early later than m. The early ends' timing is the
+// last two years' (ufcFinishSurv), bent (raised to the power k) to meet DraftKings' total rounds
+// where it has one: a bout it makes 60% to see 12.5 minutes is a slower one than its division's.
+function ufcTimeOver(b, m) {
+  const full = 5 * (b.rounds === 5 ? 5 : 3);
+  if (!(m >= 0)) return null;
+  if (m >= full) return 0;
+  const dk = b.dk || {};
+  const pd = (dk.dist ? dk.dist.pYes : UFC_DIST_BASE[b.rounds === 5 ? 5 : 3]) / 100;
+  let k = 1;
+  if (dk.rounds) {
+    const a = ufcRoundsMinutes(dk.rounds.line), sa = ufcFinishSurv(b.rounds, a), want = (dk.rounds.pOver / 100 - pd) / (1 - pd);
+    if (a < full && sa > 0 && sa < 1) k = want > 0 && want < 1 ? Math.min(4, Math.max(0.25, Math.log(want) / Math.log(sa))) : want <= 0 ? 4 : 0.25;
+  }
+  return pd + (1 - pd) * Math.pow(ufcFinishSurv(b.rounds, m), k);
+}
+// How a bout ends: a decision as often as DraftKings has it going the distance, and the early
+// ends split between knockouts and submissions as its division's have been.
+function ufcEnds(b) {
+  const dk = b.dk || {};
+  const dec = dk.dist ? dk.dist.pYes : UFC_DIST_BASE[b.rounds === 5 ? 5 : 3];
+  const share = UFC_KO_SHARE[String(b.weight || '').toLowerCase()] || UFC_KO_SHARE_ALL;
+  const fin = 100 - dec;
+  return { ko: round1(fin * share / 100), sub: round1(fin * (100 - share) / 100), dec: round1(dec), src: dk.dist ? 'dk' : 'base' };
+}
+// One bout from the fight center (fc) and the scoreboard (sb): who, when, how long it is
+// scheduled for, DraftKings' prices, and, once it is over, how it went.
+function ufcBoutsFrom(fc, sb) {
+  const fmt = new Map();
+  for (const ev of (sb && sb.events) || []) {
+    for (const c of ev.competitions || []) {
+      const r = c.format && c.format.regulation && c.format.regulation.periods;
+      if (r) fmt.set(String(c.id), r);
+    }
+  }
+  const out = [];
+  for (const [seg, g] of Object.entries((fc && fc.cards) || {})) {
+    for (const c of (g && g.competitions) || []) {
+      const st = c.status || {}, t = st.type || {};
+      const done = !!t.completed;
+      const fighters = (c.competitors || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map((x) => ({
+        id: String((x.athlete && x.athlete.id) || x.id), name: (x.athlete && (x.athlete.displayName || x.athlete.fullName)) || '',
+        short: (x.athlete && x.athlete.shortName) || null, record: x.displayRecord || null,
+        country: (x.athlete && x.athlete.flag && x.athlete.flag.alt) || null, winner: !!x.winner,
+        ...(done ? { stats: ufcStatsOf(x) } : {}),
+      }));
+      if (fighters.length !== 2 || !fighters.every((f) => f.name)) continue;
+      // Main events and title fights are five rounds; the scoreboard says so where it has the bout.
+      const rounds = fmt.get(String(c.id)) || (/main event|title/i.test(c.note || '') ? 5 : 3);
+      const per = Number(st.period), sec = Number(st.clock);
+      const method = done ? ufcMethod(st.result && (st.result.displayName || st.result.name)) : null;
+      const b = {
+        id: String(c.id), commence: isFinite(Date.parse(c.date)) ? new Date(Date.parse(c.date)).toISOString() : null,
+        segment: UFC_SEGMENT[seg] || seg, order: Number(c.matchNumber) || 99, weight: (c.type && (c.type.text || c.type.abbreviation)) || '',
+        rounds, title: /title/i.test(c.note || ''), mainEvent: /main event/i.test(c.note || ''), state: t.state || null, fighters,
+        dk: ufcDkOf(c.bets),
+      };
+      if (done) {
+        b.result = { method, winner: (fighters.find((f) => f.winner) || {}).id || null, round: isFinite(per) && per > 0 ? per : null,
+          clock: st.displayClock || null, minutes: isFinite(per) && per > 0 && isFinite(sec) ? round2(5 * (per - 1) + sec / 60) : null };
+      }
+      out.push(b);
+    }
+  }
+  return out.sort((a, b) => a.order - b.order);
+}
+// ESPN's UFC cards on one day (YYYYMMDD), and one card's bouts. Free.
+async function ufcEventsOn(ymd) {
+  const r = await fetch(`${ESPN_UFC_SB}?dates=${ymd}`, UFC_FETCH);
+  if (!r.ok) throw new Error(`UFC scoreboard ${r.status}`);
+  return r.json();
+}
+async function ufcEventBouts(id, sb) {
+  const r = await fetch(ESPN_UFC_FC + id, UFC_FETCH);
+  if (!r.ok) throw new Error(`UFC fight center ${r.status}`);
+  return ufcBoutsFrom(await r.json(), sb);
+}
+// The card the board shows: ESPN's current one (the scoreboard moves to the next card once one is
+// done), read again every quarter hour, every three minutes while one is on. Free.
+async function ufcCard(env, force = false) {
+  const db = env.DB;
+  const hit = await loadFeedCache(db, UFC_CARD_KEY);
+  const d = hit.present ? hit.data : null;
+  const now = Date.now();
+  const on = d && (d.bouts || []).some((b) => b.state === 'in' || (Date.parse(b.commence) <= now && b.state !== 'post'));
+  if (d && !force && hit.ageMs < (on ? UFC_CARD_LIVE_MS : UFC_CARD_FRESH_MS)) return d;
+  if (!force && !await claimFeedRefresh(db, UFC_CARD_KEY, 60e3)) return d;
+  try {
+    const sr = await fetch(ESPN_UFC_SB, UFC_FETCH);
+    if (!sr.ok) { const out = { ...(d || {}), sbStatus: sr.status }; await saveFeedCache(db, UFC_CARD_KEY, out); return out; }
+    const sb = await sr.json();
+    const ev = (sb.events || [])[0];
+    if (!ev) { const out = { asOf: new Date(now).toISOString(), event: null, bouts: [] }; await saveFeedCache(db, UFC_CARD_KEY, out); return out; }
+    const fr = await fetch(ESPN_UFC_FC + ev.id, UFC_FETCH);
+    const fc = fr.ok ? await fr.json() : null;
+    // A refused fight center keeps the bouts the last read had, and says so.
+    const out = { asOf: new Date(now).toISOString(), event: { id: String(ev.id), name: ev.name || '', date: ev.date || null },
+      bouts: fc ? ufcBoutsFrom(fc, sb) : (d && d.event && d.event.id === String(ev.id) ? d.bouts || [] : []), fcStatus: fr.status };
+    await saveFeedCache(db, UFC_CARD_KEY, out);
+    return out;
+  } catch (e) { return d; }
+}
+// The card as the last read left it, with no read of ESPN: for Picks, which must not wait on it.
+async function ufcCardCached(db) {
+  const hit = await loadFeedCache(db, UFC_CARD_KEY).catch(() => null);
+  return hit && hit.present ? hit.data : null;
+}
+
+// The moneyline: the NBA's and NHL's log on the odds feed's MMA list, its UFC fights only. The
+// feed lists every promotion's fights under one key, so a capture keeps the ones on ESPN's UFC
+// card, renamed to ESPN's spelling and timed by ESPN's start of the bout's part of the card
+// (ufcOddsOnCard); and whether a capture is due goes by those start times, not the feed's list,
+// where a PFL fight inside 36 hours would buy one. One credit a capture: two a card day and the
+// pre-start reads, 75 and 25 minutes before each part of the card.
+const UFC_LEAGUES = { reg: 'mma_mixed_martial_arts' };
+const UFC_ML = { sport: 'ufc', leagues: UFC_LEAGUES, sharp: NBA_SHARP, exec: NBA_EXEC, maxPerDay: 2,
+  minGap: NBA_MIN_GAP_MS, horizon: NBA_HORIZON_MS, close: NBA_CLOSE_MS, keepRaw: true, cronOnly: true,
+  only: async (env, evs) => ufcOddsOnCard(evs, await ufcCard(env)),
+  starts: async (env) => [...new Set((((await ufcCard(env)) || {}).bouts || []).filter((b) => b.state === 'pre' && b.commence).map((b) => b.commence))] };
+function ufcMaybeIngest(env) { return h2hMaybeIngest(env, UFC_ML); }
+// The bout an odds-feed fight is, by its two fighters in either order.
+function ufcBoutOf(card, a, b) {
+  return ((card && card.bouts) || []).find((x) => (ufcSameFighter(x.fighters[0].name, a) && ufcSameFighter(x.fighters[1].name, b))
+    || (ufcSameFighter(x.fighters[0].name, b) && ufcSameFighter(x.fighters[1].name, a))) || null;
+}
+function ufcOddsOnCard(evs, card) {
+  const out = [];
+  for (const e of (Array.isArray(evs) ? evs : [])) {
+    const b = e && ufcBoutOf(card, e.home_team, e.away_team);
+    if (!b) continue;
+    const name = (n) => (b.fighters.find((f) => ufcSameFighter(f.name, n)) || {}).name || n;
+    const H = name(e.home_team), A = name(e.away_team);
+    if (H === A) continue;
+    const as = (o) => (o.name === e.home_team ? H : o.name === e.away_team ? A : o.name);
+    out.push({ ...e, home_team: H, away_team: A, commence_time: b.commence || e.commence_time, ufcBout: b.id, feedCommence: e.commence_time,
+      bookmakers: (e.bookmakers || []).map((bm) => ({ ...bm, markets: (bm.markets || []).map((m) => ({ ...m, outcomes: (m.outcomes || []).map((o) => ({ ...o, name: as(o) })) })) })) });
+  }
+  return out;
+}
+
+async function ensureUfcSchema(db) {
+  await db.prepare(`CREATE TABLE IF NOT EXISTS ufcbouts (
+    bout_id TEXT PRIMARY KEY, event_id TEXT, event TEXT, date TEXT, commence TEXT, segment TEXT, ord INTEGER, weight TEXT, rounds INTEGER,
+    f1_id TEXT, f1 TEXT, f2_id TEXT, f2 TEXT,
+    dk_line REAL, dk_over INTEGER, dk_under INTEGER, p_over REAL, dk_yes INTEGER, dk_no INTEGER, p_dist REAL,
+    p_ko REAL, p_sub REAL, p_dec REAL, sig TEXT, first_at TEXT, read_at TEXT,
+    pp_line REAL, pp_p_over REAL, pp_at TEXT, pp_edits INTEGER,
+    winner_id TEXT, method TEXT, end_round INTEGER, end_clock TEXT, minutes REAL, stats TEXT, graded_at TEXT)`).run();
+}
+// Each read of the card: a bout not yet started is logged, or its prices and chances brought up to
+// date when they have moved (the last before its start is what it is graded on); one that is over
+// is graded. Free.
+async function ufcLogCard(db, card, now = Date.now()) {
+  if (!card || !card.event || !Array.isArray(card.bouts) || !card.bouts.length) return { logged: 0, graded: 0 };
+  await ensureUfcSchema(db);
+  const at = new Date(now).toISOString();
+  const have = new Map((((await db.prepare(`SELECT bout_id, pp_line, graded_at FROM ufcbouts WHERE bout_id IN (${card.bouts.map(() => '?').join(',')})`)
+    .bind(...card.bouts.map((b) => b.id)).all()).results) || []).map((r) => [r.bout_id, r]));
+  const stmts = [];
+  let logged = 0, graded = 0;
+  for (const b of card.bouts) {
+    const row = have.get(b.id);
+    if (b.state === 'pre' && b.commence) {
+      const dk = b.dk || {}, e = ufcEnds(b), r = dk.rounds, d = dk.dist;
+      const ppOver = row && row.pp_line != null ? round1(ufcTimeOver(b, row.pp_line) * 100) : null;
+      const vals = [b.commence, b.segment, b.order, b.rounds, r ? r.line : null, r ? r.over : null, r ? r.under : null, r ? r.pOver : null,
+        d ? d.yes : null, d ? d.no : null, d ? d.pYes : null, e.ko, e.sub, e.dec, ppOver];
+      const sig = JSON.stringify(vals);
+      stmts.push(db.prepare(`INSERT INTO ufcbouts (bout_id, event_id, event, date, f1_id, f1, f2_id, f2, weight,
+          commence, segment, ord, rounds, dk_line, dk_over, dk_under, p_over, dk_yes, dk_no, p_dist, p_ko, p_sub, p_dec, pp_p_over, sig, first_at, read_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(bout_id) DO UPDATE SET date = excluded.date, commence = excluded.commence, segment = excluded.segment, ord = excluded.ord,
+          rounds = excluded.rounds, dk_line = excluded.dk_line, dk_over = excluded.dk_over, dk_under = excluded.dk_under, p_over = excluded.p_over,
+          dk_yes = excluded.dk_yes, dk_no = excluded.dk_no, p_dist = excluded.p_dist, p_ko = excluded.p_ko, p_sub = excluded.p_sub, p_dec = excluded.p_dec,
+          pp_p_over = COALESCE(excluded.pp_p_over, ufcbouts.pp_p_over), sig = excluded.sig, read_at = excluded.read_at
+        WHERE ufcbouts.graded_at IS NULL AND ufcbouts.sig IS NOT excluded.sig`)
+        .bind(b.id, card.event.id, card.event.name, ptDateOf(Date.parse(b.commence)), b.fighters[0].id, b.fighters[0].name, b.fighters[1].id, b.fighters[1].name,
+          b.weight, ...vals, sig, at, at));
+      logged++;
+    } else if (b.state === 'post' && b.result && b.result.method && row && !row.graded_at) {
+      stmts.push(db.prepare('UPDATE ufcbouts SET winner_id = ?, method = ?, end_round = ?, end_clock = ?, minutes = ?, stats = ?, graded_at = ? WHERE bout_id = ?')
+        .bind(b.result.winner, b.result.method, b.result.round, b.result.clock, b.result.minutes,
+          JSON.stringify(Object.fromEntries(b.fighters.map((f) => [f.id, f.stats || null]))), at, b.id));
+      graded++;
+    }
+  }
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+  return { logged, graded };
+}
+// A bout logged and never graded: its card has left the scoreboard (or it was called off), so its
+// card is read by id once it is six hours past its start. One still not over two days on was
+// called off, and is marked so rather than asked about for good.
+const UFC_LATE_MS = 6 * 3600e3;
+async function ufcGradeLate(db, card, now = Date.now()) {
+  const late = (await db.prepare('SELECT bout_id, event_id, commence FROM ufcbouts WHERE graded_at IS NULL AND commence < ? ORDER BY commence LIMIT 40')
+    .bind(new Date(now - UFC_LATE_MS).toISOString()).all()).results || [];
+  const events = [...new Set(late.map((r) => r.event_id))].filter((id) => !(card && card.event && card.event.id === id)).slice(0, 2);
+  let graded = 0, off = 0;
+  for (const id of events) {
+    let bouts;
+    try { bouts = await ufcEventBouts(id, null); } catch (e) { continue; }
+    graded += (await ufcLogCard(db, { event: { id, name: '' }, bouts: bouts.filter((b) => b.state === 'post') }, now)).graded;
+    const there = new Set(bouts.filter((b) => b.state === 'post').map((b) => b.id));
+    const gone = late.filter((r) => r.event_id === id && !there.has(r.bout_id) && Date.parse(r.commence) < now - 48 * 3600e3);
+    if (gone.length) {
+      await db.batch(gone.map((r) => db.prepare("UPDATE ufcbouts SET method = 'off', graded_at = ? WHERE bout_id = ? AND graded_at IS NULL").bind(new Date(now).toISOString(), r.bout_id)));
+      off += gone.length;
+    }
+  }
+  return { graded, off };
+}
+// The cron's share: the card read (it reads itself again only when due) and logged.
+async function ufcTick(env) {
+  if (!env || !env.DB) return null;
+  const card = await ufcCard(env);
+  const out = await ufcLogCard(env.DB, card);
+  return { ...out, late: await ufcGradeLate(env.DB, card).catch(() => null) };
+}
+
+// The finished bouts on ESPN's cards of a Pacific day and the next (a card is dated by its own
+// day, not ours), as the game grader matches them: each fighter, 1 for the winner, and the method,
+// so a draw pushes and a no contest voids. allDone: every bout on those cards is over.
+async function ufcFinalsOn(date) {
+  const finals = [];
+  let bouts = 0, open = 0;
+  const seen = new Set();
+  const next = new Date(Date.parse(date + 'T12:00:00Z') + 86400e3).toISOString().slice(0, 10);
+  for (const d of [date, next]) {
+    const sb = await ufcEventsOn(d.replace(/-/g, ''));
+    for (const ev of sb.events || []) {
+      if (seen.has(String(ev.id))) continue;
+      seen.add(String(ev.id));
+      for (const b of await ufcEventBouts(ev.id, sb)) {
+        bouts++;
+        if (b.state !== 'post' || !b.result || !b.result.method) { open++; continue; }
+        const [h, a] = b.fighters, w = b.result.winner;
+        finals.push({ home: h.name, away: a.name, hs: w === h.id ? 1 : 0, as: w === a.id ? 1 : 0, method: b.result.method, bout: b.id });
+      }
+    }
+  }
+  return { finals, allDone: bouts > 0 && open === 0 };
+}
+
+// What the log says so far: fight time at DraftKings' number and at PrizePicks' typed one (the
+// side the chance favours, by band), and how the likeliest ending did.
+function ufcRecordOf(rows) {
+  const graded = rows.filter((r) => r.graded_at && ['ko', 'sub', 'dec', 'draw', 'dq', 'other'].includes(r.method) && r.minutes != null);
+  const side = (p, over) => ({ p: p >= 50 ? p : 100 - p, won: p >= 50 ? over : !over });
+  const tally = (list) => {
+    const n = list.length, hit = list.filter((x) => x.won).length;
+    const byBand = {};
+    for (const [k, lo, hi] of [['50-60', 50, 60], ['60-70', 60, 70], ['70+', 70, 101]]) {
+      const l = list.filter((x) => x.p >= lo && x.p < hi);
+      byBand[k] = { n: l.length, hit: l.filter((x) => x.won).length, stated: l.length ? round1(l.reduce((s, x) => s + x.p, 0) / l.length) : null };
+    }
+    return { n, hit, hitRate: n ? round1(hit / n * 100) : null, byBand };
+  };
+  const atDk = graded.filter((r) => r.p_over != null && r.dk_line != null).map((r) => side(r.p_over, r.minutes > ufcRoundsMinutes(r.dk_line)));
+  const atPp = graded.filter((r) => r.pp_p_over != null && r.pp_line != null && r.minutes !== r.pp_line).map((r) => side(r.pp_p_over, r.minutes > r.pp_line));
+  const ended = graded.filter((r) => r.p_ko != null && ['ko', 'sub', 'dec', 'draw'].includes(r.method));
+  const ends = ended.map((r) => {
+    const pick = r.p_dec >= r.p_ko && r.p_dec >= r.p_sub ? 'dec' : r.p_ko >= r.p_sub ? 'ko' : 'sub';
+    return { won: pick === (r.method === 'draw' ? 'dec' : r.method), p: Math.max(r.p_dec, r.p_ko, r.p_sub) };
+  });
+  const by = (m) => ({ stated: ended.length ? round1(ended.reduce((s, r) => s + r['p_' + m], 0) / ended.length) : null,
+    landed: ended.length ? round1(ended.filter((r) => (m === 'dec' ? r.method === 'dec' || r.method === 'draw' : r.method === m)).length / ended.length * 100) : null });
+  return { bouts: graded.length, timeAtDk: tally(atDk), timeAtPp: tally(atPp), ends: { ...tally(ends), ko: by('ko'), sub: by('sub'), dec: by('dec') } };
+}
+
+// GET /api/ufc-board: the card, each bout with its moneyline (the sharp books' fair chance and the
+// best price, from the last capture), DraftKings' fight-time number and the chance at it, how it
+// ends, and PrizePicks' typed line where there is one; and the records. No Odds API call on a read,
+// not even the first (UFC_ML.cronOnly).
+async function ufcBoardData(env) {
+  const out = { note: 'UFC: the sharp books\' fair moneyline against the best DK/FD price; fight time and how it ends from DraftKings\' total rounds and goes-the-distance prices, shaped by every UFC fight since January 2024.',
+    event: null, bouts: [], asOf: null, mlAsOf: null, record: null, mlRecord: null };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
+  const card = await ufcCard(env);
+  if (!card) { out.error = 'the card could not be read'; return out; }
+  out.event = card.event; out.asOf = card.asOf;
+  if (card.fcStatus && card.fcStatus !== 200) out.fcStatus = card.fcStatus;
+  await ufcLogCard(env.DB, card).catch(() => null);
+  const ml = await h2hBoardData(env, UFC_ML).catch(() => ({ games: [] }));
+  out.mlAsOf = ml.asOf || null;
+  await ensureUfcSchema(env.DB);
+  // The side the log holds for each fight still to come: the star. A typed PrizePicks line is not
+  // shown here: it is the entries key's (/api/ufc-lines), and the page prices any number from the
+  // bout's curve, the chance of an over at each half minute.
+  await ensureGamePickSchema(env.DB);
+  const logged = ((await env.DB.prepare("SELECT game_id, pick, win_prob FROM gmpicks WHERE sport = 'ufc' AND market = 'h2h' AND result IS NULL").all()).results) || [];
+  out.bouts = card.bouts.map((b) => {
+    const g = (ml.games || []).find((x) => ufcBoutOf({ bouts: [b] }, x.home, x.away));
+    const side = (f) => {
+      if (!g) return null;
+      const home = ufcSameFighter(g.home, f.name);
+      return { fair: home ? g.homeFair : g.awayFair, price: home ? g.homePrice : g.awayPrice, book: home ? g.homeBook : g.awayBook,
+        value: home ? g.homeValue : g.awayValue, link: (home ? g.homeLink : g.awayLink) || null };
+    };
+    const r = b.dk && b.dk.rounds, full = 5 * (b.rounds === 5 ? 5 : 3);
+    const lg = g && logged.find((x) => x.game_id === g.id);
+    return { ...b,
+      ml: g ? { [b.fighters[0].id]: side(b.fighters[0]), [b.fighters[1].id]: side(b.fighters[1]), fairSrc: g.fairSrc, gameId: g.id,
+        pick: lg ? (b.fighters.find((f) => ufcSameFighter(f.name, lg.pick)) || {}).id || null : null } : null,
+      time: r ? { line: r.line, minutes: ufcRoundsMinutes(r.line), pOver: round1(ufcTimeOver(b, ufcRoundsMinutes(r.line)) * 100) } : null,
+      pDist: b.dk && b.dk.dist ? b.dk.dist.pYes : null, ends: ufcEnds(b),
+      // curve[i]: the chance the bout is still going at (i + 1) / 2 minutes.
+      curve: b.state === 'pre' ? Array.from({ length: 2 * full - 1 }, (_, i) => round1(ufcTimeOver(b, (i + 1) / 2) * 100)) : null };
+  });
+  try {
+    out.record = ufcRecordOf((await env.DB.prepare('SELECT * FROM ufcbouts WHERE graded_at IS NOT NULL').all()).results || []);
+    const rec = buildGmRecord(((await env.DB.prepare("SELECT * FROM gmpicks WHERE sport = 'ufc'").all()).results) || [], 'ufc');
+    out.mlRecord = { logged: rec.logged, pending: rec.pending, n: rec.n, record: rec.record, winRate: rec.winRate, byBand: rec.byBand, bar: rec.bar };
+  } catch (e) { out.recordError = String((e && e.message) || e); }
+  return out;
+}
+// GET /api/ufc-odds-raw: the odds feed's UFC fights as the last capture bought them, before they
+// were renamed to ESPN's spelling: kept so a test can be built on a real one. Free.
+async function ufcOddsRaw(env) {
+  const hit = env && env.DB ? await loadFeedCache(env.DB, 'ufc_raw:reg').catch(() => null) : null;
+  return hit && hit.present ? hit.data : { events: null, note: 'No capture yet.' };
+}
+
+// POST/GET /api/ufc-lines: PrizePicks' fight-time line typed on a bout (no feed carries it).
+// Private by the entries key and never cached, as /api/soc-lines is. POST { boutId, line } saves it
+// until the bout starts; a later one replaces it. The chance at it is read again with every read of
+// the card until then, and graded on the last.
+async function ufcLinesApi(request, env) {
+  if (!env || !env.DB) return entryResponse({ error: 'no DB binding' }, 500);
+  const auth = await entryAuth(env, request);
+  if (!auth.ok) return entryResponse({ error: auth.error }, auth.status);
+  const db = env.DB;
+  await ensureUfcSchema(db);
+  if (request.method === 'POST') {
+    let b;
+    try { b = await request.json(); } catch (e) { return entryResponse({ error: 'Body must be JSON.' }, 400); }
+    const id = String((b && b.boutId) || ''), line = Number(b && b.line);
+    if (!(line > 0 && line < 25 && Number.isInteger(line * 2))) return entryResponse({ error: 'A fight-time line is minutes, a whole or half number under 25.' }, 400);
+    const card = await ufcCard(env);
+    const bout = ((card && card.bouts) || []).find((x) => x.id === id);
+    if (!bout) return entryResponse({ error: 'That bout is not on the card.' }, 404);
+    if (bout.state !== 'pre') return entryResponse({ error: 'That bout has started: its line is locked.' }, 409);
+    if (line >= 5 * bout.rounds) return entryResponse({ error: `A ${bout.rounds}-round fight lasts ${5 * bout.rounds} minutes at most.` }, 400);
+    await ufcLogCard(db, card);
+    const p = round1(ufcTimeOver(bout, line) * 100), at = new Date().toISOString();
+    await db.prepare('UPDATE ufcbouts SET pp_line = ?, pp_p_over = ?, pp_at = ?, pp_edits = COALESCE(pp_edits, 0) + 1 WHERE bout_id = ? AND graded_at IS NULL')
+      .bind(line, p, at, id).run();
+    return entryResponse({ ok: true, boutId: id, line, pOver: p, claimed: !!auth.claimed });
+  }
+  const rows = (await db.prepare('SELECT bout_id, pp_line, pp_p_over, pp_at FROM ufcbouts WHERE pp_line IS NOT NULL AND graded_at IS NULL ORDER BY commence LIMIT 100').all()).results || [];
+  return entryResponse({ lines: rows });
 }
 
 // The NHL's free score feed, one day at a time. ESPN serves no NHL scoreboard

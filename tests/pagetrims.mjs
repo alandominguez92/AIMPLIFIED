@@ -113,14 +113,15 @@ ok(/const after = socBestStripHtml\(\) \+ pickHistoryHtml\(d\.record && d\.recor
   && /case 'days-all': state\.daysAll = !state\.daysAll; renderPicks\(\); break;/.test(src), 'the tap is kept in state too');
 
 console.log('\n-- 4. MLB out of season --');
-ok(tabOrder.join(' ') === 'picks mlb nfl nba nhl soccer entries', `index.html's own row: ${tabOrder.join(' ')}`);
+// The UFC tab joined after Soccer on 2026-11-20.
+ok(tabOrder.join(' ') === 'picks mlb nfl nba nhl soccer ufc entries', `index.html's own row: ${tabOrder.join(' ')}`);
 const order = () => row.map((t) => t.dataset.sport).join(' ');
 resetPage(); games = [];
 ok(F.mlbInSeason() === false, 'Nov 10: out of season');
 F.placeMlbTab();
-ok(order() === 'picks nfl nba nhl soccer mlb entries', `its tab moves behind the sports that are playing, ahead of Entries: ${order()}`);
+ok(order() === 'picks nfl nba nhl soccer ufc mlb entries', `its tab moves behind the sports that are playing, ahead of Entries: ${order()}`);
 F.placeMlbTab();
-ok(order() === 'picks nfl nba nhl soccer mlb entries', 'and stays there on a second call');
+ok(order() === 'picks nfl nba nhl soccer ufc mlb entries', 'and stays there on a second call');
 F.mlbOffSync();
 ok(slateCls.has('mlb-off') && note.hidden === false, 'no game on the slate: the board gives way to the one line');
 games = [{ gamePk: 1 }];
