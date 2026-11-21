@@ -8746,7 +8746,7 @@
   };
   // What last season's replay at PrizePicks' numbers said, for each card's head.
   const PROP_NOTE = {
-    nba: 'Last season 54%+ on points landed 57%. The projection is his rate a minute times his minutes over his last five games; “playing more” or “playing less” means those minutes are 4 or more off his usual. “Projection disagrees”: his projection is 15% or more the other way. Last season those landed 52% (119 of 229), below what an entry needs. “Read before … ruled out”: a teammate was ruled out after this price was read, so the books have likely moved. Check the line before you use it.',
+    nba: 'Last season 54%+ on points landed 57%, but 58% and up landed 48% (93 legs): a number that high is more often a stray price than a stronger pick. The projection is his rate a minute times his minutes over his last five games; “playing more” or “playing less” means those minutes are 4 or more off his usual. “Projection disagrees”: his projection is 15% or more the other way. Last season those landed 52% (119 of 229), below what an entry needs. “Read before … ruled out”: a teammate was ruled out after this price was read, so the books have likely moved. Check the line before you use it.',
     nhl: 'Last season 54%+ on points landed 54%, on few games. PrizePicks’ number comes through on points and assists, and sometimes saves: set it by hand on the rest.',
     nfl: 'Last season 54%+ landed 56% on receiving and rushing yards, 49% on catches. Passing yards and catches come in within 20 hours of kickoff; Rush + Rec is set by hand.',
   };

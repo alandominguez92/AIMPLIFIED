@@ -19550,6 +19550,32 @@ function ppPropQuotes(json) {
   return q;
 }
 const ppPropFairAt = (fairs, line) => { const f = (fairs || []).find((x) => x[0] === line); return f ? f[1] : null; };
+// A price no one could bet (2026-11-20, the owner's call after Walker Kessler's Under 70%). Off the
+// books' main line only the exchanges quote PrizePicks' number, and much of what they post there is
+// a placeholder: ProphetX had Kessler's points + assists 14.5 at Over -136 / Under -25000, 57% over
+// an even book, which de-vigs to a 70% Under while FanDuel and Novig had 15.5 at about 55%. On that
+// day's NBA, NHL and NFL reads Pinnacle, FanDuel and BetOnline never held more than 9%. A pair holding
+// more than PP_PROP_MAX_HOLD, or so far under nothing that both sides pay, is no price: both sides
+// go, so the de-vigging never sees it (pure). The props cards' reads only. The backtest, and the
+// streak and hot-run logs held to mid-January, read every quote as before.
+// Replayed on 2025-26 first: carrying the books' main line to PrizePicks' number instead landed
+// worse at 54%+ (53.2% against today's 55.0% off the main line), so the figure stays the books'
+// own price at PrizePicks' number, from books that are really quoting it.
+const PP_PROP_MAX_HOLD = 0.10, PP_PROP_MIN_HOLD = -0.02;
+function ppPropClean(body) {
+  if (!body || !Array.isArray(body.bookmakers)) return body;
+  return { ...body, bookmakers: body.bookmakers.map((b) => (DFS_BOOKS.has(b.key) ? b : { ...b, markets: (b.markets || []).map((m) => {
+    const sides = new Map();
+    for (const o of (m.outcomes || [])) { const k = `${o.description}|${o.point}`; (sides.get(k) || sides.set(k, {}).get(k))[o.name] = o.price; }
+    const off = new Set();
+    for (const [k, s] of sides) {
+      if (typeof s.Over !== 'number' || typeof s.Under !== 'number') continue;
+      const hold = amProb(s.Over) + amProb(s.Under) - 1;
+      if (!(hold >= PP_PROP_MIN_HOLD && hold <= PP_PROP_MAX_HOLD)) off.add(k);
+    }
+    return off.size ? { ...m, outcomes: m.outcomes.filter((o) => !off.has(`${o.description}|${o.point}`)) } : m;
+  }) })) };
+}
 
 // Is this game's one read due? PrizePicks must be up, by the log's own reads: the read would bill
 // for the books' quotes with nothing to hold them against.
@@ -19589,9 +19615,9 @@ async function ppPropsTick(env, now = Date.now()) {
       { headers: { accept: 'application/json' } });
       await recordOddsUsage(env, r, `${sport}:${c.lg}:props`);
       if (!r.ok) continue;
-      const body = await r.json();
-      const legs = histPropLegs({ markets: c.markets }, body);
-      const only = c.sharpOnly ? ppPropSharpOnly(c.sharpOnly, body, legs) : [];
+      const body = await r.json(), priced = ppPropClean(body);
+      const legs = histPropLegs({ markets: c.markets }, priced);
+      const only = c.sharpOnly ? ppPropSharpOnly(c.sharpOnly, priced, legs) : [];
       st.ok = legs.length + only.length > 0;
       await ppPropsLog(env, sport, g, legs, now, only);
       if (st.ok) await saveFeedCache(db, PP_PROP_RAW + sport, { at: new Date(now).toISOString(), game: g.id, credits: Number(r.headers.get('x-requests-last')) || null, body });
@@ -19895,8 +19921,8 @@ async function nflPropsLogTick(env, now = Date.now()) {
   const x = JSON.parse(row.data), c = PP_PROP_CFG.nfl;
   if (Date.parse(x.commence) > now) {
     await ensurePpPropSchema(db);
-    const legs = histPropLegs({ markets: c.markets }, x.body);
-    await ppPropsLog(env, 'nfl', { id: x.id, home: x.home, away: x.away, commence: x.commence }, legs, x.at, ppPropSharpOnly(c.sharpOnly, x.body, legs));
+    const priced = ppPropClean(x.body), legs = histPropLegs({ markets: c.markets }, priced);
+    await ppPropsLog(env, 'nfl', { id: x.id, home: x.home, away: x.away, commence: x.commence }, legs, x.at, ppPropSharpOnly(c.sharpOnly, priced, legs));
     if (legs.length) await saveFeedCache(db, PP_PROP_RAW + 'nfl', { at: new Date(x.at).toISOString(), game: x.id, body: x.body });
   }
   await db.prepare('DELETE FROM feed_cache WHERE key = ?').bind(row.key).run();
