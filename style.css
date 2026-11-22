@@ -2703,6 +2703,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .sp-match > .sp-mh.stuck { box-shadow:0 6px 18px rgba(0,0,0,.28); }
 .sp-match .tc-legs { margin-top:8px; gap:6px; }
 .sp-tap { display:block; width:100%; text-align:left; background:none; border:0; padding:0; font:inherit; color:inherit; cursor:pointer; }
+/* A player ESPN lists out: his row stays, with no numbers, and doesn't open. */
+.sp-tap.sp-still { cursor:default; }
+.sp-out .tc-l1 b { color:var(--textDim); }
 .sp-row.open .tc-leg { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .sp-row .tc-l1 .pk-sport { flex:none; }
 .sp-set { display:block; margin-top:9px; padding-top:9px; border-top:1px solid var(--borderSoft); }
@@ -3215,6 +3218,9 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   color:var(--textDim); background:none; border:1px solid var(--border); border-radius:8px; cursor:pointer; }
 .lc-star.on { color:var(--onAccent); background:var(--accentFill); border-color:var(--accentFill); }
 .lc-star:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* A player ESPN lists out: the star's room is kept, empty, and a dash stands in for the chance. */
+.lc-star.lc-star-off { visibility:hidden; }
+.lc-pct.lc-out { color:var(--textFaint); }
 .lc-top > .hs { margin-top:4px; }
 .lc-what { min-width:0; display:flex; flex-direction:column; gap:3px; }
 .lc-name { font-size:15px; line-height:1.3; color:var(--text); overflow-wrap:break-word; }

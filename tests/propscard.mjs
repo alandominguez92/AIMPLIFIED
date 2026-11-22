@@ -91,10 +91,16 @@ const lastRow = rows[rows.length - 1];
 ok(!/tc-p/.test(lastRow), 'players with no figure last');
 
 console.log('\n-- no sharp quote, no percentage --');
-const cam = rowFor(h, 'Cam Spencer');
+// ESPN had Spencer out on this read. Since 2026-11-21 (the owner's "blank his numbers",
+// tests/outblank.mjs) an out player's row has no side, line or setter, so the line checks below
+// read his row without the flag; with it, it is the bare flagged row.
+const camOut = rowFor(h, 'Cam Spencer');
+ok(/OUT|Out/.test(text(camOut)) && !/class="tc-p/.test(camOut) && !/Under 13/.test(text(camOut)) && !/data-action="pr-row"/.test(camOut), `listed out: flagged, with no number, side or setter (${text(camOut).slice(0, 60)})`);
+const camInj = P('Cam Spencer').inj;
+delete P('Cam Spencer').inj;
+const cam = rowFor(card(), 'Cam Spencer');
 ok(!/class="tc-p/.test(cam), `Spencer at PrizePicks' 13, Pinnacle at 13.5: no percentage (${text(cam).slice(0, 70)})`);
 ok(/Under 13 points/.test(text(cam)), 'the number is still there');
-ok(/OUT|Out/.test(text(cam)), 'with ESPN\'s flag on him');
 state.prOpen = { [key('Cam Spencer', 'pts')]: true };
 ok(/No sharp price at 13: theirs is 13\.5/.test(text(rowFor(card(), 'Cam Spencer'))), 'tapped: it says where they are');
 state.prLines = { [key('Cam Spencer', 'pts')]: 13.5 };
@@ -104,6 +110,7 @@ state.prLines = { [key('Cam Spencer', 'pts')]: 14 };
 const camOff = rowFor(card(), 'Cam Spencer');
 ok(!/class="tc-p/.test(camOff) && /No sharp price at 14: theirs is 13\.5/.test(text(camOff)), 'set to 14, where no one quotes him: no figure again');
 state.prLines = {}; state.prOpen = {};
+P('Cam Spencer').inj = camInj;
 
 console.log('\n-- no PrizePicks number --');
 const edey = rowFor(card(), 'Zach Edey');

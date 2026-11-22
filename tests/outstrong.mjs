@@ -6,7 +6,7 @@
 // out for Saturday, and the starter tag counted their last five starts (4 of 5). What has to hold:
 //   - an out player is off the Strongest list, on a stat and on Best, and out of its count, the
 //     stat button's and the game's
-//   - in their game's own list they stay, flagged out, the number not drawn as a strong one
+//   - in their game's own list they stay, flagged out, with no number (since 2026-11-21)
 //   - "expected starter" (or "started n of last 5") doesn't show beside an out flag
 //   - a player listed questionable (GTD) is not out: their tags and place stand
 //
@@ -87,7 +87,8 @@ const game = gameOf(h, heat.id);
 const row = rowFor(game, 'Klay Thompson');
 ok(!!row && /Out: ankle soreness|ankle soreness/.test(text(row.split('sp-set')[0])), `still in the Pistons @ Heat list, flagged: "${row && text(row.split('sp-set')[0]).slice(0, 120)}"`);
 ok(row && !/expected starter|started \d of last/.test(row), 'no "expected starter" beside the out flag');
-ok(row && /<span class="tc-p">56%<\/span>/.test(row), 'their number shows, not drawn as a strong one');
+// Since 2026-11-21 (the owner's "blank his numbers", tests/outblank.mjs) an out player's row shows no number at all.
+ok(row && !/class="tc-p/.test(row) && !/56%/.test(text(row)), 'no number on their row, strong or not');
 const gBadge = (game.match(/<span class="sp-mc">\d+ players? <span class="sp-badge">(\d+) at 54%\+<\/span>/) || [])[1] || '0';
 ok(Number(gBadge) === (game.match(/tc-p sp-strong/g) || []).length, `the game's own count leaves them out too (${gBadge})`);
 

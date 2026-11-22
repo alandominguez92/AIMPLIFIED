@@ -6238,14 +6238,20 @@
     if (best) compact = false;
     const cx = ctx || { same: PICK_SAME, topMl: PICK_TOP.ml, sport: null };
     const lg = pickLeg(x);
+    const team = pickIsTeam(x);
+    // A player ESPN lists out (2026-11-21, the owner's "blank his numbers"): his card keeps its top
+    // row and the injury tag, and drops the chance, the tiles, the bar and the star. A star stays
+    // only on a leg already on the slip, so it can be taken off. Picks leaves him off already.
+    const out = !team && !best && !!(x.inj && x.inj.out);
     // In Simple, the top row opens this card in full and folds it again (the owner, 2026-11-16:
     // a tap on the player "rather than having to go all the way back up" to Detailed).
-    const tap = !!compact;
+    const tap = !!compact && !out;
     const opened = tap && PICK_OPEN.has(lg.id);
     if (opened) compact = false;
-    const team = pickIsTeam(x);
+    if (out) compact = true;
     const on = !!state.slip[offerLeg(lg)];
-    const star = `<button type="button" class="lc-star${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
+    const star = out && !on ? '<span class="lc-star lc-star-off" aria-hidden="true"></span>'
+      : `<button type="button" class="lc-star${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(lg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(x.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`;
     const trendShown = !compact && !!trendBarsHtml(x.trend);
     const tags = [];
     if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
@@ -6262,8 +6268,10 @@
     const ra = x.lineSet ? null : readAgeTag(x);
     if (ra) tags.push(`<span class="${ra.stale ? 'tc-wait' : 'pk-asof'}" title="PrizePicks moves lines between reads">${esc(ra.text)}</span>`);
     if (x.lineSet) tags.push(pickLineSetTag(x));
+    const injFrom = tags.length;
     const it = injuryTag(x);
     if (it) for (const t of it.parts || [it.text]) tags.push(`<span class="${it.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(it.title)}">${esc(t)}</span>`);
+    const injTags = tags.slice(injFrom);
     const gn = goalieNote(x);
     if (gn) tags.push(`<span class="${gn.warn ? 'tc-wait' : 'pk-asof'}" title="${esc(gn.title)}">${esc(gn.text)}</span>`);
     const mv = pickMoved(x);
@@ -6351,7 +6359,8 @@
     const sportName = esc(x.league || PICK_SPORT[x.sport] || x.sport);
     // The big number, coloured where a tab colours it (the NBA unders: green at the 6-Flex
     // break-even), with whose number it is on hover.
-    const pctB = `<b class="lc-pct${x.pTone ? ` ${x.pTone}` : ''}"${x.pTitle ? ` title="${esc(x.pTitle)}"` : ''}>${pct0(x.p)}</b>`;
+    const pctB = out ? '<b class="lc-pct lc-out" title="ESPN lists him out, so no chance is shown">—</b>'
+      : `<b class="lc-pct${x.pTone ? ` ${x.pTone}` : ''}"${x.pTitle ? ` title="${esc(x.pTitle)}"` : ''}>${pct0(x.p)}</b>`;
     if (best) {
       // On a sport tab, the mock's "Best NHL leg still open": the best whose game has not started.
       const kicker = cx.sport ? `Best ${PICK_SPORT[cx.sport] || cx.sport} leg still open`
@@ -6379,8 +6388,9 @@
         ? `<button type="button" class="lc-nb" data-action="leg-open" data-leg="${esc(lg.id)}" aria-expanded="${opened}">${who}</button>` : who}</span>`
       // A soccer leg's league says the sport; the others name it.
       + `<span class="lc-game">${pickTeamTag(x)}<span class="pk-sport">${sportName}</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span>`
-      + (tags.length ? `<span class="lc-tags">${tags.join(' ')}</span>` : '')
-      + `</div><div class="lc-p">${pctB}<span class="lc-pk">chance</span>${tap ? `<span class="lc-chev" aria-hidden="true">${opened ? 'less ▴' : 'more ▾'}</span>` : ''}</div></div>`
+      // Out, only what ESPN lists: his run, the model's bit and the line tags are numbers too.
+      + ((out ? injTags : tags).length ? `<span class="lc-tags">${(out ? injTags : tags).join(' ')}</span>` : '')
+      + `</div><div class="lc-p">${pctB}<span class="lc-pk">${out ? 'ruled out' : 'chance'}</span>${tap ? `<span class="lc-chev" aria-hidden="true">${opened ? 'less ▴' : 'more ▾'}</span>` : ''}</div></div>`
       + (!compact && tiles.length ? `<div class="lc-tiles">${tiles.join('')}</div>` : '')
       + (more ? `<div class="lc-more">${more}</div>` : '')
       + stepper
@@ -8938,6 +8948,16 @@
     const on = !!state.slip[offerLeg(leg)];
     const open = !!(state.prOpen && state.prOpen[key]);
     const opp = legOppText({ team: p.team, game: `${g.away} @ ${g.home}` }, propCodes(sport));
+    // ESPN lists him out (2026-11-21, the owner's "blank his numbers"): the row keeps his name, the
+    // game, the stat and the injury tag, with no chance, side, projection or star, and doesn't open.
+    // A leg already on the slip keeps its star, so it can be taken off.
+    if (p.inj && p.inj.out) {
+      const offStar = on ? `<button type="button" class="tc-add on" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="true" aria-label="Remove ${esc(leg.title)} from your slip">★</button>` : '';
+      return `<li class="sp-row sp-out">${offStar}<div class="tc-leg"><div class="sp-tap sp-still">`
+        + `<span class="tc-l1"><b>${esc(p.name)}</b><span class="pk-sport">${esc(p.team || '')}</span></span>`
+        + `<span class="tc-l2 pr-l2"><span>${opp ? `${esc(opp)} · ` : ''}${esc(label[1])}${nbaCardInjTag(p)}</span></span>`
+        + `</div></div></li>`;
+    }
     // A row with no number yet opens its setter: a star there would be the app's guess at PrizePicks' line.
     const star = v.real
       ? `<button type="button" class="tc-add${on ? ' on' : ''}" data-action="leg-add" data-leg="${esc(leg.id)}" aria-pressed="${on}" aria-label="${on ? 'Remove' : 'Add'} ${esc(leg.title)} ${on ? 'from' : 'to'} your slip">${on ? '★' : '☆'}</button>`
@@ -9110,6 +9130,9 @@
       if (view === 'best') {
         for (const p of ps) {
           const all = stats.map((s) => ({ p, s, v: propView(sport, d, g, p, s) })).filter((x) => x.v.p != null);
+          // Out (2026-11-21): his row shows no number, so Best has none of his to list; a search for
+          // him finds his flagged row, once.
+          if (injOut(p)) { if (q && all.length) rows.push(all[0]); continue; }
           if (q) rows.push(...all);
           else if (all.length) rows.push(all.sort((a, b) => dist(b) - dist(a))[0]);
         }
