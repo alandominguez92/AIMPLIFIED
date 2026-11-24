@@ -6283,7 +6283,9 @@
     if (sg) tags.push(`<span class="tc-wait" title="Legs from one game tend to land or miss together">${sg === pickShortName(x) ? 'Same player as another leg' : `Same game as ${esc(sg)}`}</span>`);
     // An NHL points or assists More Picks holds off (2026-11-14 and 11-19, the owner's calls), with the record it went by.
     const op = x.offPicks;
-    if (op) tags.push(`<span class="tc-wait" title="NHL points and assists Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>`);
+    // The NBA blocks Mores held by hand (2026-11-24) carry their own words.
+    if (op && op.text) tags.push(`<span class="tc-wait" title="${esc(op.title || '')}">${esc(op.text)}</span>`);
+    else if (op) tags.push(`<span class="tc-wait" title="NHL points and assists Mores go on Picks only where legs like them have landed 57.7% or better, what a 2-pick Power needs">off Picks: ${op.band ? `at ${esc(op.band)}%` : 'at 55%+'} these landed ${op.n ? `${op.hit} of ${op.n}` : 'too few'}</span>`);
     // A sport tab's own (step 7): the NBA unders card's "no sharp line yet", "PP 5.5 → 6.5" and the like.
     if (Array.isArray(x.tabTags)) for (const t of x.tabTags) if (t) tags.push(t);
     // The moneyline with the best chance shown (step 6), as the mock tags it; on a sport tab, its own.
@@ -6412,8 +6414,12 @@
     const kinds = d.kinds || {};
     const rules = `<details class="pk-rules"><summary>What gets on the list</summary><ul>${Object.values(kinds).map((k) => {
       const r = k.record || {};
-      // A kind held off the list while its record is under its bar (the rebounds Less, 2026-11-18).
-      const held = k.held ? ` · <span class="tc-wait">off Picks while under the ${esc(String(k.held.bar))}% a 6-Flex needs</span>` : '';
+      // A kind held off the list while its record is under its bar (the rebounds Less, 2026-11-18), or
+      // by hand from a date (the blocks More and rebounds Less, 2026-11-24), with what it has done
+      // since its rule where the record keeps that.
+      const held = !k.held ? '' : k.held.since
+        ? ` · <span class="tc-wait">off Picks from ${esc(shortDay(k.held.since) || k.held.since)}${r.since && r.since.n ? `, ${r.since.hit} of ${r.since.n} since ${esc(shortDay(r.since.from) || r.since.from)}` : ''}</span>`
+        : ` · <span class="tc-wait">off Picks while under the ${esc(String(k.held.bar))}% a 6-Flex needs</span>`;
       return `<li><b>${esc(k.label)}</b> at ${k.min}%+ · ${r.n ? `${r.hit} of ${r.n} landed (${pct0(r.hitRate)})` : 'no graded legs yet'}${r.n && !r.proven ? ' · <span class="pk-new">new</span>' : ''}${held}</li>`;
     }).join('')}</ul><p>Only the best leg of each game, because legs from one game tend to land or miss together. Strikeout unders, NBA threes and assists unders, passing-TD unders under 60% and MLB unders under 70% are left off: their numbers have not held up.</p></details>`;
     const rec = d.record || {};
@@ -7652,7 +7658,12 @@
     const model = r1(ppMoreP(x));
     const sh = typeof x.sharp_under === 'number' ? r1(100 - x.sharp_under) : null;
     const m = r && r.blkMore, a = m && m.atBar;
-    return { kind: 'nba_blk_more', sport: 'nba', legId: leg.id, title: leg.title, sub: nbaGameSub(x), commence: x.commence,
+    // Held off Picks by hand from Nov 24 (the owner's call): each leg says so, as the NHL's held Mores do.
+    const hk = state.picks && state.picks.kinds && state.picks.kinds.nba_blk_more, s = m && m.since;
+    const offPicks = hk && hk.held && hk.held.since
+      ? { text: `off Picks: ${s && s.n ? `these landed ${s.hit} of ${s.n} since ${shortDay(s.from) || s.from}` : 'since Nov 24'}`,
+        title: `Blocks Mores came off Picks of the day from ${shortDay(hk.held.since) || hk.held.since}, under the 54.2% a 6-Flex needs a leg` } : null;
+    return { kind: 'nba_blk_more', sport: 'nba', legId: leg.id, title: leg.title, sub: nbaGameSub(x), commence: x.commence, offPicks,
       p: sh == null ? model : r1(NBA_MORE_MODEL_W * model + (1 - NBA_MORE_MODEL_W) * sh), modelP: model, sharp: sh, proj: x.proj, spec: leg.spec,
       record: a && a.n ? { n: a.n, hit: a.hit, hitRate: typeof a.hitRate === 'number' ? a.hitRate : r1(a.hit / a.n * 100), proven: a.n >= NBA_PROVEN_N, ...(m.since && m.since.n ? { since: m.since } : {}) } : null,
       readAt: null, inj: x.inj && x.inj.status ? x.inj : null, injUnread: true, trend: propTrend('nba', x, 'over') };
@@ -7738,6 +7749,8 @@
     const k = state.picks && state.picks.kinds && state.picks.kinds.nba_reb_gap;
     if (!k || !k.held) return '';
     const r = k.record || {};
+    // Held by hand from Nov 24: no "while", it isn't coming back on its own.
+    if (k.held.since) return `<div class="tc-sub tc-rec-line">Rebounds Less above the sharp line is off Picks from ${esc(shortDay(k.held.since) || k.held.since)}${r.n ? `: <b>${r.hit} of ${r.n}</b> landed, under the 54.2% a 6-Flex needs` : ''}. Its rows stay on the props card.</div>`;
     return `<div class="tc-sub tc-rec-line">Rebounds Less above the sharp line is off Picks while it lands under the ${esc(String(k.held.bar))}% a 6-Flex needs${r.n ? `: <b>${r.hit} of ${r.n}</b> so far` : ''}. Its rows stay on the props card.</div>`;
   }
   // Blocks More (2026-10-27), under the unders.
@@ -7746,8 +7759,15 @@
     const bestIsBlk = !!(ctx && ctx.best && ctx.best.kind === 'nba_blk_more');
     if (!list.length && !bestIsBlk && !(m && m.leaned && m.leaned.n)) return '';
     const simple = pickLegView() === 'simple';
+    // Held off Picks by hand from Nov 24 (the owner's call): the card says so, with the count since the rule.
+    const hk = state.picks && state.picks.kinds && state.picks.kinds.nba_blk_more;
+    const held = hk && hk.held && hk.held.since ? hk.held : null;
+    const s = m && m.since;
+    const sub = held
+      ? `The other side of the same blocks lines, at ${PP_MORE_MIN}%+. Off Picks of the day from ${esc(shortDay(held.since) || held.since)}${s && s.n ? `: since ${esc(shortDay(s.from) || s.from)} they landed <b>${s.hit} of ${s.n}</b>, under the 54.2% a 6-Flex needs` : ''}. Still logged and graded here.`
+      : `The other side of the same blocks lines, at ${PP_MORE_MIN}%+: the one NBA market where the model's More has landed. On Picks of the day too, since Oct 28.`;
     return '<div class="pk-grp nba-blk"><h3 class="pk-gh">Blocks: More</h3>'
-      + `<div class="tc-sub">The other side of the same blocks lines, at ${PP_MORE_MIN}%+: the one NBA market where the model's More has landed. On Picks of the day too, since Oct 28.</div>`
+      + `<div class="tc-sub">${sub}</div>`
       + ppMoreLineHtml(m, 'Blocks')
       + (list.length ? `<ol class="tc-legs pk-pool">${list.map((x) => legCardHtml(x, simple, '', false, ctx)).join('')}</ol>`
         : bestIsBlk ? '' : `<div class="tc-wait-note">No blocks More at ${PP_MORE_MIN}%+ in the next games yet.</div>`)

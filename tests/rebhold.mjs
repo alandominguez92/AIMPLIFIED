@@ -115,7 +115,9 @@ ok(text(H()) === 'Rebounds Less above the sharp line is off Picks while it lands
 ui.picks.kinds.nba_reb_gap = { ...k, held: undefined };
 ok(H() === '' && (ui.picks = null, H() === ''), 'nothing when it is on, or before Picks has loaded');
 ok(/\+ nbaRebHeldHtml\(\);\n/.test(app.slice(app.indexOf('  function nbaPpCardHtml('), app.indexOf('  function nbaRebHeldHtml('))), 'under the PrizePicks unders heading on the NBA tab');
-ok(/const held = k\.held \? ` · <span class="tc-wait">off Picks while under the \$\{esc\(String\(k\.held\.bar\)\)\}% a 6-Flex needs<\/span>` : '';/.test(app)
+// The held-by-hand form (k.held.since, 2026-11-24) is tests/heldkinds.mjs's; the bar's is this.
+ok(/const held = !k\.held \? '' : k\.held\.since\n/.test(app)
+  && /\n\s+: ` · <span class="tc-wait">off Picks while under the \$\{esc\(String\(k\.held\.bar\)\)\}% a 6-Flex needs<\/span>`;/.test(app)
   && /\$\{held\}<\/li>`;/.test(app), '"What gets on the list" tags it: "off Picks while under the 54.2% a 6-Flex needs"');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

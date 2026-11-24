@@ -9059,6 +9059,7 @@ const PICK_KINDS = {
   // More side had landed where the model leaned More -- NBA blocks 17 of 24
   // and NHL points and assists 20 of 29 at 55%+ through Oct 27 (the cards'
   // blkMore and more records). PrizePicks legs, so they widen its entries.
+  // The blocks held off from Nov 24 (PICK_HELD): since the rule they landed 52%.
   nba_blk_more: { sport: 'nba', label: 'NBA blocks More (PrizePicks)', min: 55 },
   // Rebounds Less where PrizePicks' line sits above the sharp books' main line
   // (2026-10-30, the owner's call, "betting against would be the best
@@ -9066,7 +9067,8 @@ const PICK_KINDS = {
   // two lines met, 48.7% below (/api/hist-props?job=nba3). Its chance is that
   // rate (REB_GAP_P): the sharp books' own at PrizePicks' number read about
   // 52% on these. Past the 5- and 6-pick Flex break-even (about 54%), not the
-  // 2-pick Power's 57.7%.
+  // 2-pick Power's 57.7%. Held while under 54.2% from Nov 18 (REB_GAP_HOLD_SINCE), and held by
+  // hand from Nov 24 (PICK_HELD).
   nba_reb_gap: { sport: 'nba', label: 'NBA rebounds Less, PrizePicks above the sharp line', min: 55 },
   // NFL at 75%+ from 2026-10-26, on the owner's call ("too many losses"):
   // through Week 7 the log's favourites at 75%+ won 11 of 14 (78.5% stated)
@@ -9114,6 +9116,26 @@ const ENTRY_STAKE_CAP = 2;
 // 16 of 23 at the bar). Its whole record counts that run, so the page shows
 // what it has done since too (2026-11-04). Reviewed around Nov 15.
 const BLK_MORE_SINCE = '2026-10-27';
+// Held off Picks by hand (2026-11-23, the owner's call: "build all three"). From these game dates no
+// leg of the kind goes on the list or into the entries, whatever its record does next; it comes
+// back only on the owner's word. Still logged, graded and on the NBA tab, so the record goes on
+// counting. By the game's date, as nba_pp's off, so the days before keep what they had.
+//   Blocks More: 45 of 86 (52.3%) since the rule (BLK_MORE_SINCE) at the first read, 71 of 131
+//     (54.2%) as the list read them before tip: a 6-Flex's break-even and under every smaller
+//     entry's. A higher stated chance landed no more often (55-58: 56%, 58-62: 50%, 62-66: 43%),
+//     and every rotation player's blocks line went More 51.2% (175 of 342), so PrizePicks' number
+//     is near fair and the model's lean adds two points. The run the rule was set from, 16 of 23,
+//     has not come back.
+//   Rebounds Less: the automatic hold (REB_GAP_HOLD_SINCE) let them back whenever the record
+//     crept over 54.2%; on Nov 20 they came back that way and went 1 of 6. 134 of 261 (51.3%) by
+//     Nov 23. Held by hand instead, so a record sitting on the bar can't flip them on and off.
+const PICK_HELD = { nba_blk_more: '2026-11-24', nba_reb_gap: '2026-11-24' };
+const pickHeld = (kind, date) => !!(PICK_HELD[kind] && date && date >= PICK_HELD[kind]);
+// Why a listed leg of a held kind left the list, as it stood when it was held.
+const PICK_HELD_WHY = {
+  nba_blk_more: 'blocks Mores came off Picks on Nov 24: since Oct 27 they had landed 52%, under the 54.2% a 6-Flex needs',
+  nba_reb_gap: 'rebounds Lesses came off Picks on Nov 24: they had landed 51%, under the 54.2% a 6-Flex needs',
+};
 const PROP_KINDS = new Set(['mlb_pp', 'nba_pp', 'nba_blk_more', 'nba_reb_gap', 'nhl_more', 'nfl_ptd']);
 const capStake = (s, cap) => (cap != null && s > cap ? { stake: cap, capped: true } : { stake: s });
 const decOf = (am) => (am > 0 ? 1 + am / 100 : 1 + 100 / -am);
@@ -10077,6 +10099,7 @@ async function picksCandidates(env, now) {
     const r = ppCurrent(row);
     const gap = rebGapOf(r);
     if (!soon(r.commence) || gap == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
+    if (pickHeld('nba_reb_gap', r.date)) continue;
     if (rebHeld) {
       if (rebRec === undefined) { rebRec = (await kindRecs()).nba_reb_gap || null; REB_GAP_GATE = rebRec; }
       if (!rebGapOn(rebRec)) continue;
@@ -10111,6 +10134,7 @@ async function picksCandidates(env, now) {
   for (const row of ppStanding(blk)) {
     const r = ppCurrent(row);
     if (!soon(r.commence) || r.model_under == null || !(r.min_proj >= NBA_ROTATION_MIN)) continue;
+    if (pickHeld('nba_blk_more', r.date)) continue;
     const p = ppMoreChance(r);
     if (100 - r.model_under < PICK_KINDS.nba_blk_more.min || p < PICK_KINDS.nba_blk_more.min) continue;
     legs.push({ ...moreLeg('nba', r, p, 'BLK'), sharp: r.sharp_under == null ? null : round1(100 - r.sharp_under) });
@@ -10363,6 +10387,7 @@ const dropOutranked = (o) => `${o.label} (${Math.round(o.p)}%) took its game's p
 function ppDropWhy(m, reread, other, kind = 'nba_pp') {
   if (!m) return null;
   if (kind === 'nba_pp' && m.date >= PICK_KINDS.nba_pp.off) return 'threes and assists unders came off Picks on Nov 1: listed at 70%+, they landed 56%';
+  if (pickHeld(kind, m.date)) return PICK_HELD_WHY[kind];
   // An NHL line coming down is not a scratch (2026-10-30): on Oct 29 Strome,
   // Batherson and Hutson all played -- 0, 3 and 1 points.
   if (reread && m.close_point == null) return kind === 'nhl_more' ? 'PrizePicks took the line down before puck drop' : 'PrizePicks took the line down before tip, most often a player ruled out';
@@ -10760,6 +10785,8 @@ async function picksBoard(env) {
     out.kinds = Object.fromEntries(pickKindsOn(now).map(([k, v]) => [k, { ...v, record: kinds[k] }]));
     // The rebounds Less held off the list says so, with the bar it is under (2026-11-18).
     if (out.kinds.nba_reb_gap && kinds.nba_reb_gap && ptDateOf(now) >= REB_GAP_HOLD_SINCE && !rebGapOn(kinds.nba_reb_gap)) out.kinds.nba_reb_gap.held = { bar: REB_GAP_HOLD_PCT };
+    // Held by hand (PICK_HELD) from the day before, when the list's next-day legs are the first held.
+    for (const [k, since] of Object.entries(PICK_HELD)) if (out.kinds[k] && ptDateOf(now + 864e5) >= since) out.kinds[k].held = { since };
     out.qualifyingGames = new Set(legs.map((l) => l.gameKey)).size;
     if (unavailable.size) out.unavailable = [...unavailable];
     // Each leg's first chance on the list, for how far it has moved since.
