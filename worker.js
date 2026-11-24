@@ -19533,7 +19533,20 @@ const PP_PROP_FORM_EVERY_MS = 2 * 3600e3;
 const PP_PROP_FORM_STALE_MS = 12 * 3600e3;
 const PP_PROP_BOOKS = ['prizepicks', ...HIST_PROP_SHARP];   // ten or fewer named books bill as one region
 const PP_PROP_BANDS = [[50, 52, '50-52'], [52, 54, '52-54'], [54, 56, '54-56'], [56, 101, '56+']];
-const NBA_PROP_MIN = 18;                    // minutes over his last five, to be listed with no number up
+// The clean reads (2026-11-24, the owner's call): from e80d6f3, live at 00:35 UTC Nov 21 (4:35 PM
+// Pacific Nov 20), a card leaves out prices no one could bet, Novig's and ProphetX's one-sided
+// alternates, whose 60%+ legs landed 48% last season. A row read before it may carry one, so the
+// record also counts the 54%+ rows read after it on their own (clean): whether card legs join Picks
+// is decided on those. By read time, not game date: Nov 20's games were read that afternoon.
+const PP_PROP_CLEAN_AT = '2026-11-21T00:35:02.000Z';
+// A graded row's side at the sharp books' 54%+: whether it landed, or null under 54 or with no
+// sharp number. The record's bands and at54 count the same way (ppPropTally).
+function ppPropAt54(sharp, result) {
+  if (sharp == null) return null;
+  const under = sharp >= 50;
+  return (under ? sharp : 100 - sharp) >= 54 ? (result === 'under') === under : null;
+}
+const NBA_PROP_MIN = 18;                   // minutes over his last five, to be listed with no number up
 const PP_PROP_WINDOW_DAYS = 45;             // a free scan of what a last-ten needs, not a season's box scores
 const PP_PROP_LAST_DAYS = 21;               // how far back PrizePicks' last number for him is looked for
 const PP_PROP_FORM_V = 3;                   // a form saved before starts and last numbers (2), or the NBA's minutes (3), is built again
@@ -20032,7 +20045,8 @@ function ppPropMarkLate(mine, late) {
 function ppPropRecordOut(rec) {
   const r = rec || { graded: 0, bands: {}, byMarket: {} };
   const c = (k) => r.bands[k] || { n: 0, hit: 0 };
-  return { graded: r.graded, need: PP_PROP_NEED, bands: r.bands, byMarket: r.byMarket, at54: { n: c('54-56').n + c('56+').n, hit: c('54-56').hit + c('56+').hit } };
+  return { graded: r.graded, need: PP_PROP_NEED, bands: r.bands, byMarket: r.byMarket, at54: { n: c('54-56').n + c('56+').n, hit: c('54-56').hit + c('56+').hit },
+    clean: r.clean ? { from: PP_PROP_CLEAN_AT, n: r.clean.n, hit: r.clean.hit } : null };
 }
 // GET /api/nba-props, /api/nhl-props, /api/nfl-props: what the card draws. No credits and no upstream call:
 // feed_cache rows and the logs. Lines typed on the card aren't in it (they stay behind the entries
@@ -20164,11 +20178,11 @@ async function propLinesApi(request, env) {
 async function gradePpProps(db, sport, tonight = false) {
   const c = PP_PROP_CFG[sport];
   await ensurePpPropSchema(db);
-  const cols = 'date, pkey, market, player, player_id, read_point, read_sharp, typed_line, typed_sharp';
+  const cols = 'date, pkey, market, player, player_id, read_point, read_sharp, typed_line, typed_sharp, read_at';
   const open = (await (tonight
     ? db.prepare(`SELECT ${cols} FROM pp_props WHERE sport = ? AND result IS NULL AND date = ? AND commence < ?`).bind(sport, slateDate(), gameOverCut())
     : db.prepare(`SELECT ${cols} FROM pp_props WHERE sport = ? AND result IS NULL AND date < ?`).bind(sport, slateDate())).all()).results || [];
-  if (!open.length) return 0;
+  if (!open.length) return ppPropCleanStart(db, sport).then(() => 0);
   const stmts = [], newly = [];
   for (const day of [...new Set(open.map((r) => r.date))]) {
     const box = await c.dayBox(db, day, tonight);
@@ -20184,14 +20198,36 @@ async function gradePpProps(db, sport, tonight = false) {
       if (!result) continue;
       stmts.push(db.prepare('UPDATE pp_props SET actual = ?, result = ? WHERE sport = ? AND date = ? AND pkey = ? AND market = ?')
         .bind(actual, result, sport, r.date, r.pkey, r.market));
-      newly.push({ market: r.market, result, sharp: r.typed_line != null ? r.typed_sharp : r.read_sharp });
+      newly.push({ market: r.market, result, sharp: r.typed_line != null ? r.typed_sharp : r.read_sharp, clean: r.read_at != null && r.read_at >= PP_PROP_CLEAN_AT });
     }
   }
-  if (!stmts.length) return 0;
+  if (!stmts.length) return ppPropCleanStart(db, sport).then(() => 0);
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
   const rec = await loadFeedCache(db, PP_PROP_REC + sport);
-  await saveFeedCache(db, PP_PROP_REC + sport, ppPropTally(rec.present ? rec.data : null, newly));
+  const r = ppPropTally(rec.present ? rec.data : null, newly);
+  // A record from before the clean count starts it from the log, these rows now among them.
+  if (!r.clean) r.clean = await ppPropCleanCount(db, sport);
+  await saveFeedCache(db, PP_PROP_REC + sport, r);
   return stmts.length;
+}
+// The clean count's start (2026-11-24). The record is added to, never re-scanned, so one kept from
+// before it counts the rows already graded that were read after the fix, once: some 400 rows a day
+// since Nov 21. After that, each row adds to it as it grades (ppPropTally).
+async function ppPropCleanCount(db, sport) {
+  const rows = (await db.prepare("SELECT read_sharp, typed_line, typed_sharp, result FROM pp_props WHERE sport = ? AND result IN ('under','over') AND read_at >= ?")
+    .bind(sport, PP_PROP_CLEAN_AT).all()).results || [];
+  const c = { n: 0, hit: 0 };
+  for (const x of rows) {
+    const won = ppPropAt54(x.typed_line != null ? x.typed_sharp : x.read_sharp, x.result);
+    if (won != null) { c.n++; if (won) c.hit++; }
+  }
+  return c;
+}
+// With nothing to grade: a kept record without the count gets it now, not at the next result.
+async function ppPropCleanStart(db, sport) {
+  const rec = await loadFeedCache(db, PP_PROP_REC + sport);
+  if (!rec.present || !rec.data || rec.data.clean) return;
+  await saveFeedCache(db, PP_PROP_REC + sport, { ...rec.data, clean: await ppPropCleanCount(db, sport) });
 }
 function ppPropTally(rec, rows) {
   const r = rec || { graded: 0, bands: {}, byMarket: {} };
@@ -20206,6 +20242,8 @@ function ppPropTally(rec, rows) {
     if (p >= 54) {
       const m = r.byMarket[x.market] || (r.byMarket[x.market] = { n: 0, hit: 0 });
       m.n++; if (won) m.hit++;
+      // A record without the clean count yet gets it from the log, these rows with it (gradePpProps).
+      if (r.clean && x.clean) { r.clean.n++; if (won) r.clean.hit++; }
     }
   }
   return r;

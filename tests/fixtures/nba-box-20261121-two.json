@@ -1,0 +1,4 @@
+{"source":"ESPN site.api summary?event=401910024 (POR @ NY) and 401910026 (MEM @ MIN), Nov 21 2026, read 11:35 PM Pacific Nov 23: two players' box lines as nba_box rows","rows":[
+{"game_id":"401910024","date":"2026-11-21","season_type":2,"player_id":"3147657","player":"Mikal Bridges","team":"NY","min":28,"pts":12,"reb":2,"ast":3,"threes":2,"stl":1,"blk":0,"tov":3,"starter":1,"dnp":0},
+{"game_id":"401910026","date":"2026-11-21","season_type":2,"player_id":"4432810","player":"Isaiah Stewart","team":"MEM","min":21,"pts":10,"reb":2,"ast":1,"threes":0,"stl":0,"blk":3,"tov":2,"starter":0,"dnp":0}
+]}

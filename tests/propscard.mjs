@@ -176,6 +176,17 @@ const withRec = { ...D, record: { graded: 40, need: 100, bands: {}, byMarket: {}
 state.props = { nba: withRec };
 const top = card();
 ok(/Sharp 54%\+:/.test(top) && /8 of 12/.test(top) && /40 graded of 100/.test(top), 'what 54%+ has landed, and how near to the 100');
+ok(!/since the fix/i.test(top), 'a record without the count since the Nov 20 fix: nothing about it');
+// The count since the clean reads (2026-11-24, tests/propsclean.mjs): beside the whole record, flat
+// under five as the record is, and said in the folded note where a phone can't hover.
+const recSpan = (h) => text((h.match(/<span class="tc-rec">.*?<\/span> · \d+ graded[^<]*<\/span>/) || [''])[0]);
+state.props = { nba: { ...withRec, record: { ...withRec.record, clean: { from: '2026-11-21T00:35:02.000Z', n: 20, hit: 12 } } } };
+const cl = card();
+ok(recSpan(cl) === 'Sharp 54%+: 8 of 12 · since the fix 12 of 20 · 40 graded of 100', `the head: "${recSpan(cl)}"`);
+ok(/title="Read after the Nov 20 fix that leaves out prices no one could bet">since the fix <b>12 of 20<\/b>/.test(cl), 'its own number, bold at 60% of 20, and what it is on hover');
+ok(/“Since the fix” counts the numbers read after Nov 20, when the card stopped taking prices no one could bet\./.test(text(cl)), 'and in How to read this');
+state.props = { nba: { ...withRec, record: { ...withRec.record, clean: { from: '2026-11-21T00:35:02.000Z', n: 3, hit: 3 } } } };
+ok(/since the fix <b class="sp-rec-flat">3 of 3<\/b>/.test(card()), 'three of three: too few to read, so not bold');
 state.props = { nba: { ...D, games: [] } };
 ok(/No games in the next day and a half/.test(card()), 'no games: it says so');
 state.props = {};

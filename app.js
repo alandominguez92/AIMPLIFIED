@@ -9112,13 +9112,17 @@
     const games = (d.games || []).map((g, i) => ({ g, i }))
       .filter((x) => Date.parse(x.g.commence) > now && pd && ptDayOf(Date.parse(x.g.commence)) === pd.day);
     const r = d.record;
+    // Beside the whole record, the rows read after the Nov 20 fix (2026-11-24, the owner's call):
+    // card legs join Picks or not on those, the earlier reads carrying prices no one could bet.
+    const recB = (x) => `<b${x.n >= 5 && x.hit / x.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${x.hit} of ${x.n}</b>`;
+    const clean = r && r.clean ? ` · <span title="Read after the Nov 20 fix that leaves out prices no one could bet">since the fix ${recB(r.clean)}</span>` : '';
     const rec = r && r.graded
-      ? `<span class="tc-rec">Sharp 54%+: <b${r.at54.n >= 5 && r.at54.hit / r.at54.n * 100 >= 54.2 ? '' : ' class="sp-rec-flat"'}>${r.at54.hit} of ${r.at54.n}</b> · ${r.graded} graded${r.graded >= r.need ? '' : ` of ${r.need}`}</span>` : '';
+      ? `<span class="tc-rec">Sharp 54%+: ${recB(r.at54)}${clean} · ${r.graded} graded${r.graded >= r.need ? '' : ` of ${r.need}`}</span>` : '';
     // The note folded behind a tap (2026-11-05): on a phone it ran most of a screen before the first player.
     const how = !!(state.prHow && state.prHow[sport]);
     const head = `<div class="tc-head"><span class="tc-title">PrizePicks props, one stat at a time</span>${rec}</div>`
       + `<button type="button" class="pr-how" data-action="pr-how" data-sport="${esc(sport)}" aria-expanded="${how}">How to read this ${how ? '▾' : '▸'}</button>`
-      + `<div class="tc-sub"${how ? '' : ' hidden'}>The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Before PrizePicks posts, the side is the projection against the books’ line or PrizePicks’ last number for him. Tap a player to change the line: what you set is saved and graded there. ${r && r.graded >= (r.need || 100) ? `${esc(String(r.graded))} have graded: they join Picks only when you say.` : `These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.`}</div>`;
+      + `<div class="tc-sub"${how ? '' : ' hidden'}>The percentage is the sharp books’ chance at PrizePicks’ exact number, ${d.readHours ? `read about ${esc(String(d.readHours))} hours before each game` : 'from the site’s NFL reads'}. Most read 50-53. ${PROP_NOTE[sport]} No percentage: no sharp book quotes that number. Before PrizePicks posts, the side is the projection against the books’ line or PrizePicks’ last number for him. Tap a player to change the line: what you set is saved and graded there. ${r && r.graded >= (r.need || 100) ? `${esc(String(r.graded))} have graded: they join Picks only when you say.` : `These stay off Picks until ${esc(String((r && r.need) || 100))} have graded.`}${clean ? ' “Since the fix” counts the numbers read after Nov 20, when the card stopped taking prices no one could bet.' : ''}</div>`;
     if (!games.length) return `<div class="nba-pp pk-card sp-card">${head}<div class="tc-wait-note">${pd ? propDayWait(pd, now) : sport === 'nfl' ? 'No games in the coming week.' : 'No games in the next day and a half.'}</div></div>`;
     // How many 54%+ numbers each stat has in the games to come (2026-11-05, the owner's pick): where
     // the strong ones are before tapping through a dozen stats. Best counts players with any.
