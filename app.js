@@ -4824,7 +4824,8 @@
       case 'pr-how': {
         const sp = target.dataset.sport;
         state.prHow = { ...(state.prHow || {}), [sp]: !(state.prHow && state.prHow[sp]) };
-        if (sp === 'soccer') renderSoccer(); else propRedraw(sp);
+        // The NBA unders card's note (2026-11-24) folds the same way, on the NBA tab.
+        if (sp === 'soccer') renderSoccer(); else propRedraw(sp === 'nba-unders' ? 'nba' : sp);
         break;
       }
       case 'pr-stat': spSwitch(target.dataset.sport, () => { state.prStat = { ...(state.prStat || {}), [target.dataset.sport]: target.dataset.stat }; propRedraw(target.dataset.sport); }); break;
@@ -6133,14 +6134,18 @@
     const what = fromPool
       ? `What the PrizePicks entry would have paid, since ${esc(shortDay(h.poolSince))}: its legs, the best PrizePicks takes in each game, 1 unit an entry at its standard payouts, ranked by the chance each showed when its game started.`
       : "What the list's legs would have paid: 1 unit an entry at PrizePicks' standard payouts, ranked by the chance each showed when its game started.";
-    return `<div class="nba-pp pk-card pk-hist">`
-      + `<div class="tc-head"><span class="tc-title">How the list did</span>${h.since ? `<span class="tc-rec">since ${esc(shortDay(h.since))}</span>` : ''}</div>`
+    // Folded on a phone, as Bets with an edge is (2026-11-24): folded, the 6-Flex's line says how it has gone.
+    const wide = typeof window === 'undefined' || window.innerWidth > 640;
+    const f6 = (h.entries || []).find((e) => e.key === 'f6' && e.days);
+    return `<details class="nba-pp pk-card pk-hist pk-fold" data-keep="hist"${wide ? ' open' : ''}>`
+      + `<summary class="tc-head"><span class="tc-title">How the list did</span>${h.since ? `<span class="tc-rec">since ${esc(shortDay(h.since))}</span>` : ''}`
+      + `<span class="pk-fold-k">${f6 ? `${esc(f6.label)} won ${f6.won} of ${f6.days} days, ${units(f6.units)}` : `${h.days.length} day${h.days.length === 1 ? '' : 's'}`} · each day’s legs</span></summary>`
       + `<div class="tc-sub">${what} Goblins, demons and boosts pay differently. Your own entries are on the Entries tab.</div>`
       + (sum ? `<ul class="pk-entries pk-hist-sum"><li class="pk-eh"><span>Entry</span><span>days</span><span>units</span><span>return</span></li>${sum}</ul>` : '')
       + (old ? `<div class="tc-sub pk-hist-old">Before ${esc(shortDay(h.poolSince))}, from the list's own top legs, moneylines included: ${old}.</div>` : '')
       + ppEntryRecordHtml(h, true)
       + movedLineHtml(h.moved)
-      + `<div class="pk-days">${days}</div></div>`;
+      + `<div class="pk-days">${days}</div></details>`;
   }
   // Which way the market moved while the legs sat on the list, and how the
   // ones that firmed and drifted landed. A leg whose chance rose before its
@@ -6404,11 +6409,15 @@
     const d = state.picks;
     const count = document.getElementById('picksCount');
     if (!d) { grid.innerHTML = PICKS_SKELETON; return; }
+    // Folds stay as the reader left them through the five-minute redraws, open or closed: the
+    // reference cards open wide and fold on a phone (2026-11-24), so either can be the change.
+    const kept = new Map([...grid.querySelectorAll('details[data-keep]')].map((x) => [x.dataset.keep, x.open]));
+    const keepFolds = () => { for (const [k, o] of kept) { const dt = grid.querySelector(`details[data-keep="${k}"]`); if (dt) dt.open = o; } };
     // The soccer props strip follows the list in every state: its own feed,
     // and not on the list until it has a record at PrizePicks' lines. Then how
     // the list did, once a day has graded.
     const after = socBestStripHtml() + pickHistoryHtml(d.record && d.record.history, !!state.daysAll);
-    if (d.error) { grid.innerHTML = PICKS_HEAD + `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + after; return; }
+    if (d.error) { grid.innerHTML = PICKS_HEAD + `<div class="nfl-empty">Picks unavailable (${esc(d.error)}).</div>` + after; keepFolds(); return; }
     const legs = (d.legs || []).map(pickAtLine).filter((x) => Date.parse(x.commence) > Date.now());
     if (count) count.textContent = legs.length ? `${legs.length} leg${legs.length === 1 ? '' : 's'}` : '';
     const kinds = d.kinds || {};
@@ -6431,6 +6440,7 @@
     if (!legs.length) {
       grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord, state.podMin) + mlbUnreadHtml(d) + `<div class="nba-pp pk-card"><div class="tc-wait-note">Nothing clears the bar for games in the next day${d.qualifyingGames ? '' : ' yet'}. MLB legs appear once their games are logged, NBA PrizePicks lines once PrizePicks posts them, often the night before.</div>`
         + `<div class="tc-sub">${recLine}</div>${rules}</div>` + evBetsHtml(d) + after;
+      keepFolds();
       syncSlipSection();
       return;
     }
@@ -6573,13 +6583,11 @@
           + (mlEnt.length ? `<ul class="pk-entries pk-entries-ev"><li class="pk-eh"><span>At standard payouts</span><span>chance</span><span>to pay</span><span>edge · ¼ Kelly</span></li>${mlEnt.join('')}</ul>` : '')
           + ppEntryRecordHtml(d.record && d.record.history, true) : '')
         + '</details>';
-    // Folds the reader opened stay open through the five-minute redraws.
-    const kept = new Set([...grid.querySelectorAll('details[data-keep][open]')].map((x) => x.dataset.keep));
     // The slip beside the legs (step 5), once a leg is starred.
     const slipPanel = slipPanelHtml(d);
     const legsCols = slipPanel ? `<div class="pk-cols">${todayCard}${slipPanel}</div>` : todayCard;
     grid.innerHTML = recapHtml(d.record && d.record.history, d.edgeRecord, state.podMin) + mlbUnreadHtml(d) + legsCols + bankHtml() + evBetsHtml(d) + siteCard + after;
-    for (const k of kept) { const dt = grid.querySelector(`details[data-keep="${k}"]`); if (dt) dt.open = true; }
+    keepFolds();
     syncSlipSection();
     picksAnimate(grid);
   }
@@ -7336,7 +7344,12 @@
     const scale = raw > cap ? cap / raw : 1;
     const stakeOf = (b) => Math.round((b.stake || 0) * scale * 100) / 100;
     const total = scale < 1 ? cap : Math.round(raw * 100) / 100;
-    const head = `<div class="tc-head"><span class="tc-title">Bets with an edge</span>${bets.length ? `<span class="tc-rec">¼ Kelly total <b>${esc(stakeTxt(total))}</b></span>` : ''}</div>`
+    // Folded on a phone (2026-11-24, the owner's yes): on the Nov 23 phone check Picks' reference
+    // cards ran screens past the legs. Open wider; one tap either way, and the redraws keep it as
+    // the reader left it (renderPicks' data-keep). The line under the title shows only folded.
+    const wide = typeof window === 'undefined' || window.innerWidth > 640;
+    const head = `<summary class="tc-head"><span class="tc-title">Bets with an edge</span>${bets.length ? `<span class="tc-rec">¼ Kelly total <b>${esc(stakeTxt(total))}</b></span>` : ''}`
+      + `<span class="pk-fold-k">${bets.length ? `${bets.length} bet${bets.length === 1 ? '' : 's'} at the sportsbook` : 'None right now'}, and Check a price</span></summary>`
       + `<div class="tc-sub">At the sportsbook: prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props${d && d.kelly && d.kelly.offPrice ? `, shorter than ${esc(AM(d.kelly.offPrice))}` : ''}. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check the book before you bet.</div>`
       + (scale < 1 ? `<div class="tc-sub pk-capped">Held to your ${esc(String(cap))}% daily cap: each stake is ${Math.round(scale * 100)}% of its Kelly.</div>` : '');
     const list = bets.length ? `<ol class="tc-legs pk-ev-list">${bets.map((b) => `<li><div class="tc-leg">`
@@ -7349,7 +7362,7 @@
       + priceSparkHtml(b.hist) + betLinkHtml(legLink(b)) + booksHtml(b.books)
       + `</div></li>`).join('')}</ol>`
       : '<div class="tc-wait-note">No price beats the sharp line by enough right now.</div>';
-    return `<div class="nba-pp pk-card pk-ev-card">${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}${priceCheckHtml(d)}</div>`;
+    return `<details class="nba-pp pk-card pk-ev-card pk-fold" data-keep="ev"${wide ? ' open' : ''}>${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}${priceCheckHtml(d)}</details>`;
   }
   // The edge bets' own record (2026-10-28): won and lost, units, and how many
   // beat the closing line.
@@ -7729,10 +7742,16 @@
       hiBand.n ? `the model's 65%+ <b>${hiBand.hit} of ${hiBand.n}</b>` : null,
       ppHi.n ? `PP line above book <b>${ppHi.hit} of ${ppHi.n}</b>` : null,
     ].filter(Boolean).join(' · ');
+    // The note and the stat lines folded behind a tap (2026-11-24, the owner's yes), as the props
+    // cards' are: on the Nov 23 phone check they ran a screen before the first leg. The rebounds
+    // line stays out: it says what Picks no longer lists.
+    const how = !!(state.prHow && state.prHow['nba-unders']);
     const head = `<div class="tc-head"><h3 class="pk-gh">PrizePicks unders</h3>${rec}</div>`
+      + `<button type="button" class="pr-how" data-action="pr-how" data-sport="nba-unders" aria-expanded="${how}">How to read this ${how ? '▾' : '▸'}</button>`
+      + `<div class="pr-howd"${how ? '' : ' hidden'}>`
       + `<div class="tc-sub">The sharp books' chance the under lands at PrizePicks' line: FanDuel, Pinnacle and the exchanges, de-vigged, the middle of them. Best first; a leg they haven't priced yet goes below. The model's own chance is beside theirs: its high ranges have landed no more often than its low ones. Threes, assists, rebounds, blocks, steals; rotation players only. Read when PrizePicks posts, often the night before, and again before tip. If PrizePicks shows another number on rebounds or assists, set it on the leg. A player on ESPN's injury report is flagged. A leg Picks lists shows Picks' own chance. Logged, not posted.</div>`
       + (recLine ? `<div class="tc-sub tc-rec-line">Unders: ${recLine}</div>` : '')
-      + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame) + nbaRebHeldHtml();
+      + nbaOversLineHtml(r.overs) + ppCloseLineHtml(r) + ppGameLineHtml(r.byGame) + '</div>' + nbaRebHeldHtml();
     const simple = pickLegView() === 'simple';
     let body = '';
     if (all.length) body = `<ol class="tc-legs pk-pool">${all.map((x) => legCardHtml(x, simple, '', false, cx)).join('')}</ol>`;
@@ -8598,6 +8617,10 @@
   async function refreshSoccer() {
     if (!LIVE_MODE) return;
     boardReadStart('soccer');
+    // A first visit says it is loading (2026-11-24, the owner's yes): the grid was drawn only once
+    // all three reads were in, and cold the props' expected starters take some ten seconds, so the
+    // tab sat blank under its title (the Nov 23 phone check). With no board yet it draws "Loading…".
+    if (!state.soccer) renderSoccer();
     const [d, pp, hot] = await Promise.all([
       fetchJson('/api/soccer-board').catch(() => 'unreachable'),
       fetchJson('/api/soccer-props?expected=1').catch(() => null),
@@ -9358,11 +9381,15 @@
       const x = d.record.byMarket[s];
       return `${SOC_STAT[s]} left off: the lean has landed ${x.hit} of ${x.n}.`;
     });
-    const head = `<div class="tc-head"><span class="tc-title">Soccer props</span><span class="tc-rec">best in each stat</span></div>`
+    // Folded on a phone, as Bets with an edge is (2026-11-24).
+    const wide = typeof window === 'undefined' || window.innerWidth > 640;
+    const fold = (body) => `<details class="nba-pp pk-card sp-card sp-best pk-fold" data-keep="socbest"${wide ? ' open' : ''}>${head}${body}</details>`;
+    const head = `<summary class="tc-head"><span class="tc-title">Soccer props</span><span class="tc-rec">best in each stat</span>`
+      + `<span class="pk-fold-k">${list.length ? `${list.length} at the app’s line, not on the list` : 'Lineups not posted yet'}</span></summary>`
       + `<div class="tc-sub">At the app’s line, not PrizePicks’: tap one to set PrizePicks’ number on the Soccer tab. Not on the list above until these grade at PrizePicks’ lines.${weak.length ? ' ' + esc(weak.join(' ')) : ''}</div>`;
     if (!list.length) {
       const next = waiting.slice().sort((a, b) => Date.parse(a.commence) - Date.parse(b.commence))[0];
-      return `<div class="nba-pp pk-card sp-card sp-best">${head}<div class="tc-wait-note">Lineups not posted yet (about an hour before kickoff). Next: ${esc(next.away)} @ ${esc(next.home)} ${esc(soccerKick(next.commence))}.</div></div>`;
+      return fold(`<div class="tc-wait-note">Lineups not posted yet (about an hour before kickoff). Next: ${esc(next.away)} @ ${esc(next.home)} ${esc(soccerKick(next.commence))}.</div>`);
     }
     const items = list.map(({ m, r, l }) => {
       const key = socKey(m, r);
@@ -9376,7 +9403,7 @@
         + `<span class="pk-rec thin">${esc(recTxt)}${pp ? ' · at your PrizePicks line' : ''}</span>`
         + `</button></li>`;
     }).join('');
-    return `<div class="nba-pp pk-card sp-card sp-best">${head}<ol class="tc-legs">${items}</ol></div>`;
+    return fold(`<ol class="tc-legs">${items}</ol>`);
   }
 
   function setSoccerLeague(lg) {

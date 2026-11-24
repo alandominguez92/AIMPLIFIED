@@ -175,7 +175,8 @@ if (B && R) {
   state.sport = 'soccer';
   ok(B.boardTick() === true, 'soccer reads');
   await settle();
-  ok(boardReads('/api/soccer-board') === 1 && state.soccer.games.length === SOC.games.length && drawn.soccer === 1, `soccer: ${state.soccer.games.length} games, drawn`);
+  // Twice on this first read since 2026-11-24 (tests/phonefolds.mjs): "Loading…" before the reads, then the board.
+  ok(boardReads('/api/soccer-board') === 1 && state.soccer.games.length === SOC.games.length && drawn.soccer === 2, `soccer: ${state.soccer.games.length} games, drawn`);
   state.sport = 'nfl';
   ok(B.boardTick() === true, 'NFL reads');
   await settle();

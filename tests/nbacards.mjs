@@ -107,6 +107,20 @@ const ul = top.slice(top.indexOf('<h3 class="pk-gh">PrizePicks unders</h3>'), to
 const bl = top.slice(top.indexOf('<div class="pk-grp nba-blk">'));
 ok(/<div class="tc-head"><h3 class="pk-gh">PrizePicks unders<\/h3><span class="tc-rec"[^>]*>Sharp 54%\+: <b>\d+ of \d+<\/b><\/span><\/div>/.test(top) && /A leg Picks lists shows Picks' own chance\./.test(ul),
   "the unders' head keeps its record, and says whose chance a leg Picks lists shows");
+// The note and the stat lines under it fold behind "How to read this" (2026-11-24, the Nov 23 phone
+// check: they ran a screen before the first leg), as the props cards' note does.
+const blockAt = (h, at) => { let d = 0; const re = /<\/?div\b[^>]*>/g; re.lastIndex = at;
+  for (let m; (m = re.exec(h));) { d += m[0][1] === '/' ? -1 : 1; if (!d) return h.slice(at, re.lastIndex); } return ''; };
+const howAt = ul.indexOf('<div class="pr-howd" hidden>'), howd = blockAt(ul, howAt);
+ok(/<\/span><\/div><button type="button" class="pr-how" data-action="pr-how" data-sport="nba-unders" aria-expanded="false">How to read this ▸<\/button><div class="pr-howd" hidden><div class="tc-sub">The sharp books' chance/.test(ul),
+  'under the head: "How to read this", the note folded');
+console.log('        folded: ' + [...howd.matchAll(/<div class="tc-sub[^"]*">([^<]{0,40})/g)].map((m) => m[1]).join(' | '));
+ok(/A leg Picks lists shows Picks' own chance\./.test(howd) && /tc-rec-line">Unders: /.test(howd) && !/tc-rec-line/.test(ul.slice(0, howAt) + ul.slice(howAt + howd.length, ul.indexOf('<ol'))),
+  'the note and every stat line with it; none left out between it and the legs');
+state.prHow = { 'nba-unders': true };
+const ulOpen = F.nbaTodayParts().top;
+ok(/aria-expanded="true">How to read this ▾<\/button><div class="pr-howd">/.test(ulOpen), 'a tap opens it, kept in state as the props cards\' is');
+state.prHow = {};
 ok(cards(ul).length === 6 && cards(bl).length === 1 && cardOf(bl, 'Andrew Wiggins') && !cardOf(bl, 'Jabari Smith Jr'), 'six unders and one blocks More under it, the best not twice');
 const pgc = cardOf(ul, 'Paul George');
 console.log('        ' + tilesOf(pgc).join(' | ') + ' || ' + tagsOf(pgc));

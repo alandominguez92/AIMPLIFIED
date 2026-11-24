@@ -2726,7 +2726,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .sp-card .pr-l2 .pp-projbar { margin-top:4px; }
 .pr-clear { display:block; margin-top:2px; font-family:var(--mono); font-size:11.5px; color:var(--textFaint); }
 .pr-how { display:inline-flex; align-items:center; min-height:32px; padding:0; background:none; border:0; font:inherit; font-size:12.5px; color:var(--model, var(--accent)); cursor:pointer; }
-.pr-how + .tc-sub { margin-top:0; }
+.pr-how + .tc-sub, .pr-howd > .tc-sub:first-child { margin-top:0; }
 .pr-sides { display:flex; gap:6px; margin-top:8px; }
 .pr-side.on { background:var(--accentFill); border-color:var(--accentFill); color:var(--onAccent); }
 .sp-set .pk-trend { margin-top:8px; }
@@ -3302,6 +3302,14 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-site > summary .tc-title { font-size:17px; line-height:24px; }
 .pk-site-k { font-size:12.5px; color:var(--textDim); }
 .pk-site .pk-gh:first-of-type { margin-top:8px; }
+/* Picks' reference cards (2026-11-24): Bets with an edge, Soccer props and How the list did fold,
+   closed on a phone and open wider (app.js). Their head is the tap; folded, a line says what's in. */
+.pk-fold > summary { min-height:44px; align-content:center; cursor:pointer; list-style:none; }
+.pk-fold > summary::-webkit-details-marker { display:none; }
+.pk-fold > summary .tc-title::before { content:'▸'; display:inline-block; width:18px; color:var(--textDim); font-size:14px; }
+.pk-fold[open] > summary .tc-title::before { content:'▾'; }
+.pk-fold-k { flex-basis:100%; padding-left:18px; font-size:12.5px; line-height:18px; color:var(--textDim); }
+.pk-fold[open] .pk-fold-k { display:none; }
 /* Simple / Detailed, the sport filter and the sort (2026-11-16, the page brief's step 4). */
 .pk-th { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px 16px; }
 .pk-tt { flex:1 1 280px; min-width:0; }
