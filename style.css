@@ -1499,11 +1499,13 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      this to keep a scrolled-to row out from under it. At 40 a jumped-to row sat
      with its top edge hidden. */
   :root { --sportsH:44px; }
-  /* Six tabs since Picks (2026-10-09), seven since NHL (2026-10-20). At 8px a
-     side inside the page's 32px margin the seventh ran 27px past a 390 screen;
-     6px a side in a 12px margin keeps all seven on one row from 360 up; the
-     max-width:360px rule below takes it down to 320. */
-  .stab { padding:11px 6px 10px; gap:6px; font-size:13px; }
+  /* Six tabs since Picks (2026-10-09), seven since NHL (2026-10-20), eight since
+     UFC (2026-11-20). At 8px a side inside the page's 32px margin the seventh ran
+     27px past a 390 screen; 6px a side in a 12px margin held seven from 360 up,
+     but with UFC the row was 397px and Entries ran 19px past a 390 screen (the
+     2026-11-23 phone check). 4px a side and no letter-spacing make it 357px,
+     which fits from 381 up; the narrower rules below take it down to 320. */
+  .stab { padding:11px 4px 10px; gap:6px; font-size:13px; letter-spacing:0; }
   .sports-inner { width:auto; justify-content:space-between; gap:0; }
   .wrap.sports-inner { padding:0 12px; }
   /* 16px a side on a phone (2026-11-06, the owner's pick): at 32 a card was 311px of a 375 screen. */
@@ -1512,15 +1514,22 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
      16px a side "Actual hit rate" ran 7px off a 375 screen. */
   .calibration { width:calc(100% - 28px); margin:0 0 0 28px; }
 }
-@media (max-width:380px) {
-  .stab { padding:11px 5px 10px; font-size:12.5px; }
+/* Up to 389 rather than 380 (2026-11-23), so a 381-389 screen isn't left with
+   the 357px row and no room to spare. */
+@media (max-width:389px) {
+  .stab { padding:11px 3px 10px; font-size:12.5px; }
 }
 /* 320 (iPhone SE, small Androids), since the seventh tab: at 5px a side and
-   12.5px the row was 344px, so Entries sat cut off past the edge. Measured at
-   320 with this: the seven tabs span 8-312px, nothing scrolls sideways. */
+   12.5px the row was 344px, so Entries sat cut off past the edge. The eighth
+   (UFC) put it at 334px at 4px and 12px, 22px past a 320 screen; 2px and 11.5px
+   below 341 make it 291px (measured 2026-11-23: nothing scrolls sideways from
+   320 to 640). */
 @media (max-width:360px) {
-  .stab { padding:11px 4px 10px; font-size:12px; letter-spacing:0; }
+  .stab { padding:11px 3px 10px; font-size:12px; }
   .wrap.sports-inner { padding:0 8px; }
+}
+@media (max-width:340px) {
+  .stab { padding:11px 2px 10px; font-size:11.5px; }
 }
 
 @media (max-width:900px) {

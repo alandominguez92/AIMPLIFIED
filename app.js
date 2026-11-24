@@ -8337,9 +8337,14 @@
     if (!d.bouts.length) { grid.innerHTML = `<div class="nfl-empty">${d.error ? `The card is unavailable (${esc(d.error)}).` : 'No UFC card posted yet.'}</div>`; return; }
     const ev = d.event || {};
     if (count) count.textContent = `${d.bouts.length} fights`;
+    // "Prices as of" only when this card has a price (2026-11-23): mlAsOf is the last read, and
+    // after a card it stays on that one, so the next card (unpriced until 36 hours out) read
+    // "prices as of" last Saturday. A finished card has no prices left and none to come.
     if (note) {
+      const priced = d.mlAsOf && d.bouts.some((b) => b.ml && (b.fighters || []).some((f) => b.ml[f.id] && b.ml[f.id].fair != null));
+      const over = d.bouts.every((b) => b.state === 'post');
       note.textContent = `${ev.name || 'UFC'} · sharp-book fair line · best DK/FD price`
-        + (d.mlAsOf ? ` · prices as of ${soccerKick(d.mlAsOf)}` : ' · moneylines are read from 36 hours before the first fight');
+        + (priced ? ` · prices as of ${soccerKick(d.mlAsOf)}` : over ? '' : ' · moneylines are read from 36 hours before the first fight');
     }
     const segs = [];
     for (const b of d.bouts) {
