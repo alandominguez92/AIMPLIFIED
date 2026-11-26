@@ -10,6 +10,9 @@
 //     grading pass with or without anything to grade, and each row then adds to it as it grades,
 //     never twice; the rest of the record is untouched by its start
 //   - the board carries it as record.clean; a sport with no record yet has none
+//   - by market too (2026-11-26, the owner's yes to the Dec 1 rule: NBA card legs join Picks without
+//     threes and assists if those read after the fix land 55%+ over 100+ legs). Production's count,
+//     kept without the split, gets it from the log once, its total unchanged
 //
 // Real data: production's NBA board of 4:36 PM Pacific Nov 21 (tests/fixtures/nba-props-20261121.json):
 // its 382 reads, all after the fix, and its record as kept then (8,539 graded). Production's board of
@@ -76,16 +79,19 @@ addBox(BOX.find((r) => r.player === 'Isaiah Stewart'));
 
 // By hand, from the log: the 54%+ rows graded, on the side the sharp books took.
 const byHand = (after) => {
-  const c = { n: 0, hit: 0 };
-  for (const r of sq.prepare("SELECT read_sharp, typed_line, typed_sharp, result, read_at FROM pp_props WHERE sport = 'nba'").all()) {
+  const c = { n: 0, hit: 0, byMarket: {} };
+  for (const r of sq.prepare("SELECT market, read_sharp, typed_line, typed_sharp, result, read_at FROM pp_props WHERE sport = 'nba'").all()) {
     if (r.result !== 'under' && r.result !== 'over') continue;
     if (after && !(RealDate.parse(r.read_at) >= FIX)) continue;
     const u = r.typed_line != null ? r.typed_sharp : r.read_sharp;
     if (u == null || Math.max(u, 100 - u) < 54) continue;
-    c.n++; if ((r.result === 'under') === (u >= 50)) c.hit++;
+    const m = c.byMarket[r.market] || (c.byMarket[r.market] = { n: 0, hit: 0 });
+    c.n++; m.n++; if ((r.result === 'under') === (u >= 50)) { c.hit++; m.hit++; }
   }
   return c;
 };
+// The same markets with the same counts, in any order.
+const sameSplit = (a, b) => !!a && !!b && Object.keys(a).length === Object.keys(b).length && Object.entries(b).every(([k, v]) => a[k] && a[k].n === v.n && a[k].hit === v.hit);
 const stored = () => JSON.parse(sq.prepare("SELECT data FROM feed_cache WHERE key = 'pp_props_rec:nba'").get().data);
 const row = (p, m) => sq.prepare('SELECT result, actual FROM pp_props WHERE player = ? AND market = ? AND date = ?').get(p, m, '2026-11-21');
 
@@ -104,6 +110,9 @@ const all = byHand(false);
 console.log(`  clean ${r.clean && `${r.clean.hit} of ${r.clean.n}`}; by hand ${want.hit} of ${want.n}; every 54%+ row in the log ${all.hit} of ${all.n}`);
 ok(r.clean && r.clean.n === want.n && r.clean.hit === want.hit, 'the count is the log\'s 54%+ rows read after the fix, Stewart among them');
 ok(all.n - want.n === 6, "Nov 5's five 54%+ reads and the Nov 20 game read before the fix are not in it; the one read after is");
+console.log(`  by market: ${r.clean && r.clean.byMarket && Object.entries(r.clean.byMarket).map(([k, v]) => `${k} ${v.hit}/${v.n}`).join(', ')}`);
+ok(r.clean && sameSplit(r.clean.byMarket, want.byMarket) && Object.keys(want.byMarket).length > 3 && want.byMarket.ast && !want.byMarket.threes,
+  'and by market, the log by hand: assists among them (no threes read at 54%+ that day)');
 ok(r.graded === REC0.graded + 1 && r.bands['56+'].n === REC0.bands['56+'].n + 1 && r.bands['56+'].hit === REC0.bands['56+'].hit, 'the rest of the record: Stewart added, nothing re-scanned');
 
 console.log('\n-- nothing new --');
@@ -119,6 +128,8 @@ ok(row('Mikal Bridges', 'pts').result === 'over' && row('Mikal Bridges', 'pts').
 r = stored();
 ok(r.clean.n === want.n + 1 && r.clean.hit === want.hit, `one more in the count, no more landed (${r.clean.hit} of ${r.clean.n})`);
 ok(r.clean.n === byHand(true).n && r.clean.hit === byHand(true).hit, 'which is the log by hand again');
+ok(r.clean.byMarket.pts.n === want.byMarket.pts.n + 1 && r.clean.byMarket.pts.hit === want.byMarket.pts.hit && sameSplit(r.clean.byMarket, byHand(true).byMarket),
+  'his row adds to points, as it grades, and the split is still the log by hand');
 await tick();
 ok(stored().clean.n === want.n + 1 && stored().graded === REC0.graded + 2, 'grading again counts nothing twice');
 
@@ -131,9 +142,24 @@ r = stored();
 ok(r.clean && r.clean.n === byHand(true).n && r.clean.hit === byHand(true).hit && r.graded === was.graded && JSON.stringify(r.bands) === JSON.stringify(was.bands),
   'the first pass gives it the count from the log, and leaves the rest as it was');
 
+console.log('\n-- the split\'s deploy: production\'s count, kept without it --');
+const kept = stored(); kept.clean = { n: kept.clean.n, hit: kept.clean.hit };
+sq.prepare("UPDATE feed_cache SET data = ? WHERE key = 'pp_props_rec:nba'").run(JSON.stringify(kept));
+await tick();
+r = stored();
+ok(r.clean.n === kept.clean.n && r.clean.hit === kept.clean.hit && sameSplit(r.clean.byMarket, byHand(true).byMarket) && r.graded === kept.graded && JSON.stringify(r.bands) === JSON.stringify(kept.bands),
+  'a pass with nothing to grade gives it the split from the log: its total, and the rest, as they were');
+await tick();
+ok(JSON.stringify(stored()) === JSON.stringify(r), 'and only once');
+const rule = Object.entries(r.clean.byMarket).filter(([k]) => k !== 'threes' && k !== 'ast').reduce((a, [, v]) => ({ n: a.n + v.n, hit: a.hit + v.hit }), { n: 0, hit: 0 });
+const ast = r.clean.byMarket.ast;
+console.log(`  the Dec 1 rule's count here: ${rule.hit} of ${rule.n}, without assists ${ast.hit}/${ast.n}`);
+ok(rule.n === r.clean.n - ast.n && rule.hit === r.clean.hit - ast.hit, 'the rule\'s count reads straight off it');
+
 console.log('\n-- the boards --');
 const nba = (await get('/api/nba-props')).record;
 ok(nba.clean && nba.clean.from === '2026-11-21T00:35:02.000Z' && nba.clean.n === r.clean.n && nba.clean.hit === r.clean.hit, `NBA: record.clean ${nba.clean && `${nba.clean.hit} of ${nba.clean.n} from ${nba.clean.from}`}`);
+ok(sameSplit(nba.clean.byMarket, r.clean.byMarket), 'with its split by market');
 ok(nba.at54.n === r.bands['54-56'].n + r.bands['56+'].n, 'beside the whole record, unchanged in form');
 const nhl = (await get('/api/nhl-props')).record;
 ok(nhl && nhl.clean === null && nhl.graded === 0, 'NHL, with no record yet: none');

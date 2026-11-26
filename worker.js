@@ -20046,7 +20046,7 @@ function ppPropRecordOut(rec) {
   const r = rec || { graded: 0, bands: {}, byMarket: {} };
   const c = (k) => r.bands[k] || { n: 0, hit: 0 };
   return { graded: r.graded, need: PP_PROP_NEED, bands: r.bands, byMarket: r.byMarket, at54: { n: c('54-56').n + c('56+').n, hit: c('54-56').hit + c('56+').hit },
-    clean: r.clean ? { from: PP_PROP_CLEAN_AT, n: r.clean.n, hit: r.clean.hit } : null };
+    clean: r.clean ? { from: PP_PROP_CLEAN_AT, n: r.clean.n, hit: r.clean.hit, byMarket: r.clean.byMarket || null } : null };
 }
 // GET /api/nba-props, /api/nhl-props, /api/nfl-props: what the card draws. No credits and no upstream call:
 // feed_cache rows and the logs. Lines typed on the card aren't in it (they stay behind the entries
@@ -20205,28 +20205,33 @@ async function gradePpProps(db, sport, tonight = false) {
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
   const rec = await loadFeedCache(db, PP_PROP_REC + sport);
   const r = ppPropTally(rec.present ? rec.data : null, newly);
-  // A record from before the clean count starts it from the log, these rows now among them.
-  if (!r.clean) r.clean = await ppPropCleanCount(db, sport);
+  // A record from before the clean count, or from before its by-market split, starts it from the log,
+  // these rows now among them.
+  if (!r.clean || !r.clean.byMarket) r.clean = await ppPropCleanCount(db, sport);
   await saveFeedCache(db, PP_PROP_REC + sport, r);
   return stmts.length;
 }
 // The clean count's start (2026-11-24). The record is added to, never re-scanned, so one kept from
 // before it counts the rows already graded that were read after the fix, once: some 400 rows a day
-// since Nov 21. After that, each row adds to it as it grades (ppPropTally).
+// since Nov 21. After that, each row adds to it as it grades (ppPropTally). By market too (Nov 26):
+// the owner's Dec 1 rule for card legs on Picks counts the NBA ones without threes and assists.
 async function ppPropCleanCount(db, sport) {
-  const rows = (await db.prepare("SELECT read_sharp, typed_line, typed_sharp, result FROM pp_props WHERE sport = ? AND result IN ('under','over') AND read_at >= ?")
+  const rows = (await db.prepare("SELECT market, read_sharp, typed_line, typed_sharp, result FROM pp_props WHERE sport = ? AND result IN ('under','over') AND read_at >= ?")
     .bind(sport, PP_PROP_CLEAN_AT).all()).results || [];
-  const c = { n: 0, hit: 0 };
+  const c = { n: 0, hit: 0, byMarket: {} };
   for (const x of rows) {
     const won = ppPropAt54(x.typed_line != null ? x.typed_sharp : x.read_sharp, x.result);
-    if (won != null) { c.n++; if (won) c.hit++; }
+    if (won == null) continue;
+    const m = c.byMarket[x.market] || (c.byMarket[x.market] = { n: 0, hit: 0 });
+    c.n++; m.n++; if (won) { c.hit++; m.hit++; }
   }
   return c;
 }
-// With nothing to grade: a kept record without the count gets it now, not at the next result.
+// With nothing to grade: a kept record without the count, or without its split, gets it now, not at
+// the next result.
 async function ppPropCleanStart(db, sport) {
   const rec = await loadFeedCache(db, PP_PROP_REC + sport);
-  if (!rec.present || !rec.data || rec.data.clean) return;
+  if (!rec.present || !rec.data || (rec.data.clean && rec.data.clean.byMarket)) return;
   await saveFeedCache(db, PP_PROP_REC + sport, { ...rec.data, clean: await ppPropCleanCount(db, sport) });
 }
 function ppPropTally(rec, rows) {
@@ -20243,7 +20248,10 @@ function ppPropTally(rec, rows) {
       const m = r.byMarket[x.market] || (r.byMarket[x.market] = { n: 0, hit: 0 });
       m.n++; if (won) m.hit++;
       // A record without the clean count yet gets it from the log, these rows with it (gradePpProps).
-      if (r.clean && x.clean) { r.clean.n++; if (won) r.clean.hit++; }
+      if (r.clean && x.clean) {
+        r.clean.n++; if (won) r.clean.hit++;
+        if (r.clean.byMarket) { const cm = r.clean.byMarket[x.market] || (r.clean.byMarket[x.market] = { n: 0, hit: 0 }); cm.n++; if (won) cm.hit++; }
+      }
     }
   }
   return r;
