@@ -5063,6 +5063,8 @@
       case 'pod-min': {
         state.podMin = !state.podMin;
         try { localStorage.setItem('aimplified_pod_min', state.podMin ? '1' : '0'); } catch (err) { /* private mode */ }
+        // On a phone, for that night's visits after (podSync).
+        if (state.podNight) { try { localStorage.setItem('aimplified_pod_pick', `${state.podNight}:${state.podMin ? 'min' : 'open'}`); } catch (err) { /* private mode */ } }
         const pod = target.closest('.pk-pod');
         if (pod) pod.classList.toggle('min', state.podMin);
         target.setAttribute('aria-expanded', String(!state.podMin));
@@ -6452,6 +6454,8 @@
     const d = state.picks;
     const count = document.getElementById('picksCount');
     if (!d) { grid.innerHTML = PICKS_SKELETON; return; }
+    // Picks of the day in full or minimized: on a phone, by the night (podSync).
+    podSync(state, d.record && d.record.history);
     // Folds stay as the reader left them through the five-minute redraws, open or closed: the
     // reference cards open wide and fold on a phone (2026-11-24), so either can be the change.
     const kept = new Map([...grid.querySelectorAll('details[data-keep]')].map((x) => [x.dataset.keep, x.open]));
@@ -6671,6 +6675,22 @@
   // run against the close since they were first logged, and the full track record a tap away.
   // Today's legs as their games finish (2026-11-04) fold under it. min (the owner, 2026-11-16):
   // minimized, each entry on one line -- its count, its dots, its largest entry's units.
+  // On a phone (2026-11-27, the PrizePicks doc's "collapse the recap after the first visit, so the
+  // legs start on the first screen", on the owner's go-ahead) Picks of the day opens in full the
+  // first time a night's recap shows on this device, and minimized on every visit after unless
+  // Enlarge was tapped on that night. The next night's first look opens in full again. Set once a
+  // visit, when the night has graded, so a redraw never folds it under the reader. A wider screen
+  // keeps the reader's own Minimize (aimplified_pod_min), as before.
+  function podSync(st, h, now = Date.now()) {
+    const night = ptDayOf(now - 864e5);
+    const phone = typeof window !== 'undefined' && window.innerWidth <= 640;
+    if (!phone || st.podNight === night || !(h && Array.isArray(h.days) && h.days.some((x) => x.date === night))) return;
+    let seen = null, pick = null;
+    try { seen = localStorage.getItem('aimplified_pod_seen'); pick = localStorage.getItem('aimplified_pod_pick'); } catch (e) { /* private mode */ }
+    st.podNight = night;
+    st.podMin = seen === night && pick !== `${night}:open`;
+    try { localStorage.setItem('aimplified_pod_seen', night); } catch (e) { /* private mode */ }
+  }
   function recapHtml(h, edge, min) {
     const days = h && Array.isArray(h.days);
     const last = ptDayOf(Date.now() - 864e5);
