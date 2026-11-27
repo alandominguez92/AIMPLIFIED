@@ -150,7 +150,7 @@ const API_ROUTES = new Set([
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health', '/api/d1-reads',
-  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw',
+  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw', '/api/tabs',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -714,6 +714,7 @@ async function handleApi(p, env, ctx, url) {
   if (p === '/api/nhl-pp') return cors(json(await nhlPpBoard(env, url), 120));
   if (p === '/api/hot-players') return cors(json(await hotPlayersRoute(env, url), 120));
   if (p === '/api/feed-health') return cors(json(await feedHealthRead(env), 300));
+  if (p === '/api/tabs') return cors(json(await tabsStatus(env), 60));
   if (p === '/api/d1-reads') return cors(json(await d1ReadsDay(env, url), 120));
   if (p === '/api/pp-lines') return cors(json(await ppLinesDay(env, url), 120));
   if (p === '/api/nba-cause') return cors(json(await nbaCauseRoute(env, url), 120));
@@ -3129,6 +3130,67 @@ async function liveNow(env) {
   const parts = await Promise.all([mlbLiveCards(env), nbaLiveCards(env, now, feeds), nhlLiveCards(env, now, feeds), mlLiveCards(env, now, feeds)]
     .map((p) => p.catch(() => [])));
   return cors(json(parts.flat(), 30)); // 30s — live data
+}
+
+// ---- The sport tabs (2026-11-27) ------------------------------------------------------------
+// The PrizePicks doc's option D, on the owner's go-ahead: a sport's tab greys on a day it has no
+// games, and wears a red dot while one is under way. For each sport, how many games start on this
+// Pacific day and how many of them are under way, from the free scoreboards the live strip and the
+// grading already read: ESPN's cdn (the NBA, the NFL, each soccer league read that day), the NHL's
+// own, MLB's StatsAPI, and the UFC card as ufcCard keeps it. ESPN dates its scoreboards by US
+// Eastern days, so a Pacific day's games sit on its own date, but for a soccer kickoff after 9 PM
+// Pacific, on the next; soccer reads both. A feed that fails leaves its sport out, and the page
+// leaves that tab as it was. Cached at the edge a minute.
+async function tabsStatus(env, now = Date.now()) {
+  const day = ptDateOf(now), ymd = day.replace(/-/g, '');
+  const next = ptDateOf(Date.parse(day + 'T12:00:00Z') + 864e5).replace(/-/g, '');
+  const onDay = (t) => Number.isFinite(t) && ptDateOf(t) === day;
+  const espnDay = (evs) => {
+    const today = (evs || []).filter((ev) => ev && onDay(Date.parse(ev.date)));
+    return { today: today.length, live: today.filter((ev) => ((ev.status || {}).type || {}).state === 'in').length };
+  };
+  const get = async (url) => { const r = await fetch(url, { headers: { accept: 'application/json' } }); if (!r.ok) throw new Error(`${r.status}`); return r.json(); };
+  // espnScoreboard answers [] when ESPN fails, which here would grey a tab with games on it: a read
+  // that fails, or comes back without its events list, throws instead.
+  const sb = async (path) => {
+    const j = await get(`https://cdn.espn.com/core/${path}`);
+    const evs = j && j.content && j.content.sbData && j.content.sbData.events;
+    if (!Array.isArray(evs)) throw new Error('no events list');
+    return evs;
+  };
+  const jobs = {
+    // The dated board and the undated one, the further on of each game (the live strip's rule).
+    nba: async () => espnDay(freshestEvents(await sb(`nba/scoreboard?xhr=1&date=${ymd}`), await sb('nba/scoreboard?xhr=1').catch(() => []))),
+    // The current week, whatever the date.
+    nfl: async () => espnDay(await sb('nfl/scoreboard?xhr=1')),
+    nhl: async () => {
+      const gs = ((await get(`https://api-web.nhle.com/v1/score/${day}`)).games || []).filter((g) => onDay(Date.parse(g.startTimeUTC)));
+      return { today: gs.length, live: gs.filter((g) => g.gameState === 'LIVE' || g.gameState === 'CRIT').length };
+    },
+    soccer: async () => {
+      const slugs = soccerLeaguesOn(now).map((k) => ESPN_SOCCER_SLUG[k]).filter(Boolean);
+      const lists = await Promise.all(slugs.flatMap((s) => [ymd, next].map((d) => sb(`soccer/scoreboard?xhr=1&league=${s}&date=${d}`).catch(() => null))));
+      if (lists.length && lists.every((l) => l === null)) throw new Error('no soccer scoreboard answered');
+      const r = espnDay(freshestEvents(...lists.filter(Boolean)));
+      // A league unread could be the one playing today: none found then is not known to be none.
+      if (!r.today && lists.some((l) => l === null)) throw new Error('a league unread');
+      return r;
+    },
+    mlb: async () => {
+      const gs = (((await get(`${STATS}/schedule?sportId=1&date=${day}`)).dates || [])[0] || {}).games || [];
+      const today = gs.filter((g) => onDay(Date.parse(g.gameDate)));
+      return { today: today.length, live: today.filter((g) => ((g.status || {}).abstractGameState) === 'Live').length };
+    },
+    ufc: async () => {
+      const card = env && env.DB ? await ufcCard(env) : null;
+      if (!card) throw new Error('no UFC card');
+      const today = (card.bouts || []).filter((b) => onDay(Date.parse(b.commence)));
+      return { today: today.length, live: today.filter((b) => b.state === 'in').length };
+    },
+  };
+  const out = { at: new Date(now).toISOString(), day, sports: {} };
+  await Promise.all(Object.entries(jobs).map(async ([k, f]) => { try { out.sports[k] = await f(); } catch (e) { /* left out: its tab stays as it was */ } }));
+  return out;
 }
 
 // Each feed read at most once a request, shared by the prop and moneyline cards.

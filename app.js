@@ -1150,6 +1150,30 @@
     } catch (e) { console.warn('Live Now refresh failed:', e.message); }
   }
 
+  // The sport tabs (2026-11-27, the PrizePicks doc's option D, the owner's go-ahead): a tab greys
+  // on a day its sport has no games, and wears a red dot while one is under way, so the row says
+  // where to look before a tap. /api/tabs, read on load and each minute the page is in view. A
+  // sport it leaves out (its feed didn't answer) keeps its tab as it was; Picks and Entries have
+  // none. The open tab never greys.
+  const TAB_SPORT_NAME = { mlb: 'MLB', nfl: 'NFL', nba: 'NBA', nhl: 'NHL', soccer: 'soccer', ufc: 'UFC' };
+  function applyTabs(t, tabs) {
+    const s = (t && t.sports) || {};
+    for (const tab of tabs) {
+      const k = tab.dataset.sport, x = s[k];
+      if (!x || !TAB_SPORT_NAME[k]) continue;
+      const live = Number(x.live) || 0, idle = !(Number(x.today) > 0) && !live;
+      const what = k === 'ufc' ? ['fight', 'fights'] : k === 'soccer' ? ['match', 'matches'] : ['game', 'games'];
+      tab.classList.toggle('idle', idle);
+      tab.classList.toggle('live', live > 0);
+      const title = live ? `${live} ${TAB_SPORT_NAME[k]} ${live === 1 ? what[0] : what[1]} live` : idle ? `No ${TAB_SPORT_NAME[k]} ${what[1]} today` : '';
+      if (title) tab.setAttribute('title', title); else tab.removeAttribute('title');
+    }
+  }
+  async function refreshTabs() {
+    if (!LIVE_MODE || document.hidden) return;
+    try { applyTabs(await fetchJson('/api/tabs'), document.querySelectorAll('.stab[data-sport]')); } catch (e) { /* the tabs stay as they are */ }
+  }
+
   // Real injured-list moves from MLB StatsAPI transactions (via /api/injuries).
   async function refreshInjuries() {
     if (!LIVE_MODE) return;
@@ -5303,6 +5327,10 @@
     // Live Now — in-progress picks scored live; poll every 45s.
     refreshLiveNow();
     setInterval(refreshLiveNow, 45000);
+    // The tabs' grey and live dot: each minute, and at once when the page is back on screen.
+    refreshTabs();
+    setInterval(refreshTabs, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshTabs(); });
     // The NBA, NHL, soccer and NFL tabs: their boards once five minutes old (boardTick), and
     // at once when the page comes back on screen.
     setInterval(boardTick, 60000);

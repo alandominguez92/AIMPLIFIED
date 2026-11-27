@@ -25,7 +25,8 @@ const ok = (c, m) => { console.log(`  ${c ? 'ok  ' : 'FAIL'}  ${m}`); if (!c) fa
 
 const MLB = ['refreshBoard', 'refreshBatters', 'refreshTopLegs', 'refreshInjuries'];
 // boardTick (2026-11-10): the NBA, NHL, soccer and NFL boards again once five minutes old (tests/boardrefresh.mjs).
-const OTHER = ['refreshLiveData', 'refreshTrackRecord', 'refreshPicks', 'refreshFeedHealth', 'refreshLiveNow', 'boardTick'];
+// refreshTabs (2026-11-27): the tabs' grey and live dot, /api/tabs each minute (tests/tabs.mjs); no MLB feed.
+const OTHER = ['refreshLiveData', 'refreshTrackRecord', 'refreshPicks', 'refreshFeedHealth', 'refreshLiveNow', 'boardTick', 'refreshTabs'];
 
 // ---- the timers, as app.js has them -------------------------------------------------------
 const at = app.indexOf('  if (LIVE_MODE) {\n    // Live mode:');

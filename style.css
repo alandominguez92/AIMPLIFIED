@@ -313,6 +313,13 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .stab { display:flex; align-items:center; gap:6px; padding:12px 12px 11px; font-family:var(--sans); font-weight:700; font-size:13.5px; letter-spacing:.02em; text-transform:uppercase; color:var(--textDim); border-bottom:2px solid transparent; }
 .stab:hover { color:var(--text); }
 .stab.active { color:var(--text); border-bottom-color:var(--accent); }
+/* A sport with no games today greys (2026-11-27, the doc's option D), its icon with it; the open
+   tab keeps its colour. One with a game under way wears a red dot at the top right of its name,
+   inside the gap to the next tab at every width. */
+.stab.idle:not(.active), .stab.idle:not(.active) .mini { color:var(--textDisabled); }
+.stab.idle:not(.active):hover { color:var(--textDim); }
+.stab.live > span:first-of-type { position:relative; }
+.stab.live > span:first-of-type::after { content:''; position:absolute; top:-3px; right:-6px; width:5px; height:5px; border-radius:50%; background:var(--danger); }
 /* Sport icons, drawn in-house. Deliberately NOT the leagues' marks: MLB and NFL logos are
    registered trademarks, ESPN shows them under a broadcast licence this site does not have,
    and a league logo beside posted picks reads as an endorsement. Stroke-only in currentColor,
