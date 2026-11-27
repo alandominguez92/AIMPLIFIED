@@ -22,12 +22,14 @@ console.log('-- a shared link --');
 const html = read('index.html');
 const meta = (attr, name) => (html.match(new RegExp(`<meta ${attr}="${name}" content="([^"]*)"`)) || [])[1];
 const title = (html.match(/<title>([^<]*)<\/title>/) || [])[1];
-const SPORTS = ['NBA', 'NFL', 'NHL', 'MLB', 'soccer'];
+// The UFC since its tab and its moneylines on Picks (2026-11-27, the PrizePicks doc's "UFC in the
+// page description that Google and link previews show", on the owner's go-ahead).
+const SPORTS = ['NBA', 'NFL', 'NHL', 'UFC', 'MLB', 'soccer'];
 console.log(`  ${title}\n  ${meta('name', 'description')}`);
 ok(title === 'Aimplified — Picks of the day' && meta('property', 'og:title') === title && meta('name', 'twitter:title') === title, 'the tab, the share card and the Twitter card say the same name');
 const allText = [title, meta('name', 'description'), meta('property', 'og:title'), meta('property', 'og:description'), meta('name', 'twitter:title'), meta('name', 'twitter:description')];
 ok(!allText.some((t) => /MLB Slate|MLB Fades|Batter unders|batter unders/.test(t)), "none of them is still selling MLB batter unders");
-ok(SPORTS.every((s) => meta('name', 'description').includes(s) && meta('property', 'og:description').includes(s) && meta('name', 'twitter:description').includes(s)), 'each description names the five sports');
+ok(SPORTS.every((s) => meta('name', 'description').includes(s) && meta('property', 'og:description').includes(s) && meta('name', 'twitter:description').includes(s)), 'each description names the six sports, the UFC among them');
 ok(/21\+/.test(meta('name', 'description')), 'the page description keeps its 21+ line');
 ok(SPORTS.every((s) => JSON.parse(read('manifest.webmanifest')).description.includes(s)), 'and so does the home-screen manifest');
 
