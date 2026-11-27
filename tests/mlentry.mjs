@@ -107,7 +107,8 @@ ok(!p.mlPool.some((x) => x.title === 'Cowboys ML') && D.gm1331.some((r) => r.pic
 ok(titles(p.ppPool).join() === propsOnly.join() && !p.ppPool.some((x) => /^(nba|nhl|mlb)_ml$|^soccer_fav$/.test(x.kind)), "the entry beside it keeps its pool, moneylines or none");
 
 console.log('\n-- its entries --');
-const POWER = { 2: 3 }, FLEX = { 3: { 3: 2.25, 2: 1.25 }, 4: { 4: 5, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } };
+// PrizePicks' table from Sept 18, 2026 (the owner's app, Nov 27).
+const POWER = { 2: 3 }, FLEX = { 3: { 3: 3, 2: 1 }, 4: { 4: 6, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } };
 const evOf = (ps) => {                                            // each count landing, and what it pays
   const n = ps.length;
   let dist = [1];

@@ -37,7 +37,10 @@ function lift(name) {
 }
 const names = ['ptDayOf', 'pkOf', 'pct1', 'kLeadOf', 'kSpec', 'buildKPropLeg', 'kLegIdFor', 'buildKPitcherLeg',
   'entryLegFrom', 'PP_BREAK_EVEN', 'slipReadHtml', 'impliedPct', 'r1', 'nflGameKey', 'nbaNick', 'nflNick', 'nflMlLeg', 'soccerMlLeg', 'gameStarted'];
-const body = names.map(lift).join('\n');
+// The same-game line (2026-11-27) is a plain string, which the lift above cannot close.
+const sameGame = (src.match(/const PP_SAME_GAME_PAY = '[^']*';/) || [])[0];
+if (!sameGame) throw new Error('app.js has no PP_SAME_GAME_PAY');
+const body = sameGame + '\n' + names.map(lift).join('\n');
 const make = new Function('state', 'esc', `${body}\nreturn { kSpec, buildKPropLeg, buildKPitcherLeg, slipReadHtml, nflMlLeg, soccerMlLeg, gameStarted, entryLegFrom };`);
 const state = { logSides: {}, logPrices: {}, logLines: {}, logBook: 'pp', slip: {} };
 const esc = (s) => String(s == null ? '' : s);

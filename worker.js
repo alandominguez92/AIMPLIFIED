@@ -3992,7 +3992,7 @@ function buildPpRecord(rows) {
   }
   return {
     note: 'PrizePicks lines, graded at THEIR number. Under = the result landed below the line. '
-      + 'Nothing here is posted or ranked; break-evens for reference: 2-pick power 57.7%, 4-pick flex 56.9%, 5-pick flex 54.3%, 6-pick flex 54.2%.',
+      + 'Nothing here is posted or ranked; break-evens for reference: 2-pick power 57.7%, 3-pick flex 57.7%, 4-pick flex 55.0%, 5-pick flex 54.3%, 6-pick flex 54.2%.',
     logged: rows.length,
     pending: rows.filter((r) => r.result == null).length,
     voided: rows.filter((r) => r.result === 'void').length,
@@ -5248,8 +5248,13 @@ function buildGmRecord(rows, sport) {
 // were computed from — and DraftKings from the odds. Goblins, demons, boosts and
 // promos pay differently, so any entry's payout can be overridden with what the
 // app actually paid.
-const PP_POWER = { 2: 3, 3: 5, 4: 10, 5: 20, 6: 37.5 };
-const PP_FLEX = { 3: { 3: 2.25, 2: 1.25 }, 4: { 4: 5, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } };
+// PrizePicks' table from Sept 18, 2026, as the owner checked it in the app on
+// Nov 27 (standard lines): the 3-pick Power pays 6x (was 5x), the 3-pick Flex
+// 3x and 1x (was 2.25x and 1.25x), the 4-pick Flex 6x and 1.5x (was 5x). The
+// rest stand. The history is graded from the log on every read, so it regrades
+// itself; every day it holds is after Sept 18.
+const PP_POWER = { 2: 3, 3: 6, 4: 10, 5: 20, 6: 37.5 };
+const PP_FLEX = { 3: { 3: 3, 2: 1 }, 4: { 4: 6, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } };
 const ENTRY_MARKETS_AUTO = new Set(['tb', 'hrr', 'hr', 'K', 'ml']);
 
 async function ensureEntrySchema(db) {
@@ -8856,7 +8861,7 @@ async function topLegs(env, url) {
     note: 'LOGGED ONLY, nothing posted and nothing shown on the site. Ranks every leg already logged '
       + 'by confidence, pools them across markets, and reports how the best N of each day actually did.',
     rankedBy: null, sport: null, bands: {}, byDay: [], today: [],
-    breakEvens: { '6-pick flex': 54.2, '5-pick flex': 54.3, '4-pick flex': 56.9, '3-pick flex': 59.1, '2-pick power': 57.7 },
+    breakEvens: { '6-pick flex': 54.2, '5-pick flex': 54.3, '4-pick flex': 55.0, '3-pick flex': 57.7, '2-pick power': 57.7 },
   });
   let out = blank();
   if (!env || !env.DB) { out.error = 'no DB binding'; return cors(json(out, 300)); }
@@ -9508,7 +9513,7 @@ async function pickemEdges(env, now) {
 }
 // Per leg, the PrizePicks break-even for an entry of that many legs (2-pick
 // power; 3 to 6, flex). The same table the slip's parlay read uses.
-const PICKS_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 4: ['4-pick flex', 56.9], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
+const PICKS_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 57.7], 4: ['4-pick flex', 55.0], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
 const PICKS_MLB_MK = { tb: 'TB', hrr: 'H+R+RBI' };
 const PICKS_NHL_MK = { pts: 'PTS', ast: 'AST' };
 // A More's chance as the list states it (2026-10-28): the model's, blended

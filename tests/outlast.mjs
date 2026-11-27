@@ -157,7 +157,9 @@ const pp = PK.ppPool, ml = PK.mlPool;
 ok(pp.length === 3 && pp[0].p === 63 && pp[1].p === 62.1 && PK.entries[0].ev === 14.5, `Nov 16's entry: ${pp.map((x) => `${x.title} ${x.p}`).join(', ')}; the Power priced +14.5%`);
 const rowsPP = E.entryRows(pp, PK.entries).map(text);
 ok(/^Top 2 power 63% a leg needs 57\.7% \+14\.5%/.test(rowsPP[0]), `"${rowsPP[0]}"`);
-ok(/^Top 3 flex 60% a leg needs 59\.1%/.test(rowsPP[1]), `the Flex row as before: "${rowsPP[1]}"`);
+// The need is the page's, at PrizePicks' table from Sept 18, 2026 (3x and 1x, 57.7%, the owner's
+// app on Nov 27); the edge beside it is the recorded answer's, priced on the table before.
+ok(/^Top 3 flex 60% a leg needs 57\.7%/.test(rowsPP[1]), `the Flex row as before, at the 3-pick Flex's new 57.7%: "${rowsPP[1]}"`);
 const raw = E.entryRows(pp, PK.entries)[0];
 ok(/title="Both land: 39%; it needs 33%"/.test(raw), 'the both-land chance and its bar in the title');
 const rowsML = E.entryRows(ml, PK.mlEntries).map(text);

@@ -90,7 +90,8 @@ ok((await create({ book: 'dk', kind: 'parlay', stake: 10, legs: [leg({ market: '
   'a DraftKings parlay without its odds is refused — the payout is computed from them');
 
 // ---- five real entries -----------------------------------------------------------------------
-// A: 3-pick flex, 2 of 3 hit -> 1.25x. $10 returns $12.50.
+// A: 3-pick flex, 2 of 3 hit -> 1x at PrizePicks' table from Sept 18, 2026 (1.25x before; the
+// owner's app, Nov 27). $10 returns $10, settled as paid, not refunded.
 const A = await create({ book: 'pp', kind: 'flex', stake: 10, legs: [
   leg({ ...CHURCH, market: 'hrr', line: 1.5, side: 'Under', modelProb: 62 }),   // 1 -> win
   leg({ ...SKENES, market: 'K', line: 6.5, side: 'Over', modelProb: 58 }),      // 8 -> win
@@ -119,7 +120,7 @@ console.log('\n  ' + [a, b, c, d, e].map((x) => `${x.type}: ${x.legs.map((l) => 
 
 ok(a.legs.map((l) => l.result).join() === 'win,win,loss' && a.legs[1].actual === 8,
   `graded from the box score: Church 1 H+R+RBI under 1.5, Skenes 8 K over 6.5, Church 1 TB over the 0.5 under (${a.legs.map((l) => l.actual).join(', ')})`);
-ok(a.payout === 12.5 && a.status === 'settled', `a 3-pick flex with two hits pays 1.25x — $10 back as $12.50 (${a.payout})`);
+ok(a.payout === 10 && a.payout_src === 'table' && a.status === 'settled', `a 3-pick flex with two hits pays 1x — $10 back as $10, off the table (${a.payout}, ${a.payout_src})`);
 ok(b.legs[1].result === 'void' && b.legs[1].actual == null,
   'Gorman never came off the bench — his leg voids, it does not score a free under');
 ok(b.payout === 10, `and a 2-pick power reduced to one live pick is refunded (${b.payout})`);

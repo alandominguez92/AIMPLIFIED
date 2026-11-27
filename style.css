@@ -3178,6 +3178,8 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tk-foot div { display:flex; justify-content:space-between; gap:12px; color:var(--textDim); }
 .tk-foot b { font-family:var(--mono); font-weight:600; color:var(--text); text-align:right; }
 .tk-ctl { margin-top:10px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+/* Two legs of one game in the entry (2026-11-27): PrizePicks may pay less than the table. */
+.tk-same { margin-top:10px; padding:7px 10px; border:1px solid var(--border); border-left:3px solid var(--warm); border-radius:8px; font-size:12.5px; line-height:1.45; color:var(--textDim); }
 .tk-sizes { display:inline-flex; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
 .tk-n { min-width:40px; min-height:36px; border:0; background:transparent; color:var(--textDim); font-family:var(--mono); font-weight:600; cursor:pointer; }
 .tk-n + .tk-n { border-left:1px solid var(--border); }

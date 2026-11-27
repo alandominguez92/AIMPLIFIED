@@ -135,9 +135,10 @@ const pw = W.entryStake([0.7, 0.7], 'power');
 ok(pw.ev === 47 && pw.stake === 2 && pw.capped === true, `a 2-pick Power at 70% a leg: +${pw.ev}% at 3x; Kelly (2 x 0.49 - 0.51) / 2 = 23.5%, a quarter 5.9%, held to ${pw.stake}%`);
 const fx = W.entryStake([0.8, 0.8, 0.8], 'flex');
 let best = 0, bestG = -1;
-const dist = [0.008, 0.096, 0.384, 0.512], pay = [0, 0, 1.25, 2.25];
+// PrizePicks' 3-pick Flex since Sept 18, 2026: 3x and 1x (the owner's app, Nov 27).
+const dist = [0.008, 0.096, 0.384, 0.512], pay = [0, 0, 1, 3];
 for (let f = 0; f < 1; f += 0.0005) { const g = dist.reduce((s, v, k) => s + v * Math.log(1 + f * (pay[k] - 1)), 0); if (g > bestG) { bestG = g; best = f; } }
-ok(fx.ev === 63.2 && best * 25 > 2 && fx.stake === 2 && fx.capped === true,
+ok(fx.ev === 92 && best * 25 > 2 && fx.stake === 2 && fx.capped === true,
   `a 3-pick Flex at 80%: +${fx.ev}%, the growth-maximising stake ${(best * 100).toFixed(1)}%, a quarter ${(best * 25).toFixed(1)}%, held to ${fx.stake}%`);
 const small = W.entryStake([0.6, 0.6, 0.6], 'flex');
 ok(small.stake > 0 && small.stake < 2 && !small.capped, `under the cap, the quarter-Kelly stake itself (3-pick Flex at 60%: ${small.ev}%, ${small.stake}%)`);

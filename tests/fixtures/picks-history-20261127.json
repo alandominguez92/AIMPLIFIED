@@ -1,0 +1,558 @@
+{
+ "_recorded": "production /api/picks, asOf 2026-11-27T09:17:08Z (1:17 AM Pacific): record.history.days for Nov 22 and Nov 15, as graded on the old payout table",
+ "days": [
+  {
+   "date": "2026-11-22",
+   "hit": 8,
+   "decided": 9,
+   "pending": 0,
+   "legs": [
+    {
+     "label": "Broncos ML",
+     "kind": "nfl_ml",
+     "p": 85.5,
+     "first": 82.9,
+     "result": "hit"
+    },
+    {
+     "label": "Barcelona ML",
+     "kind": "soccer_fav",
+     "p": 81.5,
+     "first": 79.4,
+     "result": "hit"
+    },
+    {
+     "label": "Nuggets ML",
+     "kind": "nba_ml",
+     "p": 78,
+     "first": 75.8,
+     "result": "hit"
+    },
+    {
+     "label": "Cowboys ML",
+     "kind": "nfl_ml",
+     "p": 75.3,
+     "first": 77.6,
+     "result": "hit"
+    },
+    {
+     "label": "Celtics ML",
+     "kind": "nba_ml",
+     "p": 75,
+     "first": 76,
+     "result": "miss"
+    },
+    {
+     "label": "Knicks ML",
+     "kind": "nba_ml",
+     "p": 69,
+     "first": 78,
+     "result": "hit"
+    },
+    {
+     "label": "Stars ML",
+     "kind": "nhl_ml",
+     "p": 67.9,
+     "first": 68,
+     "result": "hit"
+    },
+    {
+     "label": "Vancouver Whitecaps FC ML",
+     "kind": "soccer_fav",
+     "p": 66.7,
+     "first": 65.7,
+     "result": "hit"
+    },
+    {
+     "label": "Wendell Carter Jr Over 0.5 BLK",
+     "kind": "nba_blk_more",
+     "p": 55.8,
+     "first": 55.8,
+     "result": "hit"
+    }
+   ],
+   "entries": {
+    "p2": {
+     "wins": 2,
+     "pay": 3,
+     "net": 2
+    },
+    "f3": {
+     "wins": 3,
+     "pay": 2.25,
+     "net": 1.25
+    },
+    "f4": {
+     "wins": 4,
+     "pay": 5,
+     "net": 4
+    },
+    "f5": {
+     "wins": 5,
+     "pay": 10,
+     "net": 9
+    },
+    "f6": {
+     "wins": 6,
+     "pay": 25,
+     "net": 24
+    }
+   },
+   "pool": [
+    {
+     "label": "Broncos ML",
+     "kind": "nfl_ml",
+     "p": 85.5,
+     "first": 82.9,
+     "result": "hit"
+    },
+    {
+     "label": "Tyler Shough Under 1.5 Pass TDs",
+     "kind": "nfl_ptd",
+     "p": 65.5,
+     "first": 65.7,
+     "result": "hit"
+    },
+    {
+     "label": "J.J. McCarthy Under 1.5 Pass TDs",
+     "kind": "nfl_ptd",
+     "p": 65.1,
+     "first": null,
+     "result": "hit"
+    },
+    {
+     "label": "Jalen Smith Over 0.5 BLK",
+     "kind": "nba_blk_more",
+     "p": 62.9,
+     "first": null,
+     "result": "hit"
+    },
+    {
+     "label": "Jacoby Brissett Under 1.5 Pass TDs",
+     "kind": "nfl_ptd",
+     "p": 62.5,
+     "first": null,
+     "result": "hit"
+    },
+    {
+     "label": "Aaron Rodgers Under 1.5 Pass TDs",
+     "kind": "nfl_ptd",
+     "p": 61.8,
+     "first": null,
+     "result": "hit"
+    },
+    {
+     "label": "Justin Herbert Under 1.5 Pass TDs",
+     "kind": "nfl_ptd",
+     "p": 61.8,
+     "first": null,
+     "result": "miss"
+    },
+    {
+     "label": "Wendell Carter Jr Over 0.5 BLK",
+     "kind": "nba_blk_more",
+     "p": 55.8,
+     "first": 55.8,
+     "result": "hit"
+    }
+   ],
+   "ml": [
+    {
+     "label": "Broncos ML",
+     "kind": "nfl_ml",
+     "p": 85.5,
+     "first": 82.9,
+     "result": "hit"
+    },
+    {
+     "label": "Barcelona ML",
+     "kind": "soccer_fav",
+     "p": 81.5,
+     "first": 79.4,
+     "result": "hit"
+    },
+    {
+     "label": "Nuggets ML",
+     "kind": "nba_ml",
+     "p": 78,
+     "first": 75.8,
+     "result": "hit"
+    },
+    {
+     "label": "Cowboys ML",
+     "kind": "nfl_ml",
+     "p": 75.3,
+     "first": 77.6,
+     "result": "hit"
+    },
+    {
+     "label": "Celtics ML",
+     "kind": "nba_ml",
+     "p": 75,
+     "first": 76,
+     "result": "miss"
+    },
+    {
+     "label": "Knicks ML",
+     "kind": "nba_ml",
+     "p": 69,
+     "first": 78,
+     "result": "hit"
+    },
+    {
+     "label": "Stars ML",
+     "kind": "nhl_ml",
+     "p": 67.9,
+     "first": 68,
+     "result": "hit"
+    },
+    {
+     "label": "Vancouver Whitecaps FC ML",
+     "kind": "soccer_fav",
+     "p": 66.7,
+     "first": 65.7,
+     "result": "hit"
+    }
+   ],
+   "mlEntries": {
+    "p2": {
+     "wins": 2,
+     "pay": 3,
+     "net": 2
+    },
+    "p2h": {
+     "wins": 2,
+     "pay": 3,
+     "net": 2
+    },
+    "f3": {
+     "wins": 3,
+     "pay": 2.25,
+     "net": 1.25
+    },
+    "f4": {
+     "wins": 4,
+     "pay": 5,
+     "net": 4
+    },
+    "f5": {
+     "wins": 4,
+     "pay": 2,
+     "net": 1
+    },
+    "f6": {
+     "wins": 5,
+     "pay": 2,
+     "net": 1
+    }
+   }
+  },
+  {
+   "date": "2026-11-15",
+   "hit": 8,
+   "decided": 10,
+   "pending": 0,
+   "legs": [
+    {
+     "label": "Jaguars ML",
+     "kind": "nfl_ml",
+     "p": 81.9,
+     "first": 83,
+     "result": "hit"
+    },
+    {
+     "label": "Bills ML",
+     "kind": "nfl_ml",
+     "p": 81,
+     "first": 79,
+     "result": "hit"
+    },
+    {
+     "label": "France ML",
+     "kind": "soccer_fav",
+     "p": 80.8,
+     "first": 77.4,
+     "result": "hit"
+    },
+    {
+     "label": "Thunder ML",
+     "kind": "nba_ml",
+     "p": 80.8,
+     "first": 80,
+     "result": "hit"
+    },
+    {
+     "label": "Rams ML",
+     "kind": "nfl_ml",
+     "p": 80.7,
+     "first": 79.8,
+     "result": "hit"
+    },
+    {
+     "label": "Golden Knights ML",
+     "kind": "nhl_ml",
+     "p": 79.5,
+     "first": 78.4,
+     "result": "miss"
+    },
+    {
+     "label": "Rockets ML",
+     "kind": "nba_ml",
+     "p": 75.7,
+     "first": 74.1,
+     "result": "hit"
+    },
+    {
+     "label": "Hawks ML",
+     "kind": "nba_ml",
+     "p": 75,
+     "first": 73.9,
+     "result": "hit"
+    },
+    {
+     "label": "Matthew Tkachuk Over 0.5 AST",
+     "kind": "nhl_more",
+     "p": 66.4,
+     "first": 66.4,
+     "result": "miss"
+    },
+    {
+     "label": "Macklin Celebrini Over 0.5 AST",
+     "kind": "nhl_more",
+     "p": 55.5,
+     "first": 55.5,
+     "result": "hit"
+    }
+   ],
+   "entries": {
+    "p2": {
+     "wins": 2,
+     "pay": 3,
+     "net": 2
+    },
+    "p2h": {
+     "wins": 2,
+     "pay": 3,
+     "net": 2
+    },
+    "f3": {
+     "wins": 3,
+     "pay": 2.25,
+     "net": 1.25
+    },
+    "f4": {
+     "wins": 3,
+     "pay": 1.5,
+     "net": 0.5
+    },
+    "f5": {
+     "wins": 4,
+     "pay": 2,
+     "net": 1
+    },
+    "f6": {
+     "wins": 4,
+     "pay": 0.4,
+     "net": -0.6
+    }
+   },
+   "pool": [
+    {
+     "label": "Jaguars ML",
+     "kind": "nfl_ml",
+     "p": 81.9,
+     "first": 83,
+     "result": "hit"
+    },
+    {
+     "label": "Rams ML",
+     "kind": "nfl_ml",
+     "p": 80.7,
+     "first": 79.8,
+     "result": "hit"
+    },
+    {
+     "label": "Daniel Jones Under 1.5 Pass TDs",
+     "kind": "nfl_ptd",
+     "p": 66.5,
+     "first": 66.5,
+     "result": "hit"
+    },
+    {
+     "label": "Matthew Tkachuk Over 0.5 AST",
+     "kind": "nhl_more",
+     "p": 66.4,
+     "first": 66.4,
+     "result": "miss"
+    },
+    {
+     "label": "Geno Smith Under 1.5 Pass TDs",
+     "kind": "nfl_ptd",
+     "p": 64.4,
+     "first": null,
+     "result": "hit"
+    },
+    {
+     "label": "Tari Eason Over 0.5 BLK",
+     "kind": "nba_blk_more",
+     "p": 61.5,
+     "first": null,
+     "result": "miss"
+    },
+    {
+     "label": "Kirk Cousins Under 1.5 Pass TDs",
+     "kind": "nfl_ptd",
+     "p": 61.3,
+     "first": null,
+     "result": "miss"
+    },
+    {
+     "label": "Leo Carlsson Over 0.5 AST",
+     "kind": "nhl_more",
+     "p": 61.3,
+     "first": null,
+     "result": "miss"
+    },
+    {
+     "label": "Darryn Peterson Over 0.5 BLK",
+     "kind": "nba_blk_more",
+     "p": 56.8,
+     "first": null,
+     "result": "hit"
+    },
+    {
+     "label": "Domantas Sabonis Under 12 REB",
+     "kind": "nba_reb_gap",
+     "p": 56.1,
+     "first": null,
+     "result": "miss"
+    },
+    {
+     "label": "Dean Wade Under 5 REB",
+     "kind": "nba_reb_gap",
+     "p": 56.1,
+     "first": null,
+     "result": "miss"
+    },
+    {
+     "label": "Naz Reid Under 8 REB",
+     "kind": "nba_reb_gap",
+     "p": 56.1,
+     "first": null,
+     "result": "hit"
+    },
+    {
+     "label": "R.J. Barrett Under 6 REB",
+     "kind": "nba_reb_gap",
+     "p": 56.1,
+     "first": null,
+     "result": "hit"
+    },
+    {
+     "label": "Myles Turner Under 6 REB",
+     "kind": "nba_reb_gap",
+     "p": 56.1,
+     "first": null,
+     "result": "miss"
+    },
+    {
+     "label": "Macklin Celebrini Over 0.5 AST",
+     "kind": "nhl_more",
+     "p": 55.5,
+     "first": 55.5,
+     "result": "hit"
+    }
+   ],
+   "ml": [
+    {
+     "label": "Jaguars ML",
+     "kind": "nfl_ml",
+     "p": 81.9,
+     "first": 83,
+     "result": "hit"
+    },
+    {
+     "label": "Bills ML",
+     "kind": "nfl_ml",
+     "p": 81,
+     "first": 79,
+     "result": "hit"
+    },
+    {
+     "label": "France ML",
+     "kind": "soccer_fav",
+     "p": 80.8,
+     "first": 77.4,
+     "result": "hit"
+    },
+    {
+     "label": "Thunder ML",
+     "kind": "nba_ml",
+     "p": 80.8,
+     "first": 80,
+     "result": "hit"
+    },
+    {
+     "label": "Rams ML",
+     "kind": "nfl_ml",
+     "p": 80.7,
+     "first": 79.8,
+     "result": "hit"
+    },
+    {
+     "label": "Golden Knights ML",
+     "kind": "nhl_ml",
+     "p": 79.5,
+     "first": 78.4,
+     "result": "miss"
+    },
+    {
+     "label": "Rockets ML",
+     "kind": "nba_ml",
+     "p": 75.7,
+     "first": 74.1,
+     "result": "hit"
+    },
+    {
+     "label": "Hawks ML",
+     "kind": "nba_ml",
+     "p": 75,
+     "first": 73.9,
+     "result": "hit"
+    }
+   ],
+   "mlEntries": {
+    "p2": {
+     "wins": 2,
+     "pay": 3,
+     "net": 2
+    },
+    "p2h": {
+     "wins": 2,
+     "pay": 3,
+     "net": 2
+    },
+    "f3": {
+     "wins": 3,
+     "pay": 2.25,
+     "net": 1.25
+    },
+    "f4": {
+     "wins": 4,
+     "pay": 5,
+     "net": 4
+    },
+    "f5": {
+     "wins": 5,
+     "pay": 10,
+     "net": 9
+    },
+    "f6": {
+     "wins": 5,
+     "pay": 2,
+     "net": 1
+    }
+   }
+  }
+ ]
+}

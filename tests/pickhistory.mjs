@@ -68,8 +68,10 @@ for (const x of (h ? h.entries : [])) console.log(`  ${x.label}: ${x.days} days,
 ok(!!h && h.since === '2026-10-18', '/api/picks carries the list\'s history, from its first day');
 ok(e('p2').days === 3 && e('p2').won === 2 && e('p2').refunds === 1 && e('p2').units === 3 && e('p2').roi === 100,
   'Top 2 Power: paid 3x on the 18th and 21st, lost the 19th, refunded the 20th (a void), today not settled: +3u on 3, +100%');
-ok(e('f3').days === 3 && e('f3').units === 1.75 && e('f3').won === 3, 'Top 3 Flex: 2 of 3 twice (1.25x) and 3 of 3 once (2.25x): +1.75u');
-ok(e('f4').days === 2 && e('f4').units === 4.5, 'Top 4 Flex: 3 of 4 (1.5x) and 4 of 4 (5x): +4.5u');
+// PrizePicks' table from Sept 18, 2026 (the owner's app, Nov 27): a 3-pick Flex pays 3x and 1x,
+// a 4-pick 6x and 1.5x. Two of three is the stake back, so not counted as won.
+ok(e('f3').days === 3 && e('f3').units === 2 && e('f3').won === 1, 'Top 3 Flex: 2 of 3 twice (1x, the stake back) and 3 of 3 once (3x): +2u, one won');
+ok(e('f4').days === 2 && e('f4').units === 5.5, 'Top 4 Flex: 3 of 4 (1.5x) and 4 of 4 (6x): +5.5u');
 ok(e('f5').days === 1 && e('f5').units === 1 && e('f6').days === 1 && e('f6').units === -0.6 && e('f6').won === 0,
   'Top 5 Flex 4 of 5 pays 2x; Top 6 Flex 4 of 6 pays 0.4x, which loses 0.6 and is not counted as won');
 ok(d.record.top2.days === e('p2').days && d.record.top2.bothHit === e('p2').won, 'the "top two both landed" count is the Power entry\'s');
@@ -113,7 +115,8 @@ ok(/Top 2 Power won 2 of 3 \+3\.00u \+100%/.test(text) && /Top 6 Flex won 0 of 1
   `each entry with its days, units and return (${(text.match(/Top 2 Power[^T]*/) || [''])[0].trim()})`);
 ok(/class="pk-u pk-up">\+3\.00u/.test(html) && /class="pk-u pk-down">−0\.60u/.test(html), 'teal up, amber down');
 ok((html.match(/<details class="pk-day">/g) || []).length === 5, 'a line a day, each opening to its legs');
-ok(/Top 2 Power refund/.test(text) && /Top 2 Power −1\.00u/.test(text) && /Top 3 Flex \+1\.25u/.test(text), 'each day says what its Power and Flex paid');
+ok(/Top 2 Power refund/.test(text) && /Top 2 Power −1\.00u/.test(text) && /Top 3 Flex \+2\.00u/.test(text) && /Top 3 Flex 0\.00u/.test(text),
+  'each day says what its Power and Flex paid (a 3 of 3 Flex +2.00u, a 2 of 3 the stake back, 0.00u)');
 ok(/1 of 1 landed · 2 still to play/.test(text) && /pk-lr pk-open/.test(html) && /pk-lr pk-void">void/.test(html), 'legs still to play and voids are marked as such');
 ok(card(null) === '' && card({ days: [] }) === '', 'nothing is drawn before a day has graded');
 ok(/const after = socBestStripHtml\(\) \+ pickHistoryHtml\(d\.record && d\.record\.history, !!state\.daysAll\);/.test(app), 'and the Picks tab draws it after the list, in every state');

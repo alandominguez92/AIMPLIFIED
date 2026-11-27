@@ -3203,11 +3203,17 @@
   //     point with or against the hitters facing that pitcher;
   //   - PrizePicks will not take an entry whose players all come from one team;
   //   - what each leg has to land for the entry type to break even.
-  const PP_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 59.1], 4: ['4-pick flex', 56.9], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
+  // At PrizePicks' table from Sept 18, 2026 (the worker's PP_POWER and PP_FLEX).
+  const PP_BREAK_EVEN = { 2: ['2-pick power', 57.7], 3: ['3-pick flex', 57.7], 4: ['4-pick flex', 55.0], 5: ['5-pick flex', 54.3], 6: ['6-pick flex', 54.2] };
+  // Two or more legs from one game (2026-11-27): PrizePicks paid a same-game 6-pick Power 35.5x
+  // where the table says 37.5x, and its cut is its own, pair by pair, so the page names it and
+  // leaves the number to the app.
+  const PP_SAME_GAME_PAY = 'PrizePicks may pay less with two legs from one game: check the payout the app shows';
   function slipReadHtml(legs) {
     const notes = [];
     const sideOf = (l) => state.logSides[l.id] || (l.spec && l.spec.side);
-    const surname = (s) => String(s || '').trim().split(/\s+/).pop();
+    // Past a suffix (2026-11-27): Wendell Carter Jr read "Jr".
+    const surname = (s) => { const w = String(s || '').trim().split(/\s+/); while (w.length > 1 && /^(jr|sr|ii|iii|iv)\.?$/i.test(w[w.length - 1])) w.pop(); return w.pop(); };
     const byGame = new Map();
     for (const l of legs) {
       const s = l.spec;
@@ -3260,7 +3266,8 @@
       // Opposite results of one game do not win or lose together; one of them
       // loses outright, and the note says that instead.
       notes.push(`<b>${gl.length} legs from one game</b> (${gl.map((l) => esc(surname(l.spec.player))).join(', ')})${conflict ? '.' : ' win or lose together.'}`
-        + (parts.length ? ' ' + parts.map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join('. ') + '.' : ''));
+        + (parts.length ? ' ' + parts.map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join('. ') + '.' : '')
+        + (state.logBook === 'pp' ? ` ${PP_SAME_GAME_PAY}.` : ''));
     }
     if (state.logBook === 'pp' && legs.length >= 2) {
       // Per sport: Miami's baseball club and Miami's football club are two
@@ -6742,8 +6749,8 @@
   // (the worker's PP_POWER and PP_FLEX), the edge and the stake. The 3-pick
   // Flex first: it still pays on two of three, the steadier read while the
   // entry builds its record. Save image draws it for the phone's photos.
-  const PP_PAY = { power: { 2: 3, 3: 5, 4: 10, 5: 20, 6: 37.5 },
-    flex: { 3: { 3: 2.25, 2: 1.25 }, 4: { 4: 5, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } } };
+  const PP_PAY = { power: { 2: 3, 3: 6, 4: 10, 5: 20, 6: 37.5 },
+    flex: { 3: { 3: 3, 2: 1 }, 4: { 4: 6, 3: 1.5 }, 5: { 5: 10, 4: 2, 3: 0.4 }, 6: { 6: 25, 5: 2, 4: 0.4 } } };
   function ticketData(d, legs, whole, ml) {
     if (!legs || legs.length < 2) return null;
     const n = Math.max(2, Math.min((ml ? state.ticketMlN : state.ticketN) || 3, legs.length, 6));
@@ -6751,7 +6758,17 @@
     const e = (whole && ((ml ? d.mlEntries : d.entries) || []).find((x) => x.legs === n)) || {};
     const pays = n === 2 ? `both land ${PP_PAY.power[2]}x`
       : Object.entries(PP_PAY.flex[n]).sort((a, b) => b[0] - a[0]).map(([k, v]) => `${k} of ${n} ${v}x`).join(' · ');
+    // Legs of one game in it (2026-11-27), as the slip keys a game: PrizePicks may pay less.
+    const byGame = new Map();
+    for (const x of top) {
+      const s = x.spec || {};
+      if (s.gamePk == null) continue;
+      const gk = `${s.sport || 'mlb'}|${s.gamePk}`;
+      byGame.set(gk, (byGame.get(gk) || []).concat([x]));
+    }
+    const sameGame = [...byGame.values()].filter((g) => g.length > 1);
     return {
+      sameGame,
       n, sizes: Array.from({ length: Math.min(legs.length, 6) - 1 }, (_, i) => i + 2),
       name: n === 2 ? '2-pick Power' : `${n}-pick Flex`,
       legs: top.map((x) => {
@@ -6774,7 +6791,9 @@
       // Each payout wraps whole, its dot hanging off the right (2026-11-05): "2 of 3" split from its 1.25x on a phone.
       + `<div class="tk-foot"><div><span>All ${t.n} land</span><b>${esc(pct0(t.all))}</b></div><div><span>Pays</span><b class="dots dots-r"><span class="dots-in">${String(t.pays).split(' · ').map((x, i, a) => `<span>${esc(x)}${i < a.length - 1 ? ' <span class="dot">·</span>' : ''}</span>`).join(' ')}</span></b></div>`
       + (t.stake != null && t.stake > 0 ? `<div><span>¼ Kelly</span><b>${esc(stakeTxt(t.stake))}${t.capped ? ' cap' : ''}</b></div>` : '')
-      + `</div><div class="tk-ctl"><span class="tk-sizes" role="group" aria-label="Legs in the entry">${sizes}</span>`
+      + `</div>`
+      + ((t.sameGame || []).length ? `<div class="tk-same">Same game: ${t.sameGame.map((g) => g.map((x) => esc((t.legs.find((l) => l.x === x) || {}).short || x.title)).join(' and ')).join('; ')}. ${esc(PP_SAME_GAME_PAY)}.</div>` : '')
+      + `<div class="tk-ctl"><span class="tk-sizes" role="group" aria-label="Legs in the entry">${sizes}</span>`
       + `<button type="button" class="tk-save" data-action="ticket${ml ? '-ml' : ''}-save">Save image</button></div></div>`;
   }
   // The ticket drawn on a canvas, to share or keep: initials for faces (a
