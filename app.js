@@ -5071,6 +5071,17 @@
         target.textContent = state.podMin ? 'Enlarge' : 'Minimize';
         break;
       }
+      // A side found in Check a price (2026-11-27): taken, marked, and the price field next.
+      case 'chk-pick': {
+        state.chk = { ...(state.chk || {}), key: target.dataset.key };
+        const l = document.querySelector('.pk-check-hits');
+        if (l) l.innerHTML = priceCheckHitsHtml(state.picks, state.chk);
+        const o = document.querySelector('.pk-check-out');
+        if (o) o.innerHTML = priceCheckText(state.picks, state.chk);
+        const p = document.querySelector('[data-action="chk-price"]');
+        if (p) p.focus();
+        break;
+      }
       case 'days-all': state.daysAll = !state.daysAll; renderPicks(); break;
       // The next day's moneylines, early (mlLaterHtml); kept for the day it was opened on.
       case 'ml-later': {
@@ -5197,11 +5208,20 @@
   });
 
   // The price checker's price, read as it is typed: only its line redraws,
-  // so the field keeps its focus.
+  // so the field keeps its focus. Its search (2026-11-27) likewise: the matches and the line redraw,
+  // a lone match is taken, and a side the words no longer find is let go.
   document.body.addEventListener('input', (e) => {
     const t = e.target;
-    if (!t || !t.dataset || t.dataset.action !== 'chk-price') return;
-    state.chk = { ...(state.chk || {}), price: t.value };
+    if (!t || !t.dataset) return;
+    if (t.dataset.action === 'chk-q') {
+      const hits = priceCheckFind(state.picks, t.value), was = (state.chk || {}).key;
+      const key = hits.length === 1 ? hits[0].key : hits.some((x) => x.key === was) ? was : null;
+      state.chk = { ...(state.chk || {}), q: t.value, key };
+      const l = document.querySelector('.pk-check-hits');
+      if (l) l.innerHTML = priceCheckHitsHtml(state.picks, state.chk);
+    } else if (t.dataset.action === 'chk-price') {
+      state.chk = { ...(state.chk || {}), price: t.value };
+    } else return;
     const o = document.querySelector('.pk-check-out');
     if (o) o.innerHTML = priceCheckText(state.picks, state.chk);
   });
@@ -5222,12 +5242,6 @@
     // Today's legs filtered to a sport, or sorted (the page brief's step 4). The slip keeps its legs.
     if (t.dataset.action === 'leg-sport') { state.legSport = t.value || 'all'; renderPicks(); }
     if (t.dataset.action === 'leg-sort') { state.legSort = t.value || 'chance'; renderPicks(); }
-    // The price checker's side (2026-10-29).
-    if (t.dataset.action === 'chk-side') {
-      state.chk = { ...(state.chk || {}), key: t.value };
-      const o = document.querySelector('.pk-check-out');
-      if (o) o.innerHTML = priceCheckText(state.picks, state.chk);
-    }
     if (t.dataset.action === 'log-price') { state.logPrices = { ...state.logPrices, [t.dataset.leg]: t.value }; }
     if (t.dataset.action === 'log-line') { state.logLines = { ...state.logLines, [t.dataset.leg]: t.value.trim() }; renderSlip(); }
     // A soccer prop's line typed to PrizePicks' number (48.5 passes is a lot of taps).
@@ -7073,22 +7087,48 @@
   // The price checker (2026-10-29): any side the worker priced, at a price
   // typed in -- a boost, an alternate line's, another book's -- on the same
   // fair and the same quarter Kelly as the bets above it.
+  // "Check a price" as a search box (2026-11-27, the PrizePicks doc, on the owner's go-ahead): a
+  // list of every side priced here (132 on the Friday it changed) gave way to a field. A player, a
+  // team or a market finds the side, every word matching, accents aside; up to six show at a time,
+  // and a lone match is taken at once. Its price then reads against the sharp fair as before.
+  function chkNorm(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  function priceCheckSides(d) {
+    return ((d && d.priced) || []).filter((x) => Date.parse(x.commence) > Date.now())
+      .sort((a, b) => String(a.sport).localeCompare(String(b.sport)) || String(a.label).localeCompare(String(b.label)));
+  }
+  function priceCheckFind(d, q) {
+    const words = chkNorm(q).split(/[\s,·@]+/).filter(Boolean);
+    if (!words.length) return [];
+    return priceCheckSides(d).filter((x) => {
+      const hay = chkNorm(`${PICK_SPORT[x.sport] || x.sport} ${x.label} ${x.sub}`);
+      return words.every((w) => hay.includes(w));
+    });
+  }
+  function priceCheckHitsHtml(d, c) {
+    const q = String((c && c.q) || '').trim();
+    if (!q) return '';
+    const hits = priceCheckFind(d, q), shown = hits.slice(0, 6), key = c && c.key;
+    if (!hits.length) return `<div class="pk-check-none">Nothing priced here matches “${esc(q)}”.</div>`;
+    return shown.map((x) => `<button type="button" class="pk-check-hit${x.key === key ? ' on' : ''}" data-action="chk-pick" data-key="${esc(x.key)}" aria-pressed="${x.key === key}">`
+      + `<span class="pk-sport">${esc(PICK_SPORT[x.sport] || x.sport)}</span> <b>${esc(x.label)}</b> <span class="pk-check-sub">${esc(x.sub)} · ${esc(soccerKick(x.commence))}</span></button>`).join('')
+      + (hits.length > shown.length ? `<div class="pk-check-none">and ${hits.length - shown.length} more: add a word</div>` : '');
+  }
   function priceCheckHtml(d) {
-    const sides = ((d && d.priced) || []).filter((x) => Date.parse(x.commence) > Date.now());
+    const sides = priceCheckSides(d);
     if (!sides.length || !d.kelly) return '';
     const c = state.chk || {};
-    const opts = sides.slice().sort((a, b) => String(a.sport).localeCompare(String(b.sport)) || String(a.label).localeCompare(String(b.label)))
-      .map((x) => `<option value="${esc(x.key)}"${x.key === c.key ? ' selected' : ''}>${esc(PICK_SPORT[x.sport] || x.sport)} · ${esc(x.label)} · ${esc(x.sub)}</option>`).join('');
     return `<div class="pk-check"><div class="tc-head pp-more-head"><span class="tc-title">Check a price</span></div>`
-      + `<div class="tc-sub">A boost, or another book's number, on any side priced here: its EV on the sharp fair, and the stake.</div>`
-      + `<div class="pk-check-f"><select data-action="chk-side" aria-label="The side to price">${opts}</select>`
+      + `<div class="tc-sub">A boost, or another book's number, on any of the ${sides.length} sides priced here: find it by player, team or market, then type the price for its EV on the sharp fair and the stake.</div>`
+      + `<div class="pk-check-f"><input type="search" data-action="chk-q" value="${esc(c.q || '')}" placeholder="Player, team or market" aria-label="Find a side priced here" autocomplete="off" spellcheck="false">`
       + `<input type="text" inputmode="numeric" data-action="chk-price" value="${esc(c.price || '')}" placeholder="+150" aria-label="The price, in American odds"></div>`
+      + `<div class="pk-check-hits">${priceCheckHitsHtml(d, c)}</div>`
       + `<output class="pk-check-out" aria-live="polite">${priceCheckText(d, c)}</output></div>`;
   }
   function priceCheckText(d, c) {
     const sides = ((d && d.priced) || []).filter((x) => Date.parse(x.commence) > Date.now());
-    const x = sides.find((y) => y.key === (c && c.key)) || sides.slice().sort((a, b) => String(a.sport).localeCompare(String(b.sport)) || String(a.label).localeCompare(String(b.label)))[0];
-    if (!x || !d.kelly || typeof x.fair !== 'number') return '';
+    const x = sides.find((y) => y.key === (c && c.key));
+    if (!x) return sides.length && d.kelly ? 'Find a side above, then type its price.' : '';
+    if (!d.kelly || typeof x.fair !== 'number') return '';
     const p = x.fair / 100;
     const need = p >= 0.5 ? -Math.round(p / (1 - p) * 100) : Math.round((1 - p) / p * 100);
     const am = Number(String((c && c.price) || '').replace(/[^0-9+-]/g, ''));

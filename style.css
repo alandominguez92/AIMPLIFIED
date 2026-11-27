@@ -2888,6 +2888,17 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   border:1px solid var(--border); border-radius:8px; }
 .pk-check-f select { flex:1 1 220px; min-width:0; max-width:100%; }
 .pk-check-f input { flex:0 0 96px; width:96px; }
+/* The search (2026-11-27) takes the row's width beside the price; its matches stack under it, a
+   tap each, the one taken outlined in the accent. */
+.pk-check-f input[type="search"] { flex:1 1 200px; width:auto; min-width:0; }
+.pk-check-hits { display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+.pk-check-hits:empty { display:none; }
+.pk-check-hit { display:block; width:100%; min-height:40px; padding:7px 10px; text-align:left; font:inherit; font-size:13px; line-height:1.35; color:var(--textDim);
+  background:var(--card); border:1px solid var(--border); border-radius:8px; cursor:pointer; overflow-wrap:anywhere; }
+.pk-check-hit b { color:var(--text); font-weight:600; }
+.pk-check-hit:hover { border-color:var(--textGhost); }
+.pk-check-hit.on { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+.pk-check-none { font-family:var(--mono); font-size:12px; color:var(--textDim); padding:2px 2px 0; }
 .pk-check-out { display:block; margin-top:8px; font-family:var(--mono); font-size:12px; line-height:1.45; color:var(--textDim); }
 .pk-check-out b { color:var(--text); font-weight:600; }
 .pk-check-out b.u { color:var(--positive); }
