@@ -66,7 +66,8 @@ let d = draw();
 for (const [k, h] of Object.entries(d)) console.log(`        ${k}: ${opening(h)}  ${text(summary(h))}`);
 ok(opening(d.ev) === '<details class="nba-pp pk-card pk-ev-card pk-fold" data-keep="ev">' && /^<span class="tc-title">Bets with an edge<\/span><span class="tc-rec">¼ Kelly total/.test(summary(d.ev)),
   'Bets with an edge: closed, its head the tap');
-ok(foldLine(d.ev) === '2 bets at the sportsbook, and Check a price' && /<div class="pk-check">/.test(d.ev.slice(d.ev.indexOf('</summary>'))), 'folded, it says what is in it; Check a price is');
+// "at DraftKings" since the card took DraftKings' price only (2026-11-27, tests/edgedk.mjs).
+ok(foldLine(d.ev) === '2 bets at DraftKings, and Check a price' && /<div class="pk-check">/.test(d.ev.slice(d.ev.indexOf('</summary>'))), 'folded, it says what is in it; Check a price is');
 ok(opening(d.hist) === '<details class="nba-pp pk-card pk-hist pk-fold" data-keep="hist">' && foldLine(d.hist) === 'Top 6 Flex won 3 of 14 days, −2.60u · each day’s legs',
   'How the list did: closed, with how the 6-Flex has gone');
 ok((d.hist.match(/<details class="pk-day">/g) || []).length === 5 && d.hist.indexOf('<details class="pk-day">') > d.hist.indexOf('</summary>'), 'its day cards inside it');

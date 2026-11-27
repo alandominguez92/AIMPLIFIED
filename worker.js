@@ -4139,8 +4139,9 @@ async function logGamePicks(db, sport, date, entries) {
     await logPriceHist(db, sport, entries.flatMap((e) => {
       if (!e || !e.game_id) return [];
       const q = { ...(e.quotes || {}) };
-      if (e.side && !q[e.side]) q[e.side] = { price: e.price, fair: e.win_prob };
-      return Object.entries(q).filter(([, v]) => v).map(([sd, v]) => ({ event_id: e.game_id, side: histSide(e.market, sd, e.point), commence: e.commence, fair: v.fair, price: v.price }));
+      if (e.side && !q[e.side]) q[e.side] = { price: e.price, fair: e.win_prob, book_prices: e.book_prices };
+      return Object.entries(q).filter(([, v]) => v).map(([sd, v]) => ({ event_id: e.game_id, side: histSide(e.market, sd, e.point), commence: e.commence, fair: v.fair, price: v.price,
+        dk: edgeBookPrice(v.book_prices) }));
     }));
   } catch (err) { /* the log stands without it */ }
   return logged;
@@ -4163,6 +4164,8 @@ async function ensurePriceHistSchema(db) {
     PRIMARY KEY (sport, event_id, side, at)
   )`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS pricehist_commence ON pricehist (commence)').run();
+  // dk: DraftKings' own price at the read (2026-11-27), the price the edge bets are at.
+  await addColumns(db, 'pricehist', [['dk', 'INTEGER']]);
 }
 const PRICE_HIST_KEEP_MS = 4 * 864e5;
 async function logPriceHist(db, sport, sides, now = Date.now()) {
@@ -4177,10 +4180,10 @@ async function logPriceHist(db, sport, sides, now = Date.now()) {
   });
   if (!rows.length) return 0;
   await ensurePriceHistSchema(db);
-  const stmts = rows.map((s) => db.prepare(`INSERT OR IGNORE INTO pricehist (sport, event_id, side, at, commence, fair, price)
-    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE NOT EXISTS (SELECT 1 FROM pricehist WHERE sport = ?1 AND event_id = ?2 AND side = ?3 AND fair IS ?6 AND price IS ?7
+  const stmts = rows.map((s) => db.prepare(`INSERT OR IGNORE INTO pricehist (sport, event_id, side, at, commence, fair, price, dk)
+    SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE NOT EXISTS (SELECT 1 FROM pricehist WHERE sport = ?1 AND event_id = ?2 AND side = ?3 AND fair IS ?6 AND price IS ?7 AND dk IS ?8
       AND at = (SELECT MAX(at) FROM pricehist WHERE sport = ?1 AND event_id = ?2 AND side = ?3))`)
-    .bind(sport, String(s.event_id), s.side, at, s.commence || null, round1(s.fair), s.price));
+    .bind(sport, String(s.event_id), s.side, at, s.commence || null, round1(s.fair), s.price, typeof s.dk === 'number' ? s.dk : null));
   stmts.push(db.prepare('DELETE FROM pricehist WHERE commence < ?').bind(new Date(now - PRICE_HIST_KEEP_MS).toISOString()));
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
   return rows.length;
@@ -4191,11 +4194,14 @@ const PRICE_HIST_N = 16;
 async function priceHists(db, hks) {
   if (!hks.length) return [];
   try {
-    const res = await db.batch(hks.map(([sport, id, side]) => db.prepare('SELECT at, fair, price FROM pricehist WHERE sport = ? AND event_id = ? AND side = ? ORDER BY at DESC LIMIT ?')
+    await addColumns(db, 'pricehist', [['dk', 'INTEGER']]);
+    const res = await db.batch(hks.map(([sport, id, side]) => db.prepare('SELECT at, fair, price, dk FROM pricehist WHERE sport = ? AND event_id = ? AND side = ? ORDER BY at DESC LIMIT ?')
       .bind(sport, String(id), side, PRICE_HIST_N)));
-    return res.map((r) => ((r && r.results) || []).reverse().map((p) => [p.at, p.fair, p.price]));
+    return res.map((r) => ((r && r.results) || []).reverse().map((p) => [p.at, p.fair, p.price, p.dk == null ? null : p.dk]));
   } catch (e) { return hks.map(() => []); }   // no table yet
 }
+// An edge bet's history at DraftKings' price (2026-11-27): the reads that had one, as [at, fair, price].
+const edgeBookHist = (h) => (h || []).filter((p) => p[3] != null).map((p) => [p[0], p[1], p[3]]);
 
 // ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
 // Cloudflare (see the nfl-grade probe). Free either way, like every other score
@@ -9216,6 +9222,14 @@ const EDGE_OFF_PRICE = 300;
 const EDGE_OFF_SINCE = '2026-11-14';
 const EV_MIN_PROP = 3;
 const EV_MAX = 12;
+// DraftKings only (2026-11-27, the owner's call): they bet PrizePicks first and DraftKings second,
+// and FanDuel not at all, while the card took the best price of five books, so a bet it named was
+// often one they could not place at its price. A side is priced at DraftKings' own number from its
+// read's every-book prices; one DraftKings does not quote is not a bet (it is still priced, for the
+// closing line and the price checker). The bets logged from then are marked dk = 1, so the record
+// keeps them apart from the best-of-five ones before.
+const EDGE_BOOK = 'draftkings';
+const EDGE_BOOK_FROM = '2026-11-27';
 // Further out than the list's day: an early price is often the better one,
 // and the moneyline captures read 36 hours ahead.
 const EV_WINDOW_MS = 36 * 3600e3;
@@ -9252,19 +9266,32 @@ function rowPriceNow(r) {
   const book = lb && (!bp || (bp[lb] && bp[lb][0] === price)) ? lb : atPrice || r.book;
   return { price, book, books: booksOf(bp, lb ? { [lb]: r.link } : null) };
 }
+// A side at DraftKings' price, with its link, or null where DraftKings did not quote it. A side whose
+// own book is DraftKings (an NBA under at DraftKings' line) is taken as it is.
+function atEdgeBook(o) {
+  const own = (o.books || []).find((b) => b.book === EDGE_BOOK);
+  if (!own && o.book !== EDGE_BOOK) return null;
+  return { ...o, price: own ? own.price : o.price, book: EDGE_BOOK, link: (own && own.link) || (linkBook(o.link) === EDGE_BOOK ? o.link : null) };
+}
+// DraftKings' price in a stored every-book list (JSON or parsed), or null.
+const edgeBookPrice = (bp) => { const o = typeof bp === 'string' ? parseJsonOr(bp) : bp; const v = o && o[EDGE_BOOK]; return Array.isArray(v) && typeof v[0] === 'number' ? v[0] : null; };
 async function evBets(env, now) { return (await evScan(env, now)).bets.map(evShown); }
 async function evScan(env, now) {
   const out = [], off = [], all = [];
   const seen = new Set();
   // From the day the rule came in (EDGE_OFF_SINCE, Pacific).
   const offAt = ptDateOf(now) >= EDGE_OFF_SINCE ? EDGE_OFF_PRICE : Infinity;
-  const add = (o) => {
-    const t = Date.parse(o.commence);
-    if (!(t > now && t - now <= EV_WINDOW_MS) || o.fair == null || typeof o.price !== 'number' || seen.has(o.key)) return;
+  const add = (o0) => {
+    const t = Date.parse(o0.commence);
+    if (!(t > now && t - now <= EV_WINDOW_MS) || o0.fair == null || seen.has(o0.key)) return;
+    const dk = atEdgeBook(o0), o = dk || o0;
+    if (typeof o.price !== 'number') return;
     const p = o.fair / 100;
     if (!(p > 0 && p < 1) || !mlPriceSane(o.price, o.fair)) return;
     seen.add(o.key);
     all.push(o);
+    // Not quoted at DraftKings: priced, and not a bet (2026-11-27).
+    if (!dk) return;
     const d = decOf(o.price), ev = p * d - 1;
     if (ev * 100 < (o.prop ? EV_MIN_PROP : EV_MIN_LINE)) return;
     const long = o.price >= EDGE_LONG_PRICE;
@@ -9323,9 +9350,12 @@ async function evScan(env, now) {
   for (const row of ppStanding(np)) {
     const r = ppCurrent(row);
     if (r.book_line == null || r.book_line !== r.point || typeof r.book_under !== 'number' || r.sharp_under == null) continue;
+    // The row's book line is DraftKings' where it quotes the player, FanDuel's where it does not
+    // (nbaPpLegs' bookLine); DraftKings' own main line, in book_unders, says which (2026-11-27).
+    const bu = parseJsonOr(r.book_unders), dkLine = bu && Array.isArray(bu[EDGE_BOOK]) ? bu[EDGE_BOOK][0] : null;
     add({ key: `nbapp:${r.game_id}:${r.player}:${r.market}`, sport: 'nba', market: r.market, prop: true,
       label: `${r.player} Under ${r.point} ${PICKS_NBA_MK[r.market] || r.market}`, sub: `${lastWord(r.away)} @ ${lastWord(r.home)}`,
-      commence: r.commence, fair: r.sharp_under, price: r.book_under, book: 'DK/FD', fairSrc: 'sharp books', asOf: r.close_at || r.captured_at,
+      commence: r.commence, fair: r.sharp_under, price: r.book_under, book: dkLine === r.book_line ? EDGE_BOOK : 'DK/FD', fairSrc: 'sharp books', asOf: r.close_at || r.captured_at,
       grade: { t: 'under', date: r.date, game_id: r.game_id, player: r.player, market: r.market, line: r.point } });
   }
   // off: past the bar at +300 or longer, logged and not shown.
@@ -9367,7 +9397,8 @@ async function ensureEdgeBetSchema(db) {
   // off: 1 for a bet past the bar at +300 or longer, logged and not shown (2026-11-14). The ones
   // still to start when the rule came in (Czech Republic +500, for Nov 15) join them: the owner
   // dropped them before their games.
-  await addColumns(db, 'edgebets', [['off', 'INTEGER']]);
+  // dk: 1 for a bet the card showed at DraftKings' price, from EDGE_BOOK_FROM (2026-11-27).
+  await addColumns(db, 'edgebets', [['off', 'INTEGER'], ['dk', 'INTEGER']]);
   if (!EDGE_OFF_MARKED) {
     await db.prepare('UPDATE edgebets SET off = 1 WHERE off IS NULL AND result IS NULL AND date >= ? AND first_price >= ?').bind(EDGE_OFF_SINCE, EDGE_OFF_PRICE).run();
     EDGE_OFF_MARKED = true;
@@ -9381,17 +9412,21 @@ async function logEdgeBets(db, scan, now) {
   // The long shots off the card are logged as well, marked off (2026-11-14). One that shortens onto
   // the card is the card's from then on, its bet the first price the card showed, as every bet's is.
   const logged = [...scan.bets.map((b) => [b, 0]), ...(scan.off || []).map((b) => [b, 1])];
-  const onto = (col) => `${col} = CASE WHEN edgebets.off = 1 AND excluded.off = 0 THEN excluded.${col} ELSE edgebets.${col} END`;
+  // A bet logged at the best of five books and still to start, once the card shows it at
+  // DraftKings' price (2026-11-27), is the DraftKings card's from then: its bet is that price, as
+  // every bet's is the first price the card showed.
+  const onto = (col) => `${col} = CASE WHEN excluded.off = 0 AND (edgebets.off = 1 OR (edgebets.dk IS NOT 1 AND excluded.dk = 1)) THEN excluded.${col} ELSE edgebets.${col} END`;
   const stmts = logged.map(([b, off]) => db.prepare(
     `INSERT INTO edgebets (date, key, sport, market, label, sub, commence, book, fair_src, prop, grade,
-       first_at, first_price, first_fair, first_ev, first_stake, last_at, last_price, last_fair, last_ev, close_at, close_price, close_fair, off)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       first_at, first_price, first_fair, first_ev, first_stake, last_at, last_price, last_fair, last_ev, close_at, close_price, close_fair, off, dk)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
      ON CONFLICT(date, key) DO UPDATE SET last_at = excluded.last_at, last_price = excluded.last_price, last_fair = excluded.last_fair, last_ev = excluded.last_ev,
-       ${['first_at', 'first_price', 'first_fair', 'first_ev', 'first_stake', 'book'].map(onto).join(', ')},
+       ${['first_at', 'first_price', 'first_fair', 'first_ev', 'first_stake', 'book', 'dk'].map(onto).join(', ')},
        off = CASE WHEN excluded.off = 0 THEN 0 ELSE edgebets.off END
-     WHERE julianday(edgebets.commence) > julianday(?) AND (edgebets.last_price IS NOT excluded.last_price OR edgebets.last_fair IS NOT excluded.last_fair)`
+     WHERE julianday(edgebets.commence) > julianday(?) AND (edgebets.last_price IS NOT excluded.last_price OR edgebets.last_fair IS NOT excluded.last_fair
+       OR (excluded.off = 0 AND edgebets.dk IS NOT excluded.dk))`
   ).bind(ptDateOf(Date.parse(b.commence)), b.key, b.sport, b.market, b.label, b.sub, b.commence, b.book || null, b.fairSrc || null, b.prop ? 1 : 0,
-    JSON.stringify(b.grade || null), nowIso, b.price, b.fair, b.ev, b.stake, nowIso, b.price, b.fair, b.ev, nowIso, b.price, b.fair, off, nowIso));
+    JSON.stringify(b.grade || null), nowIso, b.price, b.fair, b.ev, b.stake, nowIso, b.price, b.fair, b.ev, nowIso, b.price, b.fair, off, b.book === EDGE_BOOK ? 1 : null, nowIso));
   // The close: every logged bet still to start, at this read of its side.
   const open = (await db.prepare('SELECT date, key, commence FROM edgebets WHERE result IS NULL').all()).results || [];
   const byKey = new Map(scan.all.map((o) => [o.key, o]));
@@ -9450,17 +9485,29 @@ async function gradeEdgeBets(db, now) {
 async function edgeBetRecord(env) {
   await ensureEdgeBetSchema(env.DB);
   return recordCached(env, 'edge-bets', async () => {
-    const logged = (await env.DB.prepare("SELECT date, label, book, first_price, first_fair, first_stake, close_fair, result, off FROM edgebets WHERE result IS NOT NULL").all()).results || [];
+    const logged = (await env.DB.prepare("SELECT date, label, book, first_price, first_fair, first_stake, close_fair, result, off, dk FROM edgebets WHERE result IS NOT NULL").all()).results || [];
     // The bets the card showed; the long shots kept off it since Nov 14 have a line of their own.
-    const rows = logged.filter((r) => !r.off), offRows = logged.filter((r) => r.off);
+    const shown = logged.filter((r) => !r.off), offRows = logged.filter((r) => r.off);
     const offDec = offRows.filter((r) => r.result === 'hit' || r.result === 'miss');
     const offCard = { price: EDGE_OFF_PRICE, from: EDGE_OFF_SINCE, n: offDec.length, hit: offDec.filter((r) => r.result === 'hit').length,
       units: round2(offDec.reduce((s, r) => s + (r.result === 'hit' ? decOf(r.first_price) - 1 : -1), 0)) };
-    const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
-    let flat = 0, kelly = 0;
-    for (const r of dec) { const d = decOf(r.first_price); flat += r.result === 'hit' ? d - 1 : -1; kelly += (r.first_stake || 0) * (r.result === 'hit' ? d - 1 : -1); }
-    const clv = rows.filter((r) => r.close_fair != null && r.result !== 'void').map((r) => (r.close_fair / 100 * decOf(r.first_price) - 1) * 100);
-    // Each recent day's own (2026-10-28), for the page's "Last night" recap.
+    // The record is DraftKings' from EDGE_BOOK_FROM (2026-11-27); the best-of-five bets before it
+    // keep their own, dated by their first and last games.
+    const tally = (rows) => {
+      const dec = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
+      let flat = 0, kelly = 0;
+      for (const r of dec) { const d = decOf(r.first_price); flat += r.result === 'hit' ? d - 1 : -1; kelly += (r.first_stake || 0) * (r.result === 'hit' ? d - 1 : -1); }
+      const clv = rows.filter((r) => r.close_fair != null && r.result !== 'void').map((r) => (r.close_fair / 100 * decOf(r.first_price) - 1) * 100);
+      const dates = rows.map((r) => r.date).sort();
+      return { since: dates.length ? dates[0] : null, until: dates.length ? dates[dates.length - 1] : null,
+        n: dec.length, hit: dec.filter((r) => r.result === 'hit').length, push: rows.filter((r) => r.result === 'push').length, void: rows.filter((r) => r.result === 'void').length,
+        units: round2(flat), kellyUnits: round2(kelly), roi: dec.length ? round1(flat / dec.length * 100) : null,
+        clv: { n: clv.length, beat: clv.filter((v) => v > 0).length, avg: clv.length ? round1(clv.reduce((a, v) => a + v, 0) / clv.length) : null } };
+    };
+    const dkRows = shown.filter((r) => r.dk === 1), before = shown.filter((r) => r.dk !== 1);
+    // Each recent day's own (2026-10-28), for the page's "Last night" recap: every bet the card
+    // showed, each with its book.
+    const rows = shown;
     const byDay = {};
     for (const date of [...new Set(rows.map((r) => r.date))].sort().slice(-7)) {
       const l = rows.filter((r) => r.date === date && r.result !== 'void');
@@ -9475,10 +9522,10 @@ async function edgeBetRecord(env) {
     }
     return { data: {
       byDay,
-      since: rows.length ? rows.map((r) => r.date).sort()[0] : null,
-      n: dec.length, hit: dec.filter((r) => r.result === 'hit').length, push: rows.filter((r) => r.result === 'push').length, void: rows.filter((r) => r.result === 'void').length,
-      units: round2(flat), kellyUnits: round2(kelly), roi: dec.length ? round1(flat / dec.length * 100) : null,
-      clv: { n: clv.length, beat: clv.filter((v) => v > 0).length, avg: clv.length ? round1(clv.reduce((a, v) => a + v, 0) / clv.length) : null },
+      // The DraftKings bets' record, at the top level as the one record was before.
+      book: EDGE_BOOK, bookFrom: EDGE_BOOK_FROM,
+      ...tally(dkRows),
+      before: before.length ? tally(before) : null,
       offCard,
     }, complete: true };
   });
@@ -10816,7 +10863,8 @@ async function picksBoard(env) {
     // for the page to show on their legs. Read after the log is written; nothing reads them back.
     try { out.minutes = await picksMinutes(part('minutes').DB, onCard); } catch (e) { /* the legs stand without them */ }
     const withHk = onCard.filter((l) => l.hk);
-    (await priceHists(legDb, withHk.map((l) => l.hk))).forEach((h, i) => { if (h.length > 1) hists.set(withHk[i].legId, h); });
+    // At the best price, as the legs' line has always been: DraftKings' (the fourth) is the edge bets'.
+    (await priceHists(legDb, withHk.map((l) => l.hk))).forEach((h, i) => { if (h.length > 1) hists.set(withHk[i].legId, h.map((p) => p.slice(0, 3))); });
     const shown = (l, i) => ({
       rank: i + 1, kind: l.kind, sport: PICK_KINDS[l.kind].sport, kindLabel: PICK_KINDS[l.kind].label,
       p: round1(l.p), title: l.title, sub: l.sub, commence: l.commence, odds: l.odds == null ? null : l.odds,
@@ -10883,7 +10931,7 @@ async function picksBoard(env) {
       const withHk = scan.bets.filter((b) => b.hk);
       const hs = await priceHists(evEnv.DB, withHk.map((b) => b.hk));
       const histOf = new Map(withHk.map((b, i) => [b.key, hs[i]]));
-      out.evBets = scan.bets.map((b) => { const h = histOf.get(b.key); return { ...evShown(b), ...(h && h.length > 1 ? { hist: h } : {}) }; });
+      out.evBets = scan.bets.map((b) => { const h = edgeBookHist(histOf.get(b.key)); return { ...evShown(b), ...(h.length > 1 ? { hist: h } : {}) }; });
       // Every side priced, for the page's price checker (2026-10-29): a boost
       // or another book's number, read against the same fair and stake rule.
       out.priced = scan.all.map((o) => ({ key: o.key, sport: o.sport, label: o.label, sub: o.sub, commence: o.commence, fair: round1(o.fair), ...(o.prop ? { prop: true } : {}) }));

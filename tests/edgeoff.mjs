@@ -16,6 +16,12 @@
 // clear the bar are the Blazers +400, the Canucks +300, Sassuolo +400 and Lazio +150. And
 // production's /api/picks at 12:04 AM Pacific on Nov 14 (tests/fixtures/picks-20261114-0004.json),
 // for the Czech Republic bet as it was logged. Real SQLite and the real worker.
+//
+// Since Nov 27 the card takes DraftKings' price only (tests/edgedk.mjs): the four raised prices are
+// DraftKings' here (Sassuolo's row was FanDuel's). The Blazers' closing read is their real 7 AM
+// +122, which was Caesars': not a DraftKings price, so they no longer shorten onto the card there;
+// the Canucks at a DraftKings +290 do. The Draw graded before is a bet from before DraftKings only,
+// so it sits on the record's line for those.
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -79,7 +85,7 @@ putBoard('nhl_board:reg', board(F.nhlBoard, (g) => g.id.startsWith(ANA) && { ...
 const gcols = Object.keys(F.gm[0]);
 const gins = sq.prepare(`INSERT OR IGNORE INTO gmpicks (${gcols.join(',')}) VALUES (${gcols.map(() => '?').join(',')})`);
 const SAS = F.gm.find((r) => r.home === 'Sassuolo').game_id;
-for (const r of F.gm.filter((x) => x.game_id === SAS)) gins.run(...gcols.map((k) => (k === 'close_price' ? (r.market === 'h2h' ? 400 : 150) : r[k])));
+for (const r of F.gm.filter((x) => x.game_id === SAS)) gins.run(...gcols.map((k) => (k === 'close_price' ? (r.market === 'h2h' ? 400 : 150) : k === 'book' ? 'draftkings' : r[k])));
 for (const f of FIN.filter((x) => x.sport !== 'soccer')) {
   const g = [...F.nbaBoard.games, ...F.nhlBoard.games].find((x) => x.id === f.game_id);
   sq.prepare(`INSERT OR IGNORE INTO gmpicks (sport, date, market, league, commence, away, home, side, pick, win_prob, entry_price, close_price, game_id, model_ver)
@@ -113,10 +119,12 @@ putBoard('nhl_board:reg', closeBoard(F.nhlBoard));
 await get('/api/picks');
 rows = log();
 ok(row(/Canucks/).close_fair != null && row(/Sassuolo/).close_fair != null && row(/Canucks/).off === 1, 'the ones left off close as any bet does');
-// The Blazers' closing read had them at +122, past the bar and on the card: the card's bet from
-// then, at the first price it showed (tests/edgebets.mjs: "+122 on the close").
-ok(row(/Blazers/).off === 0 && row(/Blazers/).first_price === 122 && row(/Blazers/).close_price === 122 && row(/Blazers/).first_at === new RealDate(NOW).toISOString(),
-  `the Blazers shortened onto the card at the close: its bet is +122, the first price the card showed (${row(/Blazers/).first_price})`);
+// The Blazers' closing read had them at +122, past the bar -- at Caesars. Before DraftKings only
+// that put them on the card at +122; now the bet stays the one logged, off, at DraftKings' +400.
+const blzGame = F.nbaBoard.games.find((g) => g.id.startsWith(LAL));
+ok(blzGame.awayPrice === 122 && blzGame.awayBook === 'williamhill_us' && !p.evBets.some((b) => /Blazers/.test(b.label))
+  && row(/Blazers/).off === 1 && row(/Blazers/).first_price === 400 && row(/Blazers/).dk === 1 && row(/Blazers/).close_price === 122,
+  `the Blazers' +122 at the close was Caesars': not on the card, the bet still DraftKings' +400, off (${row(/Blazers/).first_price}, off ${row(/Blazers/).off})`);
 for (const f of FIN) {
   sq.prepare('UPDATE gmpicks SET result = ?, home_score = ?, away_score = ? WHERE game_id = ? AND market = ? AND pick = ?')
     .run(f.result, f.home_score, f.away_score, f.game_id, f.market, f.pick);
@@ -129,11 +137,11 @@ ok(row(/Blazers/).result === 'hit' && row(/Canucks/).result === 'hit' && row(/Sa
   'they grade as before: the Blazers and the Canucks landed, Sassuolo lost, Lazio won');
 const R = p.edgeRecord;
 console.log('  record ' + JSON.stringify(R));
-ok(R.n === 3 && R.hit === 2 && R.units === Math.round((dec(150) - 1 + dec(122) - 1 - 1) * 100) / 100,
-  `the card's record: Lazio, the Blazers at +122 and the earlier Draw, 2 of 3 (${R.units}u)`);
-ok(R.byDay['2026-10-27'] && R.byDay['2026-10-27'].bets.map((b) => `${b.label} ${b.price}`).sort().join() === 'Blazers ML 122,Lazio ML 150', 'its day for "Last night": Lazio, and the Blazers at +122');
-ok(R.offCard && R.offCard.price === 300 && R.offCard.from === '2026-10-27' && R.offCard.n === 2 && R.offCard.hit === 1 && R.offCard.units === 3 - 1,
-  `the ones left off on their own line, the Canucks +300 and Sassuolo +400: ${R.offCard && `${R.offCard.hit} of ${R.offCard.n}, +${R.offCard.units}u`}`);
+ok(R.n === 1 && R.hit === 1 && R.units === Math.round((dec(150) - 1) * 100) / 100 && R.before && R.before.n === 1 && R.before.hit === 0 && R.before.units === -1,
+  `the card's record: Lazio at DraftKings, 1 of 1 (${R.units}u); the earlier Draw on the line for the bets before, 0 of 1`);
+ok(R.byDay['2026-10-27'] && R.byDay['2026-10-27'].bets.map((b) => `${b.label} ${b.price}`).sort().join() === 'Lazio ML 150', 'its day for "Last night": Lazio');
+ok(R.offCard && R.offCard.price === 300 && R.offCard.from === '2026-10-27' && R.offCard.n === 3 && R.offCard.hit === 2 && R.offCard.units === 4 + 3 - 1,
+  `the ones left off on their own line, the Blazers +400, the Canucks +300 and Sassuolo +400: ${R.offCard && `${R.offCard.hit} of ${R.offCard.n}, +${R.offCard.units}u`}`);
 
 // ---- one that shortens onto the card ---------------------------------------------------------------
 console.log('\n-- a long price that shortens --');
@@ -167,7 +175,7 @@ const P = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'state',
 const live = { ...R, offCard: { ...R.offCard, from: '2026-11-14', n: 0, hit: 0, units: 0 } };
 ok(text(P.edgeRecordHtml(live)).endsWith('+300 or longer: left off since Nov 14, 0 of 6 before · still logged, to see if they come back'),
   `the record says so, before any has graded: "${text(P.edgeRecordHtml(live)).split(' +300')[1] ? '+300' + text(P.edgeRecordHtml(live)).split(' +300')[1] : ''}"`);
-ok(/· since then <b>1 of 2<\/b> · \+2\.00u at 1 unit each/.test(P.edgeRecordHtml(R)), 'and once some have: "since then 1 of 2 · +2.00u"');
+ok(/· since then <b>2 of 3<\/b> · \+6\.00u at 1 unit each/.test(P.edgeRecordHtml(R)), 'and once some have: "since then 2 of 3 · +6.00u"');
 ok(/3%\+ on props, shorter than \+300\. A quarter/.test(P.evBetsHtml({ evBets: [], edgeRecord: R, kelly: p.kelly })), 'the card: "3%+ on props, shorter than +300"');
 NOW = RealDate.parse('2026-10-27T17:30:00Z');
 const priced = [{ key: 'k', sport: 'soccer', label: 'Czech Republic ML', sub: 'x', commence: '2026-10-28T19:45:00Z', fair: 17.9 },

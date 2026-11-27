@@ -19,8 +19,9 @@
 // (tests/fixtures/odds-nfl-links-20261029.json) and Panthers @ Packers'
 // passing-TD props at the props capture's (tests/fixtures/odds-nfl-ptd-links-
 // 20261029.json). The last reads raise two prices to clear the edge bar, as
-// tests/edgebets.mjs does: BetMGM's Packers to -150, FanDuel's Bryce Young
-// under to +120. Real SQLite and the real worker.
+// tests/edgebets.mjs does: DraftKings' Packers to -150 and its Bryce Young
+// under to +120 (BetMGM's and FanDuel's until Nov 27, when an edge bet became
+// DraftKings' price only: tests/edgedk.mjs). Real SQLite and the real worker.
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -121,23 +122,23 @@ ok(ybp.draftkings[0] === -128 && ybp.draftkings[1] === hold(100, -128) && ybp.pi
 
 console.log('\n-- the edge bets --');
 NOW += 5 * 60e3;
-games = GL.map((e) => (e.id !== TNF.id ? e : raise(e, 'betmgm', 'Green Bay Packers', null, -150)));
+games = GL.map((e) => (e.id !== TNF.id ? e : raise(e, 'draftkings', 'Green Bay Packers', null, -150)));
 await get('/api/nfl-ingest'); await get('/api/nfl-board');
-props = raise(PTD, 'fanduel', 'Under', 'Bryce Young', 120);
+props = raise(PTD, 'draftkings', 'Under', 'Bryce Young', 120);
 await get('/api/nfl-capture');
 const d = await get('/api/picks');
 const ml = (d.evBets || []).find((b) => b.label === 'Packers ML'), un = (d.evBets || []).find((b) => /^Bryce Young Under 1\.5/.test(b.label));
 for (const b of [ml, un]) if (b) console.log(`  ${b.label} ${b.price} ${b.book} · fair ${b.fair} · EV +${b.ev}% · ${b.link} · ${(b.books || []).map((x) => `${x.book} ${x.price}`).join(', ')}`);
 if (!ml || !un) console.log('  ' + JSON.stringify(d.evBets) + ' ' + (d.evError || ''));
-ok(ml && ml.price === -150 && ml.book === 'betmgm' && ml.link === out(TNF, 'betmgm', 'Green Bay Packers').link,
-  "BetMGM's -150 on the Packers is an edge bet, at BetMGM, with BetMGM's link -- not DraftKings', the row's first book");
-ok(ml && ml.books && ml.books[0].book === 'betmgm' && ml.books.find((b) => b.book === 'pinnacle').sharp && !ml.books.find((b) => b.book === 'pinnacle').link,
+ok(ml && ml.price === -150 && ml.book === 'draftkings' && ml.link === out(TNF, 'draftkings', 'Green Bay Packers').link,
+  "DraftKings' -150 on the Packers is an edge bet, at DraftKings, with DraftKings' link");
+ok(ml && ml.books && ml.books[0].book === 'draftkings' && ml.books.find((b) => b.book === 'pinnacle').sharp && !ml.books.find((b) => b.book === 'pinnacle').link,
   'its books, best first, the sharp one marked and with no link');
-ok(ml && ml.books.find((b) => b.book === 'draftkings').link === out(TNF, 'draftkings', 'Green Bay Packers').link && ml.books.find((b) => b.book === 'fanduel').link === out(TNF, 'fanduel', 'Green Bay Packers').link,
-  "DraftKings and FanDuel each with their own link: the row's one link was its best price's, so a moneyline a nickel better at BetMGM left them no button (2026-11-01)");
-ok(un && un.books && un.books.find((b) => b.book === 'draftkings').link === by('draftkings', 'Bryce Young', 'Under'), "and DraftKings' under keeps its own link too");
-ok(un && un.price === 120 && un.book === 'fanduel' && un.link === by('fanduel', 'Bryce Young', 'Under') && un.books && un.books[0].book === 'fanduel',
-  "FanDuel's +120 on Bryce Young's under is one too, with FanDuel's link and every book's under");
+ok(ml && ml.books.find((b) => b.book === 'betmgm').link === out(TNF, 'betmgm', 'Green Bay Packers').link && ml.books.find((b) => b.book === 'fanduel').link === out(TNF, 'fanduel', 'Green Bay Packers').link,
+  "FanDuel and BetMGM each with their own link: the row's one link is its best price's, so the others' come from every book's prices (2026-11-01)");
+ok(un && un.books && un.books.find((b) => b.book === 'fanduel').link === by('fanduel', 'Bryce Young', 'Under'), "and FanDuel's under keeps its own link too");
+ok(un && un.price === 120 && un.book === 'draftkings' && un.link === by('draftkings', 'Bryce Young', 'Under') && un.books && un.books[0].book === 'draftkings',
+  "DraftKings' +120 on Bryce Young's under is one too, with DraftKings' link and every book's under");
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');
 process.exit(fail ? 1 : 0);

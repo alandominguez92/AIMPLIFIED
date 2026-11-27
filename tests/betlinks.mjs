@@ -30,8 +30,10 @@
 // games to Oct 28 (tests/fixtures/espn-nba-box-atl-202610.json). The probe
 // reads no sharp book, so one book's real prices stand in for Pinnacle's:
 // BetRivers' in the NBA, BetMGM's in soccer (where it is not a book the board
-// bets). On the third NBA read BetMGM's Hawks price is raised to +120, as the
-// edge-bet test raises prices to clear the bar. Real SQLite and the real worker.
+// bets). On the third NBA read DraftKings' Hawks price is raised to +120, as the
+// edge-bet test raises prices to clear the bar (BetMGM's until Nov 27, when an
+// edge bet became DraftKings' price only: tests/edgedk.mjs). Real SQLite and
+// the real worker.
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -98,22 +100,23 @@ NOW += 3 * 60e3;
 await capture();
 ok(ph(HAWKS.id, 'ml:home').length === 1 && ph(HAWKS.id, 'ml:away').length === 1 && all('SELECT * FROM pricehist').length === 4, 'a read that moves nothing writes nothing');
 
-console.log('\n-- 3:33 AM: BetMGM goes to +120 on the Hawks --');
+console.log('\n-- 3:33 AM: DraftKings goes to +120 on the Hawks --');
 NOW += 3 * 60e3;
-nbaEvents = relabel(NBA, 'betrivers').map((e) => (e.id !== HAWKS.id ? e : { ...e, bookmakers: e.bookmakers.map((b) => (b.key !== 'betmgm' ? b
+nbaEvents = relabel(NBA, 'betrivers').map((e) => (e.id !== HAWKS.id ? e : { ...e, bookmakers: e.bookmakers.map((b) => (b.key !== 'draftkings' ? b
   : { ...b, markets: b.markets.map((m) => ({ ...m, outcomes: m.outcomes.map((o) => (o.name === 'Atlanta Hawks' ? { ...o, price: 120 } : o)) })) })) }));
 await capture();
 g = snap().games.find((x) => x.id === HAWKS.id);
-ok(g.homeBook === 'betmgm' && g.homeLink === MGM_ATL && g.awayLink === FD_CLE, "the Hawks' best price moves to BetMGM, and so does its link; the Cavaliers keep FanDuel's");
-ok(row().link === MGM_ATL && row().close_price === 120, "the logged row's link follows its price");
+ok(g.homeBook === 'draftkings' && g.homeLink === DK_ATL && g.awayLink === FD_CLE, "the Hawks' best price moves to DraftKings, and so does its link; the Cavaliers keep FanDuel's");
+ok(row().link === DK_ATL && row().close_price === 120, "the logged row's link follows its price");
 ok(ph(HAWKS.id, 'ml:home').map((p) => p.price).join(',') === '-108,120' && ph(HAWKS.id, 'ml:away').length === 1, "the Hawks' history has the move; the Cavaliers' still one point");
 
 console.log('\n-- /api/picks: the edge bet --');
 const d = await get('/api/picks');
 const bet = (d.evBets || []).find((b) => b.label === 'Hawks ML');
 console.log(`  ${bet ? `${bet.label} ${bet.price} ${bet.book} · fair ${bet.fair} · EV +${bet.ev}% · link ${bet.link} · hist ${JSON.stringify(bet.hist)}` : JSON.stringify(d.evBets) + ' ' + (d.evError || '')}`);
-ok(bet && bet.price === 120 && bet.ev === 10 && bet.link === MGM_ATL, 'the Hawks at +120 are an edge bet, with BetMGM\'s link');
-ok(bet && Array.isArray(bet.hist) && bet.hist.length === 2 && bet.hist[0][1] === 50 && bet.hist[0][2] === -108 && bet.hist[1][2] === 120, 'and its history: -108 at 3:27, +120 at 3:33, fair 50% throughout');
+ok(bet && bet.price === 120 && bet.ev === 10 && bet.book === 'draftkings' && bet.link === DK_ATL, 'the Hawks at +120 are an edge bet, with DraftKings\' link');
+// At DraftKings' own price (2026-11-27): -110 at 3:27, when FanDuel's -108 was the best.
+ok(bet && Array.isArray(bet.hist) && bet.hist.length === 2 && bet.hist[0][1] === 50 && bet.hist[0][2] === -110 && bet.hist[1][2] === 120, 'and its history at DraftKings: -110 at 3:27, +120 at 3:33, fair 50% throughout');
 ok(bet && !('hk' in bet) && !('grade' in bet), "the history key stays in the worker");
 ok(Array.isArray(d.legs) && !d.error, 'the list still reads');
 // A Picks moneyline's books (2026-10-29): every book's own link, from the
@@ -127,12 +130,12 @@ ok(pel && pelLinks.length === 4 && ['draftkings', 'fanduel', 'betmgm', 'williamh
 console.log('\n-- every book, side by side --');
 const hold = (...am) => Math.round((am.reduce((s, x) => s + (x > 0 ? 100 / (x + 100) : -x / (-x + 100)), 0) - 1) * 1000) / 10;
 console.log('  ' + (bet && bet.books || []).map((b) => `${b.book} ${b.price} (${b.hold}%)${b.sharp ? ' sharp' : ''}${b.link ? ' link' : ''}`).join(' | '));
-ok(bet && bet.books && bet.books.map((b) => b.book).join(',') === 'betmgm,fanduel,draftkings,williamhill_us,pinnacle', "the Hawks' books, best price first: BetMGM's +120, FanDuel's -108, then the -110s");
-ok(bet && bet.books[0].hold === hold(120, -110) && bet.books[1].hold === hold(-108, -108) && bet.books[2].hold === hold(-110, -110), `each with its hold on the game: BetMGM's ${hold(120, -110)}% at the raised +120, FanDuel's ${hold(-108, -108)}%, DraftKings' ${hold(-110, -110)}%`);
+ok(bet && bet.books && bet.books.map((b) => b.book).join(',') === 'draftkings,fanduel,betmgm,williamhill_us,pinnacle', "the Hawks' books, best price first: DraftKings' +120, FanDuel's -108, then the -110s");
+ok(bet && bet.books[0].hold === hold(120, -110) && bet.books[1].hold === hold(-108, -108) && bet.books[2].hold === hold(-110, -110), `each with its hold on the game: DraftKings' ${hold(120, -110)}% at the raised +120, FanDuel's ${hold(-108, -108)}%, BetMGM's ${hold(-110, -110)}%`);
 ok(bet && bet.books.find((b) => b.book === 'pinnacle').sharp === true && bet.books.filter((b) => b.sharp).length === 1, 'the fair\'s own book is marked sharp');
 ok(bet && bet.books.every((b) => b.book === 'pinnacle' ? !b.link : b.link === linkOf([HAWKS], b.book, 'Atlanta Hawks')), "and every book's own link to the Hawks; the sharp one none");
 const bp = JSON.parse(sq.prepare("SELECT book_prices FROM gmpicks WHERE sport = 'nba' AND game_id = ?").get(HAWKS.id).book_prices);
-ok(bp.betmgm[0] === 120 && bp.fanduel[0] === -108 && bp.fanduel[1] === hold(-108, -108), "the logged row keeps them too, as last read");
+ok(bp.draftkings[0] === 120 && bp.fanduel[0] === -108 && bp.fanduel[1] === hold(-108, -108), "the logged row keeps them too, as last read");
 
 console.log('\n-- the price checker --');
 const hk = (d.priced || []).find((x) => x.label === 'Hawks ML');
@@ -184,8 +187,8 @@ try {
 const hrow = sq.prepare("SELECT * FROM gmpicks WHERE sport = 'nba' AND game_id = ?").get(HAWKS.id);
 const now_ = RP(hrow);
 console.log(`  first read ${hrow.entry_price} ${hrow.book}; now ${now_.price} ${now_.book}`);
-ok(hrow.book === 'fanduel' && now_.price === 120 && now_.book === 'betmgm', "the Hawks' row was first read at FanDuel's -108; its +120 now is BetMGM's, as its link says");
-ok(RP({ ...hrow, link: null }).book === 'betmgm' && RP({ ...hrow, link: 'https://sportsbook.draftkings.com/?outcomes=x' }).book === 'betmgm',
+ok(hrow.book === 'fanduel' && now_.price === 120 && now_.book === 'draftkings', "the Hawks' row was first read at FanDuel's -108; its +120 now is DraftKings', as its link says");
+ok(RP({ ...hrow, link: null }).book === 'draftkings' && RP({ ...hrow, link: FD_ATL }).book === 'draftkings',
   'with no link, or one whose book is not at that price, the book in its price list at +120');
 ok(RP({ ...hrow, link: null, book_prices: null }).book === 'fanduel', "with neither, the row's own book");
 for (const gm of ATL) for (const r of T.nbaBoxRows(gm, gm.gameId, gm.date, gm.seasonType)) {
@@ -241,7 +244,7 @@ ok(href(P.betLinkHtml(BR)) === 'https://nj.betrivers.com/?page=sportsbook#event/
 ok(P.betLinkHtml('javascript:alert(1)') === '' && P.betLinkHtml(null) === '' && P.betLinkHtml('http://x.com') === '', 'a link that is not https is no link');
 h = P.priceSparkHtml(bet && bet.hist);
 console.log(`  ${text(h)}`);
-ok((h.match(/<path /g) || []).length === 2 && text(h) === 'opened -108 → +120 now · fair 50%', 'the price line: two lines, the first price and the latest, the fair it held');
+ok((h.match(/<path /g) || []).length === 2 && text(h) === 'opened -110 → +120 now · fair 50%', 'the price line: two lines, the first price and the latest, the fair it held');
 ok(P.priceSparkHtml([[bet && bet.hist[0][0], 50, -108]]) === '' && P.priceSparkHtml(null) === '', 'one point is no line');
 h = P.trendBarsHtml(t);
 console.log(`  ${text(h)}`);
@@ -259,7 +262,7 @@ const toRead = P.booksHtml(bet && bet.books, true);
 ok(!/bet-at|Set state/.test(toRead) && (toRead.match(/class="bk"/g) || []).length === (bet ? bet.books.length : -1) && /\+120/.test(toRead), 'to read only (a moneyline, 2026-11-01): every book and price, no bet links');
 h = P.booksHtml(bet && bet.books);
 console.log(`  ${text(h)}`);
-ok(/^<details class="pk-books">/.test(h) && text(h).startsWith(`Every book (5) · best MGM +120 · lowest hold MGM ${hold(120, -110).toFixed(1)}%`), 'the fold names the best price and the lowest hold');
+ok(/^<details class="pk-books">/.test(h) && text(h).startsWith(`Every book (5) · best DK +120 · lowest hold DK ${hold(120, -110).toFixed(1)}%`), 'the fold names the best price and the lowest hold');
 ok((h.match(/<span class="bk-r best">/g) || []).length === 1 && (h.match(/<span class="bk-r sh">/g) || []).length === 1 && (h.match(/class="bet-at sm"/g) || []).length === 4,
   'one best row, the sharp one marked, a small bet link on each of the four books');
 // Rows of its own since the evening of 2026-10-29: as list items, the Picks

@@ -37,6 +37,12 @@
 // AM, a minute after production's last read of them. A closing read keeps an
 // underdog's 7 AM price, which the export does not carry. Real SQLite and the
 // real worker.
+//
+// Since Nov 27 the card takes DraftKings' price only (the owner's call,
+// tests/edgedk.mjs). The four raised prices are DraftKings' here (Sassuolo's
+// row was FanDuel's), so the mechanics above are tested as they run now; the
+// card's real FanDuel prices that day -- Tijuana +600, CF Montreal +450 and
+// the Portland-St. Louis draw +330 -- are priced and no longer bets.
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -78,7 +84,7 @@ const gcols = Object.keys(F.gm[0]);
 const gins = sq.prepare(`INSERT OR IGNORE INTO gmpicks (${gcols.join(',')}) VALUES (${gcols.map(() => '?').join(',')})`);
 const readAt = (r) => r.close_at || r.entry_at;
 const SAS = F.gm.find((r) => r.home === 'Sassuolo').game_id;
-for (const r of F.gm.filter((x) => x.game_id === SAS)) gins.run(...gcols.map((k) => (k === 'close_price' ? (r.market === 'h2h' ? 400 : 150) : r[k])));
+for (const r of F.gm.filter((x) => x.game_id === SAS)) gins.run(...gcols.map((k) => (k === 'close_price' ? (r.market === 'h2h' ? 400 : 150) : k === 'book' ? 'draftkings' : r[k])));
 for (const f of FIN.filter((x) => x.sport !== 'soccer')) {
   const g = [...F.nbaBoard.games, ...F.nhlBoard.games].find((x) => x.id === f.game_id);
   sq.prepare(`INSERT OR IGNORE INTO gmpicks (sport, date, market, league, commence, away, home, side, pick, win_prob, entry_price, close_price, game_id, model_ver)
@@ -111,8 +117,8 @@ p = await get('/api/picks');
 rows = log();
 for (const b of p.evBets) console.log(`  ${b.label} ${b.price}: fair ${b.fair}% -> +${b.ev}%`);
 const tij = row(/Tijuana/), cinRow = F.gm.find((r) => r.pick === 'FC Cincinnati');
-ok(tij.first_price === 600 && tij.first_fair === 14.6 && tij.first_ev === 2.2 && p.evBets.filter((b) => b.sport === 'soccer').map((b) => b.label).join() === 'Tijuana ML',
-  "the card's own soccer bet that afternoon, as production priced it: Tijuana +600 on 14.6%");
+ok(!tij.key && !p.evBets.some((b) => b.sport === 'soccer') && (p.priced || []).some((x) => x.label === 'Tijuana ML') && F.gm.find((r) => r.pick === 'Tijuana').book === 'fanduel',
+  "the card's own soccer bet that afternoon, Tijuana +600 on 14.6%, was FanDuel's price: not a bet since Nov 27, and still priced for the checker");
 ok(!rows.some((r) => /Cincinnati/.test(r.label)) && readAt(cinRow) === '2026-10-27T12:05:55.302Z'
   && F.gm.filter((r) => r.league === 'mls').some((r) => readAt(r) === '2026-10-27T20:30:33.154Z'),
   "FC Cincinnati's +410 is left off: its row kept the 5 AM price after the 1:30 PM read gave its game's lead to another side");
@@ -153,7 +159,7 @@ for (const r of rows) console.log(`  ${r.label}: ${r.result}`);
 ok(row(/Blazers/).result === 'hit' && row(/Canucks/).result === 'hit',
   "the underdogs by the favourites' rows: the Lakers lost 136-129 and the Ducks 6-5, so the Blazers and the Canucks landed");
 ok(row(/Lazio/).result === 'hit' && row(/Sassuolo/).result === 'miss', 'soccer by the score: Lazio won 6-2 at Sassuolo');
-ok(row(/Tijuana/).result == null, 'the bet still to play stays open');
+ok(!rows.some((r) => /Tijuana/.test(r.label)), 'Tijuana, at FanDuel\'s price, never went in the log');
 
 const graded = rows.filter((r) => r.result === 'hit' || r.result === 'miss');
 const flat = r2(graded.reduce((s, r) => s + (r.result === 'hit' ? dec(r.first_price) - 1 : -1), 0));
@@ -221,7 +227,8 @@ const P = new Function('esc', 'AM', 'pct0', 'soccerKick', 'PICK_SPORT', 'state',
   esc, (o) => (o > 0 ? '+' + o : String(o)), (v) => `${Math.round(v)}%`, (t) => t, { nba: 'NBA', nhl: 'NHL', soccer: 'Soccer', nfl: 'NFL' }, ui,
   (d) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(new RealDate(d + 'T12:00:00Z')));
 // The line for the long shots left off since Nov 14 (tests/edgeoff.mjs) follows it; this day was before.
-ok(text(P.edgeRecordHtml({ ...R, offCard: null })) === `These bets since Oct 27: 3 of 4 won · +${flat.toFixed(2)}u at 1 unit each · beat the closing line ${R.clv.beat} of 4 (average ${R.clv.avg > 0 ? '+' : ''}${R.clv.avg}%)`,
+ok(R.book === 'draftkings' && !R.before
+  && text(P.edgeRecordHtml({ ...R, offCard: null })) === `At DraftKings since Oct 27: 3 of 4 won · +${flat.toFixed(2)}u at 1 unit each · beat the closing line ${R.clv.beat} of 4 (average ${R.clv.avg > 0 ? '+' : ''}${R.clv.avg}%)`,
   `the card's record line: "${text(P.edgeRecordHtml(R))}"`);
 ok(/Logged from Oct 28/.test(P.edgeRecordHtml({ n: 0, clv: { n: 0 } })), 'and before any has graded, that they are being kept');
 // The card at 10:21 AM, as it showed them, against a $500 bankroll.
@@ -254,16 +261,21 @@ const mls = p.evBets.filter((b) => / · MLS$/.test(b.sub));
 console.log('  ' + mls.map((b) => `${b.label} ${b.price} +${b.ev}%`).join(' | '));
 const stale = MLS.filter((r) => readAt(r) < '2026-10-28T19:00:00Z');
 console.log(`  not read at 12:20 PM: ${stale.map((r) => `${r.pick} (${r.market}, ${readAt(r)})`).join(', ')}`);
-ok(mls.map((b) => b.label).join() === 'CF Montreal ML,Draw' && mls[1].sub.startsWith('Portland Timbers @ St. Louis City SC'),
-  'the MLS bets are the sides the 12:20 PM read priced: CF Montreal +450 and the Portland-St. Louis draw +330, as production listed them');
-ok(!p.evBets.some((b) => /Cincinnati/.test(b.label)) && stale.some((r) => r.pick === 'FC Cincinnati'),
-  'and not FC Cincinnati +410, which production listed on its Oct 27 5 AM price');
+// Production listed CF Montreal +450 and the Portland-St. Louis draw +330 that day, both FanDuel's.
+const pr = (p.priced || []).filter((x) => / · MLS$/.test(x.sub));
+ok(!mls.length && pr.some((x) => x.label === 'CF Montreal ML') && pr.some((x) => x.label === 'Draw' && x.sub.startsWith('Portland Timbers @ St. Louis City SC'))
+  && MLS.filter((r) => r.pick === 'CF Montreal' || (r.pick === 'Draw' && r.close_price === 310)).every((r) => r.book === 'fanduel'),
+  'the sides the 12:20 PM read priced, CF Montreal +450 and the Portland-St. Louis draw, were FanDuel\'s: priced, and since Nov 27 not bets');
+ok(!p.evBets.some((b) => /Cincinnati/.test(b.label)) && !pr.some((x) => /Cincinnati/.test(x.label)) && stale.some((r) => r.pick === 'FC Cincinnati'),
+  'and FC Cincinnati +410, on its Oct 27 5 AM price, is not even priced');
 // Production's log took it at its first read, before the card left frozen
 // rows off: that row is voided, and the record does not count it.
 const CIN = 'soc:995383601ec82bc39259205612a1f007:res:FC Cincinnati';
 sq.prepare("INSERT INTO edgebets (date, key, sport, market, label, commence, first_price, first_fair, first_ev, first_stake, close_price, close_fair, result) VALUES ('2026-10-28', ?, 'soccer', 'ml', 'FC Cincinnati ML', '2026-10-28T23:30:00Z', 410, 20.7, 5.6, 0.3, 410, 20.7, NULL)").run(CIN);
 const before2 = (await get('/api/picks')).edgeRecord;
-ok(sq.prepare('SELECT result FROM edgebets WHERE key = ?').get(CIN).result === 'void' && before2.n === R.n && before2.void === R.void + 1 && before2.clv.n === R.clv.n,
+// It was logged before DraftKings only (no dk), so it sits with the bets before (2026-11-27).
+ok(sq.prepare('SELECT result FROM edgebets WHERE key = ?').get(CIN).result === 'void' && before2.n === R.n && before2.void === R.void && before2.clv.n === R.clv.n
+  && before2.before && before2.before.void === 1 && before2.before.n === 0 && before2.before.clv.n === 0,
   "the log's FC Cincinnati +410 from production's first read is void, and counts for nothing");
 const rp = alift('renderPicks');
 // (Since later on 2026-10-28 the "Last night" recap leads: tests/flashy.mjs.)

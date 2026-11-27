@@ -6639,8 +6639,11 @@
     const days = h && Array.isArray(h.days);
     const last = ptDayOf(Date.now() - 864e5);
     const night = days ? recapDay(h, edge, last, false, true) : '';
+    // DraftKings' run once it has one (2026-11-27); till then the best-book bets', dated.
+    const bf = edge && edge.before;
     const clv = edge && edge.clv && edge.clv.n && edge.since
-      ? `Since ${shortDay(edge.since)} the edge bets have beaten the close ${edge.clv.beat} of ${edge.clv.n}` : '';
+      ? `${edge.book === 'draftkings' ? 'At DraftKings since' : 'Since'} ${shortDay(edge.since)} the edge bets have beaten the close ${edge.clv.beat} of ${edge.clv.n}`
+      : bf && bf.clv && bf.clv.n ? `From ${shortDay(bf.since)} to ${shortDay(bf.until)}, at the best book's price, the edge bets beat the close ${bf.clv.beat} of ${bf.clv.n}` : '';
     return `<section class="pk-pod${night && min ? ' min' : ''}" aria-labelledby="pkPodH">`
       + `<div class="pod-h"><h2 id="pkPodH">Picks of the day</h2><span class="pod-meta">${night ? `Last night · ${esc(shortDay(last))} · ` : ''}logged as shown</span>`
       + (night ? `<button type="button" class="pod-tg" data-action="pod-min" aria-expanded="${!min}">${min ? 'Enlarge' : 'Minimize'}</button>` : '')
@@ -7368,8 +7371,10 @@
     // the reader left it (renderPicks' data-keep). The line under the title shows only folded.
     const wide = typeof window === 'undefined' || window.innerWidth > 640;
     const head = `<summary class="tc-head"><span class="tc-title">Bets with an edge</span>${bets.length ? `<span class="tc-rec">¼ Kelly total <b>${esc(stakeTxt(total))}</b></span>` : ''}`
-      + `<span class="pk-fold-k">${bets.length ? `${bets.length} bet${bets.length === 1 ? '' : 's'} at the sportsbook` : 'None right now'}, and Check a price</span></summary>`
-      + `<div class="tc-sub">At the sportsbook: prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props${d && d.kelly && d.kelly.offPrice ? `, shorter than ${esc(AM(d.kelly.offPrice))}` : ''}. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check the book before you bet.</div>`
+      // DraftKings only (2026-11-27, the owner's call): the worker prices each side at DraftKings'
+      // own number and leaves out what DraftKings does not quote.
+      + `<span class="pk-fold-k">${bets.length ? `${bets.length} bet${bets.length === 1 ? '' : 's'} at DraftKings` : 'None right now'}, and Check a price</span></summary>`
+      + `<div class="tc-sub">At DraftKings: its prices that beat the sharp line (Pinnacle's where it quotes) by 1.5%+ on game lines, 3%+ on props${d && d.kelly && d.kelly.offPrice ? `, shorter than ${esc(AM(d.kelly.offPrice))}` : ''}. A quarter of Kelly's stake, as a share of your bankroll. Prices are the last read: check DraftKings before you bet.</div>`
       + (scale < 1 ? `<div class="tc-sub pk-capped">Held to your ${esc(String(cap))}% daily cap: each stake is ${Math.round(scale * 100)}% of its Kelly.</div>` : '');
     const list = bets.length ? `<ol class="tc-legs pk-ev-list">${bets.map((b) => `<li><div class="tc-leg">`
       + `<span class="tc-l1"><b>${esc(b.label)}</b><span class="tc-p pk-ev-up">+${esc(String(b.ev))}%</span></span>`
@@ -7380,17 +7385,24 @@
       + `${b.asOf ? ` · <span class="pk-asof">priced ${esc(soccerKick(b.asOf))}</span>` : ''}</span>`
       + priceSparkHtml(b.hist) + betLinkHtml(legLink(b)) + booksHtml(b.books)
       + `</div></li>`).join('')}</ol>`
-      : '<div class="tc-wait-note">No price beats the sharp line by enough right now.</div>';
+      : '<div class="tc-wait-note">No DraftKings price beats the sharp line by enough right now.</div>';
     return `<details class="nba-pp pk-card pk-ev-card pk-fold" data-keep="ev"${wide ? ' open' : ''}>${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}${priceCheckHtml(d)}</details>`;
   }
   // The edge bets' own record (2026-10-28): won and lost, units, and how many
   // beat the closing line.
+  // At DraftKings from Nov 27 (the owner's call), and the bets before at the best book's price, Oct
+  // 28 to Nov 27, on a line of their own: the two are different bets.
   function edgeRecordHtml(r) {
     if (!r) return '';
-    if (!r.n && !(r.clv && r.clv.n)) return '<div class="tc-sub pk-record">Logged from Oct 28: each bet as first shown, its closing price, and how it went.</div>';
     const u = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(2)}u`;
-    return `<div class="tc-sub pk-record">These bets since ${esc(shortDay(r.since))}: <b>${r.hit} of ${r.n}</b> won · ${u(r.units)} at 1 unit each`
-      + (r.clv && r.clv.n ? ` · beat the closing line <b>${r.clv.beat} of ${r.clv.n}</b> (average ${r.clv.avg > 0 ? '+' : ''}${r.clv.avg}%)` : '') + '</div>'
+    const line = (x) => `<b>${x.hit} of ${x.n}</b> won · ${u(x.units)} at 1 unit each`
+      + (x.clv && x.clv.n ? ` · beat the closing line <b>${x.clv.beat} of ${x.clv.n}</b> (average ${x.clv.avg > 0 ? '+' : ''}${x.clv.avg}%)` : '');
+    const some = (x) => !!x && (x.n || (x.clv && x.clv.n));
+    const dk = r.book === 'draftkings';
+    const b = r.before;
+    return (some(r) ? `<div class="tc-sub pk-record">${dk ? 'At DraftKings since' : 'These bets since'} ${esc(shortDay(r.since))}: ${line(r)}</div>`
+      : `<div class="tc-sub pk-record">${dk ? `At DraftKings from ${esc(shortDay(r.bookFrom))}` : 'Logged from Oct 28'}: each bet as first shown, its closing price, and how it went.${dk ? ' None graded yet.' : ''}</div>`)
+      + (some(b) ? `<div class="tc-sub pk-record">Before, at the best book's price, ${esc(shortDay(b.since))} to ${esc(shortDay(b.until))}: ${line(b)}</div>` : '')
       // The long shots left off (2026-11-14, the owner's "do both"): +300 or longer went 0 of 6 on
       // the card. Logged still, so their own line says whether they come back.
       + (r.offCard && r.offCard.price ? `<div class="tc-sub pk-record">${esc(AM(r.offCard.price))} or longer: left off since ${esc(shortDay(r.offCard.from))}, 0 of 6 before`
