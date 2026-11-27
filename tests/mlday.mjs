@@ -51,7 +51,7 @@ const noop = () => '';
 const ARGS = { state, document: { getElementById: elOf }, nhlRecordHtml: noop, propsCardHtml: noop, nhlPpCardHtml: noop, hotCardHtml: noop, nhlTodayParts: () => ({ top: '', ml: (t) => t }),
   nbaPpCardHtml: noop, nbaHotCardHtml: noop, nbaTodayParts: () => ({ top: '', ml: (t) => t }), offerStar: noop, miniBar: noop, avatarHtml: noop, nbaMlLeg: () => ({}), nhlMlLeg: () => ({}), mlTabDetail: noop };
 const NAMES = ['esc', 'AM', 'BOOK_LABEL', 'bkLabel', 'impliedPct', 'r1', 'soccerKick', 'kickWhole', 'nbaNick', 'nhlNick', 'ptDayOf', 'propDayName', 'propDayTitle',
-  'ML_TABS', 'mlTabRow', 'mlDaySplit', 'mlLaterOpen', 'mlLaterHtml', 'mlTableGames', 'mlCountText', 'renderNba', 'renderNhl', 'dispatchAction'];
+  'ML_TABS', 'mlTabRow', 'mlDaySplit', 'mlLaterOpen', 'mlLaterHtml', 'mlTableGames', 'mlCountText', 'propData', 'mlDayTotal', 'mlPricedText', 'mlWaitHtml', 'renderNba', 'renderNhl', 'dispatchAction'];
 let F = null;
 try {
   F = new Function(...Object.keys(ARGS), NAMES.map(lift).join('\n') + '\nreturn { renderNba, renderNhl, dispatchAction, mlLaterOpen };')(...Object.values(ARGS));

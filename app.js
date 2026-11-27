@@ -366,23 +366,30 @@
       + `<span>proj <b>${esc(String(proj))}</b></span> <span><span class="dot">·</span> line ${esc(String(line))}</span> <span><span class="dot">·</span> ${gap}</span></span></span></span>`;
   }
   // The same bar under a moneyline on Picks of the day (2026-10-28, the
-  // owner's call): the boards' fair-against-price bar, the fill the chance the
-  // leg's stake is built on (kellyP: its chance brought toward how legs like it
-  // have landed), the tick the chance its best price needs to break even, and
-  // the gap between them named as the player bar names its cushion -- the edge
-  // in points.
+  // owner's call): the boards' fair-against-price bar, the fill the chance
+  // shown (the sharp books' fair, Pinnacle's first), the tick the chance its
+  // best price needs to break even, and the gap between them named as the
+  // player bar names its cushion -- the edge in points.
+  // Until 2026-11-27 the fill and the gap were the chance the stake is built
+  // on (kellyP: brought toward how legs like it have landed), a few points
+  // under the one shown above 80%: Scotland, 81.3% at -575, read "7.4 points
+  // short" where the price needs 85.2%, 3.9 more (the PrizePicks payouts doc's
+  // Juventus, 82% and "6.3 short"). The owner's call: Pinnacle's is the
+  // measure. The stake is still sized on kellyP, and the title says so.
   function mlChanceLineHtml(x) {
     if (typeof x.odds !== 'number') return '';
     const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
-    const p = typeof x.kellyP === 'number' ? x.kellyP : x.p;
+    const p = typeof x.p === 'number' ? x.p : x.kellyP;
     if (typeof p !== 'number') return '';
-    const gap = Math.round((p - need) * 10) / 10;
-    const g = gap > 0 ? `<b class="u">${gap} points of edge</b>` : gap < 0 ? `<b class="o">${Math.abs(gap)} points short</b>` : 'right on the price';
-    const onRec = typeof x.kellyP === 'number' && typeof x.p === 'number' && x.kellyP < x.p - 0.5;
+    const gap = Math.round((p - need) * 10) / 10, pts = Math.abs(gap) === 1 ? 'point' : 'points';
+    const g = gap > 0 ? `<b class="u">${gap} ${pts} of edge</b>` : gap < 0 ? `<b class="o">${Math.abs(gap)} ${pts} short</b>` : 'right on the price';
     const odds = x.odds > 0 ? `+${x.odds}` : String(x.odds);
-    return `<span class="pp-projbar"${onRec ? ` title="${esc(`${Math.round(x.p)}% as listed, brought toward how legs like it have landed`)}"` : ''}>${miniBar(p, need, (v) => v)}`
-      + `<span class="bw-cush">chance <b>${Math.round(p * 10) / 10}%</b>${onRec ? ' on its record' : ''} · ${esc(odds)} needs <b>${Math.round(need * 10) / 10}%</b> · ${g}</span></span>`;
+    return `<span class="pp-projbar"${mlStakeTitle(x)}>${miniBar(p, need, (v) => v)}`
+      + `<span class="bw-cush">chance <b>${Math.round(p * 10) / 10}%</b> · ${esc(odds)} needs <b>${Math.round(need * 10) / 10}%</b> · ${g}</span></span>`;
   }
+  // Where the stake's chance sits under the one shown, a title says what it is sized on.
+  const mlStakeTitle = (x) => (typeof x.kellyP === 'number' && typeof x.p === 'number' && x.kellyP < x.p - 0.5
+    ? ` title="${esc(`The stake is sized on ${Math.round(x.kellyP * 10) / 10}%: the ${Math.round(x.p * 10) / 10}% shown, brought toward how legs like it have landed`)}"` : '');
 
   // ---------------------------------------------------------------------
   // DOM refs
@@ -6309,7 +6316,7 @@
     const m = team ? null : String(x.title || '').match(/^(.*?) (Under|Over) (.+)$/);
     const name = m ? m[1] : String(x.title || '').replace(/ ML$/, '');
     const pick = m ? `${m[2]} ${m[3]}` : / ML$/.test(String(x.title || '')) ? 'to win' : '';
-    const tile = (label, value, sub, cls) => `<div class="lc-tile"><span class="lc-tk">${label}</span><b class="lc-tv${cls ? ' ' + cls : ''}">${value}</b>${sub ? `<span class="lc-ts">${sub}</span>` : ''}</div>`;
+    const tile = (label, value, sub, cls, attrs = '') => `<div class="lc-tile"${attrs}><span class="lc-tk">${label}</span><b class="lc-tv${cls ? ' ' + cls : ''}">${value}</b>${sub ? `<span class="lc-ts">${sub}</span>` : ''}</div>`;
     const tiles = [];
     // The best card's market tile: PrizePicks' line, and what the sharp books make it, if any.
     let market = '';
@@ -6317,12 +6324,13 @@
     // rather than "no sharp price".
     if (best && !team && x.spec && x.spec.pp && typeof x.sharp !== 'number') market = tile('Market', `PrizePicks ${esc(String(x.spec.pp.line))}`, x.kind === 'nfl_ptd' ? `sharp books ${esc(pct0(x.p))}` : 'no sharp price at this line');
     if (team && typeof x.odds === 'number') {
-      // What its price needs, and where its chance sits against that (mlChanceLineHtml's gap).
+      // What its price needs, and where the chance shown sits against that (mlChanceLineHtml's gap,
+      // on the chance shown since 2026-11-27).
       const need = (x.odds < 0 ? -x.odds / (-x.odds + 100) : 100 / (x.odds + 100)) * 100;
-      const kp = typeof x.kellyP === 'number' ? x.kellyP : x.p;
-      const g = typeof kp === 'number' ? Math.round((kp - need) * 10) / 10 : null;
+      const sp = typeof x.p === 'number' ? x.p : x.kellyP;
+      const g = typeof sp === 'number' ? Math.round((sp - need) * 10) / 10 : null;
       tiles.push(tile(`Book at ${esc(AM(x.odds))} needs`, `${Math.round(need * 10) / 10}%`,
-        g == null ? '' : g > 0 ? `<span class="u">${g} of edge</span>` : g < 0 ? `<span class="o">${Math.abs(g)} short</span>` : 'on the price'));
+        g == null ? '' : g > 0 ? `<span class="u">${g} of edge</span>` : g < 0 ? `<span class="o">${Math.abs(g)} short</span>` : 'on the price', '', mlStakeTitle(x)));
     } else if (typeof x.sharp === 'number') {
       // The chance shown blends the model's with the sharp books' (2026-10-27) where they differ,
       // save a rebounds Less above the sharp line: its chance is last season's rate for the kind
@@ -7075,8 +7083,11 @@
     const y = (v) => (H - 3 - (v - lo) / (hi - lo) * (H - 6)).toFixed(1);
     const step = (f) => pts.map((p, i) => (i ? `H${x(Date.parse(p[0]))}V${y(f(p))}` : `M${x(t0)} ${y(f(p))}`)).join('') + `H${x(tn)}`;
     const a = pts[0], b = pts[pts.length - 1];
-    const px = a[2] === b[2] ? `<b>${esc(AM(b[2]))}</b> throughout` : `opened <b>${esc(AM(a[2]))}</b> → <b>${esc(AM(b[2]))}</b> now`;
-    const fair = a[1] === b[1] ? `fair <b>${b[1]}%</b>` : `fair ${a[1]}% → <b>${b[1]}%</b>`;
+    // A swatch of each line's colour names it (2026-11-27, the PrizePicks payouts doc): the key was
+    // only in the title, which a phone never shows.
+    const key = (k) => `<i class="sp-key sp-key-${k}" aria-hidden="true"></i>`;
+    const px = `${key('px')}price ` + (a[2] === b[2] ? `<b>${esc(AM(b[2]))}</b> throughout` : `opened <b>${esc(AM(a[2]))}</b> → <b>${esc(AM(b[2]))}</b> now`);
+    const fair = `${key('fair')}fair ` + (a[1] === b[1] ? `<b>${b[1]}%</b>` : `${a[1]}% → <b>${b[1]}%</b>`);
     return `<span class="pk-spark" title="${esc(`${pts.length} reads since ${soccerKick(a[0])}: the gold line is the chance the price needs, the teal the sharp books' fair chance`)}">`
       + `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path class="sp-px" d="${step((p) => impPct(p[2]))}"/><path class="sp-fair" d="${step((p) => p[1])}"/></svg>`
       + `<span class="bw-cush">${px} · ${fair}</span></span>`;
@@ -8002,7 +8013,7 @@
     if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
     const sp = mlDaySplit(d.games), games = mlTableGames('nba', sp);
-    if (count) count.textContent = mlCountText(sp);
+    if (count) count.textContent = mlPricedText('nba', sp);
     const pre = games.some((g) => g.league === 'pre');
     if (note) {
       note.textContent = 'Sharp-book fair line · best DK/FD price'
@@ -8017,7 +8028,7 @@
     const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
     const table = !games.length
-      ? `<div class="nfl-empty">No NBA games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`
+      ? mlWaitHtml('nba', d)
       : `<div class="board view-moneyline"><div class="board-inner">`
         + `<div class="board-head-row">${head}</div>`
         + `<div>${games.map((g) => mlTabRow(g, 'nba')).join('')}</div>`
@@ -8133,6 +8144,39 @@
   // The day's games, and the later ones once shown early.
   const mlTableGames = (sport, sp) => sp.shown.concat(mlLaterOpen(sport, sp) ? sp.later : []);
   const mlCountText = (sp, now = Date.now(), noun = 'game') => (sp.shown.length ? `${sp.shown.length} ${noun}${sp.shown.length === 1 ? '' : 's'} ${propDayName(sp.day, now)}` : '');
+  // The NBA and NHL headers and empty tables (2026-11-27, the owner's fixes): a board read takes the
+  // games inside 36 hours of it, so on Thanksgiving night the NHL's held 8 of Friday's 15 ("8 games
+  // tomorrow" over a props card of 15) and the NBA's none, Friday's first tip at 4:10 PM ("No NBA
+  // games in the next day and a half" over 11). The props read lists each day's games from the
+  // schedule: the header counts the table's against them, and an empty table says when they are read.
+  const mlDayTotal = (sport, day, now = Date.now()) => {
+    const d = propData(sport);
+    if (!d || !day) return null;
+    return (d.games || []).filter((g) => { const t = Date.parse(g.commence); return t > now && ptDayOf(t) === day; }).length;
+  };
+  function mlPricedText(sport, sp, now = Date.now()) {
+    const n = sp.shown.length, all = mlDayTotal(sport, sp.day, now);
+    return n && all != null && n < all ? `${n} of ${all} games priced ${propDayName(sp.day, now)}` : mlCountText(sp, now);
+  }
+  function mlWaitHtml(sport, d, now = Date.now()) {
+    const read = d.asOf ? ` — lines last read ${soccerKick(d.asOf)}` : '';
+    const t = (g) => Date.parse(g.commence), pr = propData(sport) || {};
+    const up = (pr.games || []).filter((g) => t(g) > now);
+    if (!up.length) return `<div class="nfl-empty">No ${esc(sport.toUpperCase())} games in the next day and a half${esc(read)}.</div>`;
+    const first = Math.min(...up.map(t)), day = ptDayOf(first), n = up.filter((g) => ptDayOf(t(g)) === day).length;
+    const whose = `${propDayTitle(day, now)}’s ${n === 1 ? 'game isn’t' : `${n} games aren’t`} priced yet`;
+    // The board's first read of a Pacific day comes once a game is inside 36 hours, its second inside
+    // 3 hours of a start (the worker's h2hMaybeIngest). A day with games of its own has spent both by
+    // the time its table is empty, so the next read is at midnight.
+    const at = first - 36 * 3600e3, atDay = ptDayOf(Math.max(at, now));
+    const spent = [...(d.games || []), ...(pr.underway || [])].some((g) => t(g) <= now && ptDayOf(t(g)) === atDay);
+    // Past that time with nothing read, it says when the lines were last read rather than a time gone by.
+    if (!(at > now) && !spent) return `<div class="nfl-empty">${esc(whose + read)}.</div>`;
+    const clock = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' }).format(new Date(at));
+    const when = spent ? 'midnight' : `${clock}${atDay === ptDayOf(now) ? '' : ` ${propDayName(atDay, now)}`}`;
+    return `<div class="nfl-empty">${esc(`${whose}: ${n === 1 ? `it’s read from a day and a half before it starts, about ${when}`
+      : `each is read from a day and a half before it starts, the first from about ${when}`}.`)}</div>`;
+  }
 
   // -------------------------------------------------------------------------
   // NHL — moneylines (2026-10-20)
@@ -8353,7 +8397,7 @@
     if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
     if (d.error) { grid.innerHTML = `<div class="nfl-empty">Lines unavailable (${esc(d.error)}).</div>`; return; }
     const sp = mlDaySplit(d.games), games = mlTableGames('nhl', sp);
-    if (count) count.textContent = mlCountText(sp);
+    if (count) count.textContent = mlPricedText('nhl', sp);
     if (note) note.textContent = 'Sharp-book fair line · best DK/FD price' + (d.asOf ? ` · prices as of ${soccerKick(d.asOf)}` : '');
     // The page brief's step 7 (2026-11-17): today's legs as leg cards, the best one large, then the
     // Mores; the props card with its stat buttons; the moneylines as cards with every game's prices
@@ -8362,7 +8406,7 @@
     const head = ['Game', 'Likelier winner', 'Best price', 'Value', 'Fair', 'Books', '']
       .map((h) => `<span>${h}</span>`).join('');
     const table = !games.length
-      ? `<div class="nfl-empty">No NHL games in the next day and a half${d.asOf ? ` — lines last read ${esc(soccerKick(d.asOf))}` : ''}.</div>`
+      ? mlWaitHtml('nhl', d)
       : `<div class="board view-moneyline"><div class="board-inner">`
         + `<div class="board-head-row">${head}</div>`
         + `<div>${games.map((g) => mlTabRow(g, 'nhl')).join('')}</div>`
@@ -8392,10 +8436,11 @@
   const UFC_HOW = { ko: 'KO/TKO', sub: 'submission', dec: 'decision', dq: 'disqualification' };
   const ufcClock = (m) => { if (m == null) return '—'; const s = Math.round(m * 60); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
   const ufcBout = (id) => ((state.ufc && state.ufc.bouts) || []).find((b) => b.id === id) || null;
-  // The line on show: one being stepped, else the one saved, else DraftKings' number in minutes.
+  // The line on show: one being stepped, else the one saved, else DraftKings' number in minutes where
+  // the fight can reach it (a 4.5 rounds line on a three-round fight started the stepper at 22.5).
   const ufcLineOf = (b) => {
     const set = state.ufcLines && state.ufcLines[b.id], saved = state.ufcSaved && state.ufcSaved[b.id];
-    return set != null ? set : saved != null ? saved : b.time ? b.time.minutes : b.rounds * 2.5;
+    return set != null ? set : saved != null ? saved : b.time && b.time.fits !== false ? b.time.minutes : b.rounds * 2.5;
   };
   const ufcOverAt = (b, line) => { const v = (b.curve || [])[Math.round(line * 2) - 1]; return typeof v === 'number' ? v : null; };
   function renderUfc() {
@@ -8453,7 +8498,7 @@
       + `<span><b>Fight time at DraftKings' line</b> ${of(r.timeAtDk)}</span>`
       + `<span><b>At your PrizePicks lines</b> ${of(r.timeAtPp)}</span>`
       + `<span><b>Likeliest ending</b> ${of(r.ends)}</span>`
-      + '<span class="ufc-rec-note">Favourites at 65%+ go on Picks. Fight time stays off Picks until its record clears the bar; how it ends is information only.</span>'
+      + '<span class="ufc-rec-note">Favourites at 65%+ go on Picks. Fight time stays off Picks until its record clears the bar; how it ends is information only. Both count only the fights DraftKings prices.</span>'
       + '</div>';
   }
   function ufcBoutHtml(b, view = 'time') {
@@ -8477,15 +8522,20 @@
     return `<article class="ufc-bout"><div class="ufc-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join('')}</div>`
       + `<div class="ufc-pair">${fighter(b.fighters[0])}<span class="ufc-vs">v</span>${fighter(b.fighters[1])}</div>${body}</article>`;
   }
+  // The PrizePicks payouts doc's fixes (2026-11-27): no number where DraftKings has none. Machado Garry
+  // v Amosov, three rounds, carried DraftKings' 4.5 and read "Over 0%"; with no goes-the-distance
+  // price the ending was the UFC's average ("Decision 36.3%" on most of a card); with no DraftKings
+  // line at all the PrizePicks row priced the averages ("More 57.1%"). The worker sends no curve then.
   function ufcTimeHtml(b) {
-    const t = b.time;
-    if (!t) return `<div class="ufc-row"><span class="ufc-k">Fight time</span><span>No DraftKings rounds line yet${b.pDist != null ? ` · goes the distance ${esc(String(b.pDist))}%` : ''}</span></div>`;
-    return `<div class="ufc-row"><span class="ufc-k">Fight time</span><span>DraftKings ${esc(String(t.line))} rounds (${esc(ufcClock(t.minutes))}): <b>Over ${esc(String(t.pOver))}%</b>`
-      + `${b.pDist != null ? ` · goes the distance ${esc(String(b.pDist))}%` : ''}</span></div>`;
+    const t = b.time, dist = b.pDist != null ? ` · goes the distance ${esc(String(b.pDist))}%` : '';
+    if (!t) return `<div class="ufc-row"><span class="ufc-k">Fight time</span><span>No DraftKings rounds line yet${dist}</span></div>`;
+    if (t.fits === false) return `<div class="ufc-row"><span class="ufc-k">Fight time</span><span>DraftKings’ ${esc(String(t.line))} rounds line doesn’t fit a ${esc(String(b.rounds))}-round fight: no chance shown${dist}</span></div>`;
+    return `<div class="ufc-row"><span class="ufc-k">Fight time</span><span>DraftKings ${esc(String(t.line))} rounds (${esc(ufcClock(t.minutes))}): <b>Over ${esc(String(t.pOver))}%</b>${dist}</span></div>`;
   }
   function ufcEndsHtml(b) {
     const e = b.ends;
     if (!e) return '';
+    if (e.src !== 'dk') return '<div class="ufc-row"><span class="ufc-k">How it ends</span><span>No DraftKings goes-the-distance price yet</span></div>';
     const seg = (cls, v) => `<span class="ufc-bar-${cls}" style="width:${Math.max(0, Math.min(100, v))}%"></span>`;
     return `<div class="ufc-row"><span class="ufc-k">How it ends</span><span class="ufc-ends">`
       + `<span class="ufc-bar" aria-hidden="true">${seg('ko', e.ko)}${seg('sub', e.sub)}${seg('dec', e.dec)}</span>`
@@ -8501,7 +8551,8 @@
         : `<button type="button" class="sp-save" data-action="ufc-save" data-bout="${esc(b.id)}" aria-label="Save ${esc(String(line))} minutes as PrizePicks' line">Save line</button>`;
     return `<div class="ufc-row ufc-pp"><span class="ufc-k">PrizePicks time</span><span class="ufc-pp-in">`
       + `${btn(-0.5, '−', 'Half a minute lower')}<b class="pp-line-v">${esc(String(line))}</b>${btn(0.5, '+', 'Half a minute higher')}<span class="sp-lbl">min</span>`
-      + (p != null ? `<span class="ufc-pp-p">More ${esc(String(p))}% · Less ${esc(String(Math.round((100 - p) * 10) / 10))}%</span>` : '')
+      + (p != null ? `<span class="ufc-pp-p">More ${esc(String(p))}% · Less ${esc(String(Math.round((100 - p) * 10) / 10))}%</span>`
+        : b.priced === false ? '<span class="ufc-pp-p">no DraftKings line yet</span>' : '')
       + lbl + '</span></div>';
   }
   function ufcResultHtml(b) {

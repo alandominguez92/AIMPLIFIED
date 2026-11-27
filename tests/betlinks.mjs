@@ -244,7 +244,8 @@ ok(href(P.betLinkHtml(BR)) === 'https://nj.betrivers.com/?page=sportsbook#event/
 ok(P.betLinkHtml('javascript:alert(1)') === '' && P.betLinkHtml(null) === '' && P.betLinkHtml('http://x.com') === '', 'a link that is not https is no link');
 h = P.priceSparkHtml(bet && bet.hist);
 console.log(`  ${text(h)}`);
-ok((h.match(/<path /g) || []).length === 2 && text(h) === 'opened -110 → +120 now · fair 50%', 'the price line: two lines, the first price and the latest, the fair it held');
+// Each named beside a swatch of its line's colour since 2026-11-27 (tests/mlgap.mjs).
+ok((h.match(/<path /g) || []).length === 2 && text(h) === 'price opened -110 → +120 now · fair 50%', 'the price line: two lines, the first price and the latest, the fair it held');
 ok(P.priceSparkHtml([[bet && bet.hist[0][0], 50, -108]]) === '' && P.priceSparkHtml(null) === '', 'one point is no line');
 h = P.trendBarsHtml(t);
 console.log(`  ${text(h)}`);

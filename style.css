@@ -2856,6 +2856,10 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .pk-spark path { fill:none; stroke-width:1.75; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
 .pk-spark .sp-px { stroke:var(--accentFill); }
 .pk-spark .sp-fair { stroke:var(--positive); }
+/* The chart's key (2026-11-27): a swatch of each line's colour beside its numbers. */
+.pk-spark .sp-key { display:inline-block; width:12px; height:3px; margin-right:5px; vertical-align:middle; border-radius:2px; }
+.pk-spark .sp-key-px { background:var(--accentFill); }
+.pk-spark .sp-key-fair { background:var(--positive); }
 /* Every book's price of a side, folded (2026-10-29). */
 .pk-books { display:block; max-width:420px; margin-top:8px; font-size:12px; }
 .pk-books summary { cursor:pointer; min-height:32px; display:flex; align-items:center; font-family:var(--sans); color:var(--model); }

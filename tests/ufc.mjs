@@ -181,11 +181,13 @@ ok(eLegs.map((l) => l.result).join(' ') === 'win loss push void' && eLegs.every(
   `Gane, Nunes, the draw and the fight called off: ${eLegs.map((l) => `${l.result} (${l.graded_by})`).join(', ')}`);
 
 console.log('-- bouts whose card has left the scoreboard --');
-const bi = sq.prepare(`INSERT INTO ufcbouts (bout_id, event_id, event, date, commence, rounds, weight, f1_id, f1, f2_id, f2, dk_line, p_over, p_ko, p_sub, p_dec, pp_line, pp_p_over, first_at)
-  VALUES (?, '600061400', 'UFC 334', '2026-11-14', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '2026-11-13T00:00:00Z')`);
-bi.run('401922638', '2026-11-15T02:00:00.000Z', 5, "Women's Bantamweight", '2516131', 'Amanda Nunes', '4332765', 'Kayla Harrison', 2.5, 55, 20, 25, 55, 10.5, 60);
-bi.run('401922643', '2026-11-15T00:00:00.000Z', 3, 'Lightweight', '4425604', 'Terrance McKinney', '2335718', 'Jim Miller', 1.5, 35, 50, 20, 30, 4.5, 40);
-bi.run('401999999', '2026-11-12T00:00:00.000Z', 3, 'Lightweight', '1', 'Called Off', '2', 'Not Fought', 1.5, 50, 30, 20, 50, null, null);
+// Each with DraftKings' goes-the-distance price, the decision's chance: the record counts only the
+// endings it priced (2026-11-27, tests/ufcfit.mjs).
+const bi = sq.prepare(`INSERT INTO ufcbouts (bout_id, event_id, event, date, commence, rounds, weight, f1_id, f1, f2_id, f2, dk_line, p_over, p_dist, p_ko, p_sub, p_dec, pp_line, pp_p_over, first_at)
+  VALUES (?, '600061400', 'UFC 334', '2026-11-14', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '2026-11-13T00:00:00Z')`);
+bi.run('401922638', '2026-11-15T02:00:00.000Z', 5, "Women's Bantamweight", '2516131', 'Amanda Nunes', '4332765', 'Kayla Harrison', 2.5, 55, 55, 20, 25, 55, 10.5, 60);
+bi.run('401922643', '2026-11-15T00:00:00.000Z', 3, 'Lightweight', '4425604', 'Terrance McKinney', '2335718', 'Jim Miller', 1.5, 35, 30, 50, 20, 30, 4.5, 40);
+bi.run('401999999', '2026-11-12T00:00:00.000Z', 3, 'Lightweight', '1', 'Called Off', '2', 'Not Fought', 1.5, 50, 50, 30, 20, 50, null, null);
 NOW = RealDate.parse('2026-11-15T10:00:00Z');
 await fire(MAIN_CRON);
 const gb = Object.fromEntries(sq.prepare("SELECT bout_id, method, end_round, minutes, winner_id, stats FROM ufcbouts WHERE event_id = '600061400'").all().map((x) => [x.bout_id, x]));

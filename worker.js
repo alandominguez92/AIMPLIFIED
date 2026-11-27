@@ -12617,6 +12617,16 @@ function ufcEnds(b) {
   const fin = 100 - dec;
   return { ko: round1(fin * share / 100), sub: round1(fin * (100 - share) / 100), dec: round1(dec), src: dk.dist ? 'dk' : b.distBase != null ? 'recent' : 'base' };
 }
+// DraftKings' total rounds line where the fight can reach it (2026-11-27, the owner's fixes): Machado
+// Garry v Amosov, three rounds on ESPN's scoreboard, carried DraftKings' 4.5 (Over -215), and the
+// card read "Over 0%" -- 22.5 minutes in a 15-minute fight -- while the record would have graded
+// the Over a loss. A line that doesn't fit shapes nothing (ufcTimeShape already skips it), shows
+// no chance and is left out of the record.
+const ufcRoundsFit = (b) => !!(b && b.dk && b.dk.rounds && ufcRoundsMinutes(b.dk.rounds.line) < 5 * (b.rounds === 5 ? 5 : 3));
+// A bout DraftKings prices: its goes-the-distance, or a rounds line that fits. Without either, the
+// fight-time chances are the UFC's averages for the length, the same on every such fight ("More
+// 57.1%" at 7.5 minutes on Tulio v Park): those are no fight's, so no chance is shown or graded.
+const ufcDkPriced = (b) => !!(b && b.dk && (b.dk.dist || ufcRoundsFit(b)));
 // One bout from the fight center (fc) and the scoreboard (sb): who, when, how long it is
 // scheduled for, DraftKings' prices, and, once it is over, how it went.
 function ufcBoutsFrom(fc, sb) {
@@ -12766,7 +12776,8 @@ async function ufcLogCard(db, card, now = Date.now()) {
     const row = have.get(b.id);
     if (b.state === 'pre' && b.commence) {
       const dk = b.dk || {}, e = ufcEnds(b), r = dk.rounds, d = dk.dist;
-      const ppOver = row && row.pp_line != null ? round1(ufcTimeOver(b, row.pp_line) * 100) : null;
+      // Priced on DraftKings' numbers only (2026-11-27): a line typed on a bout it hasn't priced waits.
+      const ppOver = row && row.pp_line != null && ufcDkPriced(b) ? round1(ufcTimeOver(b, row.pp_line) * 100) : null;
       const vals = [b.commence, b.segment, b.order, b.rounds, r ? r.line : null, r ? r.over : null, r ? r.under : null, r ? r.pOver : null,
         d ? d.yes : null, d ? d.no : null, d ? d.pYes : null, e.ko, e.sub, e.dec, ppOver];
       const sig = JSON.stringify(vals);
@@ -13133,9 +13144,12 @@ function ufcRecordOf(rows) {
   const graded = rows.filter((r) => r.graded_at && ['ko', 'sub', 'dec', 'draw', 'dq', 'other'].includes(r.method) && r.minutes != null);
   const side = (p, over) => ({ p: p >= 50 ? p : 100 - p, won: p >= 50 ? over : !over });
   const tally = ufcTally;
-  const atDk = graded.filter((r) => r.p_over != null && r.dk_line != null).map((r) => side(r.p_over, r.minutes > ufcRoundsMinutes(r.dk_line)));
+  // DraftKings' line where the fight could reach it, and the endings on its goes-the-distance price
+  // (2026-11-27): the ones the card shows. Without that price the split was the UFC's averages.
+  const atDk = graded.filter((r) => r.p_over != null && r.dk_line != null && ufcRoundsMinutes(r.dk_line) < 5 * (r.rounds === 5 ? 5 : 3))
+    .map((r) => side(r.p_over, r.minutes > ufcRoundsMinutes(r.dk_line)));
   const atPp = graded.filter((r) => r.pp_p_over != null && r.pp_line != null && r.minutes !== r.pp_line).map((r) => side(r.pp_p_over, r.minutes > r.pp_line));
-  const ended = graded.filter((r) => r.p_ko != null && ['ko', 'sub', 'dec', 'draw'].includes(r.method));
+  const ended = graded.filter((r) => r.p_ko != null && r.p_dist != null && ['ko', 'sub', 'dec', 'draw'].includes(r.method));
   const ends = ended.map((r) => {
     const pick = r.p_dec >= r.p_ko && r.p_dec >= r.p_sub ? 'dec' : r.p_ko >= r.p_sub ? 'ko' : 'sub';
     return { won: pick === (r.method === 'draw' ? 'dec' : r.method), p: Math.max(r.p_dec, r.p_ko, r.p_sub) };
@@ -13194,10 +13208,12 @@ async function ufcBoardData(env) {
     return { ...b,
       ml: g ? { [b.fighters[0].id]: side(b.fighters[0]), [b.fighters[1].id]: side(b.fighters[1]), fairSrc: g.fairSrc, gameId: g.id,
         pick: lg ? (b.fighters.find((f) => ufcSameFighter(f.name, lg.pick)) || {}).id || null : null } : null,
-      time: r ? { line: r.line, minutes: ufcRoundsMinutes(r.line), pOver: round1(ufcTimeOver(b, ufcRoundsMinutes(r.line)) * 100) } : null,
-      pDist: b.dk && b.dk.dist ? b.dk.dist.pYes : null, ends: ufcEnds(b),
-      // curve[i]: the chance the bout is still going at (i + 1) / 2 minutes.
-      curve: b.state === 'pre' ? Array.from({ length: 2 * full - 1 }, (_, i) => round1(ufcTimeOver(b, (i + 1) / 2) * 100)) : null,
+      // A rounds line the fight can't reach says so, with no chance (fits: false).
+      time: r ? (ufcRoundsFit(b) ? { line: r.line, minutes: ufcRoundsMinutes(r.line), pOver: round1(ufcTimeOver(b, ufcRoundsMinutes(r.line)) * 100) }
+        : { line: r.line, minutes: ufcRoundsMinutes(r.line), pOver: null, fits: false }) : null,
+      pDist: b.dk && b.dk.dist ? b.dk.dist.pYes : null, ends: ufcEnds(b), priced: ufcDkPriced(b),
+      // curve[i]: the chance the bout is still going at (i + 1) / 2 minutes; none until DraftKings prices it.
+      curve: b.state === 'pre' && ufcDkPriced(b) ? Array.from({ length: 2 * full - 1 }, (_, i) => round1(ufcTimeOver(b, (i + 1) / 2) * 100)) : null,
       // Each fighter's strikes and takedowns: the projection, and curve[i], the chance of more than
       // i + 0.5. A typed line is the key's, as fight time's is (/api/ufc-lines).
       props: (model && model.bouts[b.id]) || null, projected: proj.get(b.id) || null };
@@ -13240,7 +13256,8 @@ async function ufcLinesApi(request, env) {
     if (bout.state !== 'pre') return entryResponse({ error: 'That bout has started: its line is locked.' }, 409);
     if (line >= 5 * bout.rounds) return entryResponse({ error: `A ${bout.rounds}-round fight lasts ${5 * bout.rounds} minutes at most.` }, 400);
     await ufcLogCard(db, card);
-    const p = round1(ufcTimeOver(bout, line) * 100), at = new Date().toISOString();
+    // Saved either way; priced once DraftKings prices the bout (the card's reads fill it in).
+    const p = ufcDkPriced(bout) ? round1(ufcTimeOver(bout, line) * 100) : null, at = new Date().toISOString();
     await db.prepare('UPDATE ufcbouts SET pp_line = ?, pp_p_over = ?, pp_at = ?, pp_edits = COALESCE(pp_edits, 0) + 1 WHERE bout_id = ? AND graded_at IS NULL')
       .bind(line, p, at, id).run();
     return entryResponse({ ok: true, boutId: id, line, pOver: p, claimed: !!auth.claimed });

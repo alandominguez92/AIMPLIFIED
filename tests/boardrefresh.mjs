@@ -70,7 +70,7 @@ const boardReads = (p) => reads.filter((u) => u === p).length;
 const drawn = { nhl: 0, soccer: 0, nfl: 0 };
 const noop = () => '';
 
-const HELPERS = ['esc', 'AM', 'BOOK_LABEL', 'bkLabel', 'signed', 'impliedPct', 'r1', 'soccerKick', 'kickWhole', 'nbaNick', 'nflNick', 'nhlNick', 'ML_TABS', 'ptDayOf', 'propDayName', 'propDayTitle', 'mlDaySplit', 'mlLaterOpen', 'mlLaterHtml', 'mlTableGames', 'mlCountText',
+const HELPERS = ['esc', 'AM', 'BOOK_LABEL', 'bkLabel', 'signed', 'impliedPct', 'r1', 'soccerKick', 'kickWhole', 'nbaNick', 'nflNick', 'nhlNick', 'ML_TABS', 'ptDayOf', 'propDayName', 'propDayTitle', 'mlDaySplit', 'mlLaterOpen', 'mlLaterHtml', 'mlTableGames', 'mlCountText', 'propData', 'mlDayTotal', 'mlPricedText', 'mlWaitHtml',
   'mlTabRow', 'renderNba', 'nflMlBar', 'nflRow', 'soccerRow'];
 const ARGS = { state, document: doc, LIVE_MODE: true, fetchJson,
   renderNhl: () => { drawn.nhl++; }, renderSoccer: () => { drawn.soccer++; }, renderNfl: () => { drawn.nfl++; }, renderSlip: noop,

@@ -13,6 +13,13 @@
 //   - a chance brought toward its record says so
 //   - a player leg keeps its projection bar
 //
+// From 2026-11-27 (the PrizePicks payouts doc's fixes, the owner's call:
+// Pinnacle's is the measure) the fill and the gap are the chance shown, not
+// kellyP: above 80% kellyP sat a few points under it, and the page read
+// "6.3 short" on a Juventus the doc made 3.1 short (tests/mlgap.mjs). The
+// stake is still sized on kellyP, and where the two differ the bar's title
+// says so. On this read the bar and the stake still agree on every leg.
+//
 // Real data: production's /api/picks at 1:50 AM Pacific on Oct 28
 // (tests/fixtures/picks-ml-20261028.json) -- the Spurs at -520, the
 // Cavaliers at -370, the Rockets at -305 and the Knicks at -250.
@@ -41,7 +48,7 @@ function lift(name) {
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 let B;
 try {
-  B = new Function('esc', ['miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'pickBarHtml'].map(lift).join('\n') + '\nreturn { pickBarHtml };')(esc);
+  B = new Function('esc', ['miniBar', 'projLineHtml', 'mlChanceLineHtml', 'mlStakeTitle', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'pickBarHtml'].map(lift).join('\n') + '\nreturn { pickBarHtml };')(esc);
 } catch (e) { console.log(`  FAIL  the bar lifts out of app.js (${e.message})`); process.exit(1); }
 const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 const leg = (re) => F.legs.find((x) => re.test(x.title));
@@ -50,17 +57,18 @@ console.log('-- the Spurs at -520 --');
 const spurs = leg(/^Spurs ML/);
 const sb = B.pickBarHtml(spurs, spurs.spec);
 console.log('  ' + text(sb));
-ok(/class="uz" style="width:81\.5%"/.test(sb) && /class="tick" style="left:83\.8\d*%"/.test(sb),
-  'the fill runs to the 81.5% its stake is built on, the tick to the 83.9% that -520 needs');
-ok(text(sb) === 'chance 81.5% on its record · -520 needs 83.9% · 2.4 points short' && /title="83% as listed, brought toward how legs like it have landed"/.test(sb),
-  "83% listed, 81.5% on the NBA favourites' 16 of 20: 2.4 points short of the price");
+ok(/class="uz" style="width:82\.9%"/.test(sb) && /class="tick" style="left:83\.8\d*%"/.test(sb),
+  'the fill runs to the 82.9% shown, the tick to the 83.9% that -520 needs');
+ok(text(sb) === 'chance 82.9% · -520 needs 83.9% · 1 point short'
+  && /title="The stake is sized on 81\.5%: the 82\.9% shown, brought toward how legs like it have landed"/.test(sb),
+  "82.9% shown, 1 point short of the price; the title names the 81.5% the stake is sized on (the NBA favourites' 16 of 20)");
 
 console.log('\n-- every moneyline on the list --');
 const mls = F.legs.filter((x) => /_ml$/.test(x.kind));
 for (const x of mls) console.log(`  ${x.title} ${x.odds}: ${text(B.pickBarHtml(x, x.spec))} (EV ${x.ev}%, stake ${x.stake}%)`);
 ok(mls.length === 4 && mls.every((x) => {
   const t = text(B.pickBarHtml(x, x.spec));
-  return x.ev < 0 ? /points short$/.test(t) && x.stake === 0 : /points of edge$/.test(t) && x.stake > 0;
+  return x.ev < 0 ? /points? short$/.test(t) && x.stake === 0 : /points? of edge$/.test(t) && x.stake > 0;
 }), 'the bar agrees with the stake: short where the EV is negative and nothing is staked, past the price where it is staked');
 const hou = leg(/^Rockets ML/);
 ok(text(B.pickBarHtml(hou, hou.spec)) === 'chance 75.6% · -305 needs 75.3% · 0.3 points of edge',

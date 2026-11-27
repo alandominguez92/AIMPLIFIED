@@ -51,7 +51,7 @@ const rp = lift('renderPicks');
 const lrAt = rp.indexOf('const legRow = (x, compact, foot, best) =>');
 const legRowSrc = lrAt < 0 ? null : closeFrom(rp, lrAt, true);
 const names = ['TEAM_COLORS', 'MLB_TEAM_ID', 'NHL_PHOTO_SEASON', 'headshotUrl', 'teamMarkUrl', 'initialsOf', 'avatarHtml', 'LEG_OFFERS', 'offerLeg',
-  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
+  'PICK_BOARD', 'PICK_SPORT', 'pickLeg', 'pct0', 'AM', 'soccerKick', 'pickIsTeam', 'pickTeamCode', 'pickTeamTag', 'miniBar', 'projLineHtml', 'mlChanceLineHtml', 'mlStakeTitle', 'pickBarHtml', 'RING_C', 'chanceRingSvg', 'pickFace', 'ptDayOf', 'pickMoved',
   'trendTag', 'readAgeTag', 'INJ_ROLE_WORD', 'injRoleText', 'injuryTag', 'goalieNote', 'PROP_MIN_MOVE', 'legMinutes', 'toiText', 'minutesTagHtml', 'trendBarsHtml', 'impPct', 'priceSparkHtml', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'stakeTxt', 'moneyTxt', 'pickEdgeHtml',
   'nbCdf', 'r1', 'ppLineOf', 'ppChanceAt', 'pickAtLine', 'ppLineStepHtml', 'pickLineSetTag', 'shortDay', 'recSinceText',
   'PP_BREAK_EVEN', 'dfsLinesHtml', 'BOOK_LABEL', 'bkLabel', 'booksHtml', 'PICK_SAME', 'pickGameKey', 'pickShortName', 'PICK_TOP', 'pickDayWord', 'PICK_OPEN', 'legCardHtml'];
@@ -112,11 +112,12 @@ const same = { ...queen, kind: 'nba_pp', modelP: queen.p };
 ok(tile(F.legRow(same, false), /^Sharp books$/).sub === 'at this line', 'no model figure where it is the chance itself: "at this line"');
 
 console.log('\n-- 3. a moneyline: what its price needs --');
-const need = 420 / 520 * 100, gap = Math.round((nuggets.kellyP - need) * 10) / 10;
+// Measured from the chance shown since 2026-11-27 (tests/mlgap.mjs): the Nuggets' 79.5 is both.
+const need = 420 / 520 * 100, gap = Math.round((nuggets.p - need) * 10) / 10;
 const nt = tile(N, /^Book at -420 needs$/);
 console.log(`        [${nt.key}: ${nt.value} / ${nt.sub}]`);
 ok(nt.value === `${Math.round(need * 10) / 10}%` && nt.value === '80.8%', '-420 needs 80.8%');
-ok(nt.sub === `${Math.abs(gap)} short` && gap === -1.3 && /<span class="lc-ts"><span class="o">1\.3 short<\/span>/.test(N), `and the Nuggets' ${nuggets.kellyP} sits 1.3 short of it`);
+ok(nt.sub === `${Math.abs(gap)} short` && gap === -1.3 && /<span class="lc-ts"><span class="o">1\.3 short<\/span>/.test(N), `and the Nuggets' ${nuggets.p} sits 1.3 short of it`);
 const mlBar = text(F.mlChanceLineHtml(nuggets));
 ok(mlBar.includes('1.3 points short') && !N.includes(F.mlChanceLineHtml(nuggets)), 'the gap the old bar drew ("1.3 points short"), now a tile; the bar itself is gone');
 const dog = { ...nuggets, odds: 150 };
