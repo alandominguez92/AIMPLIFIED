@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=02f77b302a">
+<link rel="stylesheet" href="style.css?v=b4e53aa347">
 </head>
 <body>
 
@@ -43,7 +43,16 @@
       <b>a picks site you can't audit is just a guy with opinions.</b></p>
   </section>
 
+  <!-- What's on Picks, and why (2026-11-27): every kind of leg Picks of the day has carried, from
+       /api/pick-rules, its own read so either part of the page stands without the other. -->
+  <section class="tr-sec" id="trRulesSec" hidden>
+    <div class="tr-sec-head"><h2>What's on Picks, and why</h2><span class="tr-sub">each kind of leg, how it has landed at its bar, and every change to its place, dated</span></div>
+    <div class="tr-rules" id="trRules"></div>
+    <div class="tr-foot tr-rules-foot" id="trRulesFoot"></div>
+  </section>
+
   <!-- Headline strip -->
+  <div class="tr-sec-head tr-bu-head"><h2>MLB batter unders</h2></div>
   <div class="tr-strip" id="trStrip"></div>
 
   <!-- Is the edge real? -->
@@ -126,6 +135,6 @@
 <script>
   window.AIMPLIFIED_API_BASE = "";
 </script>
-<script src="track-record.js?v=02f77b302a"></script>
+<script src="track-record.js?v=b4e53aa347"></script>
 </body>
 </html>

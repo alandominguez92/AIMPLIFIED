@@ -150,7 +150,7 @@ const API_ROUTES = new Set([
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health', '/api/d1-reads',
-  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw', '/api/tabs',
+  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw', '/api/tabs', '/api/pick-rules',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -697,6 +697,8 @@ async function handleApi(p, env, ctx, url) {
   // A failed read is kept at the edge for seconds, not two minutes: every
   // viewer was served "Picks unavailable" until it expired.
   if (p === '/api/picks') { const d = await picksBoard(env); return cors(json(d, d.error || d.recordError ? 5 : 120)); }
+  // What's on Picks, and why (2026-11-27), for the Track Record page: no odds read, the kinds' records cached.
+  if (p === '/api/pick-rules') { const d = await pickRules(env); return cors(json(d, d.recordError ? 5 : 600)); }
   if (p === '/api/mlpicks-export') return mlpicksExport(env, url);
   if (p === '/api/mlb-void-moved') return voidMovedGameRows(env, url);
   if (p === '/api/fair-probe') return fairProbe(env, url);
@@ -10822,6 +10824,91 @@ async function refreshEdgePrices(env, scan, now) {
 
 // What the list says it carries on a day: a kind that came off is not among them.
 const pickKindsOn = (now) => Object.entries(PICK_KINDS).filter(([, v]) => !v.off || ptDateOf(now) < v.off);
+
+// ---- What's on Picks, and why (2026-11-27) -------------------------------------------------------
+// The Track Record page's panel, from the PrizePicks doc the owner approved (step 6): every kind of
+// leg the list has carried, its record at its bar (pickKindRecords, the copy /api/picks reads), its
+// place on the list today, and each change to its rule, dated as the rules above date them. The
+// rules stand as they are (the owner, Nov 27: "stick to what we have"); this only says them, from
+// the comments at PICK_KINDS, PICK_HELD and the holds. A change to a kind's rule adds a line here.
+// A function, read on request: some of the dates are consts declared further down.
+const PICKS_START = '2026-10-09';
+function pickRuleLog() {
+  return {
+    mlb_ml: [[PICKS_START, 'On at 65%+: MLB favourites there had won 52 of 76 (68%) against 69% stated']],
+    mlb_pp: [[PICKS_START, 'On at 70%+, total bases and H+R+RBI: 19 of 25 (76%). Strikeout unders (49%) and legs under 70% left off']],
+    nba_ml: [[PICKS_START, 'On at 65%+, preseason games left off: their favourites sat starters and won 11 of 23 against 63% stated']],
+    nba_pp: [
+      [PICKS_START, 'On at 70%+: threes, assists and rebounds unders'],
+      ['2026-10-23', "Rebounds unders, and any line below the books', left off: 50% and 45% on their first three nights at PrizePicks' lines"],
+      [PICK_KINDS.nba_pp.off, 'Off: listed at 70%+, threes and assists unders had landed 14 of 25'],
+    ],
+    nba_blk_more: [
+      ['2026-10-28', 'On at 55%+: blocks Mores had landed 17 of 24 where the model leaned More'],
+      [PICK_HELD.nba_blk_more, 'Held off by hand: 45 of 86 (52%) since Oct 27, under the 54.2% a 6-pick Flex needs'],
+    ],
+    nba_reb_gap: [
+      ['2026-10-30', "On where PrizePicks' line sits above the sharp books': 408 of 727 (56.1%) last season"],
+      [REB_GAP_HOLD_SINCE, 'Held whenever its record was under 54.2%'],
+      [PICK_HELD.nba_reb_gap, 'Held off by hand: 134 of 261 (51%). The automatic hold let it back on Nov 20, and it went 1 of 6'],
+    ],
+    nfl_ml: [
+      [PICKS_START, 'On at 65%+'],
+      ['2026-10-26', 'Bar raised to 75%+: through Week 7, favourites at 75%+ had won 11 of 14 and those at 65-75% 6 of 12'],
+    ],
+    nfl_ptd: [['2026-10-27', "On at 60%+: the sharp books' 60%+ unders had landed 26 of 37 through Week 7"]],
+    nhl_ml: [['2026-10-22', "On at 65%+: last season's 65%+ favourites won 114 of 171 (66.7%)"]],
+    nhl_more: [
+      ['2026-10-28', 'On at 55%+: points and assists Mores had landed 20 of 29 where the model leaned More'],
+      [NHL_PTS_HOLD_SINCE, `Points Mores only in a chance band that has landed ${NHL_PTS_FAVOR_PCT}%+ over ${NHL_PTS_FAVOR_N} legs or more: at 55%+ they had landed 48% to 52%`],
+      [NHL_AST_HOLD_SINCE, 'Assists Mores the same way: 56% at 60-65%, while their 55-60 band, at 59%, stayed on'],
+    ],
+    soccer_fav: [
+      [PICKS_START, 'On at 65%+'],
+      ['2026-10-22', 'Europa League added'],
+      [SOCCER_LEAGUES.bundesliga.from, 'Bundesliga in for the Europa League, which the books priced only a handful of games in'],
+    ],
+    ufc_ml: [['2026-11-20', "On at 65%+, the other moneylines' bar"]],
+  };
+}
+// Logged and graded, never on Picks.
+const PICK_LOGGED_ONLY = ['NBA blocks and steals unders', 'NHL points and assists Lesses', "the NBA, NHL and NFL props cards' legs",
+  'soccer props', 'NFL passing yards', 'UFC fight time, how it ends, strikes and takedowns'];
+// The next call the owner set (2026-11-26): the NBA props card's legs, on Dec 1.
+const PICK_NEXT = { date: '2026-12-01', what: "The NBA props card's legs, threes and assists aside: on Picks if they have landed 55%+ over 100 or more legs since the Nov 20 fix, else they wait" };
+const PICK_SPORT_ORDER = ['nfl', 'nba', 'nhl', 'soccer', 'ufc', 'mlb'];   // the tabs' order
+// A kind's place on the list on a date: taken off (PICK_KINDS' off), held by hand (PICK_HELD), or on.
+function pickKindPlace(kind, v, date) {
+  if (v.off && date >= v.off) return { status: 'off', since: v.off };
+  if (PICK_HELD[kind] && date >= PICK_HELD[kind]) return { status: 'held', since: PICK_HELD[kind] };
+  return { status: 'on' };
+}
+async function pickRules(env, now = Date.now()) {
+  const today = ptDateOf(now), log = pickRuleLog();
+  const out = {
+    asOf: new Date(now).toISOString(),
+    note: 'Off Picks never stops the logging: a kind held or taken off is still logged and graded, so its record keeps counting toward a way back.',
+    flex: { label: PICKS_BREAK_EVEN[6][0], pct: PICKS_BREAK_EVEN[6][1] }, provenN: PICKS_PROVEN_N,
+    kinds: [], loggedOnly: PICK_LOGGED_ONLY,
+  };
+  if (today <= PICK_NEXT.date) out.next = PICK_NEXT;
+  let recs = {};
+  try { recs = await pickKindRecords(env); } catch (e) { out.recordError = String((e && e.message) || e); }
+  const rank = { on: 0, held: 1, off: 2 }, part = (t) => (t ? { n: t.n, hit: t.hit, hitRate: t.hitRate } : null);
+  out.kinds = Object.entries(PICK_KINDS).map(([k, v], i) => {
+    const r = recs[k];
+    // The NHL Mores by stat, at the first read as the kind counts them: the band rule is each stat's own.
+    const parts = r && r.byStat ? [['pts', 'points'], ['ast', 'assists']].map(([mk, label]) => ({ label, ...part(r.byStat[mk] && r.byStat[mk].first && r.byStat[mk].first.atBar) })).filter((x) => x.n) : null;
+    return {
+      kind: k, sport: v.sport, label: v.label, min: v.min, ...pickKindPlace(k, v, today),
+      record: r ? { n: r.n, hit: r.hit, hitRate: r.hitRate, proven: r.proven, ...(r.since ? { since: r.since } : {}) } : null,
+      ...(parts && parts.length ? { parts } : {}),
+      changes: (log[k] || []).map(([date, what]) => ({ date, what })), i,
+    };
+  }).sort((a, b) => rank[a.status] - rank[b.status] || PICK_SPORT_ORDER.indexOf(a.sport) - PICK_SPORT_ORDER.indexOf(b.sport) || a.i - b.i)
+    .map(({ i, ...x }) => x);
+  return out;
+}
 // The minutes of the NBA and NHL players on Picks' card: "nba:<id>" -> [last five's, usual] (the
 // NBA) or [time on ice over the last five] (the NHL), from the props form row the trigger keeps
 // (ppPropPlayers). One read for both rows, none when no such leg is on the card. Goalies left out.

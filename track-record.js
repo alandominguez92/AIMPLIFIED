@@ -61,6 +61,70 @@
         + 'cannot trust to be current is worse than none.</div>';
     });
 
+  // ---- What's on Picks, and why (2026-11-27) ------------------------------
+  // Every kind of leg Picks of the day has carried, from /api/pick-rules: its record at its bar,
+  // its place on the list, and each change to it, dated. As everywhere on this page, every figure
+  // and every reason is the API's; this only lays them out. Its own read, so the batter-unders
+  // record failing leaves it standing, and the other way round.
+  fetch(API + '/api/pick-rules', { headers: { accept: 'application/json' } })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(renderRules)
+    .catch(function (err) {
+      $('trRules').innerHTML = '<div class="tr-err">What is on Picks did not load ('
+        + esc(err && err.message ? err.message : String(err)) + ').</div>';
+      $('trRulesSec').hidden = false;
+    });
+
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // "2026-11-24" -> "Nov 24". Pacific days, read as written: through a Date they could shift a day.
+  function day(ymd) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+    return m ? MONTHS[Number(m[2]) - 1] + ' ' + Number(m[3]) : String(ymd || '');
+  }
+
+  function renderRules(j) {
+    var kinds = (j && j.kinds) || [];
+    if (!kinds.length) return;
+    var flex = j.flex || {};
+    var PLACE = { on: ['on Picks', 'good'], held: ['held off', 'bad'], off: ['off Picks', 'dim'] };
+    $('trRules').innerHTML = kinds.map(function (k) {
+      var place = PLACE[k.status] || [k.status, 'dim'];
+      var tag = '<span class="tr-tag tr-tag-' + place[1] + '">' + esc(place[0] + (k.since ? ' since ' + day(k.since) : '')) + '</span>';
+      var r = k.record, rec;
+      if (!r) rec = 'record not read just now';
+      else if (!r.n) rec = 'no graded legs yet';
+      else {
+        rec = 'landed <b>' + r.hit + ' of ' + r.n + '</b> (' + num(r.hitRate) + '%)';
+        // A thin record says so rather than being held to a bar; a full one under the Flex's is marked.
+        if (!r.proven) rec += ' <span class="tr-tag tr-tag-dim">fewer than ' + esc(j.provenN) + ' graded</span>';
+        else if (flex.pct != null && r.hitRate < flex.pct) rec += ' <span class="tr-tag tr-tag-bad">under ' + num(flex.pct) + '%</span>';
+        if (r.since && r.since.n) rec += ' · ' + r.since.hit + ' of ' + r.since.n + ' (' + num(r.since.hitRate) + '%) since ' + esc(day(r.since.from));
+      }
+      var parts = (k.parts || []).map(function (p) {
+        return esc(p.label) + ' ' + p.hit + ' of ' + p.n + ' (' + num(p.hitRate) + '%)';
+      }).join(' · ');
+      var log = (k.changes || []).map(function (c) {
+        return '<li><span class="tr-date">' + esc(day(c.date)) + '</span><span>' + esc(c.what) + '</span></li>';
+      }).join('');
+      return '<div class="tr-rule tr-rule-' + esc(k.status) + '">'
+        + '<div class="tr-rule-head"><b>' + esc(k.label) + '</b>' + tag + '</div>'
+        + '<div class="tr-rule-rec">listed at ' + esc(k.min) + '%+ · ' + rec + '</div>'
+        + (parts ? '<div class="tr-rule-rec">' + parts + '</div>' : '')
+        + (log ? '<ol class="tr-rule-log">' + log + '</ol>' : '')
+        + '</div>';
+    }).join('');
+    var foot = [];
+    if (flex.pct != null) {
+      foot.push('<span class="tr-pill tr-pill-caution">Against ' + num(flex.pct) + '%</span> what each leg of a '
+        + esc(flex.label) + ' has to land for the entry to break even at PrizePicks’ payouts.');
+    }
+    if (j.note) foot.push(esc(j.note));
+    if (j.loggedOnly && j.loggedOnly.length) foot.push('Logged and graded, never on Picks: ' + esc(j.loggedOnly.join('; ')) + '.');
+    if (j.next) foot.push('<b>' + esc(day(j.next.date)) + '</b>: ' + esc(j.next.what) + '.');
+    $('trRulesFoot').innerHTML = foot.map(function (s) { return '<p>' + s + '</p>'; }).join('');
+    $('trRulesSec').hidden = false;
+  }
+
   function render(j) {
     var bu = j && j.batterUnders;
     if (!bu || !bu.n) {
@@ -76,7 +140,8 @@
     // Median, not mean: these prices straddle zero, and an averaged American
     // price is not a number that means anything.
     var cells = [
-      { k: 'Graded picks', v: bu.n.toLocaleString(), note: 'Batter unders only — the one market we post. Nothing is removed after the fact.' },
+      // "The one market we post" until Picks of the day (2026-11-27): the panel above lists the rest.
+      { k: 'Graded picks', v: bu.n.toLocaleString(), note: 'Batter unders only. Nothing is removed after the fact.' },
       { k: 'Hit rate', v: num(bu.winRate) + '%', note: 'Break-even across these prices is ' + num(bu.breakEven) + '%.' },
       { k: 'Units', v: signed(bu.units), tone: bu.units > 0 ? 'good' : bu.units < 0 ? 'bad' : null,
         note: '1u flat, sportsbook pricing. ROI ' + signed(bu.roi) + '%.' },

@@ -1860,6 +1860,21 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .tr-logwrap { overflow-x:auto; }
 .tr-err { border:1px solid var(--border); border-left:3px solid var(--danger); border-radius:12px;
   background:var(--board); padding:18px 20px; font-size:13.5px; line-height:1.65; color:var(--textDim); text-wrap:pretty; }
+/* What's on Picks, and why (2026-11-27): a row a kind of leg, its dated changes under it. Rows,
+   not table columns, so a phone reads each whole without scrolling sideways. */
+.tr-rules { border:1px solid var(--border); border-radius:14px; background:var(--board); overflow:hidden; }
+.tr-rule { padding:14px 20px; border-bottom:1px solid var(--borderSoft); }
+.tr-rule:last-child { border-bottom:none; }
+.tr-rule-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:14px; line-height:1.4; }
+.tr-rule-head b { color:var(--text); font-weight:600; }
+.tr-rule-rec { margin-top:5px; font-size:13px; line-height:1.55; color:var(--textDim); text-wrap:pretty; }
+.tr-rule-rec b { color:var(--text); font-weight:600; font-variant-numeric:tabular-nums; }
+.tr-rule .tr-tag { white-space:nowrap; }
+.tr-rule-log { list-style:none; margin:8px 0 0; padding:0; display:grid; gap:4px; }
+.tr-rule-log li { display:grid; grid-template-columns:52px minmax(0,1fr); gap:10px; font-size:12.5px; line-height:1.55; color:var(--textFaint); text-wrap:pretty; }
+.tr-rule-log .tr-date { line-height:1.75; }
+.tr-rules-foot p { margin:0 0 6px; }
+.tr-bu-head { margin-top:30px; }
 
 .tr-limits { border:1px solid var(--border); border-left:3px solid var(--caution); border-radius:12px;
   background:var(--board); padding:18px 22px; margin-bottom:22px; }
@@ -1888,6 +1903,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .tr-table .tr-thead, .tr-table .tr-tr { min-width:620px; }
   .tr-log .tr-thead, .tr-log .tr-tr { min-width:660px; }
   .tr-thead, .tr-tr { padding:11px 14px; gap:10px; }
+  .tr-rule { padding:12px 14px; }
   .tr-v { font-size:24px; }
   .tr-big { font-size:28px; }
 }
