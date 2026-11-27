@@ -43,7 +43,7 @@ let C;
 try {
   C = new Function('state', 'esc', 'AM', 'soccerKick', 'PICK_SPORT', [
     'BOOK_LABEL', 'bkLabel', 'moneyTxt', 'stakeTxt', 'LINK_BOOK', 'STATE_SLOT', 'betLinkHtml', 'legLink', 'booksHtml', 'priceCheckHtml', 'priceCheckText', 'impPct', 'priceSparkHtml',
-    'evBetsHtml', 'edgeRecordHtml', 'pickemHtml', 'shortDay', 'pct0', 'HIST_DAY_KEYS', 'HIST_DAYS_SHOWN', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml',
+    'evBetsHtml', 'edgeRecordHtml', 'shortDay', 'pct0', 'HIST_DAY_KEYS', 'HIST_DAYS_SHOWN', 'movedLineHtml', 'ppEntryRecordHtml', 'pickHistoryHtml',
     'SOC_STAT', 'nbCdf', 'socChanceAt', 'socKey', 'socLineOf', 'socLean', 'socStatWords', 'SOC_POS', 'socPosWords', 'ptDayOf', 'pct1', 'socRankP', 'SOC_BEST_N',
     'socWeakStat', 'socBestByStat', 'initialsOf', 'headshotUrl', 'avatarHtml', 'socBestStripHtml'].map(lift).join('\n')
     + '\nreturn { evBetsHtml, pickHistoryHtml, socBestStripHtml };')(state, esc, AM, (t) => new RealDate(t).toISOString().slice(11, 16), { nba: 'NBA', nhl: 'NHL', soccer: 'Soccer', nfl: 'NFL' });

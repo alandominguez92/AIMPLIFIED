@@ -6275,8 +6275,8 @@
     const tags = [];
     if (x.kind === 'mlb_pp') tags.push(x.lineup === 'in' ? '<span class="tc-gap">lineup in</span>' : '<span class="tc-wait">lineup not posted</span>');
     if (typeof x.vsBook === 'number' && x.vsBook !== 0) tags.push(`<span class="tc-gap${x.vsBook < 0 ? ' lower' : ''}">PP ${x.vsBook > 0 ? '+' : '−'}${esc(String(Math.abs(x.vsBook)))} vs book</span>`);
-    // Underdog or Pick6 above PrizePicks on the same under (2026-10-25).
-    if (x.dfs && x.spec && x.spec.pp) { const t = dfsLinesHtml(x.spec.pp.line, x.dfs.ud, x.dfs.p6).trim(); if (t) tags.push(t); }
+    // Underdog's and Pick6's lines left the page on 2026-11-27 (the owner: "take off Underdog and
+    // Pick6"; they play PrizePicks and DraftKings). The NBA read still logs both lines.
     // The sharp books' chance and the model's (2026-10-25, 2026-10-27) are a tile now.
     // His run against the line is a tag only where his last games aren't drawn below.
     const tt = trendShown ? null : trendTag(x.trend);
@@ -7397,7 +7397,7 @@
       + priceSparkHtml(b.hist) + betLinkHtml(legLink(b)) + booksHtml(b.books)
       + `</div></li>`).join('')}</ol>`
       : '<div class="tc-wait-note">No DraftKings price beats the sharp line by enough right now.</div>';
-    return `<details class="nba-pp pk-card pk-ev-card pk-fold" data-keep="ev"${wide ? ' open' : ''}>${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${pickemHtml(d)}${priceCheckHtml(d)}</details>`;
+    return `<details class="nba-pp pk-card pk-ev-card pk-fold" data-keep="ev"${wide ? ' open' : ''}>${head}${list}${edgeRecordHtml(d && d.edgeRecord)}${priceCheckHtml(d)}</details>`;
   }
   // The edge bets' own record (2026-10-28): won and lost, units, and how many
   // beat the closing line.
@@ -7419,22 +7419,6 @@
       + (r.offCard && r.offCard.price ? `<div class="tc-sub pk-record">${esc(AM(r.offCard.price))} or longer: left off since ${esc(shortDay(r.offCard.from))}, 0 of 6 before`
         + (r.offCard.n ? ` · since then <b>${r.offCard.hit} of ${r.offCard.n}</b> · ${u(r.offCard.units)} at 1 unit each` : ' · still logged, to see if they come back') + '</div>' : '');
   }
-  // Pick6 lines the market has moved past (2026-10-27), the worker's
-  // pickemEdges: the sharp books' chance at Pick6's own number, either side,
-  // against a 2-pick's 57.7% a leg.
-  function pickemHtml(d) {
-    const legs = (d && d.pickemEdges || []).filter((x) => Date.parse(x.commence) > Date.now());
-    if (!legs.length) return '';
-    return `<div class="tc-head pp-more-head"><span class="tc-title">Pick6 lines off the market</span></div>`
-      + `<div class="tc-sub">DraftKings Pick6 seldom moves a line once it posts it. Where the books have moved since, its number is stale: the sharp books' chance at Pick6's own line. A 2-pick needs 57.7% a leg.</div>`
-      + `<ol class="tc-legs pk-ev-list">${legs.map((x) => `<li><div class="tc-leg">`
-      + `<span class="tc-l1"><b>${esc(x.label)}</b><span class="tc-p pk-ev-up">${esc(pct0(x.chance))}</span></span>`
-      + `<span class="tc-l2"><span><span class="pk-sport">Pick6</span> · ${esc(x.sub)} · <span class="pk-when">${esc(soccerKick(x.commence))}</span></span></span>`
-      + `<span class="tc-book">sharp ${esc(String(x.chance))}% · +${esc(String(x.edge))} over 57.7%${x.ppLine != null && x.ppLine !== x.line ? ` · PrizePicks ${esc(String(x.ppLine))}` : ''}`
-      + `${x.asOf ? ` · <span class="pk-asof">read ${esc(soccerKick(x.asOf))}</span>` : ''}</span>`
-      + `</div></li>`).join('')}</ol>`;
-  }
-
   function applySportChrome(sport) {
     // Anything that is not the MLB board hides the MLB-only chrome. Written as
     // "not mlb" rather than "is nfl" so a third sport cannot inherit the batter
@@ -7519,14 +7503,6 @@
     if (!c || !c.n) return '';
     const raised = m && m.raised && m.raised.n ? ` · first line, where PP then raised it: <b>${m.raised.hit} of ${m.raised.n}</b>` : '';
     return `<div class="tc-sub tc-rec-line">At the pre-tip line: <b>${c.hit} of ${c.n}</b>${raised}</div>`;
-  }
-  // Underdog's and Pick6's line on the same under (2026-10-25): read with every
-  // NBA PrizePicks read at no extra credit. Higher than PrizePicks' number, the
-  // under is easier there, and the tag says so.
-  function dfsLinesHtml(point, ud, p6) {
-    return [['UD', 'Underdog', ud], ['P6', 'Pick6', p6]].filter(([, , v]) => typeof v === 'number').map(([k, full, v]) => (v > point
-      ? ` <span class="tc-gap" title="${full}'s line is higher than PrizePicks': the under is easier there">${k} ${esc(String(v))}</span>`
-      : ` <span class="tc-dfs" title="${full}'s line on the same under">${k} ${esc(String(v))}</span>`)).join('');
   }
   // The sharp books' chance of the under at PrizePicks' line, de-vigged
   // (2026-10-25), coloured against the break-evens: at or above a 2-pick
@@ -7693,7 +7669,7 @@
       // How old the read is comes with ppLineTags: only rebounds and assists lines move between reads.
       readAt: null,
       // A player ESPN lists, and only him: on a tab of a few rows "no injury listed" would be on them all.
-      vsBook: x.vsBook, dfs: { ud: x.ud_line, p6: x.p6_line }, inj: x.inj && x.inj.status ? x.inj : null, injUnread: true,
+      vsBook: x.vsBook, inj: x.inj && x.inj.status ? x.inj : null, injUnread: true,
       trend, lineSet: x.lineSet || null, lineStep: moves,
       // The old row's tags: no sharp line yet (the model's chance with it), PrizePicks' move, no book
       // yet and the read's age, then the book's own line and his season against this one.

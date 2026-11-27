@@ -4,9 +4,12 @@
 //     at 65-75% 20 of 29. The record now keeps a Top 2 Power of the day's two
 //     best legs at 75%+ beside the plain Top 2 (skipping a day without two),
 //     and the entry table shows it for the list still to play.
-//   - Underdog's and Pick6's line on the same under ride beside PrizePicks' on
+//   - Underdog's and Pick6's line on the same under rode beside PrizePicks' on
 //     the NBA card and on Picks of the day. The NBA read has carried them since
 //     Oct 22 at no extra credit; a higher number there is an easier under.
+//     From 2026-11-27 (the owner: "take off Underdog and Pick6") the page shows
+//     neither and Picks' legs no longer carry them; the read still asks for
+//     both books and logs their lines.
 //   - NHL PrizePicks reads were paused (read again from Oct 27): 39 of 84 unders landed at PrizePicks
 //     lines against the backtest's 59-67%. The logged legs still grade.
 //
@@ -116,16 +119,19 @@ ok(rows.length > 0 && both.length > 0 && want.every(({ r, u }) => (r.ud_line == 
 ok(rows.every((r) => r.p6_line == null), 'Pick6 had not posted this game: no Pick6 line on any leg');
 const board = await get('/api/nba-pp');
 const bl = board.legs.find((x) => x.ud_line != null);
-ok(bl && typeof bl.ud_line === 'number' && 'p6_line' in bl, `the card's legs carry them (${bl && `${bl.player} PP ${bl.point}, UD ${bl.ud_line}`})`);
+ok(bl && typeof bl.ud_line === 'number' && 'p6_line' in bl, `the read's rows still hold them (${bl && `${bl.player} PP ${bl.point}, UD ${bl.ud_line}`})`);
 
-// On Picks of the day too: a leg of that game at the bar, as the pre-tip read
-// leaves it, with Underdog a point above PrizePicks.
+// Picks of the day: a leg of that game at the bar, as the pre-tip read leaves
+// it, with Underdog a point above PrizePicks. It carried { ud: 2.5, p6: null }
+// to the page until 2026-11-27; now nothing of Underdog's goes with it.
 sq.prepare(`INSERT INTO nbapp (date, game_id, player, market, league, commence, home, away, team, player_id, point, proj, model_under, n_recent, min_proj,
   book_line, book_under, captured_at, close_point, close_under, close_book_line, close_book_under, close_at, ud_line)
   VALUES (?, ?, 'Test Shooter', 'threes', 'reg', ?, ?, ?, 'HOU', '1', 1.5, 0.6, 80, 5, 30, 1.5, -130, ?, 1.5, 80, 1.5, -130, ?, 2.5)`)
   .run(ptDay(HOU.commence_time), HOU.id, HOU.commence_time, HOU.home_team, HOU.away_team, new RealDate(NOW).toISOString(), new RealDate(NOW).toISOString());
 const pl = ((await get('/api/picks')).legs || []).find((x) => x.title === 'Test Shooter Under 1.5 3PM');
-ok(pl && pl.dfs && pl.dfs.ud === 2.5 && pl.dfs.p6 === null, `and Picks of the day's leg carries them to the page (${pl && JSON.stringify(pl.dfs)})`);
+ok(pl && !('dfs' in pl) && !/"(ud|p6)(_line)?":/.test(JSON.stringify(pl)),
+  `Picks of the day's leg is listed and carries no Underdog or Pick6 line (${pl ? `keys: ${Object.keys(pl).join(', ')}` : 'no leg'})`);
+ok(sq.prepare("SELECT ud_line FROM nbapp WHERE player = 'Test Shooter'").get().ud_line === 2.5, 'its row keeps Underdog\'s 2.5 in the log');
 
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
@@ -143,13 +149,13 @@ const lift = (name, from = app) => {
   throw new Error('could not lift ' + name);
 };
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const dfs = new Function('esc', lift('dfsLinesHtml') + '\nreturn dfsLinesHtml;')(esc);
-const text = (x) => x.replace(/<[^>]+>/g, '').trim();
-ok(/class="tc-gap"/.test(dfs(5.5, 6.5, null)) && text(dfs(5.5, 6.5, null)) === 'UD 6.5', 'Underdog a point higher: tagged as the easier under');
-ok(/class="tc-dfs"/.test(dfs(5.5, 5.5, 5)) && text(dfs(5.5, 5.5, 5)).replace(/\s+/g, ' ') === 'UD 5.5 P6 5' && dfs(5.5, null, null) === '', 'level or lower: shown plain; none quoted: nothing');
-// The NBA card's rows are leg cards since 2026-11-17 (step 7): its legs carry the lines for the leg card's tag.
-ok(/dfs: \{ ud: x\.ud_line, p6: x\.p6_line \}/.test(lift('nbaUnderCardLeg'))
-  && /dfsLinesHtml\(x\.spec\.pp\.line, x\.dfs\.ud, x\.dfs\.p6\)/.test(app), 'on the NBA card beside each leg, and on Picks of the day');
+// The page's code with its comments taken out: nothing in it reads or names either book's line.
+// (.tc-dfs stays, the Hot cards' opponent chip.)
+const code = app.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[\s;,{}()])\/\/.*$/gm, '$1');
+const left = (code.match(/Underdog|Pick6|(?<![-\w])dfs\b|ud_line|p6_line|pickem\w*|\bUD\b|\bP6\b/g) || []);
+ok(left.length === 0, `the page names neither Underdog nor Pick6 and reads neither's line${left.length ? ` (still: ${[...new Set(left)].join(', ')})` : ''}`);
+ok(!/function dfsLinesHtml\(/.test(app) && !/function pickemHtml\(/.test(app) && !/(^|\W)dfs:/m.test(lift('nbaUnderCardLeg')),
+  "the tag's helper and the Pick6 list are gone, and the NBA card's legs carry neither line");
 // Over the legs PrizePicks takes since 2026-10-27 (tests/evbets.mjs).
 // Read a leg at a time since 2026-11-16 (tests/outlast.mjs), the label escaped in powerRow.
 ok(/const hi = entLegs\.filter\(\(x\) => x\.p >= 75\)\.slice\(0, 2\);/.test(app) && /Top 2 \$\{kind\}, 75%\+/.test(app),

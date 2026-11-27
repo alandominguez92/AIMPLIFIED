@@ -4,7 +4,9 @@
 //     it posts it ("Introducing Market-Based Prop Projections"), so when the
 //     books move during the day its number goes stale. Each NBA leg the reads
 //     see on Pick6 carries the sharp books' chance at Pick6's own line, and
-//     either side at 58%+ (a 2-pick needs 57.7% a leg) is listed.
+//     either side at 58%+ (a 2-pick needs 57.7% a leg) was listed. The list
+//     left Picks on 2026-11-27 (the owner: "take off Underdog and Pick6");
+//     the reads still price and log Pick6's line.
 //   - The market blended into the NBA unders chance. Unabated blends a
 //     market-based projection into its own; here the market has been the
 //     honest one (the model's 70%+ unders 10 of 16; the sharp books' sub-50%
@@ -102,26 +104,20 @@ for (const m of p6.markets) for (const o of m.outcomes.filter((x) => x.name === 
 }
 console.log('  ' + priced.map((x) => `${x.player} ${x.market} ${x.line}: sharp under ${x.under}%`).join(' | '));
 p = await get('/api/picks');
-const pk = p.pickemEdges || [];
-console.log('  ' + pk.map((x) => `${x.label} ${x.chance}% (+${x.edge})`).join(' | '));
 const sharpe = priced.find((x) => x.player === "Day'Ron Sharpe" && x.market === 'reb');
-ok(sharpe.under === 42 && pk.length === 1 && pk[0].label === "Day'Ron Sharpe More 7.5 REB" && pk[0].chance === 58 && pk[0].edge === 0.3 && pk[0].ppLine === 8,
-  "Sharpe's rebounds: Pick6 still at 7.5 with FanDuel and Novig at 8.5 -- More at 58% by the sharp books, PrizePicks at 8");
-ok(!pk.some((x) => /Randle|assists|AST/.test(x.label)), 'his assists (More 53.7%) and Randle\'s rebounds (Less 51.9%) are not enough');
+// Until 2026-11-27 Picks listed it: "Day'Ron Sharpe More 7.5 REB", 58%, +0.3 over 57.7%, PrizePicks at 8.
+ok(sharpe.under === 42 && !('pickemEdges' in p),
+  "Sharpe's rebounds: Pick6 still at 7.5 with FanDuel and Novig at 8.5, the sharp books' under 42% -- and Picks no longer lists Pick6 lines");
+const row = sq.prepare("SELECT p6_line, p6_sharp_under FROM nbapp WHERE player = ? AND market = 'reb' AND p6_line IS NOT NULL").get("Day'Ron Sharpe");
+ok(row && row.p6_line === 7.5 && row.p6_sharp_under === 42, `the log keeps his Pick6 line and its sharp chance (${row && `${row.p6_line}, ${row.p6_sharp_under}%`})`);
 ok(/const sh6 = p6l != null \? nbaSharpUnder\(ev, m\.key, name, p6l, NBA_DISP\[market\]\) : null;/.test(worker) && /p6_sharp_under=\? WHERE/.test(worker),
-  'the NBA read prices Pick6\'s line with the sharp books, and the pre-tip read refreshes it');
+  'the NBA read still prices Pick6\'s line with the sharp books, and the pre-tip read refreshes it');
 
 // ---- the page ----------------------------------------------------------------------------------
 console.log('\n-- the page --');
 const app = fs.readFileSync(BOARD + '/app.js', 'utf8').replace(/\r\n/g, '\n');
-const alift = (name) => { const at = app.indexOf(`function ${name}(`); let d = 0;
-  for (let i = app.indexOf('{', at); i < app.length; i++) { if (app[i] === '{') d++; else if (app[i] === '}' && --d === 0) return app.slice(at, i + 1); } };
-const pick6 = new Function('esc', 'pct0', 'soccerKick', alift('pickemHtml') + '\nreturn pickemHtml;')((s) => String(s), (v) => `${Math.round(v)}%`, (t) => t);
-const text = (h) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-const ph = text(pick6(p));
-console.log('  ' + ph.slice(0, 300));
-ok(/Pick6 lines off the market/.test(ph) && /Day'Ron Sharpe More 7\.5 REB 58%/.test(ph) && /sharp 58% · \+0\.3 over 57\.7% · PrizePicks 8/.test(ph), 'the edge card lists it, with PrizePicks\' own number beside');
-ok(pick6({ pickemEdges: [] }) === '', 'and nothing when no Pick6 line is off');
+ok(!/function pickemHtml\(/.test(app) && !/Pick6 lines off the market/.test(app) && !/pickemEdges/.test(worker.replace(/\/\/.*$/gm, '')),
+  'the edge card has no Pick6 list, and the worker no longer builds one');
 ok(/model \$\{esc\(pct0\(x\.modelP\)\)\}/.test(app) && /\(cap\)/.test(app), "a Picks leg shows the model's chance beside the blended one, and a capped stake says so");
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
