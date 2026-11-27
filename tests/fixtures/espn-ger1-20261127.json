@@ -1,0 +1,2093 @@
+{
+ "_recorded": "ESPN cdn soccer scoreboards (the URLs the worker's grader reads), read 2026-11-27 between 10:51 and 10:55 UTC (2:51 to 2:55 AM Pacific) with UA Mozilla/5.0: the Bundesliga (ger.1) for Nov 20-23 and Nov 27-30, the Europa League (uefa.europa) for Nov 26-27 and Dec 10-11. Events trimmed to id, date, status.type and each competitor's side, score, winner and team (id, displayName, abbreviation), as tests/fixtures/espn-uel-20261015.json is.",
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ger.1&date=20261120": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401884736",
+      "date": "2026-11-20T19:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "132",
+           "displayName": "Bayern Munich",
+           "abbreviation": "MUN"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "122",
+           "displayName": "FC Cologne",
+           "abbreviation": "KOE"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ger.1&date=20261121": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401884732",
+      "date": "2026-11-21T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "598",
+           "displayName": "1. FC Union Berlin",
+           "abbreviation": "FCU"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "5",
+          "winner": true,
+          "team": {
+           "id": "11420",
+           "displayName": "RB Leipzig",
+           "abbreviation": "RBL"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884735",
+      "date": "2026-11-21T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "4",
+          "winner": true,
+          "team": {
+           "id": "131",
+           "displayName": "Bayer Leverkusen",
+           "abbreviation": "B04"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "3307",
+           "displayName": "SC Paderborn 07",
+           "abbreviation": "SCP"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884731",
+      "date": "2026-11-21T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "268",
+           "displayName": "Borussia Mönchengladbach",
+           "abbreviation": "BMG"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": true,
+          "team": {
+           "id": "124",
+           "displayName": "Borussia Dortmund",
+           "abbreviation": "DOR"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884734",
+      "date": "2026-11-21T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "winner": true,
+          "team": {
+           "id": "125",
+           "displayName": "Eintracht Frankfurt",
+           "abbreviation": "SGE"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "7911",
+           "displayName": "TSG Hoffenheim",
+           "abbreviation": "TSG"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884728",
+      "date": "2026-11-21T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "10388",
+           "displayName": "SV Elversberg",
+           "abbreviation": "ELV"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": true,
+          "team": {
+           "id": "126",
+           "displayName": "SC Freiburg",
+           "abbreviation": "SCF"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884729",
+      "date": "2026-11-21T17:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "133",
+           "displayName": "Schalke 04",
+           "abbreviation": "S04"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "134",
+           "displayName": "VfB Stuttgart",
+           "abbreviation": "VFB"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ger.1&date=20261122": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401884733",
+      "date": "2026-11-22T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "winner": true,
+          "team": {
+           "id": "3841",
+           "displayName": "FC Augsburg",
+           "abbreviation": "FCA"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "2950",
+           "displayName": "Mainz",
+           "abbreviation": "M05"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884730",
+      "date": "2026-11-22T16:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "4",
+          "winner": true,
+          "team": {
+           "id": "137",
+           "displayName": "Werder Bremen",
+           "abbreviation": "SVW"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "127",
+           "displayName": "Hamburg SV",
+           "abbreviation": "HSV"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ger.1&date=20261123": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ger.1&date=20261127": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401884720",
+      "date": "2026-11-27T19:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "137",
+           "displayName": "Werder Bremen",
+           "abbreviation": "SVW"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "268",
+           "displayName": "Borussia Mönchengladbach",
+           "abbreviation": "BMG"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ger.1&date=20261128": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401884721",
+      "date": "2026-11-28T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "122",
+           "displayName": "FC Cologne",
+           "abbreviation": "KOE"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "10388",
+           "displayName": "SV Elversberg",
+           "abbreviation": "ELV"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884722",
+      "date": "2026-11-28T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "127",
+           "displayName": "Hamburg SV",
+           "abbreviation": "HSV"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "132",
+           "displayName": "Bayern Munich",
+           "abbreviation": "MUN"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884723",
+      "date": "2026-11-28T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "2950",
+           "displayName": "Mainz",
+           "abbreviation": "M05"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "598",
+           "displayName": "1. FC Union Berlin",
+           "abbreviation": "FCU"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884719",
+      "date": "2026-11-28T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "3307",
+           "displayName": "SC Paderborn 07",
+           "abbreviation": "SCP"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "133",
+           "displayName": "Schalke 04",
+           "abbreviation": "S04"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884726",
+      "date": "2026-11-28T17:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "134",
+           "displayName": "VfB Stuttgart",
+           "abbreviation": "VFB"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "125",
+           "displayName": "Eintracht Frankfurt",
+           "abbreviation": "SGE"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ger.1&date=20261129": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401884724",
+      "date": "2026-11-29T14:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "126",
+           "displayName": "SC Freiburg",
+           "abbreviation": "SCF"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "11420",
+           "displayName": "RB Leipzig",
+           "abbreviation": "RBL"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884725",
+      "date": "2026-11-29T16:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "7911",
+           "displayName": "TSG Hoffenheim",
+           "abbreviation": "TSG"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "3841",
+           "displayName": "FC Augsburg",
+           "abbreviation": "FCA"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401884727",
+      "date": "2026-11-29T18:30Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "124",
+           "displayName": "Borussia Dortmund",
+           "abbreviation": "DOR"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "131",
+           "displayName": "Bayer Leverkusen",
+           "abbreviation": "B04"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=ger.1&date=20261130": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.europa&date=20261126": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401915506",
+      "date": "2026-11-26T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "winner": true,
+          "team": {
+           "id": "1895",
+           "displayName": "Besiktas",
+           "abbreviation": "BES"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "13083",
+           "displayName": "Hapoel Be'er",
+           "abbreviation": "HBE"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915519",
+      "date": "2026-11-26T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "85",
+           "displayName": "Celta Vigo",
+           "abbreviation": "CEL"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "winner": true,
+          "team": {
+           "id": "349",
+           "displayName": "AFC Bournemouth",
+           "abbreviation": "BOU"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915517",
+      "date": "2026-11-26T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "597",
+           "displayName": "Dinamo Zagreb",
+           "abbreviation": "DZG"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "winner": true,
+          "team": {
+           "id": "131",
+           "displayName": "Bayer Leverkusen",
+           "abbreviation": "B04"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915507",
+      "date": "2026-11-26T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "winner": true,
+          "team": {
+           "id": "176",
+           "displayName": "Marseille",
+           "abbreviation": "OLM"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "490",
+           "displayName": "Levski Sofia",
+           "abbreviation": "LEV"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915521",
+      "date": "2026-11-26T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "winner": false,
+          "team": {
+           "id": "435",
+           "displayName": "Olympiacos",
+           "abbreviation": "OLY"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "4",
+          "winner": true,
+          "team": {
+           "id": "103",
+           "displayName": "AC Milan",
+           "abbreviation": "MIL"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915520",
+      "date": "2026-11-26T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "winner": true,
+          "team": {
+           "id": "2790",
+           "displayName": "RB Salzburg",
+           "abbreviation": "SLZ"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "20024",
+           "displayName": "Ararat-Armenia",
+           "abbreviation": "ARA"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915508",
+      "date": "2026-11-26T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "winner": false,
+          "team": {
+           "id": "5807",
+           "displayName": "Union St.-Gilloise",
+           "abbreviation": "USG"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "winner": false,
+          "team": {
+           "id": "2990",
+           "displayName": "Lech Poznan",
+           "abbreviation": "LECH"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915518",
+      "date": "2026-11-26T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "4",
+          "winner": true,
+          "team": {
+           "id": "11706",
+           "displayName": "Viktoria Plzen",
+           "abbreviation": "PLZ"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "1929",
+           "displayName": "Benfica",
+           "abbreviation": "SLB"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915504",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "winner": true,
+          "team": {
+           "id": "384",
+           "displayName": "Crystal Palace",
+           "abbreviation": "CRY"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "89",
+           "displayName": "Real Sociedad",
+           "abbreviation": "RSO"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915516",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "622",
+           "displayName": "Ferencvaros",
+           "abbreviation": "FER"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "3362",
+           "displayName": "NK Celje",
+           "abbreviation": "NKC"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915502",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "4",
+          "winner": true,
+          "team": {
+           "id": "111",
+           "displayName": "Juventus",
+           "abbreviation": "JUV"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "617",
+           "displayName": "Omonia Nicosia",
+           "abbreviation": "OMON"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915501",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "167",
+           "displayName": "Lyon",
+           "abbreviation": "LYON"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "987",
+           "displayName": "Lillestrom",
+           "abbreviation": "LSK"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915505",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "winner": true,
+          "team": {
+           "id": "147",
+           "displayName": "NEC Nijmegen",
+           "abbreviation": "NEC"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "169",
+           "displayName": "Stade Rennais",
+           "abbreviation": "REN"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915503",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "1010",
+           "displayName": "OFI Crete",
+           "abbreviation": "OFI"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "3",
+          "winner": true,
+          "team": {
+           "id": "441",
+           "displayName": "Anderlecht",
+           "abbreviation": "AND"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915514",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "2",
+          "winner": false,
+          "team": {
+           "id": "433",
+           "displayName": "Sparta Prague",
+           "abbreviation": "SPP"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "4",
+          "winner": true,
+          "team": {
+           "id": "140",
+           "displayName": "AZ Alkmaar",
+           "abbreviation": "AZ"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915513",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "366",
+           "displayName": "Sunderland",
+           "abbreviation": "SUN"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "11505",
+           "displayName": "Jagiellonia Bialystok",
+           "abbreviation": "JAG"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915512",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "21615",
+           "displayName": "Torreense",
+           "abbreviation": "TOR"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "2",
+          "winner": true,
+          "team": {
+           "id": "256",
+           "displayName": "Celtic",
+           "abbreviation": "CEL"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915515",
+      "date": "2026-11-26T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_FULL_TIME",
+        "state": "post",
+        "completed": true
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "3",
+          "winner": true,
+          "team": {
+           "id": "7911",
+           "displayName": "TSG Hoffenheim",
+           "abbreviation": "TSG"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "1",
+          "winner": false,
+          "team": {
+           "id": "3746",
+           "displayName": "SK Sturm Graz",
+           "abbreviation": "STG"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.europa&date=20261127": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.europa&date=20261210": {
+  "content": {
+   "sbData": {
+    "events": [
+     {
+      "id": "401915511",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "441",
+           "displayName": "Anderlecht",
+           "abbreviation": "AND"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "7911",
+           "displayName": "TSG Hoffenheim",
+           "abbreviation": "TSG"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915500",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "20024",
+           "displayName": "Ararat-Armenia",
+           "abbreviation": "ARA"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "147",
+           "displayName": "NEC Nijmegen",
+           "abbreviation": "NEC"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915494",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "140",
+           "displayName": "AZ Alkmaar",
+           "abbreviation": "AZ"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "3746",
+           "displayName": "SK Sturm Graz",
+           "abbreviation": "STG"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915499",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "13083",
+           "displayName": "Hapoel Be'er",
+           "abbreviation": "HBE"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "111",
+           "displayName": "Juventus",
+           "abbreviation": "JUV"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915496",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "11505",
+           "displayName": "Jagiellonia Bialystok",
+           "abbreviation": "JAG"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "384",
+           "displayName": "Crystal Palace",
+           "abbreviation": "CRY"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915495",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "176",
+           "displayName": "Marseille",
+           "abbreviation": "OLM"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "85",
+           "displayName": "Celta Vigo",
+           "abbreviation": "CEL"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915487",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "3362",
+           "displayName": "NK Celje",
+           "abbreviation": "NKC"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "435",
+           "displayName": "Olympiacos",
+           "abbreviation": "OLY"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915498",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "617",
+           "displayName": "Omonia Nicosia",
+           "abbreviation": "OMON"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "256",
+           "displayName": "Celtic",
+           "abbreviation": "CEL"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915497",
+      "date": "2026-12-10T17:45Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "169",
+           "displayName": "Stade Rennais",
+           "abbreviation": "REN"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "597",
+           "displayName": "Dinamo Zagreb",
+           "abbreviation": "DZG"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915493",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "103",
+           "displayName": "AC Milan",
+           "abbreviation": "MIL"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "366",
+           "displayName": "Sunderland",
+           "abbreviation": "SUN"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915488",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "349",
+           "displayName": "AFC Bournemouth",
+           "abbreviation": "BOU"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "11706",
+           "displayName": "Viktoria Plzen",
+           "abbreviation": "PLZ"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915492",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "131",
+           "displayName": "Bayer Leverkusen",
+           "abbreviation": "B04"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "1895",
+           "displayName": "Besiktas",
+           "abbreviation": "BES"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915491",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "1929",
+           "displayName": "Benfica",
+           "abbreviation": "SLB"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "1010",
+           "displayName": "OFI Crete",
+           "abbreviation": "OFI"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915486",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "2990",
+           "displayName": "Lech Poznan",
+           "abbreviation": "LECH"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "622",
+           "displayName": "Ferencvaros",
+           "abbreviation": "FER"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915510",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "490",
+           "displayName": "Levski Sofia",
+           "abbreviation": "LEV"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "987",
+           "displayName": "Lillestrom",
+           "abbreviation": "LSK"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915485",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "167",
+           "displayName": "Lyon",
+           "abbreviation": "LYON"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "5807",
+           "displayName": "Union St.-Gilloise",
+           "abbreviation": "USG"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915489",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "2790",
+           "displayName": "RB Salzburg",
+           "abbreviation": "SLZ"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "433",
+           "displayName": "Sparta Prague",
+           "abbreviation": "SPP"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "401915490",
+      "date": "2026-12-10T20:00Z",
+      "status": {
+       "type": {
+        "name": "STATUS_SCHEDULED",
+        "state": "pre",
+        "completed": false
+       }
+      },
+      "competitions": [
+       {
+        "competitors": [
+         {
+          "homeAway": "home",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "89",
+           "displayName": "Real Sociedad",
+           "abbreviation": "RSO"
+          }
+         },
+         {
+          "homeAway": "away",
+          "score": "0",
+          "winner": false,
+          "team": {
+           "id": "21615",
+           "displayName": "Torreense",
+           "abbreviation": "TOR"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "https://cdn.espn.com/core/soccer/scoreboard?xhr=1&league=uefa.europa&date=20261211": {
+  "content": {
+   "sbData": {
+    "events": []
+   }
+  }
+ }
+}

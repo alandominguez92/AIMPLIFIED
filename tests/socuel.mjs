@@ -84,8 +84,10 @@ const ok = (c, m) => { console.log((c ? '  PASS  ' : '  FAIL  ') + m); if (!c) f
 
 console.log('-- the board --');
 const block = (name) => (src.replace(/\r\n/g, '\n').match(new RegExp(`const ${name} = \\{[\\s\\S]*?\\n\\};`)) || [''])[0];
-ok(/\n  uel: \{ key: 'soccer_uefa_europa_league', label: 'Europa League', country: 'UEFA' \},/.test(block('SOCCER_LEAGUES')),
-  'the Europa League is one of the board\'s leagues, read from the odds feed\'s soccer_uefa_europa_league');
+// Read until Nov 27, when the Bundesliga took its place (tests/bundesliga.mjs): its entry stays, so
+// the games it logged keep its name and grade as below.
+ok(/\n  uel: \{ key: 'soccer_uefa_europa_league', label: 'Europa League', country: 'UEFA', until: '2026-11-27' \},/.test(block('SOCCER_LEAGUES')),
+  'the Europa League was one of the board\'s leagues until Nov 27, read from the odds feed\'s soccer_uefa_europa_league');
 ok(!/uel: \{[^}]*pinnacleFallback/.test(block('SOCCER_LEAGUES')), 'with the two-book rule (no Pinnacle-alone fallback)');
 
 // A logged favourite grades the next morning from ESPN's Europa League scoreboard.

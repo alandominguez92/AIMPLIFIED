@@ -4206,7 +4206,9 @@ const edgeBookHist = (h) => (h || []).filter((p) => p[3] != null).map((p) => [p[
 // ESPN's cdn host is the one a Worker can reach — site.api answers 403 from
 // Cloudflare (see the nfl-grade probe). Free either way, like every other score
 // read in this file.
-const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', uel: 'uefa.europa', seriea: 'ita.1', ligamx: 'mex.1', mls: 'usa.1', uefanl: 'uefa.nations' };
+// The Europa League's stays after its reads stopped (2026-11-27), so its logged games still grade.
+const ESPN_SOCCER_SLUG = { epl: 'eng.1', laliga: 'esp.1', ucl: 'uefa.champions', uel: 'uefa.europa', seriea: 'ita.1', ligamx: 'mex.1', mls: 'usa.1', uefanl: 'uefa.nations',
+  bundesliga: 'ger.1' };
 async function espnScoreboard(path) {
   const r = await fetch(`https://cdn.espn.com/core/${path}`, { headers: { accept: 'application/json' } });
   if (!r.ok) return [];
@@ -4234,6 +4236,8 @@ const TEAM_ALIAS = {
   // The Europa League's first capture (2026-10-22): four of its eighteen
   // fixtures did not match ESPN's names, two of them favourites over 65%.
   unionsaintgilloise: 'unionstgilloise', rennes: 'staderennais', omonoia: 'omonianicosia', olympiakospiraeus: 'olympiacos',
+  // The Bundesliga (2026-11-27): ESPN's "FC Cologne" is Köln in German, as the feed may spell it.
+  koln: 'cologne', '1koln': 'cologne',
 };
 // Letters NFD leaves whole are spelled out, and "&" is read as "and", so the
 // feed's "Bod\u00f8/Glimt" is ESPN's "Bodo/Glimt" and its "Brighton and Hove
@@ -10766,7 +10770,7 @@ async function refreshEdgePrices(env, scan, now) {
   const done = [];
   for (const [k, x] of due) {
     if (st.n >= EDGE_REFRESH_MAX || (st.last[k] && now - st.last[k] < EDGE_REFRESH_GAP_MS)) continue;
-    if (x.sport === 'soccer' && !SOCCER_LEAGUES[x.lg]) continue;
+    if (x.sport === 'soccer' && !soccerLeaguesOn(now).includes(x.lg)) continue;
     st.n++; st.last[k] = now;
     await saveFeedCache(env.DB, key, st);   // before the read: a failed one is not retried every tick
     try {
@@ -11915,7 +11919,15 @@ const SOCCER_LEAGUES = {
   // fixtures a matchday with more mismatches than the Champions League. The
   // same two-book rule. 2 credits a capture, at most two a day while a fixture
   // is inside 36 hours: about 8 credits a matchday week.
-  uel: { key: 'soccer_uefa_europa_league', label: 'Europa League', country: 'UEFA' },
+  // Read until 2026-11-27 (the owner's call): the two-book rule priced a handful of its fixtures,
+  // so the tab showed a few of its clubs and not the rest. Kept for its logged games' labels; they
+  // grade as before (ESPN_SOCCER_SLUG).
+  uel: { key: 'soccer_uefa_europa_league', label: 'Europa League', country: 'UEFA', until: '2026-11-27' },
+  // The Bundesliga in its place (2026-11-27): Friday to Sunday, so dearer than a Europa League week
+  // at the same reads -- about 36 credits a weekend with its six kickoff times (the Premier
+  // League's Nov 21-23 weekend was 36), against 18 for the Europa League's Nov 25-26. A winter
+  // break of about three weeks around the holidays.
+  bundesliga: { key: 'soccer_germany_bundesliga', label: 'Bundesliga', country: 'Germany', from: '2026-11-27' },
   seriea: { key: 'soccer_italy_serie_a', label: 'Serie A', country: 'Italy' },
   ligamx: { key: 'soccer_mexico_ligamx', label: 'Liga MX', country: 'Mexico' },
   // MLS, for the same reason as Liga MX and with the same caveat: both run on a
@@ -11932,6 +11944,13 @@ const SOCCER_LEAGUES = {
   // alone for it when the pool is short (fairSrc 'pinnacle'); the other leagues
   // keep the two-book rule.
   uefanl: { key: 'soccer_uefa_nations_league', label: 'Nations League', country: 'UEFA', pinnacleFallback: true },
+};
+// The leagues read on a Pacific day: a league's `from` is its first day, its `until` its first day
+// off (2026-11-27). The captures, the board and its league buttons, and the edge bets' price
+// refresh all go by it; the labels and the grading keep every league ever read.
+const soccerLeaguesOn = (now) => {
+  const d = ptDateOf(now);
+  return Object.keys(SOCCER_LEAGUES).filter((k) => !(SOCCER_LEAGUES[k].from && d < SOCCER_LEAGUES[k].from) && !(SOCCER_LEAGUES[k].until && d >= SOCCER_LEAGUES[k].until));
 };
 const SOCCER_SHARP = ['pinnacle', 'lowvig', 'betonlineag'];
 const SOCCER_EXEC = ['draftkings', 'fanduel'];
@@ -11966,8 +11985,8 @@ async function soccerIngest(env, url) {
   if (!env.DB) { out.errors.push('no DB binding'); return out; }
   await ensureSoccerSchema(env.DB);
   const want = (url && url.searchParams && url.searchParams.get('league')) || null;
-  const leagues = Object.keys(SOCCER_LEAGUES).filter((l) => !want || l === want);
   const now = Date.now();
+  const leagues = soccerLeaguesOn(now).filter((l) => !want || l === want);
   for (const lg of leagues) {
     const sp = SOCCER_LEAGUES[lg];
     const res = { league: lg, events: 0, wrote: 0, unchanged: 0 };
@@ -12121,7 +12140,7 @@ async function soccerMaybeIngest(env, ctx) {
   if (!env || !env.DB || !env.ODDS_API_KEY) return null;
   const today = slateDate();
   const out = [];
-  for (const lg of Object.keys(SOCCER_LEAGUES)) {
+  for (const lg of soccerLeaguesOn(Date.now())) {
     try {
       const cacheKey = `soccer_cap:${lg}:${today}`;
       const hit = await loadFeedCache(env.DB, cacheKey);
@@ -16764,9 +16783,12 @@ const soc1x2Quotes = (g) => {
 async function soccerBoardData(env, url, opts = {}) {
   // leagueList, not just the keys: the chips used to be hardcoded in the HTML and
   // would have silently kept saying "three leagues" with two of them missing.
+  // The leagues read today (soccerLeaguesOn): one no longer read leaves the tab with its stored
+  // prices, which no read will move again.
+  const readNow = soccerLeaguesOn(Date.now());
   const out = {
-    leagues: Object.keys(SOCCER_LEAGUES),
-    leagueList: Object.entries(SOCCER_LEAGUES).map(([k, v]) => ({ key: k, label: v.label, country: v.country || '' })),
+    leagues: readNow,
+    leagueList: readNow.map((k) => ({ key: k, label: SOCCER_LEAGUES[k].label, country: SOCCER_LEAGUES[k].country || '' })),
     games: [], empty: true, asOf: null,
   };
   if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
@@ -16788,7 +16810,7 @@ async function soccerBoardData(env, url, opts = {}) {
     ).bind(new Date(Date.now() - 3 * 3600e3).toISOString()).all()).results || [];
     const latest = new Map();
     for (const r of rows) {
-      if (want && r.league !== want) continue;
+      if ((want && r.league !== want) || !readNow.includes(r.league)) continue;
       latest.set(`${r.event_id}|${r.market}|${r.selection}|${r.book}`, r);
       if (!out.asOf || String(r.captured_at) > String(out.asOf)) out.asOf = r.captured_at;
     }
