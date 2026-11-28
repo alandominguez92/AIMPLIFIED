@@ -150,7 +150,7 @@ const API_ROUTES = new Set([
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health', '/api/d1-reads',
-  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw', '/api/tabs', '/api/pick-rules', '/api/lol-board',
+  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw', '/api/tabs', '/api/pick-rules', '/api/lol-board', '/api/lol-lines',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -317,6 +317,8 @@ const HANDLER = {
     if (p === '/api/prop-lines') return propLinesApi(request, env);
     // And PrizePicks' UFC fight-time lines (2026-11-19).
     if (p === '/api/ufc-lines') return ufcLinesApi(request, env);
+    // And League of Legends players' lines (2026-11-28).
+    if (p === '/api/lol-lines') return lolLinesApi(request, env);
     if (routeLocked(p, url) && !(env && env.ADMIN_KEY && request.headers.get('x-admin-key') === env.ADMIN_KEY)) {
       return cors(new Response(JSON.stringify({ error: 'This route needs the admin key.' }), { status: 403, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }));
     }
@@ -13567,6 +13569,16 @@ async function ensureLolSchema(db) {
     game_id TEXT, player TEXT, match_id TEXT, league TEXT, year INTEGER, start TEXT, team TEXT, role TEXT, champion TEXT,
     kills INTEGER, deaths INTEGER, assists INTEGER, team_kills INTEGER, win INTEGER, PRIMARY KEY (game_id, player))`).run();
   await db.prepare('CREATE INDEX IF NOT EXISTS lolplayers_who ON lolplayers (player, start)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS lolgames_match ON lolgames (match_id)').run();
+  // Each player's kills, assists and deaths over the maps PrizePicks counts (2026-11-28): the
+  // stand-in line and the rule's side logged until the start, PrizePicks' line where typed, and
+  // what he did.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS lolprops (
+    match_id TEXT NOT NULL, player TEXT NOT NULL, stat TEXT NOT NULL, league TEXT, year INTEGER, start TEXT, team TEXT, role TEXT,
+    bo INTEGER, maps INTEGER, p_team REAL, warm INTEGER, side TEXT, line REAL, hist_n INTEGER, logged_at TEXT,
+    pp_line REAL, pp_at TEXT, pp_edits INTEGER, actual INTEGER, result TEXT, pp_result TEXT, graded_at TEXT,
+    PRIMARY KEY (match_id, player, stat))`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS lolprops_open ON lolprops (graded_at, start)').run();
 }
 
 // The schedule, three days back to ten on: each series' time, format and teams (a playoff's
@@ -13708,6 +13720,199 @@ function lolRecordOf(rows) {
     byLeague: Object.fromEntries(LOL_LEAGUES.map((L) => [L, tally(g.filter((x) => x.league === L && x.p >= 65))])) };
 }
 
+// ---------------------------------------------------------------------------
+// League of Legends props (2026-11-28, the rest of step one): each player's kills, assists and
+// deaths over the maps PrizePicks counts, maps 1-2 of a Bo3 and 1-3 of a Bo5 (none on a single
+// map), against a stand-in line at his own 50/50 point: his last 20 maps this season, each map
+// drawn from that spread, summed over the maps counted, and the .5 line nearest an even split (a
+// line at his average leans Under by itself, kill counts leaning right). Ten maps this season
+// first. The side is the Nov 27 replay's rule: Under on a big underdog's players (under 35% to win
+// the series), Over on a big favourite's (65%+), deaths the other way round, both teams eight maps
+// in, and none in the LPL, where it went 48-50%. Outside the LPL at those lines assists went 58.5%
+// (1,028 of 1,756), deaths 57.1% and kills 54.2%. PrizePicks' own line is typed on the tab
+// (/api/lol-lines, the entries key) and graded at that number. All of it is off Picks until the
+// typed lines land 55%+ over 100+ legs (step three).
+const LOL_PROP_STATS = { k: 'kills', a: 'assists', d: 'deaths' };
+const LOL_PROP_PRIOR = 10, LOL_PROP_LAST = 20, LOL_PROP_DOG = 35, LOL_PROP_FAV = 65;
+const LOL_PROPS_REC_KEY = 'lol_props_rec';
+const lolMapsCounted = (bo) => (bo === 3 ? 2 : bo === 5 ? 3 : 0);
+const lolChunks = (list, n = 90) => { const out = []; for (let i = 0; i < list.length; i += n) out.push(list.slice(i, i + n)); return out; };
+const lolMarks = (n) => Array.from({ length: n }, () => '?').join(',');
+// The replay's own arithmetic (Nov 27), the maps oldest first.
+function lolFairLine(vals, w) {
+  const one = new Map();
+  for (const v of vals) one.set(v, (one.get(v) || 0) + 1 / vals.length);
+  let dist = new Map([[0, 1]]);
+  for (let i = 0; i < w; i++) {
+    const nx = new Map();
+    for (const [a, pa] of dist) for (const [b, pb] of one) nx.set(a + b, (nx.get(a + b) || 0) + pa * pb);
+    dist = nx;
+  }
+  let fair = null, gap = 2;
+  for (let L = 0.5; L < 60; L += 1) {
+    let under = 0;
+    for (const [v, p] of dist) if (v < L) under += p;
+    if (Math.abs(under - 0.5) < gap) { gap = Math.abs(under - 0.5); fair = L; }
+  }
+  return fair;
+}
+// The team's chance to win the series, in percent.
+function lolPropSide(stat, league, pTeam, warm) {
+  if (league === 'LPL' || !warm || pTeam == null) return null;
+  const dog = pTeam < LOL_PROP_DOG, fav = pTeam >= LOL_PROP_FAV;
+  if (!dog && !fav) return null;
+  return (stat === 'd' ? fav : dog) ? 'under' : 'over';
+}
+// Each team's five from its last map this season, and each of them's maps this season, oldest
+// first. A team with no map this season has no line-up yet.
+async function lolForm(db, year, teams) {
+  const games = (await db.prepare('SELECT game_id, league, blue, red FROM lolgames WHERE year = ? ORDER BY start DESC, game_id DESC').bind(year).all()).results || [];
+  const last = new Map();
+  for (const g of games) for (const t of [g.blue, g.red]) { const k = `${g.league}|${t}`; if (teams.has(k) && !last.has(k)) last.set(k, g.game_id); }
+  const lineups = new Map();
+  for (const ids of lolChunks([...new Set(last.values())])) {
+    const rows = (await db.prepare(`SELECT game_id, player, team, league, role FROM lolplayers WHERE game_id IN (${lolMarks(ids.length)})`).bind(...ids).all()).results || [];
+    for (const r of rows) {
+      const k = `${r.league}|${r.team}`;
+      if (last.get(k) !== r.game_id) continue;
+      if (!lineups.has(k)) lineups.set(k, []);
+      lineups.get(k).push({ player: r.player, role: r.role });
+    }
+  }
+  const who = [...new Set([...lineups.values()].flat().map((p) => p.player))], hist = new Map();
+  for (const ps of lolChunks(who)) {
+    const rows = (await db.prepare(`SELECT player, start, game_id, kills, deaths, assists FROM lolplayers WHERE year = ? AND player IN (${lolMarks(ps.length)}) ORDER BY player, start, game_id`)
+      .bind(year, ...ps).all()).results || [];
+    for (const r of rows) { if (!hist.has(r.player)) hist.set(r.player, []); hist.get(r.player).push(r); }
+  }
+  return { lineups, hist };
+}
+// Logged until the start, as the series' chance is: every Bo3 and Bo5 to come with a chance, each
+// team's five with ten maps or more (a player who has left the line-up comes off, unless his line
+// was typed). Graded once the series is over and its first maps are in: the sum over the maps
+// counted. A player who missed one of them, a forfeit, or maps still not in two weeks on: void.
+async function lolLogProps(db, now = Date.now()) {
+  const at = new Date(now).toISOString(), out = { logged: 0, dropped: 0, graded: 0 }, stmts = [];
+  const pre = (await db.prepare('SELECT * FROM lolseries WHERE graded_at IS NULL AND start > ? AND bo IN (3, 5) AND p1 IS NOT NULL ORDER BY start').bind(at).all()).results || [];
+  const byYear = new Map();
+  for (const s of pre) { if (!byYear.has(s.year)) byYear.set(s.year, []); byYear.get(s.year).push(s); }
+  for (const [year, list] of byYear) {
+    const { lineups, hist } = await lolForm(db, year, new Set(list.flatMap((s) => [`${s.league}|${s.team1}`, `${s.league}|${s.team2}`])));
+    const have = new Map();
+    for (const ids of lolChunks(list.map((s) => s.match_id))) {
+      const rows = (await db.prepare(`SELECT match_id, player, stat, team, line, side, p_team, hist_n, pp_line FROM lolprops WHERE graded_at IS NULL AND match_id IN (${lolMarks(ids.length)})`)
+        .bind(...ids).all()).results || [];
+      for (const r of rows) have.set(`${r.match_id}|${r.player}|${r.stat}`, r);
+    }
+    for (const s of list) {
+      const w = lolMapsCounted(s.bo), warm = (s.maps1 || 0) >= LOL_WARM_MAPS && (s.maps2 || 0) >= LOL_WARM_MAPS;
+      for (const [team, pTeam] of [[s.team1, s.p1], [s.team2, round1(100 - s.p1)]]) {
+        const five = lineups.get(`${s.league}|${team}`);
+        if (!five) continue;
+        for (const [key, r] of have) {
+          if (r.match_id !== s.match_id || r.team !== team || r.pp_line != null || five.some((p) => p.player === r.player)) continue;
+          stmts.push(db.prepare('DELETE FROM lolprops WHERE match_id = ? AND player = ? AND stat = ? AND graded_at IS NULL AND pp_line IS NULL').bind(r.match_id, r.player, r.stat));
+          have.delete(key); out.dropped++;
+        }
+        for (const p of five) {
+          const h = hist.get(p.player) || [];
+          if (h.length < LOL_PROP_PRIOR) continue;
+          const recent = h.slice(-LOL_PROP_LAST);
+          for (const [stat, col] of Object.entries(LOL_PROP_STATS)) {
+            const line = lolFairLine(recent.map((m) => Number(m[col]) || 0), w), side = lolPropSide(stat, s.league, pTeam, warm);
+            const was = have.get(`${s.match_id}|${p.player}|${stat}`);
+            if (was && was.line === line && was.side === side && was.p_team === pTeam && was.hist_n === h.length && was.team === team) continue;
+            stmts.push(db.prepare(`INSERT INTO lolprops (match_id, player, stat, league, year, start, team, role, bo, maps, p_team, warm, side, line, hist_n, logged_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              ON CONFLICT(match_id, player, stat) DO UPDATE SET start = excluded.start, team = excluded.team, role = excluded.role, bo = excluded.bo,
+                maps = excluded.maps, p_team = excluded.p_team, warm = excluded.warm, side = excluded.side, line = excluded.line, hist_n = excluded.hist_n,
+                logged_at = excluded.logged_at
+              WHERE lolprops.graded_at IS NULL`)
+              .bind(s.match_id, p.player, stat, s.league, s.year, s.start, team, p.role || null, s.bo, w, pTeam, warm ? 1 : 0, side, line, h.length, at));
+            out.logged++;
+          }
+        }
+      }
+    }
+  }
+  const open = (await db.prepare(`SELECT p.match_id, p.player, p.stat, p.line, p.pp_line, p.maps, s.ff, s.start AS s_start FROM lolprops p
+      JOIN lolseries s ON s.match_id = p.match_id
+      WHERE p.graded_at IS NULL AND s.start <= ? AND (s.winner IS NOT NULL OR s.ff IS NOT NULL)`).bind(at).all()).results || [];
+  const byMatch = new Map();
+  for (const r of open) { if (!byMatch.has(r.match_id)) byMatch.set(r.match_id, []); byMatch.get(r.match_id).push(r); }
+  for (const [mid, rows] of byMatch) {
+    const w = rows[0].maps, ff = !!rows[0].ff;
+    const maps = ff ? [] : ((await db.prepare('SELECT game_id FROM lolgames WHERE match_id = ? ORDER BY start, game_id').bind(mid).all()).results || []).slice(0, w).map((g) => g.game_id);
+    if (!ff && maps.length < w && !(now - Date.parse(rows[0].s_start) > LOL_MISSING_MS)) continue;
+    const got = new Map();
+    if (maps.length === w) {
+      const ps = (await db.prepare(`SELECT game_id, player, kills, deaths, assists FROM lolplayers WHERE game_id IN (${lolMarks(maps.length)})`).bind(...maps).all()).results || [];
+      for (const x of ps) { if (!got.has(x.player)) got.set(x.player, []); got.get(x.player).push(x); }
+    }
+    for (const r of rows) {
+      const mine = got.get(r.player) || [], played = maps.length === w && mine.length === w;
+      const actual = played ? mine.reduce((a, x) => a + (Number(x[LOL_PROP_STATS[r.stat]]) || 0), 0) : null;
+      const vs = (line) => (line == null ? null : !played ? 'void' : actual > line ? 'over' : actual < line ? 'under' : 'push');
+      stmts.push(db.prepare('UPDATE lolprops SET actual = ?, result = ?, pp_result = ?, graded_at = ? WHERE match_id = ? AND player = ? AND stat = ? AND graded_at IS NULL')
+        .bind(actual, vs(r.line), vs(r.pp_line), at, r.match_id, r.player, r.stat));
+      out.graded++;
+    }
+  }
+  for (const part of lolChunks(stmts, 80)) await db.batch(part);
+  // The record, kept: read on every board, rebuilt only when something is graded.
+  if (out.graded) {
+    const rows = (await db.prepare('SELECT stat, side, result, pp_result, COUNT(*) AS n FROM lolprops WHERE graded_at IS NOT NULL GROUP BY stat, side, result, pp_result').all()).results || [];
+    await saveFeedCache(db, LOL_PROPS_REC_KEY, lolPropsRecordOf(rows));
+  }
+  return out;
+}
+// The props record from counts by stat, side and result: the rule's side at the stand-in line and at
+// PrizePicks' typed line, and how often the Over landed at the stand-in line (it is meant to be 50/50).
+function lolPropsRecordOf(rows) {
+  const t0 = () => ({ n: 0, hit: 0 });
+  const byStat = Object.fromEntries(Object.keys(LOL_PROP_STATS).map((k) => [k, { atLine: t0(), atPp: t0(), over: t0() }]));
+  const all = { atLine: t0(), atPp: t0() };
+  for (const r of rows) {
+    const b = byStat[r.stat], n = Number(r.n) || 0;
+    if (!b) continue;
+    if (r.result === 'over' || r.result === 'under') {
+      b.over.n += n; if (r.result === 'over') b.over.hit += n;
+      if (r.side) { b.atLine.n += n; all.atLine.n += n; if (r.result === r.side) { b.atLine.hit += n; all.atLine.hit += n; } }
+    }
+    if (r.side && (r.pp_result === 'over' || r.pp_result === 'under')) {
+      b.atPp.n += n; all.atPp.n += n; if (r.pp_result === r.side) { b.atPp.hit += n; all.atPp.hit += n; }
+    }
+  }
+  return { byStat, ...all };
+}
+
+// POST/GET /api/lol-lines: PrizePicks' line typed on a player (no feed carries it). Private by the
+// entries key and never cached, as /api/ufc-lines is. POST { matchId, player, stat, line } saves it
+// until the series starts, graded at that number with the rule's side.
+async function lolLinesApi(request, env) {
+  if (!env || !env.DB) return entryResponse({ error: 'no DB binding' }, 500);
+  const auth = await entryAuth(env, request);
+  if (!auth.ok) return entryResponse({ error: auth.error }, auth.status);
+  const db = env.DB;
+  await ensureLolSchema(db);
+  if (request.method === 'POST') {
+    let b;
+    try { b = await request.json(); } catch (e) { return entryResponse({ error: 'Body must be JSON.' }, 400); }
+    const id = String((b && b.matchId) || ''), player = String((b && b.player) || ''), stat = String((b && b.stat) || ''), line = Number(b && b.line);
+    if (!LOL_PROP_STATS[stat]) return entryResponse({ error: 'The stat is k, a or d (kills, assists, deaths).' }, 400);
+    if (!(line > 0 && line < 100 && Number.isInteger(line * 2))) return entryResponse({ error: 'A line is a whole or half number, as 7.5.' }, 400);
+    const row = await db.prepare('SELECT p.graded_at, s.start FROM lolprops p JOIN lolseries s ON s.match_id = p.match_id WHERE p.match_id = ? AND p.player = ? AND p.stat = ?')
+      .bind(id, player, stat).first();
+    if (!row) return entryResponse({ error: 'No line for that player in that match.' }, 404);
+    if (row.graded_at || Date.parse(row.start) <= Date.now()) return entryResponse({ error: 'That match has started: its lines are locked.' }, 409);
+    await db.prepare('UPDATE lolprops SET pp_line = ?, pp_at = ?, pp_edits = COALESCE(pp_edits, 0) + 1 WHERE match_id = ? AND player = ? AND stat = ? AND graded_at IS NULL')
+      .bind(line, new Date().toISOString(), id, player, stat).run();
+    return entryResponse({ ok: true, matchId: id, player, stat, line, claimed: !!auth.claimed });
+  }
+  const rows = (await db.prepare('SELECT match_id, player, stat, pp_line, pp_at FROM lolprops WHERE pp_line IS NOT NULL AND graded_at IS NULL ORDER BY start LIMIT 300').all()).results || [];
+  return entryResponse({ lines: rows });
+}
+
 // Each tick on HIST_CRON: whatever is due, a read at a time, stopping at the first refusal.
 async function lolTick(env, now = Date.now()) {
   if (!env || !env.DB) return null;
@@ -13766,6 +13971,7 @@ async function lolTick(env, now = Date.now()) {
   // the log is brought up to date after reads, not every tick.
   if (changed) {
     out.log = await lolLogSeries(db, now).catch(() => null);
+    out.props = await lolLogProps(db, now).catch((e) => ({ error: String(e && e.message || e).slice(0, 120) }));
     await saveFeedCache(db, LOL_STATE_KEY, st);
     await saveFeedCache(db, LOL_BOARD_KEY, null);
   }
@@ -13807,8 +14013,25 @@ async function lolBoardData(env, now = Date.now()) {
       teams: [{ name: s.team1, p: p1, maps: c.maps1 || 0, won: done && s.winner === 1 }, { name: s.team2, p: p1 == null ? null : round1(100 - p1), maps: c.maps2 || 0, won: done && s.winner === 2 }],
       fav, pFav: pf, warm, score: done && s.score1 != null ? [s.score1, s.score2] : null, result: s.result || null,
       // The Picks bar (step two): 75%+ with both teams eight maps in.
-      bar: pf != null && pf >= 75 && warm };
+      bar: pf != null && pf >= 75 && warm, props: null };
   });
+  // Each player's lines (2026-11-28): the stand-in line and the rule's side, and once graded what he
+  // did. PrizePicks' typed lines are the entries key's (/api/lol-lines), not shown here.
+  const ROLE_AT = { Top: 0, Jungle: 1, Mid: 2, Bot: 3, Support: 4 }, byMatch = new Map(out.matches.map((m) => [m.id, m]));
+  for (const ids of lolChunks(out.matches.map((m) => m.id))) {
+    const xs = (await db.prepare(`SELECT match_id, player, stat, team, role, maps, side, line, hist_n, actual, result FROM lolprops WHERE match_id IN (${lolMarks(ids.length)})`)
+      .bind(...ids).all()).results || [];
+    for (const x of xs) {
+      const m = byMatch.get(x.match_id);
+      if (!m) continue;
+      if (!m.props) m.props = { maps: x.maps, players: [] };
+      let p = m.props.players.find((y) => y.name === x.player);
+      if (!p) m.props.players.push(p = { name: x.player, team: x.team === m.teams[0].name ? 1 : 2, role: x.role || null, n: x.hist_n });
+      p[x.stat] = { line: x.line, side: x.side || null, actual: x.actual, result: x.result || null };
+    }
+  }
+  for (const m of out.matches) if (m.props) m.props.players.sort((a, b) => a.team - b.team || (ROLE_AT[a.role] ?? 9) - (ROLE_AT[b.role] ?? 9) || (a.name < b.name ? -1 : 1));
+  out.propsRecord = ((await loadFeedCache(db, LOL_PROPS_REC_KEY).catch(() => null)) || {}).data || null;
   if (!rows.some((s) => Date.parse(s.start) > now)) {
     const today = ptDateOf(now);
     out.next = (st.tournaments || []).filter((t) => t.start > today).sort((a, b) => (a.start < b.start ? -1 : 1))[0] || null;

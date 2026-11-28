@@ -3578,6 +3578,24 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .lol-split span { background:var(--model); }
 .lol-foot { margin:8px 0 0; font-size:12px; color:var(--textFaint); }
 .lol-season { margin:14px 0 0; font-size:12px; color:var(--textFaint); }
+/* Its players (2026-11-28), one stat at a time: a team's five under its name, each with the 50/50
+   line, the side and PrizePicks' line to set, or once played what he did. */
+.lol-pl { margin-top:12px; }
+.lol-pl-h { margin:0; font-family:var(--sans); font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--textDim); }
+.lol-pn { display:flex; flex-direction:column; gap:1px; }
+.lol-pn b { font-size:14px; overflow-wrap:anywhere; }
+/* Three columns, so the steppers line up down the team whatever the line's width or the side's word;
+   on a phone the name and the 50/50 line share the first line, PrizePicks' line under them. */
+.ufc-row.lol-pr { display:grid; grid-template-columns:118px 150px minmax(0, 1fr); align-items:center; gap:6px 12px; }
+.lol-fair { display:inline-flex; align-items:baseline; gap:8px; font-size:13px; }
+.lol-fair b { font-family:var(--mono); font-size:14px; }
+.lol-pr .sp-line { margin-top:0; }
+.lol-side { display:inline-block; padding:0 7px; border:1px solid var(--border); border-radius:999px; font-family:var(--sans); font-size:11.5px;
+  line-height:18px; color:var(--textFaint); }
+.lol-side.is-over, .lol-side.is-under { border-color:var(--model); color:var(--text); }
+.lol-did { font-size:13px; }
+.lol-hit { color:var(--positive); }
+.lol-miss { color:var(--caution); }
 @media (max-width: 640px) {
   .ufc-bout { padding:12px; }
   .ufc-pair { grid-template-columns:1fr; gap:8px; }
@@ -3586,4 +3604,7 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .ufc-row { flex-direction:column; gap:4px; }
   .ufc-pr { align-items:stretch; }
   .ufc-k { width:auto; }
+  .ufc-row.lol-pr { grid-template-columns:minmax(0, 1fr) auto; gap:6px 10px; }
+  .lol-pr > :last-child { grid-column:1 / -1; }
+  .lol-pn { flex-direction:row; flex-wrap:wrap; align-items:baseline; gap:0 8px; }
 }

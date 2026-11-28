@@ -5091,6 +5091,14 @@
         break;
       }
       case 'lol-league': state.lolLeague = target.dataset.league; renderLol(); break;
+      // The series or a player stat, and PrizePicks' line on a player (2026-11-28).
+      case 'lol-stat': state.lolStat = target.dataset.stat; renderLol(); break;
+      case 'lol-pstep': {
+        const x = lolPropPlayer(target.dataset.key);
+        if (x) lolPropLineSet(target.dataset.key, lolPropLineOf(x.m, x.p, x.stat) + Number(target.dataset.d));
+        break;
+      }
+      case 'lol-psave': clearTimeout(lolPropTimers[target.dataset.key]); lolPropSend(target.dataset.key); break;
       case 'ticket-ml-save': saveTicketImage(true); break;
       // A book's link that needs the state: open the bankroll fold at it.
       case 'bank-open': {
@@ -5258,6 +5266,11 @@
     if (t.dataset.ufcp) {
       const v = Number(t.value);
       if (isFinite(v) && v > 0) ufcPropLineSet(t.dataset.ufcp, v);
+    }
+    // A League of Legends player's line typed to PrizePicks' number (2026-11-28).
+    if (t.dataset.lolp) {
+      const v = Number(t.value);
+      if (isFinite(v) && v > 0) lolPropLineSet(t.dataset.lolp, v);
     }
     // A stat picked from the bar that stays under the tabs (2026-11-06).
     if (t.dataset.spsel) {
@@ -8760,6 +8773,7 @@
     const d = await fetchJson('/api/lol-board').catch(() => null);
     state.lol = d && Array.isArray(d.matches) ? d : { matches: [], error: d ? d.error || 'no board' : 'unreachable' };
     renderLol();
+    lolSavedLoad();
   }
   // Leaguepedia tells teams of one name apart in brackets: "LYON (2024 American Team)".
   const lolName = (n) => String(n || '').replace(/\s*\([^)]*\)\s*$/, '') || String(n || '');
@@ -8791,12 +8805,15 @@
     const on = mine.filter((m) => m.state === 'in');
     const past = mine.filter((m) => m.state === 'post' || m.state === 'void').reverse();
     if (count) count.textContent = mlCountText(sp, now, 'match', 'matches');
+    // The series, or one player stat at a time (2026-11-28), and the leagues.
+    const view = lolView();
+    const views = `<div class="sp-chips lol-chips">${Object.entries(LOL_VIEWS).map(([k, name]) => `<button type="button" class="sp-chip${k === view ? ' on' : ''}" data-action="lol-stat" data-stat="${k}" aria-pressed="${k === view}">${esc(name)}</button>`).join('')}</div>`;
     const chips = have.length > 1 ? `<div class="sp-chips lol-chips">${['all', ...have].map((k) => `<button type="button" class="sp-chip${k === lg ? ' on' : ''}" data-action="lol-league" data-league="${k}" aria-pressed="${k === lg}">${k === 'all' ? 'All' : esc(k)}</button>`).join('')}</div>` : '';
-    const group = (title, list) => (list.length ? `<div class="lol-day"><h3 class="ufc-seg-h">${esc(title)}</h3>${list.map(lolMatchHtml).join('')}</div>` : '');
+    const group = (title, list) => (list.length ? `<div class="lol-day"><h3 class="ufc-seg-h">${esc(title)}</h3>${list.map((m) => lolMatchHtml(m, view)).join('')}</div>` : '');
     const dayOf = (m) => ptDayOf(Date.parse(m.start));
     const days = [...new Set(table.map(dayOf))];
     const none = d.error ? `The board is unavailable (${d.error}).` : !sp.shown.length ? lolNoneText(d, lg, on.length + past.length > 0) : '';
-    grid.innerHTML = chips + lolRecordHtml(d)
+    grid.innerHTML = views + chips + (view === 'ml' ? lolRecordHtml(d) : lolPropsRecordHtml(d, view))
       + group('Under way', on)
       + days.map((dy) => group(propDayTitle(dy, now), table.filter((m) => dayOf(m) === dy))).join('')
       + mlLaterHtml('lol', sp, now, 'match', 'starts', 'matches')
@@ -8820,7 +8837,7 @@
       + '<span class="ufc-rec-note">Each series’ favourite, at the chance on show when it started. In the replay of the 2026 season, 75%+ with both teams eight maps in won 131 of 160 (82%, about 83% shown); 65–75% was noisy. Not on Picks yet.</span>'
       + '</div>';
   }
-  function lolMatchHtml(m) {
+  function lolMatchHtml(m, view = 'ml') {
     const t = m.teams || [], warmAt = (state.lol && state.lol.warmMaps) || 8;
     const when = m.state === 'post' ? 'Final' : m.state === 'void' ? 'Forfeit · not graded' : m.state === 'in' ? 'Under way' : kickWhole(m.start);
     const tags = [LOL_LEAGUE_WORDS[m.league] || m.league, m.bo > 1 ? `Best of ${m.bo}` : 'One map', when];
@@ -8840,8 +8857,118 @@
     const foot = (m.state !== 'pre' && m.state !== 'void' && t[0] && t[0].p == null) ? 'Started before it was logged: not graded.'
       : m.state === 'pre' && cold.length ? `${cold.map((x) => lolName(x.name)).join(' and ')} ${cold.length === 1 ? 'has' : 'have'} played fewer than ${warmAt} maps this season: an early number.`
         : '';
+    const body = view !== 'ml' ? lolPropsHtml(m, view) : `${split}${foot ? `<p class="lol-foot">${esc(foot)}</p>` : ''}`;
     return `<article class="ufc-bout lol-m"><div class="ufc-tags">${tags.map((x) => `<span>${esc(x)}</span>`).join('')}</div>`
-      + `<div class="lol-pair">${row(t[0] || {}, 0)}${row(t[1] || {}, 1)}</div>${split}${foot ? `<p class="lol-foot">${esc(foot)}</p>` : ''}</article>`;
+      + `<div class="lol-pair">${row(t[0] || {}, 0)}${row(t[1] || {}, 1)}</div>${body}</article>`;
+  }
+
+  // Each player's kills, assists and deaths (2026-11-28, the rest of step one), one stat at a time as
+  // on the UFC card: the stand-in line at his own 50/50 point over the maps PrizePicks counts (his
+  // last 20 maps this season), the Nov 27 replay's side, and PrizePicks' line typed in, saved by the
+  // entries key and graded at that number. No chance is shown at a typed line: the replay tested
+  // the side at the 50/50 line only, and his maps alone leave out the team's chance the side rests on.
+  const LOL_VIEWS = { ml: 'Series', k: 'Kills', a: 'Assists', d: 'Deaths' };
+  const LOL_STAT_WORDS = { k: 'kills', a: 'assists', d: 'deaths' };
+  // What the side went in the replay outside the LPL, at the 50/50 line.
+  const LOL_REPLAY = { k: 'kills 54.2%', a: 'assists 58.5% (1,028 of 1,756)', d: 'deaths 57.1%' };
+  const lolView = () => (LOL_VIEWS[state.lolStat] ? state.lolStat : 'ml');
+  const lolMatch = (id) => ((state.lol && state.lol.matches) || []).find((m) => m.id === id) || null;
+  const lolPropKey = (m, p, stat) => `${m.id}|${p.name}|${stat}`;
+  const lolPropPlayer = (k) => { const [mid, name, stat] = k.split('|'), m = lolMatch(mid);
+    const p = m && m.props && m.props.players.find((x) => x.name === name);
+    return p && p[stat] ? { m, p, stat } : null; };
+  // The line on show: one being stepped, else the one saved, else the 50/50 line.
+  const lolPropLineOf = (m, p, stat) => {
+    const k = lolPropKey(m, p, stat), set = state.lolPl && state.lolPl[k], saved = state.lolPs && state.lolPs[k];
+    return set != null ? set : saved != null ? saved : p[stat].line;
+  };
+  function lolPropsRecordHtml(d, stat) {
+    const r = (d.propsRecord && d.propsRecord.byStat && d.propsRecord.byStat[stat]) || {};
+    const of = (x) => (x && x.n ? `${x.hit} of ${x.n} (${Math.round(x.hit / x.n * 1000) / 10}%)` : 'none graded yet');
+    const big = stat === 'd' ? 'More on a big underdog’s players (under 35% to win the series), Less on a big favourite’s (65%+)'
+      : 'Less on a big underdog’s players (under 35% to win the series), More on a big favourite’s (65%+)';
+    return '<div class="ufc-rec">'
+      + `<span><b>The side at the 50/50 line</b> ${of(r.atLine)}</span>`
+      + `<span><b>At your PrizePicks lines</b> ${of(r.atPp)}</span>`
+      + `<span><b>More at the 50/50 line</b> ${of(r.over)}</span>`
+      + `<span class="ufc-rec-note">Each player’s ${LOL_STAT_WORDS[stat]} over the maps PrizePicks counts (1–2 of a best of three, 1–3 of a best of five), from his last 20 maps this season: the 50/50 line is where they split even. The side: ${big}, both teams eight maps in, none in the LPL. In the replay of the 2026 season it went ${LOL_REPLAY[stat]} at this line outside the LPL. Type PrizePicks’ line to log it: off Picks until those land 55%+ over 100+.</span>`
+      + '</div>';
+  }
+  function lolPropsHtml(m, stat) {
+    const pr = m.props, t = m.teams || [];
+    if (m.bo === 1) return '<p class="lol-foot">One map: PrizePicks counts maps 1–2 of a best of three and 1–3 of a best of five, so no lines here.</p>';
+    if (!pr || !pr.players.some((p) => p[stat])) {
+      return `<p class="lol-foot">${m.state === 'pre' ? 'No lines yet: each team’s five come from its last map this season, those with ten maps in.' : 'Started before it was logged: no lines.'}</p>`;
+    }
+    const team = (i) => {
+      const ps = pr.players.filter((p) => p.team === i + 1 && p[stat]);
+      return ps.length ? `<div class="lol-pl"><h4 class="lol-pl-h">${esc(lolName((t[i] || {}).name))}</h4>${ps.map((p) => lolPlayerHtml(m, p, stat)).join('')}</div>` : '';
+    };
+    const notes = [`${LOL_STAT_WORDS[stat][0].toUpperCase()}${LOL_STAT_WORDS[stat].slice(1)} over maps 1–${pr.maps}.`];
+    if (m.league === 'LPL') notes.push('No side in the LPL: the rule didn’t hold there in the replay.');
+    if (pr.players.length < 10) notes.push('A player with fewer than ten maps this season has no line.');
+    return team(0) + team(1) + `<p class="lol-foot">${esc(notes.join(' '))}</p>`;
+  }
+  function lolPlayerHtml(m, p, stat) {
+    const x = p[stat], side = x.side, k = lolPropKey(m, p, stat);
+    const who = `<span class="ufc-k lol-pn"><b>${esc(lolName(p.name))}</b><span class="ufc-fr">${esc([p.role, `${p.n} maps`].filter(Boolean).join(' · '))}</span></span>`;
+    const sideHtml = `<span class="lol-side${side ? ` is-${side}` : ''}">${side === 'over' ? 'More' : side === 'under' ? 'Less' : 'No side'}</span>`;
+    // A row: who, the 50/50 line and side, then PrizePicks' line (or what he did) — on a phone the
+    // first two share a line and the last goes under them.
+    const fair = `<span class="lol-fair">50/50 <b>${esc(String(x.line))}</b>${sideHtml}</span>`;
+    if (m.state !== 'pre') {
+      const landed = side && (x.result === 'over' || x.result === 'under') ? (x.result === side ? ' <span class="lol-hit" title="The side landed">✓</span>' : ' <span class="lol-miss" title="The side missed">✗</span>') : '';
+      const did = x.actual != null ? `did <b>${esc(String(x.actual))}</b>${landed}`
+        : x.result === 'void' ? (m.state === 'void' ? 'void: a forfeit' : 'void: not on every map counted') : m.state === 'in' ? 'under way' : 'waiting for the maps';
+      return `<div class="ufc-row lol-pr">${who}${fair}<span class="lol-did">${did}</span></div>`;
+    }
+    const line = lolPropLineOf(m, p, stat);
+    return `<div class="ufc-row lol-pr">${who}${fair}<span class="sp-line"><span class="sp-lbl">PP</span>`
+      + `<button type="button" class="sp-step" data-action="lol-pstep" data-key="${esc(k)}" data-d="-1" aria-label="Lower the line">−</button>`
+      + `<input class="sp-in" type="number" inputmode="decimal" step="0.5" min="0.5" value="${esc(String(line))}" data-lolp="${esc(k)}" aria-label="PrizePicks line for ${esc(lolName(p.name))} ${esc(LOL_STAT_WORDS[stat])}">`
+      + `<button type="button" class="sp-step" data-action="lol-pstep" data-key="${esc(k)}" data-d="1" aria-label="Raise the line">+</button>`
+      + `${lolPropSaveHtml(k, line)}</span></div>`;
+  }
+  function lolPropSaveHtml(k, line) {
+    if (state.lolPsaving && state.lolPsaving[k]) return '<span class="sp-lbl">Saving…</span>';
+    if (state.lolPs && state.lolPs[k] === line) return '<span class="sp-lbl" title="Saved as PrizePicks\' line: graded at this number">PP line <span class="sp-ok">✓</span></span>';
+    return `<button type="button" class="sp-save" data-action="lol-psave" data-key="${esc(k)}" aria-label="Save ${esc(String(line))} as PrizePicks' line">Save</button>`;
+  }
+  // A whole or half line, saved a moment after the last change, as on the UFC card.
+  const lolPropTimers = {};
+  function lolPropLineSet(k, v, wait = 1200) {
+    if (!isFinite(v)) return;
+    state.lolPl = { ...(state.lolPl || {}), [k]: Math.min(99.5, Math.max(0.5, Math.round(v * 2) / 2)) };
+    clearTimeout(lolPropTimers[k]);
+    if (wait != null) lolPropTimers[k] = setTimeout(() => lolPropSend(k), wait);
+    renderLol();
+  }
+  async function lolPropSend(k) {
+    const x = lolPropPlayer(k);
+    if (!x) return;
+    const line = lolPropLineOf(x.m, x.p, x.stat);
+    state.lolPsaving = { ...(state.lolPsaving || {}), [k]: true };
+    renderLol();
+    try {
+      const j = await entriesFetch('POST', { matchId: x.m.id, player: x.p.name, stat: x.stat, line }, '/api/lol-lines');
+      state.lolPs = { ...(state.lolPs || {}), [k]: j.line };
+    } catch (e) { toast(`Line not saved: ${e.message}`); }
+    state.lolPsaving = { ...(state.lolPsaving || {}), [k]: false };
+    renderLol();
+  }
+  // After a reload: the lines this key has saved on series not yet graded. Only a device that
+  // already holds a key asks, as on the UFC card.
+  async function lolSavedLoad() {
+    let key = null;
+    try { key = localStorage.getItem(ENTRY_KEY_STORE); } catch (e) { /* no storage, nothing saved here */ }
+    if (!key) return;
+    try {
+      const j = await entriesFetch('GET', null, '/api/lol-lines');
+      const saved = {};
+      for (const x of (j.lines || [])) saved[`${x.match_id}|${x.player}|${x.stat}`] = x.pp_line;
+      state.lolPs = { ...saved, ...(state.lolPs || {}) };
+      if (state.sport === 'lol') renderLol();
+    } catch (e) { /* the tab works without them; a save says what is wrong */ }
   }
 
   // -------------------------------------------------------------------------
