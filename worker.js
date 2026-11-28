@@ -12698,13 +12698,31 @@ function ufcFinishSurv(rounds, m) {
 // whole history's. The share fell from 51-57% a quarter to 34-44% from mid-2025 (the Nov 20
 // replay), so the old average runs high.
 const ufcDistBaseOf = (b) => (b && b.distBase != null ? b.distBase : UFC_DIST_BASE[b && b.rounds === 5 ? 5 : 3]);
+// A bout's chance of going the distance, and where it comes from (2026-11-28, the owner's OK):
+// DraftKings' goes-the-distance price where it has one ('dk'); else, where its total rounds line
+// fits, DraftKings' Over times the share of the UFC's fights still going at that line that went the
+// distance ('rounds'); else the UFC's rate for the length ('recent', 'base'). The Dec 5 card had no
+// distance price on any of its 14 bouts, so every three-rounder took the UFC's 36.7%, three of them
+// above DraftKings' own Over (Chokheli v Dulatov, Over 1.5 rounds at 36.4%): a fight that goes to
+// the judges has to get past 1.5 rounds first, and the fight-time curve, bent to meet the line,
+// came out bent as far as it goes.
+function ufcDistOf(b) {
+  const dk = (b && b.dk) || {};
+  if (dk.dist) return { p: dk.dist.pYes, src: 'dk' };
+  const base = ufcDistBaseOf(b), src = b && b.distBase != null ? 'recent' : 'base';
+  if (ufcRoundsFit(b)) {
+    const pb = base / 100, still = pb + (1 - pb) * ufcFinishSurv(b.rounds === 5 ? 5 : 3, ufcRoundsMinutes(dk.rounds.line));
+    if (still > 0) return { p: dk.rounds.pOver * pb / still, src: 'rounds' };
+  }
+  return { p: base, src };
+}
 // The chance a bout is still going at m minutes: it goes the distance (DraftKings' price, or the
 // UFC's rate where there is none), or it ends early later than m. The early ends' timing is the
 // last two years' (ufcFinishSurv), bent (raised to the power k) to meet DraftKings' total rounds
 // where it has one: a bout it makes 60% to see 12.5 minutes is a slower one than its division's.
 function ufcTimeShape(b) {
   const R = b.rounds === 5 ? 5 : 3, full = 5 * R, dk = b.dk || {};
-  const pd = (dk.dist ? dk.dist.pYes : ufcDistBaseOf(b)) / 100;
+  const pd = ufcDistOf(b).p / 100;
   let k = 1;
   if (dk.rounds) {
     const a = ufcRoundsMinutes(dk.rounds.line), sa = ufcFinishSurv(R, a), want = (dk.rounds.pOver / 100 - pd) / (1 - pd);
@@ -12728,14 +12746,14 @@ function ufcMinutesMix(b) {
   out.push({ t: s.full, w: s.pd });
   return out;
 }
-// How a bout ends: a decision as often as DraftKings has it going the distance, and the early
-// ends split between knockouts and submissions as its division's have been.
+// How a bout ends: a decision as often as DraftKings has it going the distance (its price, or from
+// its rounds line: ufcDistOf), and the early ends split between knockouts and submissions as its
+// division's have been.
 function ufcEnds(b) {
-  const dk = b.dk || {};
-  const dec = dk.dist ? dk.dist.pYes : ufcDistBaseOf(b);
+  const d = ufcDistOf(b), dec = d.p;
   const share = UFC_KO_SHARE[String(b.weight || '').toLowerCase()] || UFC_KO_SHARE_ALL;
   const fin = 100 - dec;
-  return { ko: round1(fin * share / 100), sub: round1(fin * (100 - share) / 100), dec: round1(dec), src: dk.dist ? 'dk' : b.distBase != null ? 'recent' : 'base' };
+  return { ko: round1(fin * share / 100), sub: round1(fin * (100 - share) / 100), dec: round1(dec), src: d.src };
 }
 // DraftKings' total rounds line where the fight can reach it (2026-11-27, the owner's fixes): Machado
 // Garry v Amosov, three rounds on ESPN's scoreboard, carried DraftKings' 4.5 (Over -215), and the
@@ -12880,6 +12898,9 @@ async function ensureUfcSchema(db) {
     sig_mean REAL, sig_mid REAL, sig_p_mid REAL, td_mean REAL, td_p05 REAL,
     sig_line REAL, sig_p_over REAL, td_line REAL, td_p_over REAL, pp_at TEXT, pp_edits INTEGER, vals TEXT, first_at TEXT, read_at TEXT,
     method TEXT, minutes REAL, sig_landed INTEGER, td_landed INTEGER, graded_at TEXT, PRIMARY KEY (bout_id, fighter_id))`).run();
+  // Where each bout's decision chance came from (2026-11-28, ufcDistOf): 'dk', 'rounds', or the
+  // UFC's rate. Rows logged before it have none.
+  await addColumns(db, 'ufcbouts', [['ends_src', 'TEXT']]);
 }
 // Each read of the card: a bout not yet started is logged, or its prices and chances brought up to
 // date when they have moved (the last before its start is what it is graded on); one that is over
@@ -12899,15 +12920,15 @@ async function ufcLogCard(db, card, now = Date.now()) {
       // Priced on DraftKings' numbers only (2026-11-27): a line typed on a bout it hasn't priced waits.
       const ppOver = row && row.pp_line != null && ufcDkPriced(b) ? round1(ufcTimeOver(b, row.pp_line) * 100) : null;
       const vals = [b.commence, b.segment, b.order, b.rounds, r ? r.line : null, r ? r.over : null, r ? r.under : null, r ? r.pOver : null,
-        d ? d.yes : null, d ? d.no : null, d ? d.pYes : null, e.ko, e.sub, e.dec, ppOver];
+        d ? d.yes : null, d ? d.no : null, d ? d.pYes : null, e.ko, e.sub, e.dec, ppOver, e.src];
       const sig = JSON.stringify(vals);
       stmts.push(db.prepare(`INSERT INTO ufcbouts (bout_id, event_id, event, date, f1_id, f1, f2_id, f2, weight,
-          commence, segment, ord, rounds, dk_line, dk_over, dk_under, p_over, dk_yes, dk_no, p_dist, p_ko, p_sub, p_dec, pp_p_over, sig, first_at, read_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          commence, segment, ord, rounds, dk_line, dk_over, dk_under, p_over, dk_yes, dk_no, p_dist, p_ko, p_sub, p_dec, pp_p_over, ends_src, sig, first_at, read_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(bout_id) DO UPDATE SET date = excluded.date, commence = excluded.commence, segment = excluded.segment, ord = excluded.ord,
           rounds = excluded.rounds, dk_line = excluded.dk_line, dk_over = excluded.dk_over, dk_under = excluded.dk_under, p_over = excluded.p_over,
           dk_yes = excluded.dk_yes, dk_no = excluded.dk_no, p_dist = excluded.p_dist, p_ko = excluded.p_ko, p_sub = excluded.p_sub, p_dec = excluded.p_dec,
-          pp_p_over = COALESCE(excluded.pp_p_over, ufcbouts.pp_p_over), sig = excluded.sig, read_at = excluded.read_at
+          pp_p_over = COALESCE(excluded.pp_p_over, ufcbouts.pp_p_over), ends_src = excluded.ends_src, sig = excluded.sig, read_at = excluded.read_at
         WHERE ufcbouts.graded_at IS NULL AND ufcbouts.sig IS NOT excluded.sig`)
         .bind(b.id, card.event.id, card.event.name, ptDateOf(Date.parse(b.commence)), b.fighters[0].id, b.fighters[0].name, b.fighters[1].id, b.fighters[1].name,
           b.weight, ...vals, sig, at, at));
@@ -13266,17 +13287,23 @@ function ufcRecordOf(rows) {
   const tally = ufcTally;
   // DraftKings' line where the fight could reach it, and the endings on its goes-the-distance price
   // (2026-11-27): the ones the card shows. Without that price the split was the UFC's averages.
+  // From 2026-11-28 the card also shows, and the record counts, endings taken from DraftKings'
+  // rounds line where it has no distance price (ends_src 'rounds'), with their own count beside
+  // (fromRounds) to see whether that way holds up.
   const atDk = graded.filter((r) => r.p_over != null && r.dk_line != null && ufcRoundsMinutes(r.dk_line) < 5 * (r.rounds === 5 ? 5 : 3))
     .map((r) => side(r.p_over, r.minutes > ufcRoundsMinutes(r.dk_line)));
   const atPp = graded.filter((r) => r.pp_p_over != null && r.pp_line != null && r.minutes !== r.pp_line).map((r) => side(r.pp_p_over, r.minutes > r.pp_line));
-  const ended = graded.filter((r) => r.p_ko != null && r.p_dist != null && ['ko', 'sub', 'dec', 'draw'].includes(r.method));
-  const ends = ended.map((r) => {
+  const ended = graded.filter((r) => r.p_ko != null && (r.p_dist != null || r.ends_src === 'rounds') && ['ko', 'sub', 'dec', 'draw'].includes(r.method));
+  const likeliest = (r) => {
     const pick = r.p_dec >= r.p_ko && r.p_dec >= r.p_sub ? 'dec' : r.p_ko >= r.p_sub ? 'ko' : 'sub';
     return { won: pick === (r.method === 'draw' ? 'dec' : r.method), p: Math.max(r.p_dec, r.p_ko, r.p_sub) };
-  });
-  const by = (m) => ({ stated: ended.length ? round1(ended.reduce((s, r) => s + r['p_' + m], 0) / ended.length) : null,
-    landed: ended.length ? round1(ended.filter((r) => (m === 'dec' ? r.method === 'dec' || r.method === 'draw' : r.method === m)).length / ended.length * 100) : null });
-  return { bouts: graded.length, timeAtDk: tally(atDk), timeAtPp: tally(atPp), ends: { ...tally(ends), ko: by('ko'), sub: by('sub'), dec: by('dec') } };
+  };
+  const ends = ended.map(likeliest);
+  const by = (m, list = ended) => ({ stated: list.length ? round1(list.reduce((s, r) => s + r['p_' + m], 0) / list.length) : null,
+    landed: list.length ? round1(list.filter((r) => (m === 'dec' ? r.method === 'dec' || r.method === 'draw' : r.method === m)).length / list.length * 100) : null });
+  const fr = ended.filter((r) => r.p_dist == null);
+  return { bouts: graded.length, timeAtDk: tally(atDk), timeAtPp: tally(atPp),
+    ends: { ...tally(ends), ko: by('ko'), sub: by('sub'), dec: by('dec'), fromRounds: { ...tally(fr.map(likeliest)), dec: by('dec', fr) } } };
 }
 
 // GET /api/ufc-board: the card, each bout with its moneyline (the sharp books' fair chance and the

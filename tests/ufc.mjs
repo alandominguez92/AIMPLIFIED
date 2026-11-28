@@ -95,8 +95,14 @@ ok(main.time && main.time.line === 2.5 && main.time.minutes === 12.5 && Math.abs
   `fight time at DraftKings' 2.5 rounds (12:30): ${main.time && main.time.pOver}% over, DraftKings' own ${main.dk && main.dk.rounds && main.dk.rounds.pOver}%`);
 const e = main.ends || {};
 ok(Math.abs(e.ko + e.sub + e.dec - 100) < 0.2 && e.src === 'dk' && e.dec === main.pDist, `how it ends: KO ${e.ko}, sub ${e.sub}, decision ${e.dec} (DraftKings' distance ${main.pDist})`);
+// A bout with no distance price but a rounds line that fits takes its decision chance from that
+// line (2026-11-28, tests/ufcdist.mjs): Mitchell v Yousaf, DraftKings' Over 2.5 times the share of
+// the UFC's fights still going at 12:30 that went the distance (48.2% of all; 8.1% of early ends
+// still going there).
 const noDist = b.bouts.find((x) => !x.dk || !x.dk.dist);
-ok(!noDist || (noDist.ends.src === 'base' && noDist.ends.dec === (noDist.rounds === 5 ? 42.7 : 48.2)), `a bout with no distance price takes the UFC's rate (${noDist ? noDist.fighters.map((f) => f.name).join(' v ') + ': ' + noDist.ends.dec : 'none'})`);
+const fromLine = noDist && noDist.dk && noDist.dk.rounds ? Math.round(noDist.dk.rounds.pOver * 0.482 / (0.482 + 0.518 * 0.081) * 10) / 10 : null;
+ok(!!noDist && noDist.ends.src === 'rounds' && Math.abs(noDist.ends.dec - fromLine) <= 0.1 && noDist.ends.dec < noDist.dk.rounds.pOver,
+  `a bout with no distance price takes it from DraftKings' rounds line (${noDist ? `${noDist.fighters.map((f) => f.name).join(' v ')}: Over ${noDist.dk.rounds.line} at ${noDist.dk.rounds.pOver}%, decision ${noDist.ends.dec}%` : 'none'})`);
 ok(b.bouts.every((x) => !x.ml), 'no moneyline before the first capture');
 
 console.log('-- the five-minute cron --');

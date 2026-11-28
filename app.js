@@ -8599,11 +8599,13 @@
   function ufcEndsHtml(b) {
     const e = b.ends;
     if (!e) return '';
-    if (e.src !== 'dk') return '<div class="ufc-row"><span class="ufc-k">How it ends</span><span>No DraftKings goes-the-distance price yet</span></div>';
+    // DraftKings' goes-the-distance price, or (2026-11-28) where it has none, its rounds line, said so.
+    if (e.src !== 'dk' && e.src !== 'rounds') return '<div class="ufc-row"><span class="ufc-k">How it ends</span><span>No DraftKings goes-the-distance price yet</span></div>';
     const seg = (cls, v) => `<span class="ufc-bar-${cls}" style="width:${Math.max(0, Math.min(100, v))}%"></span>`;
     return `<div class="ufc-row"><span class="ufc-k">How it ends</span><span class="ufc-ends">`
       + `<span class="ufc-bar" aria-hidden="true">${seg('ko', e.ko)}${seg('sub', e.sub)}${seg('dec', e.dec)}</span>`
       + `<span class="ufc-ends-l"><i class="ufc-dot ufc-bar-ko"></i>KO/TKO ${esc(String(e.ko))}% <i class="ufc-dot ufc-bar-sub"></i>Sub ${esc(String(e.sub))}% <i class="ufc-dot ufc-bar-dec"></i>Decision ${esc(String(e.dec))}%</span>`
+      + (e.src === 'rounds' ? '<span class="ufc-ends-src">No goes-the-distance price yet: the decision chance is from DraftKings’ rounds line</span>' : '')
       + '</span></div>';
   }
   function ufcPpHtml(b) {

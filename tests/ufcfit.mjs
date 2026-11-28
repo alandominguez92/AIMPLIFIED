@@ -7,7 +7,8 @@
 //   - a fight DraftKings hasn't priced (no rounds line that fits, no goes-the-distance) has no
 //     curve, and its PrizePicks row says so; a line typed on it is saved, and priced only once
 //     DraftKings prices the bout
-//   - with no goes-the-distance price, "How it ends" says so instead of the UFC's averages
+//   - with no goes-the-distance price, "How it ends" says so instead of the UFC's averages (from
+//     2026-11-28, one with a rounds line that fits takes it from that line: tests/ufcdist.mjs)
 //   - the fights DraftKings prices read as they did
 //   - the record leaves out a rounds line the fight couldn't reach, and an ending DraftKings
 //     didn't price
@@ -118,9 +119,13 @@ ok(/^Fight time No DraftKings rounds line yet/.test(t) && /PrizePicks time − 7
   'no rounds line yet, and the PrizePicks row says DraftKings has none (was "More 57.1%")');
 
 console.log('\n-- How it ends, with no goes-the-distance price --');
-const ends = d.bouts.map((b) => text(P.ufcEndsHtml(b)));
-ok(d.bouts.every((b) => b.ends && b.ends.src !== 'dk') && ends.every((x) => x === 'How it ends No DraftKings goes-the-distance price yet'),
-  `on all 14: "${ends[0]}" (was "Decision ${bout(SPIVAC).ends.dec}%" on every three-rounder)`);
+// From 2026-11-28 (tests/ufcdist.mjs) a bout with a rounds line that fits takes its decision chance
+// from that line, and says so; the two with no line that fits still say there is no price.
+const fromLine = d.bouts.filter((b) => b.ends && b.ends.src === 'rounds');
+ok(d.bouts.every((b) => b.ends && b.ends.src !== 'dk') && fromLine.length === 12
+  && fromLine.every((b) => /^How it ends KO\/TKO [\d.]+% Sub [\d.]+% Decision [\d.]+% No goes-the-distance price yet: the decision chance is from DraftKings’ rounds line$/.test(text(P.ufcEndsHtml(b))))
+  && [MGA, TULIO].every((id) => text(P.ufcEndsHtml(bout(id))) === 'How it ends No DraftKings goes-the-distance price yet'),
+  `no UFC averages: 12 from DraftKings' rounds line ("${text(P.ufcEndsHtml(bout(SPIVAC)))}"), the other two "No DraftKings goes-the-distance price yet"`);
 const nov20 = FIX('ufc-board-20261120.json'), priced = nov20.bouts.find((b) => b.ends && b.ends.src === 'dk');
 const pe = text(P.ufcEndsHtml(priced));
 ok(/^How it ends KO\/TKO [\d.]+% Sub [\d.]+% Decision [\d.]+%$/.test(pe) && pe.includes(`Decision ${priced.ends.dec}%`), `one DraftKings priced, Nov 20: "${pe}"`);
@@ -158,7 +163,8 @@ d = await get('/api/ufc-board');
 const rec = d.record || {};
 ok(rec.bouts === 2 && rec.timeAtDk.n === 1 && rec.timeAtDk.hit === 0,
   `fight time at DraftKings' line counts Spivac v Pinto (the Over 1.5 lost at 3:12), not 4.5 rounds on a 15-minute fight: ${rec.timeAtDk && rec.timeAtDk.hit} of ${rec.timeAtDk && rec.timeAtDk.n}`);
-ok(rec.ends && rec.ends.n === 0, `and no likeliest ending: DraftKings priced neither's distance (${rec.ends && rec.ends.n})`);
+ok(rec.ends && rec.ends.n === 1 && rec.ends.fromRounds && rec.ends.fromRounds.n === 1,
+  `and the likeliest ending counts Spivac v Pinto's, from DraftKings' rounds line (tests/ufcdist.mjs), not Machado Garry's, which nothing DraftKings has fits (${rec.ends && rec.ends.n})`);
 
 console.log(fail ? `\n${fail} FAILED` : '\nALL PASSED');
 process.exit(fail ? 1 : 0);
