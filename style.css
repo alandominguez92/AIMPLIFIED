@@ -332,10 +332,17 @@ header { border-bottom:1px solid var(--border); position:sticky; top:0; backgrou
 .stab.active .mini { border-color:var(--accent); color:var(--accent); }
 /* The row needs 1248px with these, 1265 once the page's scrollbar is counted. Under
    that it scrolled sideways, with a white bar, and Entries out of reach of a mouse.
-   With the eighth tab (UFC, 2026-11-19) it needs 1320, 1335 with the scrollbar. */
-@media (max-width:1359px) { .stab .mini { display:none; } }
-/* Without them it needs 693px; the icons come off under that, the phone's rules at 640. */
-@media (max-width:720px) { .stab .sport-ico { display:none; } }
+   With the eighth tab (UFC, 2026-11-19) it needs 1320, 1335 with the scrollbar.
+   Measured again with the ninth (LoL, 2026-11-28): 1536, 1551 with the scrollbar. The
+   captions had grown ("Props + ML"), and from 1360 to 1401 the eight tabs' captions were
+   wrapping onto a second line, the row 64px tall: a tab shrinks to fit rather than the
+   row scrolling, since the row is never narrower than the screen. */
+@media (max-width:1579px) { .stab .mini { display:none; } }
+/* Without them it needs 865px with the ninth tab (693 with eight); the icons come off under
+   that. Without the icons it needs 667, which 8px a side under 700 makes 595; the phone's
+   rules at 640. */
+@media (max-width:879px) { .stab .sport-ico { display:none; } }
+@media (max-width:700px) { .stab { padding-left:8px; padding-right:8px; } }
 
 /* ---------- ticker ---------- */
 /* ---------- hero: Tonight's Ace Duel ---------- */
@@ -1522,21 +1529,28 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
   .calibration { width:calc(100% - 28px); margin:0 0 0 28px; }
 }
 /* Up to 389 rather than 380 (2026-11-23), so a 381-389 screen isn't left with
-   the 357px row and no room to spare. */
-@media (max-width:389px) {
+   the 357px row and no room to spare. The ninth tab (LoL, 2026-11-28) makes the
+   row 414px at 4px and 13px, 24px past a 390 screen: 3px and 12.5px up to 419
+   make it 384, and 2px and 12px up to 389 make it 353, each with 6px or more
+   to spare at its narrowest. */
+@media (max-width:419px) {
   .stab { padding:11px 3px 10px; font-size:12.5px; }
+}
+@media (max-width:389px) {
+  .stab { padding:11px 2px 10px; font-size:12px; }
 }
 /* 320 (iPhone SE, small Androids), since the seventh tab: at 5px a side and
    12.5px the row was 344px, so Entries sat cut off past the edge. The eighth
    (UFC) put it at 334px at 4px and 12px, 22px past a 320 screen; 2px and 11.5px
-   below 341 make it 291px (measured 2026-11-23: nothing scrolls sideways from
-   320 to 640). */
+   below 341 made it 291px (measured 2026-11-23: nothing scrolls sideways from
+   320 to 640). The ninth: 2px and 11.5px in an 8px margin make it 333px up to
+   360, and 1px and 11px 303px up to 340. */
 @media (max-width:360px) {
-  .stab { padding:11px 3px 10px; font-size:12px; }
+  .stab { padding:11px 2px 10px; font-size:11.5px; }
   .wrap.sports-inner { padding:0 8px; }
 }
 @media (max-width:340px) {
-  .stab { padding:11px 2px 10px; font-size:11.5px; }
+  .stab { padding:11px 1px 10px; font-size:11px; }
 }
 
 @media (max-width:900px) {
@@ -3546,6 +3560,24 @@ footer { border-top:1px solid var(--border); margin-top:30px; padding:26px 0 40p
 .ufc-pr-proj b { font-family:var(--mono); font-size:14px; }
 .ufc-pr .sp-line { margin-top:0; }
 .ufc-pr .ufc-pp-p { margin:0; }
+/* League of Legends (2026-11-28): the UFC card's frame, a team a row, the chance on the right and
+   a bar under the two for the split. */
+.lol-chips { margin:6px 0 4px; }
+.lol-day { margin-top:18px; }
+.lol-pair { display:flex; flex-direction:column; gap:6px; margin:10px 0 8px; }
+.lol-t { display:flex; align-items:baseline; gap:12px; }
+.lol-tn { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; flex:1; min-width:0; }
+.lol-tn b { font-family:var(--sans); font-size:15px; font-weight:700; color:var(--text); overflow-wrap:anywhere; }
+.lol-tm { font-family:var(--sans); font-size:12px; color:var(--textFaint); white-space:nowrap; }
+.lol-sc { flex:none; font-family:var(--mono); font-size:14px; color:var(--textDim); }
+.lol-t.is-won .lol-sc { color:var(--text); font-weight:700; }
+.lol-p { flex:none; min-width:62px; text-align:right; font-family:var(--mono); font-size:14px; color:var(--textDim); }
+.lol-t.is-fav .lol-p { color:var(--text); font-weight:700; }
+.lol-m:has(.is-won) .lol-t:not(.is-won) { opacity:.6; }
+.lol-split { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--trackBg); }
+.lol-split span { background:var(--model); }
+.lol-foot { margin:8px 0 0; font-size:12px; color:var(--textFaint); }
+.lol-season { margin:14px 0 0; font-size:12px; color:var(--textFaint); }
 @media (max-width: 640px) {
   .ufc-bout { padding:12px; }
   .ufc-pair { grid-template-columns:1fr; gap:8px; }

@@ -83,8 +83,12 @@ const phoneHero = bare.match(/@media \(max-width:480px\) \{\n  \.hl-what \{ disp
 ok(phoneHero && /\.hl-name \{ grid-column:2 \/ -1; \}/.test(phoneHero[0]) && /\.hl-p \{ grid-column:3; grid-row:2; \}/.test(phoneHero[0]), 'on a phone the ring drops a row and the name takes its width');
 // The tabs need 1248px with their small labels: under that, a white scrollbar and tabs out of reach.
 // With the UFC tab (2026-11-20) the eight need 1320, 1335 with a scrollbar: the labels go under 1360.
-ok(/@media \(max-width:1359px\) \{ \.stab \.mini \{ display:none; \} \}/.test(bare), 'the tabs lose their small labels before the row can overflow');
-ok(/@media \(max-width:720px\) \{ \.stab \.sport-ico \{ display:none; \} \}/.test(bare), 'and their icons before a narrow window can make it overflow: measured, it needs 693px without the labels');
+// With the LoL tab (2026-11-28), measured in the browser: the nine need 1551 with the labels and a
+// scrollbar (from 1360 to 1401 the eight had been wrapping their labels onto a second line), 865
+// without the labels, 667 without the icons, and 580 at 8px a side.
+ok(/@media \(max-width:1579px\) \{ \.stab \.mini \{ display:none; \} \}/.test(bare), 'the tabs lose their small labels before the row can overflow or wrap: measured, it needs 1551px with them');
+ok(/@media \(max-width:879px\) \{ \.stab \.sport-ico \{ display:none; \} \}/.test(bare), 'and their icons before a narrow window can make it overflow: measured, it needs 865px without the labels');
+ok(/@media \(max-width:700px\) \{ \.stab \{ padding-left:8px; padding-right:8px; \} \}/.test(bare), 'and 8px a side under 700, where without the icons it needs 667px with a scrollbar');
 ok(/\.sports \{[^}]*scrollbar-color:var\(--border\) transparent;/.test(bare), 'and if a row ever does, its scrollbar is the page\'s colour, not white');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall passed');

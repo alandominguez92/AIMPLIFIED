@@ -1155,14 +1155,14 @@
   // where to look before a tap. /api/tabs, read on load and each minute the page is in view. A
   // sport it leaves out (its feed didn't answer) keeps its tab as it was; Picks and Entries have
   // none. The open tab never greys.
-  const TAB_SPORT_NAME = { mlb: 'MLB', nfl: 'NFL', nba: 'NBA', nhl: 'NHL', soccer: 'soccer', ufc: 'UFC' };
+  const TAB_SPORT_NAME = { mlb: 'MLB', nfl: 'NFL', nba: 'NBA', nhl: 'NHL', soccer: 'soccer', ufc: 'UFC', lol: 'League of Legends' };
   function applyTabs(t, tabs) {
     const s = (t && t.sports) || {};
     for (const tab of tabs) {
       const k = tab.dataset.sport, x = s[k];
       if (!x || !TAB_SPORT_NAME[k]) continue;
       const live = Number(x.live) || 0, idle = !(Number(x.today) > 0) && !live;
-      const what = k === 'ufc' ? ['fight', 'fights'] : k === 'soccer' ? ['match', 'matches'] : ['game', 'games'];
+      const what = k === 'ufc' ? ['fight', 'fights'] : k === 'soccer' || k === 'lol' ? ['match', 'matches'] : ['game', 'games'];
       tab.classList.toggle('idle', idle);
       tab.classList.toggle('live', live > 0);
       const title = live ? `${live} ${TAB_SPORT_NAME[k]} ${live === 1 ? what[0] : what[1]} live` : idle ? `No ${TAB_SPORT_NAME[k]} ${what[1]} today` : '';
@@ -5087,9 +5087,10 @@
       case 'ml-later': {
         const s = target.dataset.sport, open = target.getAttribute('aria-expanded') === 'true';
         state.mlLater = { ...(state.mlLater || {}), [s]: open ? null : target.dataset.day };
-        if (s === 'nba') renderNba(); else if (s === 'nhl') renderNhl(); else if (s === 'soccer') renderSoccer(); else if (s === 'nfl') renderNfl();
+        if (s === 'nba') renderNba(); else if (s === 'nhl') renderNhl(); else if (s === 'soccer') renderSoccer(); else if (s === 'nfl') renderNfl(); else if (s === 'lol') renderLol();
         break;
       }
+      case 'lol-league': state.lolLeague = target.dataset.league; renderLol(); break;
       case 'ticket-ml-save': saveTicketImage(true); break;
       // A book's link that needs the state: open the bankroll fold at it.
       case 'bank-open': {
@@ -5465,6 +5466,9 @@
     const ufcBoard = document.getElementById('ufcBoard');
     if (ufcBoard) ufcBoard.hidden = s !== 'ufc';
     if (s === 'ufc') { if (boardStale('ufc')) refreshUfc(); else renderUfc(); }
+    const lolBoard = document.getElementById('lolBoard');
+    if (lolBoard) lolBoard.hidden = s !== 'lol';
+    if (s === 'lol') { if (boardStale('lol')) refreshLol(); else renderLol(); }
     const pb = document.getElementById('picksBoard');
     if (pb) pb.hidden = s !== 'picks';
     // Read on every visit after two minutes: lineups post and legs move.
@@ -5498,8 +5502,8 @@
   // next day and a half" over a board of six. Every one of these reads is free: the last
   // capture's snapshot from the database, cached two minutes at the edge.
   const BOARD_STALE_MS = 300e3;
-  const BOARD_READ = { nba: () => refreshNba(), nhl: () => refreshNhl(), soccer: () => refreshSoccer(), nfl: () => refreshNfl(), ufc: () => refreshUfc() };
-  const BOARD_BOX = { nba: 'nbaBoard', nhl: 'nhlBoard', soccer: 'soccerBoard', nfl: 'nflBoard', ufc: 'ufcBoard' };
+  const BOARD_READ = { nba: () => refreshNba(), nhl: () => refreshNhl(), soccer: () => refreshSoccer(), nfl: () => refreshNfl(), ufc: () => refreshUfc(), lol: () => refreshLol() };
+  const BOARD_BOX = { nba: 'nbaBoard', nhl: 'nhlBoard', soccer: 'soccerBoard', nfl: 'nflBoard', ufc: 'ufcBoard', lol: 'lolBoard' };
   function boardStale(s, now = Date.now()) {
     return !state[s] || now - ((state.boardAt && state.boardAt[s]) || 0) > BOARD_STALE_MS;
   }
@@ -5886,7 +5890,7 @@
   // Written out by hand it drifted by one character -- a curly apostrophe against
   // the straight one in the markup -- so the tab quietly changed on the first
   // sport switch and never changed back.
-  const DOC_TITLE = { mlb: 'Aimplified — MLB Board', picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', nhl: 'Aimplified — NHL Board', soccer: 'Aimplified — Soccer Board', ufc: 'Aimplified — UFC Board', entries: 'Aimplified — Your entries' };
+  const DOC_TITLE = { mlb: 'Aimplified — MLB Board', picks: 'Aimplified — Picks of the day', nfl: 'Aimplified — NFL Board', nba: 'Aimplified — NBA Board', nhl: 'Aimplified — NHL Board', soccer: 'Aimplified — Soccer Board', ufc: 'Aimplified — UFC Board', lol: 'Aimplified — LoL Board', entries: 'Aimplified — Your entries' };
 
   // -------------------------------------------------------------------------
   // Picks of the day (2026-10-09)
@@ -8192,22 +8196,22 @@
     return { day, shown: up.filter((g) => ptDayOf(t(g)) === day), later: up.filter((g) => ptDayOf(t(g)) !== day) };
   }
   const mlLaterOpen = (sport, sp) => !!sp.day && !!state.mlLater && state.mlLater[sport] === sp.day;
-  // Soccer's table says it in fixtures that kick off (2026-11-11).
-  function mlLaterHtml(sport, sp, now = Date.now(), noun = 'game', starts = 'starts') {
+  // Soccer's table says it in fixtures that kick off (2026-11-11); League of Legends in matches (2026-11-28).
+  function mlLaterHtml(sport, sp, now = Date.now(), noun = 'game', starts = 'starts', nouns = noun + 's') {
     if (!sp.later.length || !sp.shown.length) return '';
     const t = (g) => Date.parse(g.commence), open = mlLaterOpen(sport, sp), one = sp.later.length === 1;
     const days = [...new Set(sp.later.map((g) => ptDayOf(t(g))))].sort().map((d) => propDayTitle(d, now)).join(' and ');
     const last = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })
       .format(new Date(Math.max(...sp.shown.map(t))));
     const ofDay = `${propDayName(sp.day, now)}’s`;
-    const text = open ? `${days}’s ${one ? `${noun} is` : `${sp.later.length} ${noun}s are`} in the table, after ${ofDay}.`
-      : `${days}’s ${one ? `${noun} shows` : `${sp.later.length} ${noun}s show`} here once ${ofDay} last ${noun} ${starts}, at ${last}.`;
+    const text = open ? `${days}’s ${one ? `${noun} is` : `${sp.later.length} ${nouns} are`} in the table, after ${ofDay}.`
+      : `${days}’s ${one ? `${noun} shows` : `${sp.later.length} ${nouns} show`} here once ${ofDay} last ${noun} ${starts}, at ${last}.`;
     return `<div class="ml-later"><p>${esc(text)}</p><button type="button" class="pk-days-more" data-action="ml-later" data-sport="${sport}" data-day="${esc(sp.day)}"`
       + ` aria-expanded="${open}">${open ? (one ? 'Hide it' : 'Hide them') : (one ? 'Show it now' : 'Show them now')}</button></div>`;
   }
   // The day's games, and the later ones once shown early.
   const mlTableGames = (sport, sp) => sp.shown.concat(mlLaterOpen(sport, sp) ? sp.later : []);
-  const mlCountText = (sp, now = Date.now(), noun = 'game') => (sp.shown.length ? `${sp.shown.length} ${noun}${sp.shown.length === 1 ? '' : 's'} ${propDayName(sp.day, now)}` : '');
+  const mlCountText = (sp, now = Date.now(), noun = 'game', nouns = noun + 's') => (sp.shown.length ? `${sp.shown.length} ${sp.shown.length === 1 ? noun : nouns} ${propDayName(sp.day, now)}` : '');
   // The NBA and NHL headers and empty tables (2026-11-27, the owner's fixes): a board read takes the
   // games inside 36 hours of it, so on Thanksgiving night the NHL's held 8 of Friday's 15 ("8 games
   // tomorrow" over a props card of 15) and the NBA's none, Friday's first tip at 4:10 PM ("No NBA
@@ -8739,6 +8743,105 @@
       state.ufcPs = { ...props, ...(state.ufcPs || {}) };
       if (state.sport === 'ufc') renderUfc();
     } catch (e) { /* the card works without them; a save says what is wrong */ }
+  }
+
+  // -------------------------------------------------------------------------
+  // League of Legends (2026-11-28, the owner's OK of the recommended build)
+  // -------------------------------------------------------------------------
+  // The LCK, LPL, LEC and LCS from Leaguepedia. Each team's chance is from its map results this
+  // season (a rating that moves with every win and loss, every team level in January), turned into
+  // a series chance by its format, logged until the start and graded on the favourite. No book in
+  // the odds feed prices esports, so there is no price beside it. The day's matches as on the other
+  // tabs, the next match day's once the day's last has started; what's under way above them and
+  // the last day's results below. /api/lol-board is what the Worker stored, never a Leaguepedia read.
+  async function refreshLol() {
+    if (!LIVE_MODE) return;
+    boardReadStart('lol');
+    const d = await fetchJson('/api/lol-board').catch(() => null);
+    state.lol = d && Array.isArray(d.matches) ? d : { matches: [], error: d ? d.error || 'no board' : 'unreachable' };
+    renderLol();
+  }
+  // Leaguepedia tells teams of one name apart in brackets: "LYON (2024 American Team)".
+  const lolName = (n) => String(n || '').replace(/\s*\([^)]*\)\s*$/, '') || String(n || '');
+  const LOL_LEAGUE_WORDS = { LCK: 'LCK · Korea', LPL: 'LPL · China', LEC: 'LEC · Europe', LCS: 'LCS · North America' };
+  // The day's matches, and the next match day's behind "Show them now": the board holds a week,
+  // and a chance four days out moves with every map played before it.
+  function lolDaySplit(list, now = Date.now()) {
+    const sp = mlDaySplit(list, now), t = (m) => Date.parse(m.commence);
+    if (!sp.later.length) return sp;
+    const next = ptDayOf(Math.min(...sp.later.map(t)));
+    return { ...sp, later: sp.later.filter((m) => ptDayOf(t(m)) === next) };
+  }
+  function renderLol(now = Date.now()) {
+    const grid = document.getElementById('lolGrid');
+    if (!grid) return;
+    const d = state.lol, count = document.getElementById('lolCount'), note = document.getElementById('lolNote');
+    if (!d) { grid.innerHTML = '<div class="nfl-empty">Loading…</div>'; return; }
+    const st = d.status || {};
+    if (note) {
+      const err = st.error ? ` · Leaguepedia refused the last read (${st.error.what}, ${kickWhole(st.error.at)}): what was read before stands` : '';
+      note.textContent = 'LCK · LPL · LEC · LCS · each team’s chance from its map results this season · no book price in our feed'
+        + err + (st.filling ? ' · reading this season’s results, a few pages at a time' : '');
+    }
+    const all = (d.matches || []).map((m) => ({ ...m, commence: m.start }));
+    const have = Object.keys(LOL_LEAGUE_WORDS).filter((k) => all.some((m) => m.league === k));
+    const lg = have.includes(state.lolLeague) ? state.lolLeague : 'all';
+    const mine = all.filter((m) => lg === 'all' || m.league === lg);
+    const sp = lolDaySplit(mine, now), table = mlTableGames('lol', sp);
+    const on = mine.filter((m) => m.state === 'in');
+    const past = mine.filter((m) => m.state === 'post' || m.state === 'void').reverse();
+    if (count) count.textContent = mlCountText(sp, now, 'match', 'matches');
+    const chips = have.length > 1 ? `<div class="sp-chips lol-chips">${['all', ...have].map((k) => `<button type="button" class="sp-chip${k === lg ? ' on' : ''}" data-action="lol-league" data-league="${k}" aria-pressed="${k === lg}">${k === 'all' ? 'All' : esc(k)}</button>`).join('')}</div>` : '';
+    const group = (title, list) => (list.length ? `<div class="lol-day"><h3 class="ufc-seg-h">${esc(title)}</h3>${list.map(lolMatchHtml).join('')}</div>` : '');
+    const dayOf = (m) => ptDayOf(Date.parse(m.start));
+    const days = [...new Set(table.map(dayOf))];
+    const none = d.error ? `The board is unavailable (${d.error}).` : !sp.shown.length ? lolNoneText(d, lg, on.length + past.length > 0) : '';
+    grid.innerHTML = chips + lolRecordHtml(d)
+      + group('Under way', on)
+      + days.map((dy) => group(propDayTitle(dy, now), table.filter((m) => dayOf(m) === dy))).join('')
+      + mlLaterHtml('lol', sp, now, 'match', 'starts', 'matches')
+      + (none ? `<div class="nfl-empty">${esc(none)}</div>` : '')
+      + group('Results', past)
+      + (d.season && d.season.maps ? `<p class="lol-season">${esc(String(d.season.year))} season: ${esc(Number(d.season.maps).toLocaleString())} maps read, ${esc(String(d.season.teams))} teams.</p>` : '');
+  }
+  function lolNoneText(d, lg, more) {
+    const where = `${more ? 'No more' : 'No'} ${lg === 'all' ? 'LCK, LPL, LEC or LCS' : lg}`, n = d.next;
+    return n && n.start ? `${where} matches scheduled. Next: ${n.name}, from ${shortDay(n.start)}.` : `${where} matches scheduled in the next week.`;
+  }
+  const lolOf = (x) => (x && x.n ? `${x.hit} of ${x.n} · shown ${x.stated}%` : 'none graded yet');
+  function lolRecordHtml(d) {
+    const r = d.record || {}, b = r.byBand || {};
+    const lo = ['50-55', '55-65'].map((k) => b[k] || { n: 0, hit: 0 }), under = { n: lo[0].n + lo[1].n, hit: lo[0].hit + lo[1].hit };
+    if (under.n) under.stated = Math.round((lo[0].n * (lo[0].stated || 0) + lo[1].n * (lo[1].stated || 0)) / under.n * 10) / 10;
+    return '<div class="ufc-rec">'
+      + `<span><b>★ 75%+, both teams 8+ maps</b> ${lolOf(r.picks)}</span>`
+      + `<span><b>65–75%</b> ${lolOf(b['65-75'])}</span>`
+      + `<span><b>Under 65%</b> ${lolOf(under)}</span>`
+      + '<span class="ufc-rec-note">Each series’ favourite, at the chance on show when it started. In the replay of the 2026 season, 75%+ with both teams eight maps in won 131 of 160 (82%, about 83% shown); 65–75% was noisy. Not on Picks yet.</span>'
+      + '</div>';
+  }
+  function lolMatchHtml(m) {
+    const t = m.teams || [], warmAt = (state.lol && state.lol.warmMaps) || 8;
+    const when = m.state === 'post' ? 'Final' : m.state === 'void' ? 'Forfeit · not graded' : m.state === 'in' ? 'Under way' : kickWhole(m.start);
+    const tags = [LOL_LEAGUE_WORDS[m.league] || m.league, m.bo > 1 ? `Best of ${m.bo}` : 'One map', when];
+    // Each team's maps this season before the start: a series that started before it was ever
+    // logged has none kept, so it shows none rather than "0 maps".
+    const known = m.state === 'pre' || (t[0] && t[0].p != null);
+    const row = (x, i) => {
+      const fav = m.fav === i + 1;
+      return `<div class="lol-t${fav ? ' is-fav' : ''}${x.won ? ' is-won' : ''}">`
+        + `<span class="lol-tn"><b>${esc(lolName(x.name))}${x.won ? ' <span class="ufc-w">W</span>' : ''}</b>${known ? `<span class="lol-tm">${esc(String(x.maps))} map${x.maps === 1 ? '' : 's'}</span>` : ''}</span>`
+        + (m.score ? `<span class="lol-sc">${esc(String(m.score[i]))}</span>` : '')
+        + `<span class="lol-p">${x.p != null ? `${fav && m.bar ? '<span class="ufc-star" title="75%+ with both teams eight maps in">★</span> ' : ''}${esc(String(x.p))}%` : '—'}</span>`
+        + '</div>';
+    };
+    const split = t[0] && t[0].p != null ? `<div class="lol-split" aria-hidden="true"><span style="width:${Math.max(0, Math.min(100, t[0].p))}%"></span></div>` : '';
+    const cold = t.filter((x) => x.maps < warmAt);
+    const foot = (m.state !== 'pre' && m.state !== 'void' && t[0] && t[0].p == null) ? 'Started before it was logged: not graded.'
+      : m.state === 'pre' && cold.length ? `${cold.map((x) => lolName(x.name)).join(' and ')} ${cold.length === 1 ? 'has' : 'have'} played fewer than ${warmAt} maps this season: an early number.`
+        : '';
+    return `<article class="ufc-bout lol-m"><div class="ufc-tags">${tags.map((x) => `<span>${esc(x)}</span>`).join('')}</div>`
+      + `<div class="lol-pair">${row(t[0] || {}, 0)}${row(t[1] || {}, 1)}</div>${split}${foot ? `<p class="lol-foot">${esc(foot)}</p>` : ''}</article>`;
   }
 
   // -------------------------------------------------------------------------

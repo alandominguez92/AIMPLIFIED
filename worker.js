@@ -150,7 +150,7 @@ const API_ROUTES = new Set([
   '/api/ml-debug', '/api/track-debug', '/api/edge-debug', '/api/batter-debug', '/api/bpicks-export', '/api/mlpicks-export', '/api/pppicks-export', '/api/gmpicks-export', '/api/top-legs', '/api/picks', '/api/entries', '/api/soc-lines',
   '/api/fair-probe', '/api/sports-list', '/api/soccer-board', '/api/soccer-props', '/api/nba-board', '/api/nba-pp', '/api/nba-props', '/api/nhl-props', '/api/nfl-props', '/api/prop-lines', '/api/pp-lines', '/api/nba-cause', '/api/hot-players', '/api/nhl-board', '/api/nhl-pp', '/api/soccer-ingest', '/api/nfl-ingest', '/api/nfl-capture', '/api/nfl-board', '/api/nfl-grade', '/api/be-gate', '/api/nfl-props', '/api/usage',
   '/api/mlb-void-moved', '/api/hist-backtest', '/api/hist-props', '/api/links-probe', '/api/feed-health', '/api/d1-reads',
-  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw', '/api/tabs', '/api/pick-rules',
+  '/api/ufc-board', '/api/ufc-lines', '/api/ufc-odds-raw', '/api/tabs', '/api/pick-rules', '/api/lol-board',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -405,7 +405,8 @@ const HANDLER = {
         // ufcHistTick (2026-11-20): the UFC's fight history, two cards a tick until it is in. It
         // feeds the logged strikes and takedowns chances, so it reads before soccer's expected
         // starters, which go on no record.
-        for (const job of [nbaPropsFormTick, nhlPropsFormTick, nflPropsFormTick, nflPropsLogTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, ufcHistTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(d1Env(env, job.name || 'hist-job')).catch(() => null);
+        // lolTick (2026-11-28): League of Legends from Leaguepedia, whatever read is due.
+        for (const job of [nbaPropsFormTick, nhlPropsFormTick, nflPropsFormTick, nflPropsLogTick, ppPropsTick, nhlBoxIngest, nhlBoxReread, nhlHotTick, nflBoxIngest, nflHotTick, ufcHistTick, lolTick, socHotTick, socHotBackfill, socBoxCatchUp, socExpectedTick]) await job(d1Env(env, job.name || 'hist-job')).catch(() => null);
       })());
       return;
     }
@@ -732,6 +733,8 @@ async function handleApi(p, env, ctx, url) {
   }
   if (p === '/api/nhl-board') return cors(json(await nhlBoardData(env), 120));
   if (p === '/api/ufc-board') return cors(json(await ufcBoardData(env), 120));
+  // League of Legends (2026-11-28): what the ticks stored, never a read of Leaguepedia.
+  if (p === '/api/lol-board') return cors(json(await lolBoardData(env), 120));
   if (p === '/api/ufc-odds-raw') return cors(json(await ufcOddsRaw(env), 300));
   if (p === '/api/soccer-ingest') return cors(json(await soccerIngest(env, url), 30));
   if (p === '/api/nfl-ingest') return nflIngest(env, url);
@@ -3188,6 +3191,14 @@ async function tabsStatus(env, now = Date.now()) {
       if (!card) throw new Error('no UFC card');
       const today = (card.bouts || []).filter((b) => onDay(Date.parse(b.commence)));
       return { today: today.length, live: today.filter((b) => b.state === 'in').length };
+    },
+    // League of Legends (2026-11-28): the schedule the ticks stored. On, from its start until its
+    // result is in, eight hours at most.
+    lol: async () => {
+      if (!env || !env.DB) throw new Error('no DB');
+      await ensureLolSchema(env.DB);
+      const rows = (await env.DB.prepare('SELECT start, winner, ff FROM lolseries WHERE date = ?').bind(day).all()).results || [];
+      return { today: rows.length, live: rows.filter((s) => Date.parse(s.start) <= now && Date.parse(s.start) > now - 8 * 3600e3 && s.winner == null && !s.ff).length };
     },
   };
   const out = { at: new Date(now).toISOString(), day, sports: {} };
@@ -13479,6 +13490,333 @@ async function nhlScoreDay(date) {
 function nhlMatch(a, b) {
   const x = clubKey(a), y = clubKey(b);
   return !!x && !!y && (x === y || x.endsWith(y) || y.endsWith(x));
+}
+
+// ---------------------------------------------------------------------------
+// League of Legends (2026-11-28, the owner's OK of the recommended build: "let's work on
+// recommended"): the LCK, LPL, LEC and LCS, the owner's four mains. No odds feed carries
+// esports, so a match's chance is the site's own: each team's rating from its map results this
+// season (an Elo, K 24, every team level when its season starts), turned into a series chance by
+// the format. The Nov 27 replay of the 2026 season (Leaguepedia, free): K chosen on January to
+// April and scored on May to October, favourites at 75%+ won 101 of 121 (83.5%, stated 83.5%),
+// at 65-75% 59 of 94 (62.8%, stated 69.3%; over the whole season 69.5%, stated 69.3%). With every
+// team level in January it has little to say until each team has about eight maps.
+//
+// Read from Leaguepedia's Cargo tables (lol.fandom.com), on HIST_CRON's invocation and never on a
+// page view: the schedule every three hours, results every six (every twenty minutes while a
+// match is on or its maps are not in yet), the leagues' tournament dates once a day, and a season
+// read in two pages a tick until it is in. A refusal or a rate limit stops the tick and is
+// shown, not worked round.
+const LOL_API = 'https://lol.fandom.com/api.php';
+const LOL_FETCH = { headers: { 'user-agent': 'aimplified/1.0 (personal, non-commercial)', accept: 'application/json' } };
+const LOL_LEAGUES = ['LCK', 'LPL', 'LEC', 'LCS'];
+const LOL_LEAGUE_NAME = { LCK: 'LCK (Korea)', LPL: 'LPL (China)', LEC: 'LEC (Europe)', LCS: 'LCS (North America)' };
+const LOL_K = 24, LOL_WARM_MAPS = 8;
+const LOL_STATE_KEY = 'lol_state', LOL_RATINGS_KEY = 'lol_ratings', LOL_BOARD_KEY = 'lol_board';
+const LOL_SCHED_MS = 3 * 3600e3, LOL_RES_MS = 6 * 3600e3, LOL_RES_LIVE_MS = 20 * 60e3, LOL_TOURN_MS = 24 * 3600e3;
+const LOL_PAGES_PER_TICK = 2, LOL_PAGE = 500, LOL_BOARD_MS = 5 * 60e3, LOL_RETRY_MS = 30 * 60e3;
+// The schedule's window: three days back (results, and a match moved), ten on.
+const LOL_SCHED_BACK_MS = 3 * 864e5, LOL_SCHED_AHEAD_MS = 10 * 864e5;
+// A series still waiting on its maps is asked about for two weeks, no longer.
+const LOL_MISSING_MS = 14 * 864e5;
+// "2026-08-08 12:00:00", Cargo's DateTime_UTC, compared as text; and back.
+const lolCargoTime = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+const lolTimeMs = (s) => Date.parse(String(s || '').replace(' ', 'T') + 'Z');
+// The four leagues' pages in those seasons ("LCK/2026 Season/Rounds 1-2"), showmatches left out.
+const lolPagesWhere = (a, years) => `(${years.flatMap((y) => LOL_LEAGUES.map((L) => `${a}.OverviewPage LIKE '${L}/${y} Season/%'`)).join(' OR ')})`
+  + ` AND ${a}.OverviewPage NOT LIKE '%Showmatch%'`;
+const lolLeagueOf = (page) => LOL_LEAGUES.find((L) => String(page || '').startsWith(L + '/')) || null;
+const lolYearOf = (page) => { const m = /\/(\d{4}) Season\//.exec(String(page || '')); return m ? Number(m[1]) : null; };
+const lolNum = (v) => (v === '' || v == null || !isFinite(Number(v)) ? null : Number(v));
+const lolPMap = (ra, rb) => 1 / (1 + Math.pow(10, (rb - ra) / 400));
+// A best-of-n won from a map chance p: 2 of 3, 3 of 5.
+const lolPSeries = (p, bo) => (bo === 3 ? p * p * (3 - 2 * p) : bo === 5 ? Math.pow(p, 3) * (10 - 15 * p + 6 * p * p) : p);
+// A team written for a match not yet set ("TBD", "Winner of ...") is no team.
+const lolRealTeam = (t) => !!t && !/^(tbd|tba)$/i.test(String(t).trim()) && !/^(winner|loser) of /i.test(String(t).trim());
+
+// One page of a Cargo query: { ok, rows } or { ok: false, error, limited }.
+async function lolCargo(q) {
+  const p = new URLSearchParams({ action: 'cargoquery', format: 'json', tables: q.tables, fields: q.fields, where: q.where,
+    limit: String(q.limit || LOL_PAGE), offset: String(q.offset || 0) });
+  if (q.orderBy) p.set('order_by', q.orderBy);
+  try {
+    const r = await fetch(`${LOL_API}?${p}`, LOL_FETCH);
+    const text = await r.text();
+    let j = null;
+    try { j = JSON.parse(text); } catch (e) { /* a block page or a challenge: not read, and not worked round */ }
+    if (!j) return { ok: false, status: r.status, error: `HTTP ${r.status}, not JSON` };
+    if (j.error) return { ok: false, status: r.status, error: String(j.error.code || 'error'), limited: /ratelimit/i.test(String(j.error.code || '')) };
+    if (!Array.isArray(j.cargoquery)) return { ok: false, status: r.status, error: 'no rows list' };
+    return { ok: true, status: r.status, rows: j.cargoquery.map((x) => (x && x.title) || {}) };
+  } catch (e) { return { ok: false, status: 0, error: String((e && e.message) || e).slice(0, 80) }; }
+}
+
+async function ensureLolSchema(db) {
+  // A series as the schedule has it; the chance logged for it until it starts (the last read before
+  // the start is what is graded), each team's maps behind it then; and how it ended.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS lolseries (
+    match_id TEXT PRIMARY KEY, league TEXT, page TEXT, year INTEGER, start TEXT, date TEXT, bo INTEGER, team1 TEXT, team2 TEXT,
+    p1 REAL, maps1 INTEGER, maps2 INTEGER, logged_at TEXT,
+    winner INTEGER, score1 INTEGER, score2 INTEGER, ff TEXT, result TEXT, graded_at TEXT, read_at TEXT)`).run();
+  // Each map: the ratings are built on these.
+  await db.prepare(`CREATE TABLE IF NOT EXISTS lolgames (
+    game_id TEXT PRIMARY KEY, match_id TEXT, league TEXT, year INTEGER, start TEXT, blue TEXT, red TEXT, winner TEXT)`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS lolgames_year ON lolgames (year, start)').run();
+  // Each player's line on each map, kept for the props (kills, deaths and assists).
+  await db.prepare(`CREATE TABLE IF NOT EXISTS lolplayers (
+    game_id TEXT, player TEXT, match_id TEXT, league TEXT, year INTEGER, start TEXT, team TEXT, role TEXT, champion TEXT,
+    kills INTEGER, deaths INTEGER, assists INTEGER, team_kills INTEGER, win INTEGER, PRIMARY KEY (game_id, player))`).run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS lolplayers_who ON lolplayers (player, start)').run();
+}
+
+// The schedule, three days back to ten on: each series' time, format and teams (a playoff's
+// "TBD" filled in as it is decided), and its result once in. A forfeit is void.
+async function lolReadSchedule(db, now) {
+  const from = now - LOL_SCHED_BACK_MS, to = now + LOL_SCHED_AHEAD_MS;
+  const years = [...new Set([new Date(from).getUTCFullYear(), new Date(to).getUTCFullYear()])];
+  const res = await lolCargo({ tables: 'MatchSchedule=MS',
+    fields: 'MS.OverviewPage,MS.Team1,MS.Team2,MS.Winner,MS.Team1Score,MS.Team2Score,MS.BestOf,MS.DateTime_UTC,MS.MatchId,MS.FF',
+    where: `${lolPagesWhere('MS', years)} AND MS.DateTime_UTC >= '${lolCargoTime(from)}' AND MS.DateTime_UTC <= '${lolCargoTime(to)}'`,
+    orderBy: 'MS.DateTime_UTC,MS.MatchId' });
+  if (!res.ok) return res;
+  const at = new Date(now).toISOString(), stmts = [];
+  for (const r of res.rows) {
+    const L = lolLeagueOf(r.OverviewPage), t = lolTimeMs(r['DateTime UTC']), bo = lolNum(r.BestOf);
+    if (!L || !r.MatchId || !Number.isFinite(t) || !lolRealTeam(r.Team1) || !lolRealTeam(r.Team2)) continue;
+    const w = r.Winner === '1' ? 1 : r.Winner === '2' ? 2 : null, ff = r.FF ? String(r.FF) : null;
+    stmts.push(db.prepare(`INSERT INTO lolseries (match_id, league, page, year, start, date, bo, team1, team2, winner, score1, score2, ff, read_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(match_id) DO UPDATE SET league = excluded.league, page = excluded.page, year = excluded.year, start = excluded.start,
+          date = excluded.date, bo = excluded.bo, team1 = excluded.team1, team2 = excluded.team2, winner = excluded.winner,
+          score1 = excluded.score1, score2 = excluded.score2, ff = excluded.ff, read_at = excluded.read_at
+        WHERE lolseries.graded_at IS NULL`)
+      .bind(String(r.MatchId), L, String(r.OverviewPage), lolYearOf(r.OverviewPage), new Date(t).toISOString(), ptDateOf(t), bo || 1,
+        String(r.Team1), String(r.Team2), w, lolNum(r.Team1Score), lolNum(r.Team2Score), ff, at));
+  }
+  if (stmts.length) await db.batch(stmts);
+  return { ok: true, series: stmts.length };
+}
+
+// Each map's players from the scoreboards, from `since` on, a page at a time: a map is kept once
+// all ten are in, two teams of five and one winner. Returns how many maps were new and whether
+// the last page was full (more to read).
+async function lolReadResults(db, now, since, year, pages = LOL_PAGES_PER_TICK) {
+  const have = new Set(), out = { ok: true, pages: 0, rows: 0, maps: 0, more: false };
+  const rows = [];
+  for (let i = 0; i < pages; i++) {
+    const res = await lolCargo({ tables: 'ScoreboardPlayers=SP',
+      fields: 'SP.OverviewPage,SP.Link,SP.Team,SP.Role,SP.Champion,SP.Kills,SP.Deaths,SP.Assists,SP.TeamKills,SP.PlayerWin,SP.Side,SP.DateTime_UTC,SP.GameId,SP.MatchId',
+      where: `${lolPagesWhere('SP', [year])} AND SP.DateTime_UTC >= '${lolCargoTime(since)}' AND SP.DateTime_UTC <= '${lolCargoTime(now)}'`,
+      orderBy: 'SP.DateTime_UTC,SP.GameId,SP.Side,SP.Link', offset: i * LOL_PAGE });
+    if (!res.ok) { if (!rows.length) return res; out.error = res.error; break; }
+    out.pages++;
+    rows.push(...res.rows);
+    if (res.rows.length < LOL_PAGE) break;
+    if (i === pages - 1) out.more = true;
+  }
+  out.rows = rows.length;
+  const games = new Map();
+  for (const r of rows) {
+    if (!r.GameId || !r.Team || !r.Link) continue;
+    if (!games.has(r.GameId)) games.set(r.GameId, []);
+    games.get(r.GameId).push(r);
+  }
+  const stmts = [];
+  for (const [gid, ps] of games) {
+    const teams = [...new Set(ps.map((p) => p.Team))];
+    if (teams.length !== 2 || ps.length !== 10 || teams.some((t) => ps.filter((p) => p.Team === t).length !== 5)) continue;
+    const won = teams.filter((t) => ps.find((p) => p.Team === t).PlayerWin === 'Yes');
+    if (won.length !== 1) continue;
+    const r0 = ps[0], L = lolLeagueOf(r0.OverviewPage), t = lolTimeMs(r0['DateTime UTC']);
+    if (!L || !Number.isFinite(t)) continue;
+    const blue = (ps.find((p) => String(p.Side) === '1') || {}).Team || teams[0], red = teams.find((x) => x !== blue);
+    const start = new Date(t).toISOString(), y = lolYearOf(r0.OverviewPage);
+    stmts.push(db.prepare('INSERT OR REPLACE INTO lolgames (game_id, match_id, league, year, start, blue, red, winner) VALUES (?,?,?,?,?,?,?,?)')
+      .bind(String(gid), String(r0.MatchId || ''), L, y, start, blue, red, won[0]));
+    for (const p of ps) {
+      stmts.push(db.prepare(`INSERT OR REPLACE INTO lolplayers (game_id, player, match_id, league, year, start, team, role, champion, kills, deaths, assists, team_kills, win)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(String(gid), String(p.Link), String(p.MatchId || ''), L, y, start, String(p.Team), p.Role || null, p.Champion || null,
+          lolNum(p.Kills), lolNum(p.Deaths), lolNum(p.Assists), lolNum(p.TeamKills), p.PlayerWin === 'Yes' ? 1 : 0));
+    }
+    have.add(gid);
+  }
+  for (let i = 0; i < stmts.length; i += 80) await db.batch(stmts.slice(i, i + 80));
+  out.maps = have.size;
+  return out;
+}
+
+// The season's ratings, map by map in the order played, a league at a time: { 'LCK|T1': { r, maps } }.
+async function lolRatingsBuild(db, year, now = Date.now()) {
+  const rows = (await db.prepare('SELECT league, start, blue, red, winner FROM lolgames WHERE year = ? ORDER BY start, game_id').bind(year).all()).results || [];
+  const R = new Map(), maps = new Map();
+  for (const g of rows) {
+    const a = `${g.league}|${g.blue}`, b = `${g.league}|${g.red}`, ra = R.get(a) ?? 1500, rb = R.get(b) ?? 1500;
+    const d = LOL_K * ((g.winner === g.blue ? 1 : 0) - lolPMap(ra, rb));
+    R.set(a, ra + d); R.set(b, rb - d);
+    maps.set(a, (maps.get(a) || 0) + 1); maps.set(b, (maps.get(b) || 0) + 1);
+  }
+  // Kept whole: a rating rounded to a tenth moves a chance sitting on a rounding edge (44.149 logged 44.2).
+  return { year, games: rows.length, at: new Date(now).toISOString(), teams: Object.fromEntries([...R].map(([k, r]) => [k, { r, maps: maps.get(k) }])) };
+}
+async function lolRatings(db, year, now = Date.now(), rebuild = false) {
+  const hit = await loadFeedCache(db, LOL_RATINGS_KEY).catch(() => null);
+  const all = (hit && hit.data) || {};
+  if (!rebuild && all[year]) return all[year];
+  all[year] = await lolRatingsBuild(db, year, now);
+  await saveFeedCache(db, LOL_RATINGS_KEY, all);
+  return all[year];
+}
+// A series' chance from the ratings: team1's, and each team's maps this season before it.
+function lolChanceOf(rt, s) {
+  const a = (rt && rt.teams && rt.teams[`${s.league}|${s.team1}`]) || {}, b = (rt && rt.teams && rt.teams[`${s.league}|${s.team2}`]) || {};
+  const pm = lolPMap(a.r ?? 1500, b.r ?? 1500);
+  return { p1: Math.round(lolPSeries(pm, s.bo || 1) * 1000) / 10, maps1: a.maps || 0, maps2: b.maps || 0 };
+}
+
+// The log: every series not yet started takes the current chance (the last before its start is
+// what is graded); one with its result is graded on its favourite, a forfeit void.
+async function lolLogSeries(db, now = Date.now()) {
+  const at = new Date(now).toISOString();
+  const pre = (await db.prepare('SELECT * FROM lolseries WHERE graded_at IS NULL AND start > ?').bind(at).all()).results || [];
+  const stmts = [], byYear = new Map();
+  for (const s of pre) {
+    if (!byYear.has(s.year)) byYear.set(s.year, await lolRatings(db, s.year, now));
+    const c = lolChanceOf(byYear.get(s.year), s);
+    if (s.p1 === c.p1 && s.maps1 === c.maps1 && s.maps2 === c.maps2) continue;
+    stmts.push(db.prepare('UPDATE lolseries SET p1 = ?, maps1 = ?, maps2 = ?, logged_at = ? WHERE match_id = ? AND graded_at IS NULL AND start > ?')
+      .bind(c.p1, c.maps1, c.maps2, at, s.match_id, at));
+  }
+  const done = (await db.prepare('SELECT * FROM lolseries WHERE graded_at IS NULL AND start <= ? AND (winner IS NOT NULL OR ff IS NOT NULL)').bind(at).all()).results || [];
+  for (const s of done) {
+    const result = s.ff ? 'void' : s.p1 == null ? 'unlogged' : (s.p1 >= 50 ? 1 : 2) === s.winner ? 'win' : 'loss';
+    stmts.push(db.prepare('UPDATE lolseries SET result = ?, graded_at = ? WHERE match_id = ?').bind(result, at, s.match_id));
+  }
+  if (stmts.length) await db.batch(stmts);
+  return { logged: pre.length, graded: done.length };
+}
+
+// The favourites' record, by the chance they were given: the bands of the replay, and the one
+// Picks would take (75%+ with both teams eight maps into the season).
+function lolRecordOf(rows) {
+  const g = rows.filter((s) => s.result === 'win' || s.result === 'loss').map((s) => ({ p: s.p1 >= 50 ? s.p1 : 100 - s.p1, won: s.result === 'win',
+    warm: (s.maps1 || 0) >= LOL_WARM_MAPS && (s.maps2 || 0) >= LOL_WARM_MAPS, league: s.league }));
+  const tally = (l) => ({ n: l.length, hit: l.filter((x) => x.won).length, stated: l.length ? round1(l.reduce((a, x) => a + x.p, 0) / l.length) : null });
+  const byBand = {};
+  for (const [k, lo, hi] of [['50-55', 50, 55], ['55-65', 55, 65], ['65-75', 65, 75], ['75+', 75, 101]]) byBand[k] = tally(g.filter((x) => x.p >= lo && x.p < hi));
+  return { n: g.length, byBand, picks: tally(g.filter((x) => x.p >= 75 && x.warm)),
+    byLeague: Object.fromEntries(LOL_LEAGUES.map((L) => [L, tally(g.filter((x) => x.league === L && x.p >= 65))])) };
+}
+
+// Each tick on HIST_CRON: whatever is due, a read at a time, stopping at the first refusal.
+async function lolTick(env, now = Date.now()) {
+  if (!env || !env.DB) return null;
+  const db = env.DB;
+  await ensureLolSchema(db);
+  const st = ((await loadFeedCache(db, LOL_STATE_KEY).catch(() => null)) || {}).data || {};
+  const out = { reads: [] };
+  // After a refusal, half an hour before Leaguepedia is asked again.
+  let changed = false, newMaps = 0, ok = !(now - (st.failAt || 0) < LOL_RETRY_MS), failed = false;
+  const stop = (what, r) => { failed = true; ok = false; changed = true; st.failAt = now; st.error = { what, error: r.error, at: new Date(now).toISOString() }; out.reads.push(`${what}: ${r.error}`); };
+  // The schedule.
+  if (ok && !(now - (st.schedAt || 0) < LOL_SCHED_MS)) {
+    const r = await lolReadSchedule(db, now);
+    if (r.ok) { st.schedAt = now; st.schedSeries = r.series; out.reads.push(`schedule: ${r.series}`); changed = true; } else stop('schedule', r);
+  }
+  // Results: the season's from the first map not in (a series over whose maps are not all in, two
+  // weeks back at most), else from a day before the last map in.
+  const year = new Date(now).getUTCFullYear();
+  // Every twenty minutes while a series is on (started in the last eight hours, no result yet) or
+  // over in the last two days with maps not in; else six-hourly, which still looks back two weeks.
+  const iso = (ms) => new Date(ms).toISOString();
+  const live = ok && (await db.prepare(`SELECT COUNT(*) AS n FROM lolseries WHERE start <= ? AND (
+        (start > ? AND winner IS NULL AND ff IS NULL)
+        OR (start > ? AND ff IS NULL AND winner IS NOT NULL
+          AND COALESCE(score1, 0) + COALESCE(score2, 0) > (SELECT COUNT(*) FROM lolgames g WHERE g.match_id = lolseries.match_id)))`)
+    .bind(iso(now), iso(now - 8 * 3600e3), iso(now - 2 * 864e5)).first()) || { n: 0 };
+  const every = st.more ? 0 : Number(live.n) > 0 ? LOL_RES_LIVE_MS : LOL_RES_MS;
+  if (ok && !(now - (st.resAt || 0) < every)) {
+    const last = await db.prepare('SELECT MAX(start) AS t FROM lolgames WHERE year = ?').bind(year).first();
+    const miss = await db.prepare(`SELECT MIN(start) AS t FROM lolseries WHERE year = ? AND start > ? AND start <= ? AND ff IS NULL AND winner IS NOT NULL
+        AND COALESCE(score1, 0) + COALESCE(score2, 0) > (SELECT COUNT(*) FROM lolgames g WHERE g.match_id = lolseries.match_id)`)
+      .bind(year, new Date(now - LOL_MISSING_MS).toISOString(), new Date(now).toISOString()).first();
+    const lastMs = last && last.t ? Date.parse(last.t) - 864e5 : Date.UTC(year, 0, 1), missMs = miss && miss.t ? Date.parse(miss.t) - 3600e3 : Infinity;
+    const r = await lolReadResults(db, now, Math.max(Date.UTC(year, 0, 1), Math.min(lastMs, missMs)), year);
+    if (r.ok) {
+      st.resAt = now; st.more = !!r.more; newMaps = r.maps; changed = true;
+      out.reads.push(`results: ${r.rows} rows, ${r.maps} maps${r.more ? ', more to read' : ''}`);
+      if (r.error) stop('results', r);
+    } else stop('results', r);
+  }
+  // The leagues' tournament dates, for when nothing is scheduled ("the LCK Cup starts Jan 14").
+  if (ok && !(now - (st.tournAt || 0) < LOL_TOURN_MS)) {
+    const years = [year, year + 1];
+    const r = await lolCargo({ tables: 'Tournaments=T', fields: 'T.Name,T.OverviewPage,T.DateStart,T.Date,T.TournamentLevel',
+      where: `${lolPagesWhere('T', years)} AND T.TournamentLevel = 'Primary'`, orderBy: 'T.DateStart' });
+    if (r.ok) {
+      st.tournAt = now; changed = true;
+      st.tournaments = r.rows.filter((t) => lolLeagueOf(t.OverviewPage) && t.DateStart)
+        .map((t) => ({ league: lolLeagueOf(t.OverviewPage), name: t.Name, start: t.DateStart, end: t.Date || null }));
+      out.reads.push(`tournaments: ${st.tournaments.length}`);
+    } else stop('tournaments', r);
+  }
+  if (out.reads.length && !failed) delete st.error;
+  if (newMaps) await lolRatings(db, year, now, true);
+  // A chance moves only with a read (new maps, a team or time set), and a result arrives with one:
+  // the log is brought up to date after reads, not every tick.
+  if (changed) {
+    out.log = await lolLogSeries(db, now).catch(() => null);
+    await saveFeedCache(db, LOL_STATE_KEY, st);
+    await saveFeedCache(db, LOL_BOARD_KEY, null);
+  }
+  return out;
+}
+
+// GET /api/lol-board: the matches from yesterday to a week on, each team's chance, the record and
+// the reads' state. Built from what the ticks stored, never a read of Leaguepedia; kept five
+// minutes.
+async function lolBoardData(env, now = Date.now()) {
+  const out = { note: 'League of Legends: each team\'s chance from its map results this season (a rating that moves with every win and loss, every team level when the season starts), turned into a series chance by its format. No book in the odds feed prices esports, so there is no price to check it against.',
+    leagues: LOL_LEAGUES.map((k) => ({ key: k, name: LOL_LEAGUE_NAME[k] })), matches: [], record: null, asOf: null, season: null, next: null, status: null,
+    warmMaps: LOL_WARM_MAPS };
+  if (!env || !env.DB) { out.error = 'no DB binding'; return out; }
+  const db = env.DB;
+  const hit = await loadFeedCache(db, LOL_BOARD_KEY).catch(() => null);
+  if (hit && hit.data && hit.ageMs < LOL_BOARD_MS) return hit.data;
+  await ensureLolSchema(db);
+  const st = ((await loadFeedCache(db, LOL_STATE_KEY).catch(() => null)) || {}).data || {};
+  out.status = { schedAt: st.schedAt ? new Date(st.schedAt).toISOString() : null, resAt: st.resAt ? new Date(st.resAt).toISOString() : null,
+    error: st.error || null, filling: !!st.more };
+  const rows = (await db.prepare('SELECT * FROM lolseries WHERE start >= ? AND start <= ? ORDER BY start, match_id')
+    .bind(new Date(now - 864e5).toISOString(), new Date(now + 8 * 864e5).toISOString()).all()).results || [];
+  const year = new Date(now).getUTCFullYear(), byYear = new Map();
+  for (const s of rows) if (!byYear.has(s.year)) byYear.set(s.year, await lolRatings(db, s.year, now));
+  if (!byYear.has(year)) byYear.set(year, await lolRatings(db, year, now));
+  const season = byYear.get(year);
+  out.season = { year, maps: season.games, teams: Object.keys(season.teams).length };
+  out.matches = rows.map((s) => {
+    // A result counts from the start only (a replay's schedule carries the results to come).
+    const started = Date.parse(s.start) <= now, done = started && (s.winner != null || !!s.ff);
+    // Before the start the chance now; from the start the one logged, which is what is graded.
+    const c = !started ? lolChanceOf(byYear.get(s.year), s) : { p1: s.p1, maps1: s.maps1, maps2: s.maps2 };
+    const p1 = c.p1 == null ? null : c.p1, fav = p1 == null ? null : p1 >= 50 ? 1 : 2;
+    const pf = p1 == null ? null : fav === 1 ? p1 : round1(100 - p1);
+    const warm = (c.maps1 || 0) >= LOL_WARM_MAPS && (c.maps2 || 0) >= LOL_WARM_MAPS;
+    return { id: s.match_id, league: s.league, start: s.start, date: s.date, bo: s.bo,
+      state: !started ? 'pre' : s.ff ? 'void' : done ? 'post' : 'in',
+      teams: [{ name: s.team1, p: p1, maps: c.maps1 || 0, won: done && s.winner === 1 }, { name: s.team2, p: p1 == null ? null : round1(100 - p1), maps: c.maps2 || 0, won: done && s.winner === 2 }],
+      fav, pFav: pf, warm, score: done && s.score1 != null ? [s.score1, s.score2] : null, result: s.result || null,
+      // The Picks bar (step two): 75%+ with both teams eight maps in.
+      bar: pf != null && pf >= 75 && warm };
+  });
+  if (!rows.some((s) => Date.parse(s.start) > now)) {
+    const today = ptDateOf(now);
+    out.next = (st.tournaments || []).filter((t) => t.start > today).sort((a, b) => (a.start < b.start ? -1 : 1))[0] || null;
+  }
+  out.record = lolRecordOf((await db.prepare('SELECT * FROM lolseries WHERE graded_at IS NOT NULL AND p1 IS NOT NULL').all()).results || []);
+  out.asOf = new Date(now).toISOString();
+  await saveFeedCache(db, LOL_BOARD_KEY, out);
+  return out;
 }
 
 // ---------------------------------------------------------------------------
